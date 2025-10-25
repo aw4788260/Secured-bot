@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { supabase } from '../../lib/supabaseClient';
 
+// --- (الدوال المساعدة تبقى كما هي) ---
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
 
 const sendMessage = async (chatId, text) => {
@@ -36,22 +37,27 @@ const setAdminState = async (userId, state, data = null) => {
     .eq('id', userId);
 };
 
+// --- الـ Webhook الرئيسي (مع التحديث الجديد) ---
 export default async (req, res) => {
   if (req.method !== 'POST') {
-    return res.status(200).send('OK'); 
+    return res.status(200).send('OK');
   }
+
   try {
     const { message } = req.body;
     if (!message || !message.text || !message.from) {
       return res.status(200).send('OK');
     }
+
     const chatId = message.chat.id;
     const userId = message.from.id;
     const text = message.text;
+
     const user = await getUser(userId);
 
     // --- منطقة الأدمن ---
     if (user && user.is_admin) {
+      // ... (أمر /adduser يبقى كما هو)
       if (text.startsWith('/adduser')) {
         const targetUserId = text.split(' ')[1];
         if (!targetUserId || !/^\d+$/.test(targetUserId)) {
@@ -65,18 +71,48 @@ export default async (req, res) => {
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
+
+      // --- الأمر الجديد: بدء محادثة إضافة كورس ---
+      if (text === '/addcourse') {
+        await setAdminState(userId, 'awaiting_course_title');
+        await sendMessage(chatId, '📚 حسناً، أرسل "اسم" الكورس الجديد:');
+        return res.status(200).send('OK');
+      }
+
+      // ... (أمر /addvideo يبقى كما هو)
       if (text === '/addvideo') {
         await setAdminState(userId, 'awaiting_video_title');
         await sendMessage(chatId, '🚀 حسناً، أرسل "عنوان" الفيديو:');
         return res.status(200).send('OK');
       }
+      
+      // ... (أمر /cancel يبقى كما هو)
       if (text === '/cancel') {
         await setAdminState(userId, null, null);
         await sendMessage(chatId, '👍 تم إلغاء العملية.');
         return res.status(200).send('OK');
       }
+
+      // --- معالجة المحادثة (الحالة) ---
       if (user.admin_state) {
         switch (user.admin_state) {
+          // --- الحالة الجديدة: كان ينتظر اسم الكورس ---
+          case 'awaiting_course_title':
+            const { data: newCourse, error } = await supabase
+              .from('courses')
+              .insert({ title: text })
+              .select('id') // طلب إرجاع ID الكورس الجديد
+              .single();
+
+            if (error) {
+              await sendMessage(chatId, `حدث خطأ: ${error.message}`);
+            } else {
+              await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح!\n\nرقم الكورس (Course ID) هو: \`${newCourse.id}\`\n(استخدم هذا الرقم عند إضافة الفيديوهات)`);
+            }
+            await setAdminState(userId, null, null);
+            break;
+
+          // ... (حالات إضافة الفيديو تبقى كما هي)
           case 'awaiting_video_title':
             await setAdminState(userId, 'awaiting_youtube_id', { title: text });
             await sendMessage(chatId, `👍 العنوان: "${text}"\n\nالآن أرسل "كود يوتيوب":`);
@@ -91,19 +127,19 @@ export default async (req, res) => {
             const courseId = parseInt(text);
             if (isNaN(courseId)) {
               await sendMessage(chatId, 'خطأ. أرسل "رقم" الكورس. حاول مجدداً:');
-              break; 
+              break;
             }
-            const { error } = await supabase.from('videos').insert({
+            const { error: videoError } = await supabase.from('videos').insert({
               title: videoData.title,
               youtube_video_id: videoData.youtube_id,
               course_id: courseId
             });
-            if (error) {
-              await sendMessage(chatId, `حدث خطأ: ${error.message}`);
+            if (videoError) {
+              await sendMessage(chatId, `حدث خطأ: ${videoError.message}`);
             } else {
               await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
             }
-            await setAdminState(userId, null, null); 
+            await setAdminState(userId, null, null);
             break;
         }
         return res.status(200).send('OK');
@@ -121,6 +157,7 @@ export default async (req, res) => {
     }
     
     await sendMessage(chatId, 'الأمر غير معروف. اضغط /start');
+
   } catch (e) {
     console.error("Error in webhook:", e.message);
   }
