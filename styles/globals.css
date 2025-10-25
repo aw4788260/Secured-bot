@@ -1,0 +1,47 @@
+/* styles/globals.css */
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  height: 100%;
+  background: #000;
+  color: #fff;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ستايلات مشغل الفيديو المتجاوب */
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 10px;
+}
+
+.videoWrapper {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  padding-bottom: 56.25%; /* خدعة أبعاد 16:9 */
+  height: 0;
+  overflow: hidden;
+  background: #111;
+}
+
+.videoPlayer, .overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
