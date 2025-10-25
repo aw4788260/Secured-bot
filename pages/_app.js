@@ -1,25 +1,21 @@
 // pages/_app.js
 import { useEffect } from 'react';
+import '../styles/globals.css';
 
 function MyApp({ Component, pageProps }) {
   useEffect(() => {
-    // 1. منع الكليك يمين
-    const handleContextMenu = (e) => {
-      e.preventDefault();
-    };
-    document.addEventListener('contextmenu', handleContextMenu);
-
-    // 2. محاولة منع F12 واختصارات DevTools
+    const handleContextMenu = (e) => e.preventDefault();
     const handleKeyDown = (e) => {
       if (
         e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && e.key === 'I') ||
-        (e.ctrlKey && e.shiftKey && e.key === 'J') ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) ||
         (e.ctrlKey && e.key === 'U')
       ) {
         e.preventDefault();
       }
     };
+
+    document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
