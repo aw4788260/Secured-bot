@@ -65,46 +65,54 @@ export default function WatchPage() {
     },
   };
 
-  // --- ستايلات CSS النهائية والمُحصّنة ---
+  // --- ستايلات CSS النهائية ---
   const containerStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#000', padding: '10px' };
-  const videoWrapperStyle = { position: 'relative', width: '100%', maxWidth: '900px', paddingTop: '56.25%', overflow: 'hidden' };
-  const playerStyle = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' };
+  const videoWrapperStyle = { position: 'relative', width: '100%', maxWidth: '900px', paddingTop: '56.25%' };
+  const innerWrapperStyle = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' };
 
   return (
     <div style={containerStyle}>
-      <Head><title>مشاهدة الدرس</title></Head>
+      <Head>
+        <title>مشاهدة الدرس</title>
+        {/* **تعديل 1: السماح بالزوم** */}
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      </Head>
       <div style={videoWrapperStyle}>
         
-        <YouTube videoId={youtubeId} opts={opts} style={playerStyle} onReady={onPlayerReady} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnd={() => setIsPlaying(false)} />
-        
-        {/* --- طبقة التحكم الكاملة والنهائية (الدرع الفائض) --- */}
-        <div style={{
-            position: 'absolute',
-            // نجعل الطبقة أكبر قليلاً من الحاوية لضمان التغطية الكاملة
-            width: '101%', 
-            height: '101%',
-            top: '-0.5%', // توسيط الطبقة الأكبر
-            left: '-0.5%',
-            zIndex: 10, 
-            display: 'flex'
-        }}>
+        {/* **تعديل 2: إضافة الحاوية الداخلية** */}
+        <div style={innerWrapperStyle}>
+          {/* مشغل يوتيوب (الطبقة السفلية داخل الحاوية الداخلية) */}
+          <YouTube 
+            videoId={youtubeId} 
+            opts={opts}
+            style={{ width: '100%', height: '100%' }} // يملأ الحاوية الداخلية
+            onReady={onPlayerReady}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnd={() => setIsPlaying(false)}
+          />
           
-          <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
-          
-          <div style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }} onClick={handlePlayPause}>
-            {!isPlaying && <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
-          </div>
-          
-          <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
-
-          {/* العلامة المائية */}
+          {/* طبقة التحكم (الطبقة العلوية داخل الحاوية الداخلية) */}
           <div style={{
-            position: 'absolute', bottom: '15px', right: '15px',
-            fontSize: '1.5vw', color: 'rgba(255, 255, 255, 0.4)',
-            fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
-            pointerEvents: 'none',
+              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+              zIndex: 10, 
+              display: 'flex'
           }}>
-            {user.first_name} {user.last_name || ''}
+            <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
+            <div style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }} onClick={handlePlayPause}>
+              {!isPlaying && <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
+            </div>
+            <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
+            
+            {/* العلامة المائية */}
+            <div style={{
+              position: 'absolute', bottom: '15px', right: '15px',
+              fontSize: '1.5vw', color: 'rgba(255, 255, 255, 0.4)',
+              fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
+              pointerEvents: 'none',
+            }}>
+              {user.first_name} {user.last_name || ''}
+            </div>
           </div>
         </div>
       </div>
