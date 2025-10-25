@@ -16,8 +16,9 @@ export default function WatchPage() {
       window.Telegram.WebApp.ready();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
       
-      if (tgUser) setUser(tgUser);
-      else {
+      if (tgUser) {
+        setUser(tgUser);
+      } else {
         setError("خطأ: لا يمكن التعرف على المستخدم.");
         return;
       }
@@ -36,27 +37,78 @@ export default function WatchPage() {
     }
   }, [videoId]);
 
-  if (error) return <div className="container"><h1>{error}</h1></div>;
-  if (!youtubeId || !user) return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
+  if (error) {
+    return <div style={{ color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+  }
+  if (!youtubeId || !user) {
+    return <div style={{ color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  }
 
+  // --- إعدادات مشغل يوتيوب ---
   const opts = {
     playerVars: {
-      autoplay: 1, controls: 1, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1,
+      autoplay: 1,
+      controls: 1,
+      rel: 0,           
+      showinfo: 0,      
+      modestbranding: 1,
+      disablekb: 1,     
     },
   };
 
+  // --- الستايلات المباشرة لحل المشكلة ---
+  const containerStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    background: '#000',
+    padding: '10px'
+  };
+
+  const videoWrapperStyle = {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '900px',
+    /* هذه هي الخدعة الكلاسيكية للأبعاد 16:9 */
+    paddingTop: '56.25%', 
+  };
+
+  const playerStyle = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%'
+  };
+
   return (
-    <div className="container">
+    <div style={containerStyle}>
       <Head><title>مشاهدة الدرس</title></Head>
-      <div className="videoWrapper">
-        <YouTube videoId={youtubeId} opts={opts} className="videoPlayer" />
-        <div className="overlay" style={{ height: 'calc(100% - 40px)', zIndex: 10 }}>
+      
+      <div style={videoWrapperStyle}>
+        
+        {/* مشغل يوتيوب (الطبقة السفلية) */}
+        <YouTube 
+          videoId={youtubeId} 
+          opts={opts}
+          style={playerStyle} // تطبيق ستايل المشغل
+        />
+        
+        {/* طبقة الحماية الشاملة (الطبقة العلوية) */}
+        <div style={{
+          ...playerStyle, // تأخذ نفس أبعاد المشغل
+          height: 'calc(100% - 50px)', // نترك 50 بكسل بالأسفل لشريط التحكم
+          zIndex: 10,
+        }}>
+          
+          {/* العلامة المائية (داخل طبقة الحماية) */}
           <div style={{
             width: '100%', height: '100%', display: 'flex', 
             justifyContent: 'center', alignItems: 'center',
             fontSize: '2.5vw', color: 'rgba(255, 255, 255, 0.25)',
             fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
-            pointerEvents: 'none',
+            pointerEvents: 'none', // العلامة المائية لا تتفاعل مع النقر
           }}>
             {user.first_name} {user.last_name || ''}
           </div>
