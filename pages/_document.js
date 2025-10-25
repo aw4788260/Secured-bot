@@ -5,10 +5,10 @@ export default function Document() {
   return (
     <Html lang="ar" dir="rtl">
       <Head>
-        {/* تمت إزالة 'defer' من السطر التالي 
-          لضمان تحميل هذا السكريبت أولاً قبل أي كود آخر في الصفحة.
+        {/* تم تغيير الرابط إلى الرابط الرسمي والمباشر من تليجرام.
+          هذا هو الحل المضمون لمشكلة عدم تحميل السكريبت.
         */}
-        <script src="http://googleusercontent.com/telegram.org/js/telegram-web-app.js"></script>
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
       </Head>
       <body>
         <Main />
