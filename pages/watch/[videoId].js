@@ -11,21 +11,17 @@ export default function WatchPage() {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
   
-  // --- لتتبع حالة التشغيل والتحكم في المشغل ---
   const [isPlaying, setIsPlaying] = useState(false);
-  const playerRef = useRef(null); // للوصول إلى مشغل يوتيوب مباشرة
+  const playerRef = useRef(null);
 
   useEffect(() => {
+    // ... (منطق جلب البيانات يبقى كما هو)
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
       
-      if (tgUser) {
-        setUser(tgUser);
-      } else {
-        setError("خطأ: لا يمكن التعرف على المستخدم.");
-        return;
-      }
+      if (tgUser) setUser(tgUser);
+      else { setError("خطأ: لا يمكن التعرف على المستخدم."); return; }
       
       if (videoId) {
         fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
@@ -41,114 +37,77 @@ export default function WatchPage() {
     }
   }, [videoId]);
 
+  // --- دوال التحكم الجديدة ---
   const handlePlayPause = () => {
     if (!playerRef.current) return;
-    
-    // الحصول على الحالة الحالية للمشغل مباشرة منه لضمان الدقة
     const playerState = playerRef.current.getPlayerState();
-    // 1 = playing, 2 = paused, 5 = cued
-    if (playerState === 1) {
-      playerRef.current.pauseVideo();
-    } else {
-      playerRef.current.playVideo();
-    }
+    if (playerState === 1) playerRef.current.pauseVideo();
+    else playerRef.current.playVideo();
   };
 
+  const handleSeek = (direction) => {
+    if (!playerRef.current) return;
+    const currentTime = playerRef.current.getCurrentTime();
+    const newTime = direction === 'forward' ? currentTime + 10 : currentTime - 10;
+    playerRef.current.seekTo(newTime, true);
+  };
+  
   const onPlayerReady = (event) => {
     playerRef.current = event.target;
   };
 
-  if (error) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}>
-            <Head><title>خطأ</title></Head>
-            <h1>{error}</h1>
-        </div>
-    );
-  }
-  if (!youtubeId || !user) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}>
-            <Head><title>جاري التحميل</title></Head>
-            <h1>جاري تحميل الفيديو...</h1>
-        </div>
-    );
-  }
+  if (error) return <div className="container"><h1>{error}</h1></div>;
+  if (!youtubeId || !user) return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
 
-  // --- إعدادات جديدة لإخفاء كل شيء ---
   const opts = {
     playerVars: {
-      autoplay: 0,      
-      controls: 0,      // إخفاء كل أزرار التحكم
-      rel: 0,           
-      showinfo: 0,      
-      modestbranding: 1,
-      disablekb: 1,     
+      autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1,
     },
   };
 
-  // --- الستايلات المباشرة لحل مشكلة الأبعاد ---
-  const containerStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100vh',
-    background: '#000',
-    padding: '10px'
-  };
-
-  const videoWrapperStyle = {
-    position: 'relative',
-    width: '100%',
-    maxWidth: '900px',
-    paddingTop: '56.25%', // خدعة الأبعاد 16:9
-  };
-
-  const playerStyle = {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%'
-  };
+  // --- ستايلات CSS مباشرة ---
+  const containerStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#000', padding: '10px' };
+  const videoWrapperStyle = { position: 'relative', width: '100%', maxWidth: '900px', paddingTop: '56.25%' };
+  const playerStyle = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' };
 
   return (
     <div style={containerStyle}>
       <Head><title>مشاهدة الدرس</title></Head>
-      
       <div style={videoWrapperStyle}>
+        <YouTube videoId={youtubeId} opts={opts} style={playerStyle} onReady={onPlayerReady} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnd={() => setIsPlaying(false)} />
         
-        {/* مشغل يوتيوب (الطبقة السفلية) */}
-        <YouTube 
-          videoId={youtubeId} 
-          opts={opts}
-          style={playerStyle}
-          onReady={onPlayerReady}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onEnd={() => setIsPlaying(false)}
-        />
-        
-        {/* طبقة التحكم والواجهة (الطبقة العلوية) */}
-        <div 
-          style={{...playerStyle, zIndex: 10, cursor: 'pointer', background: 'rgba(0,0,0,0.1)' }}
-          onClick={handlePlayPause}
-        >
-          {/* أيقونة التشغيل التي تظهر فقط عندما يكون الفيديو متوقفاً */}
-          {!isPlaying && (
-            <div style={{
-              width: '100%', height: '100%', display: 'flex', 
-              justifyContent: 'center', alignItems: 'center',
-              fontSize: '80px', color: 'white',
-              textShadow: '0px 0px 15px rgba(0,0,0,0.8)'
-            }}>
-              ▶
-            </div>
-          )}
+        {/* --- طبقة التحكم الكاملة والنهائية --- */}
+        <div style={{...playerStyle, zIndex: 10, display: 'flex'}}>
+          
+          {/* المنطقة اليسرى (إرجاع) */}
+          <div 
+            style={{ flex: 1, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
+            onDoubleClick={() => handleSeek('backward')} // استخدام النقر المزدوج للتقديم والتأخير
+          >
+             {/* يمكنك إضافة أيقونة هنا */}
+          </div>
+          
+          {/* المنطقة الوسطى (تشغيل/إيقاف) */}
+          <div 
+            style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
+            onClick={handlePlayPause}
+          >
+            {!isPlaying && (
+              <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>
+            )}
+          </div>
+          
+          {/* المنطقة اليمنى (تقديم) */}
+          <div 
+            style={{ flex: 1, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
+            onDoubleClick={() => handleSeek('forward')} // استخدام النقر المزدوج للتقديم والتأخير
+          >
+             {/* يمكنك إضافة أيقونة هنا */}
+          </div>
 
           {/* العلامة المائية */}
           <div style={{
-            position: 'absolute', bottom: '10px', right: '10px',
+            position: 'absolute', bottom: '15px', right: '15px',
             fontSize: '1.5vw', color: 'rgba(255, 255, 255, 0.4)',
             fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
             pointerEvents: 'none',
