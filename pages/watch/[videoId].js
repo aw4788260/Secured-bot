@@ -1,6 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import YouTube from 'react-youtube';
 
@@ -10,6 +10,10 @@ export default function WatchPage() {
   const [youtubeId, setYoutubeId] = useState(null);
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
+  
+  // --- جديد: لتتبع حالة التشغيل والتحكم في المشغل ---
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playerRef = useRef(null); // للوصول إلى مشغل يوتيوب مباشرة
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -37,18 +41,30 @@ export default function WatchPage() {
     }
   }, [videoId]);
 
-  if (error) {
-    return <div style={{ color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-  }
-  if (!youtubeId || !user) {
-    return <div style={{ color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
-  }
+  const handlePlayPause = () => {
+    if (!playerRef.current) return;
+    
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
+    setIsPlaying(!isPlaying);
+  };
 
-  // --- إعدادات مشغل يوتيوب ---
+  const onPlayerReady = (event) => {
+    // حفظ نسخة من المشغل للتحكم به لاحقًا
+    playerRef.current = event.target;
+  };
+
+  if (error) return <div className="container"><h1>{error}</h1></div>;
+  if (!youtubeId || !user) return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
+
+  // --- إعدادات جديدة لإخفاء كل شيء ---
   const opts = {
     playerVars: {
-      autoplay: 1,
-      controls: 1,
+      autoplay: 0,      // لن يتم التشغيل تلقائياً
+      controls: 0,      // **أهم تعديل: إخفاء كل أزرار التحكم**
       rel: 0,           
       showinfo: 0,      
       modestbranding: 1,
@@ -56,59 +72,43 @@ export default function WatchPage() {
     },
   };
 
-  // --- الستايلات المباشرة لحل المشكلة ---
-  const containerStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100vh',
-    background: '#000',
-    padding: '10px'
-  };
-
-  const videoWrapperStyle = {
-    position: 'relative',
-    width: '100%',
-    maxWidth: '900px',
-    /* هذه هي الخدعة الكلاسيكية للأبعاد 16:9 */
-    paddingTop: '56.25%', 
-  };
-
-  const playerStyle = {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%'
-  };
-
   return (
-    <div style={containerStyle}>
+    <div className="container">
       <Head><title>مشاهدة الدرس</title></Head>
       
-      <div style={videoWrapperStyle}>
-        
-        {/* مشغل يوتيوب (الطبقة السفلية) */}
+      <div className="videoWrapper">
         <YouTube 
           videoId={youtubeId} 
           opts={opts}
-          style={playerStyle} // تطبيق ستايل المشغل
+          className="videoPlayer"
+          onReady={onPlayerReady} // دالة لحفظ المشغل عند جاهزيته
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnd={() => setIsPlaying(false)}
         />
         
-        {/* طبقة الحماية الشاملة (الطبقة العلوية) */}
-        <div style={{
-          ...playerStyle, // تأخذ نفس أبعاد المشغل
-          height: 'calc(100% - 50px)', // نترك 50 بكسل بالأسفل لشريط التحكم
-          zIndex: 10,
-        }}>
-          
-          {/* العلامة المائية (داخل طبقة الحماية) */}
+        {/* --- طبقة التحكم والواجهة الجديدة --- */}
+        <div 
+          className="overlay" 
+          style={{ zIndex: 10, cursor: 'pointer', background: 'rgba(0,0,0,0.2)' }}
+          onClick={handlePlayPause} // التحكم في التشغيل/الإيقاف عند النقر
+        >
+          {/* أيقونة التشغيل/الإيقاف التي تظهر وتختفي */}
+          {!isPlaying && (
+            <div style={{
+              fontSize: '80px', color: 'white',
+              textShadow: '0px 0px 15px rgba(0,0,0,0.8)'
+            }}>
+              ▶
+            </div>
+          )}
+
+          {/* العلامة المائية (موجودة دائمًا في الخلفية) */}
           <div style={{
-            width: '100%', height: '100%', display: 'flex', 
-            justifyContent: 'center', alignItems: 'center',
-            fontSize: '2.5vw', color: 'rgba(255, 255, 255, 0.25)',
-            fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
-            pointerEvents: 'none', // العلامة المائية لا تتفاعل مع النقر
+            position: 'absolute', bottom: '10px', right: '10px',
+            fontSize: '1.5vw', color: 'rgba(255, 255, 255, 0.3)',
+            fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
+            pointerEvents: 'none',
           }}>
             {user.first_name} {user.last_name || ''}
           </div>
