@@ -5,8 +5,10 @@ export default function Document() {
   return (
     <Html lang="ar" dir="rtl">
       <Head>
-        {/* هذا السكريبت ضروري لعمل الـ WebApp */}
-        <script src="http://googleusercontent.com/telegram.org/js/telegram-web-app.js" defer></script>
+        {/* تمت إزالة 'defer' من السطر التالي 
+          لضمان تحميل هذا السكريبت أولاً قبل أي كود آخر في الصفحة.
+        */}
+        <script src="http://googleusercontent.com/telegram.org/js/telegram-web-app.js"></script>
       </Head>
       <body>
         <Main />
