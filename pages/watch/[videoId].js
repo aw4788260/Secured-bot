@@ -17,13 +17,16 @@ export default function WatchPage() {
   const [playerSize, setPlayerSize] = useState({ width: '100%', height: 'auto' });
   const wrapperRef = useRef(null);
 
+  // --- متغيرات حالة لشريط التقدم والتحكم ---
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
   const seekTimeoutRef = useRef(null);
 
+  // --- جديد: متغيرات حالة لموقع العلامة المائية ---
   const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
   const watermarkIntervalRef = useRef(null);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -49,7 +52,7 @@ export default function WatchPage() {
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        const calculatedHeight = containerWidth * (16 / 13); 
+        const calculatedHeight = containerWidth * (10 / 16); // يمكنك تعديل 10 لزيادة/نقصان الارتفاع
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
     };
@@ -57,22 +60,24 @@ export default function WatchPage() {
     updateSize(); 
     window.addEventListener('resize', updateSize);
 
-    const timeInterval = setInterval(() => {
+    const interval = setInterval(() => {
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         setCurrentTime(playerRef.current.getCurrentTime());
       }
     }, 500);
 
+    // --- جديد: بدء حركة العلامة المائية ---
     watermarkIntervalRef.current = setInterval(() => {
-        const newTop = Math.floor(Math.random() * 70) + 10; 
-        const newLeft = Math.floor(Math.random() * 60) + 10;
+        const newTop = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
+        const newLeft = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
         setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
-    }, 5000); 
+    }, 5000); // تغيير الموقع كل 5 ثوانٍ
+
 
     return () => {
         window.removeEventListener('resize', updateSize);
-        clearInterval(timeInterval);
-        if(watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current);
+        clearInterval(interval);
+        clearInterval(watermarkIntervalRef.current); // تنظيف مؤقت العلامة المائية
     };
   }, [videoId]);
 
@@ -85,21 +90,25 @@ export default function WatchPage() {
       playerRef.current.playVideo();
     }
   };
+
   const handleSeek = (direction) => {
     if (!playerRef.current) return;
     const currentTimeVal = playerRef.current.getCurrentTime();
     const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10;
     playerRef.current.seekTo(newTime, true);
+
     setShowSeekIcon({ direction: direction, visible: true });
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
     seekTimeoutRef.current = setTimeout(() => {
       setShowSeekIcon({ direction: null, visible: false });
     }, 600);
   };
+  
   const onPlayerReady = (event) => {
     playerRef.current = event.target;
     setDuration(event.target.getDuration());
   };
+
   const handleProgressBarClick = (e) => {
     if (!playerRef.current || duration === 0) return;
     const bar = e.currentTarget;
@@ -109,18 +118,19 @@ export default function WatchPage() {
     playerRef.current.seekTo(seekTime, true);
     setCurrentTime(seekTime); 
   };
+
   const formatTime = (timeInSeconds) => {
-    if (isNaN(timeInSeconds) || timeInSeconds < 0) return '0:00';
+    if (isNaN(timeInSeconds) || timeInSeconds === 0) return '0:00';
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
     return `${minutes}:${seconds}`;
   };
 
-  if (error) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-  
-  // This is the corrected condition
-  if (!youtubeId || !user || playerSize.width === '100%') {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  if (error) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+  }
+  if (!youtubeId || !user || playerSize.width === 0) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
   }
 
   const opts = {
@@ -138,7 +148,8 @@ export default function WatchPage() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
       
-      <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '450px' }}>
+      <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '900px' }}>
+        
         <div style={{ position: 'relative', width: playerSize.width, height: playerSize.height }}>
           
           <YouTube 
@@ -151,46 +162,63 @@ export default function WatchPage() {
             onEnd={() => setIsPlaying(false)}
           />
           
-          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
-              {!isPlaying && <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
-              
-              {showSeekIcon.visible && (
-                <div style={{
-                  position: 'absolute', top: '50%', left: showSeekIcon.direction === 'forward' ? '75%' : '25%',
-                  transform: 'translate(-50%, -50%)', fontSize: '40px', color: 'white',
-                  animation: 'seek-pop 0.6s ease-out'
-                }}>
-                  {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
+          <div style={{
+              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+              zIndex: 10, 
+              display: 'flex',
+              flexDirection: 'column'
+          }}>
+            <div style={{ flexGrow: 1, display: 'flex' }}>
+                <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
+                <div style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }} onClick={handlePlayPause}>
+                  {!isPlaying && <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
                 </div>
-              )}
-              
+                <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
+            </div>
+
+            <div style={{ height: '40px', display: 'flex', alignItems: 'center', padding: '0 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)', zIndex: 11 }}>
+                <span style={{ color: 'white', fontSize: '12px', marginRight: '10px', minWidth: '40px' }}>{formatTime(currentTime)}</span>
+                <div 
+                  style={{ flexGrow: 1, height: '4px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px', cursor: 'pointer', position: 'relative' }}
+                  onClick={handleProgressBarClick}
+                >
+                  <div style={{ height: '100%', width: `${(currentTime / duration) * 100}%`, background: '#FF0000', borderRadius: '2px' }}></div>
+                </div>
+                <span style={{ color: 'white', fontSize: '12px', marginLeft: '10px', minWidth: '40px' }}>{formatTime(duration)}</span>
+            </div>
+
+            {showSeekIcon.visible && (
               <div style={{
-                position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-                padding: '4px 8px', background: 'rgba(0, 0, 0, 0.8)', color: 'white',
-                fontSize: '12px', borderRadius: '4px', fontWeight: 'bold',
-                transition: 'top 2s ease-in-out, left 2s ease-in-out', whiteSpace: 'nowrap'
+                position: 'absolute',
+                top: '50%',
+                left: showSeekIcon.direction === 'forward' ? '75%' : '25%',
+                transform: 'translate(-50%, -50%)',
+                fontSize: '40px',
+                color: 'white',
+                opacity: 0.8,
+                transition: 'opacity 0.5s ease-out',
+                animation: 'seek-pop 0.6s ease-out',
+                pointerEvents: 'none'
               }}>
-                {user.first_name} ({user.id})
+                {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
               </div>
+            )}
+            
+            {/* --- العلامة المائية المتحركة --- */}
+            <div style={{
+              position: 'absolute',
+              top: watermarkPos.top,    // الموضع العلوي الديناميكي
+              left: watermarkPos.left,  // الموضع الأيسر الديناميكي
+              fontSize: '1.5vw',
+              color: 'rgba(255, 255, 255, 0.4)',
+              fontWeight: 'bold',
+              textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
+              pointerEvents: 'none',
+              transition: 'top 2s ease-in-out, left 2s ease-in-out' // حركة سلسة
+            }}>
+              {user.first_name} {user.last_name || ''}
+            </div>
           </div>
-
-          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 'calc(100% - 40px)', zIndex: 12, display: 'flex' }}>
-              <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
-              <div style={{ flex: 2, height: '100%', cursor: 'pointer' }} onClick={handlePlayPause}></div>
-              <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
-          </div>
-          
-          <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '40px', display: 'flex', alignItems: 'center', padding: '0 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)', zIndex: 11 }}>
-              <span style={{ color: 'white', fontSize: '12px', marginRight: '10px', minWidth: '40px' }}>{formatTime(currentTime)}</span>
-              <div 
-                style={{ flexGrow: 1, height: '4px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px', cursor: 'pointer' }}
-                onClick={handleProgressBarClick}
-              >
-                <div style={{ height: '100%', width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`, background: '#FF0000', borderRadius: '2px' }}></div>
-              </div>
-              <span style={{ color: 'white', fontSize: '12px', marginLeft: '10px', minWidth: '40px' }}>{formatTime(duration)}</span>
-          </div>
-
         </div>
       </div>
       
