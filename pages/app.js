@@ -13,7 +13,10 @@ const loadFingerprint = async () => {
 export default function App() {
   const [status, setStatus] = useState('جاري التحقق من هويتك...');
   const [error, setError] = useState(null);
-  const [videos, setVideos] = useState([]);
+  // حالة جديدة لحفظ الكورسات
+  const [courses, setCourses] = useState([]);
+  // حالة جديدة لمعرفة الكورس المختار حالياً
+  const [selectedCourse, setSelectedCourse] = useState(null);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -28,9 +31,9 @@ export default function App() {
         return;
       }
       setUser(tgUser);
-      setStatus('جاري التحقق من الاشتراك...'); // تحديث الحالة
+      setStatus('جاري التحقق من الاشتراك...');
 
-      // --- الخطوة 1: التحقق من الاشتراك أولاً ---
+      // --- الخطوة 1: التحقق من الاشتراك ---
       fetch('/api/auth/check-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,10 +43,10 @@ export default function App() {
       .then(subData => {
         if (!subData.isSubscribed) {
           setError('أنت غير مشترك. الرجاء تفعيل اشتراكك أولاً.');
-          return; // إيقاف التنفيذ إذا لم يكن مشتركاً
+          return;
         }
 
-        // --- الخطوة 2: التحقق من بصمة الجهاز (فقط إذا كان مشتركاً) ---
+        // --- الخطوة 2: التحقق من بصمة الجهاز ---
         setStatus('جاري التحقق من بصمة الجهاز...');
         loadFingerprint().then(fingerprint => {
           fetch('/api/auth/check-device', {
@@ -54,15 +57,16 @@ export default function App() {
           .then(res => res.json())
           .then(deviceData => {
             if (!deviceData.success) {
-              setError(deviceData.message); // عرض رسالة الخطأ (مثل: جهاز آخر)
+              setError(deviceData.message);
             } else {
               setStatus('جاري جلب الكورسات...');
-              // --- الخطوة 3: جلب قائمة الفيديوهات (فقط إذا نجح كل شيء) ---
-              fetch('/api/data/get-all-videos')
+              
+              // --- الخطوة 3: [تعديل] جلب الكورسات المنظمة ---
+              fetch('/api/data/get-structured-courses') // <-- API الجديد
                 .then(res => res.json())
-                .then(videoData => {
-                  setVideos(videoData);
-                  setStatus(''); // إخفاء رسالة التحميل
+                .then(courseData => {
+                  setCourses(courseData); // <-- حفظ الكورسات في الحالة
+                  setStatus(''); 
                 });
             }
           });
@@ -70,40 +74,76 @@ export default function App() {
 
       })
       .catch(err => {
-         // معالجة أي خطأ عام في الشبكة
          setError('حدث خطأ أثناء التحقق. حاول مرة أخرى.');
          console.error(err);
       });
 
     } else if (typeof window !== 'undefined') {
-      // هذا سيعمل إذا لم يتم تحميل السكريبت
       setError('الرجاء فتح التطبيق من داخل تليجرام.');
     }
   }, []);
 
   if (error) {
-    return <div><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+    return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
   if (status) {
-    return <div><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
+    return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
 
+  // --- لوجيك العرض الجديد ---
+
+  // 1. إذا لم يتم اختيار كورس، اعرض قائمة الكورسات
+  if (!selectedCourse) {
+    return (
+      <div className="app-container">
+        <Head><title>الكورسات</title></Head>
+        <h1>الكورسات المتاحة</h1>
+        <ul className="item-list">
+          {courses.map(course => (
+            <li key={course.id}>
+              {/* زر لاختيار الكورس */}
+              <button className="button-link" onClick={() => setSelectedCourse(course)}>
+                {course.title}
+                <span>({course.videos.length} فيديو)</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+        
+        <style jsx>{`
+          /* (يتم تطبيق الأنماط من هنا) */
+        `}</style>
+      </div>
+    );
+  }
+
+  // 2. إذا تم اختيار كورس، اعرض فيديوهات هذا الكورس
   return (
-    <div style={{ padding: '10px', fontFamily: 'Arial, sans-serif' }}>
-      <Head><title>الكورسات</title></Head>
-      <h1>الكورسات المتاحة</h1>
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {videos.map(video => (
-          <li key={video.id} style={{ margin: '8px 0', fontSize: '1.2em' }}>
-            <Link href={`/watch/${video.id}`}>
-              <a style={{ textDecoration: 'none', color: '#007bff', padding: '10px', display: 'block', background: '#f0f0f0', borderRadius: '5px' }}>
-                {video.title}
-              </a>
-            </Link>
-          </li>
-        ))}
+    <div className="app-container">
+      <Head><title>{selectedCourse.title}</title></Head>
+      {/* زر للرجوع لقائمة الكورسات */}
+      <button className="back-button" onClick={() => setSelectedCourse(null)}>
+        &larr; رجوع إلى الكورسات
+      </button>
+      <h1>{selectedCourse.title}</h1>
+      <ul className="item-list">
+        {selectedCourse.videos.length > 0 ? (
+          selectedCourse.videos.map(video => (
+            <li key={video.id}>
+              {/* رابط لصفحة المشاهدة */}
+              <Link href={`/watch/${video.id}`}>
+                <a className="button-link video-link">
+                  {video.title}
+                </a>
+              </Link>
+            </li>
+          ))
+        ) : (
+          <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الكورس بعد.</p>
+        )}
       </ul>
-      {user && <p style={{ color: '#888', fontSize: '12px', textAlign: 'center' }}>مرحباً, {user.first_name}</p>}
+      {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
     </div>
   );
 }
