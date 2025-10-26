@@ -651,7 +651,7 @@ export default async (req, res) => {
             const videoData = user.state_data.video;
             // --- [ ✅ الحل هنا ] ---
             videoData.youtube_video_id = text; // تم تعديل اسم الحقل
-d          await fetchAndSendCoursesMenu(
+await fetchAndSendCoursesMenu(
               chatId,
               '👍 تم حفظ كود اليوتيوب\\.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
               { video: videoData },
