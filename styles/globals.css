@@ -5,9 +5,10 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
     Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
-  height: 100%;
-  background: #000;
-  color: #fff;
+  min-height: 100vh; /* يضمن تغطية الشاشة دائماً */
+  background: linear-gradient(to bottom, #111827, #000000); /* خلفية متدرجة حديثة */
+  background-attachment: fixed; /* تثبيت الخلفية عند النزول */
+  color: #f1f1f1; /* لون خط أبيض ناعم */
 }
 
 a {
@@ -19,7 +20,7 @@ a {
   box-sizing: border-box;
 }
 
-/* ستايلات مشغل الفيديو المتجاوب */
+/* ستايلات مشغل الفيديو المتجاوب (كما هي) */
 .container {
   display: flex;
   align-items: center;
@@ -46,19 +47,30 @@ a {
   height: 100%;
 }
 
-/* --- أنماط جديدة لصفحة الكورسات --- */
+/* --- (تعديلات) أنماط ديناميكية لصفحة الكورسات --- */
 
 .app-container {
-  padding: 15px;
+  padding: 20px 15px; /* زيادة الحشو العلوي */
   max-width: 800px;
   margin: 0 auto;
 }
 
+/* (جديد) تنسيق العنوان الرئيسي */
+.app-container h1 {
+  font-size: 1.8em;
+  font-weight: 600;
+  color: #ffffff;
+  padding-bottom: 12px;
+  margin-bottom: 25px;
+  border-bottom: 2px solid #38bdf8; /* لون مميز أزرق فاتح */
+}
+
+/* (معدل) رسالة الترحيب */
 .user-greeting {
-  color: #888;
+  color: #94a3b8; /* لون رمادي-أزرق */
   font-size: 12px;
   text-align: center;
-  margin-top: 20px;
+  margin-top: 25px;
 }
 
 .item-list {
@@ -68,53 +80,69 @@ a {
 }
 
 .item-list li {
-  margin-bottom: 12px;
+  margin-bottom: 15px; /* زيادة المسافة */
 }
 
+/* (معدل) تنسيق الزر الرئيسي "الديناميكي" */
 .button-link {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 16px 20px;
-  background: #222;
-  color: #fff;
-  border: 1px solid #444;
-  border-radius: 8px;
+  padding: 18px 20px;
+  background: #1e293b; /* خلفية أزرار (أزرق داكن) */
+  color: #f1f1f1;
+  border: 1px solid #334155;
+  border-radius: 10px; /* زوايا أكثر استدارة */
   text-decoration: none;
-  font-size: 1.1em;
+  font-size: 1.15em;
   font-family: inherit;
   cursor: pointer;
   text-align: right;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* ظل خفيف */
+  transition: all 0.3s ease; /* حركة انتقالية ناعمة */
 }
 
+/* (معدل) تأثير الـ Hover "الديناميكي" */
 .button-link:hover,
 .button-link:focus {
-  background-color: #333;
+  background-color: #334155;
+  transform: translateY(-3px) scale(1.01); /* تأثير الرفع */
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+  border-color: #475569;
 }
 
 .button-link:active {
-  transform: scale(0.98);
+  transform: translateY(0) scale(1); /* تأثير الضغط */
 }
 
+/* (معدل) تنسيق عدد الفيديوهات */
 .button-link span {
   font-size: 0.85em;
-  color: #aaa;
+  color: #94a3b8; /* رمادي-أزرق */
+  font-weight: 500;
   margin-right: 10px;
 }
 
+/* (معدل) أيقونة الفيديو */
 .video-link::after {
   content: '▶';
   margin-right: 10px;
-  color: #007bff;
+  color: #38bdf8; /* أزرق فاتح مميز */
 }
 
+/* (معدل) زر الرجوع */
 .back-button {
   background: none;
   border: none;
-  color: #007bff;
-  font-size: 1em;
+  color: #38bdf8; /* أزرق فاتح مميز */
+  font-size: 1.05em;
   padding: 5px 0 15px;
   cursor: pointer;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.back-button:hover {
+  color: #7dd3fc; /* لون أفتح عند الـ hover */
 }
