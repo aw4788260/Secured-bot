@@ -644,19 +644,20 @@ export default async (req, res) => {
             await sendMessage(chatId, `👍 العنوان: "${escapeMarkdown(text)}"\n\nالآن أرسل "كود يوتيوب":`);
             break;
           case 'awaiting_youtube_id':
-             if (!user.state_data || !user.state_data.video) {
-                await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
-                return res.status(200).send(await setAdminState(userId, null, null));
-            }
-            const videoData = user.state_data.video;
-            videoData.youtube_id = text;
-            await fetchAndSendCoursesMenu(
-              chatId,
-              '👍 تم حفظ كود اليوتيوب\\.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
-              { video: videoData },
-              'add_video_to_course'
-            );
-            break;
+             if (!user.state_data || !user.state_data.video) {
+                await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
+                return res.status(200).send(await setAdminState(userId, null, null));
+            }
+            const videoData = user.state_data.video;
+            // --- [ ✅ الحل هنا ] ---
+            videoData.youtube_video_id = text; // تم تعديل اسم الحقل
+d          await fetchAndSendCoursesMenu(
+              chatId,
+              '👍 تم حفظ كود اليوتيوب\\.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
+              { video: videoData },
+              'add_video_to_course'
+            );
+            break;
         }
         return res.status(200).send('OK');
       }
