@@ -48,7 +48,7 @@ a {
 }
 
 .app-container {
-  /* 1. تم حذف padding و max-width و margin: auto */
+  padding: 20px 15px;
   margin: 0;
   
   /* 2. نتأكد أنه يملأ الطول */
