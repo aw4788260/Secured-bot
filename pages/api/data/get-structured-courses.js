@@ -9,7 +9,7 @@ export default async (req, res) => {
   }
 
   try {
-    // الخطوة 1: التحقق إذا كان المستخدم له صلاحية كاملة
+    // الخطوة 1: التحقق من اشتراك المستخدم
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('is_subscribed')
@@ -18,60 +18,91 @@ export default async (req, res) => {
       
     if (userError && userError.code !== 'PGRST116') throw userError;
 
-    
+    let allowedCourseIds = [];
+    let allCourses = [];
+    let allVideos = [];
+
     if (user && user.is_subscribed) {
-      // --- الحالة 1: صلاحية كاملة (هذا الجزء سليم ويعمل) ---
-      const { data, error } = await supabase
-        .from('courses')
-        .select(`
-          id,
-          title,
-          videos ( id, title )
-        `)
-        .order('title', { ascending: true })
-        .order('id', { foreignTable: 'videos', ascending: true });
-
-      if (error) throw error;
-      res.status(200).json(data); // إرسال البيانات مباشرة
-
-    } else {
-      // --- الحالة 2: صلاحية محددة (المنطق الجديد والأكثر أماناً) ---
+      // --- الحالة 1: صلاحية كاملة ---
       
-      // الخطوة أ: جلب أرقام الكورسات المسموحة فقط
-      const { data: accessData, error: accessError } = await supabase
-        .from('user_course_access')
-        .select('course_id') // جلب أرقام الكورسات فقط
-        .eq('user_id', userId);
-
-      if (accessError) throw accessError;
-
-      // إذا لم يكن لديه صلاحية لأي كورس، أرسل مصفوفة فارغة
-      if (!accessData || accessData.length === 0) {
-        return res.status(200).json([]);
-      }
-
-      // تحويل النتيجة إلى مصفوفة من الأرقام [1, 5, 12]
-      const allowedCourseIds = accessData.map(item => item.course_id);
-
-      // الخطوة ب: جلب تفاصيل هذه الكورسات المحددة
+      // جلب كل الكورسات
       const { data: coursesData, error: coursesError } = await supabase
         .from('courses')
-        .select(`
-          id,
-          title,
-          videos ( id, title )
-        `)
-        .in('id', allowedCourseIds) // استخدام .in() لجلب الكورسات المطابقة
-        .order('title', { ascending: true })
-        .order('id', { foreignTable: 'videos', ascending: true });
-      
+        .select('id, title')
+        .order('title', { ascending: true });
       if (coursesError) throw coursesError;
+      allCourses = coursesData;
 
-      res.status(200).json(coursesData);
+      // جلب كل الفيديوهات
+      const { data: videosData, error: videosError } = await supabase
+        .from('videos')
+        .select('id, title, course_id')
+        .order('id', { ascending: true });
+      if (videosError) throw videosError;
+      allVideos = videosData;
+
+    } else {
+      // --- الحالة 2: صلاحية محددة ---
+
+      // جلب أرقام الكورسات المسموحة فقط
+      const { data: accessData, error: accessError } = await supabase
+        .from('user_course_access')
+        .select('course_id')
+        .eq('user_id', userId);
+      if (accessError) throw accessError;
+
+      if (!accessData || accessData.length === 0) {
+        return res.status(200).json([]); // ليس لديه صلاحية لأي كورس
+      }
+      allowedCourseIds = accessData.map(item => item.course_id);
+
+      // جلب تفاصيل هذه الكورسات
+      const { data: coursesData, error: coursesError } = await supabase
+        .from('courses')
+        .select('id, title')
+        .in('id', allowedCourseIds)
+        .order('title', { ascending: true });
+      if (coursesError) throw coursesError;
+      allCourses = coursesData;
+
+      // جلب فيديوهات هذه الكورسات فقط
+      const { data: videosData, error: videosError } = await supabase
+        .from('videos')
+        .select('id, title, course_id')
+        .in('course_id', allowedCourseIds)
+        .order('id', { ascending: true });
+      if (videosError) throw videosError;
+      allVideos = videosData;
     }
 
+    // --- خطوة التجميع (هنا يتم دمج البيانات) ---
+    
+    // 1. إنشاء خريطة (Map) للكورسات لسهولة الوصول
+    const coursesMap = new Map();
+    allCourses.forEach(course => {
+      coursesMap.set(course.id, {
+        ...course,
+        videos: [] // إضافة مصفوفة فيديوهات فارغة
+      });
+    });
+
+    // 2. توزيع الفيديوهات على الكورسات الخاصة بها
+    allVideos.forEach(video => {
+      const course = coursesMap.get(video.course_id);
+      if (course) {
+        course.videos.push({
+          id: video.id,
+          title: video.title
+        });
+      }
+    });
+
+    // 3. تحويل الخريطة إلى مصفوفة وإرسالها
+    const finalData = Array.from(coursesMap.values());
+    res.status(200).json(finalData);
+
   } catch (err) {
-    // إظهار الخطأ الفعلي في سجلات السيرفر (Logs)
+    // هذا السطر مهم جداً ليظهر لك الخطأ الفعلي في Vercel Logs
     console.error("Error in get-structured-courses:", err.message);
     res.status(500).json({ message: err.message });
   }
