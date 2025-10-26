@@ -74,6 +74,7 @@ export default function WatchPage() {
 
 
     return () => {
+      clearTimeout(timer);
         window.removeEventListener('resize', updateSize);
         clearInterval(interval);
         clearInterval(watermarkIntervalRef.current); // تنظيف مؤقت العلامة المائية
