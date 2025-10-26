@@ -47,7 +47,7 @@ export default function WatchPage() {
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        const calculatedHeight = containerWidth * (9 / 16);
+        const calculatedHeight = containerWidth * (12 / 16);
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
     };
