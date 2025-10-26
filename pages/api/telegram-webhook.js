@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
 
-// --- الدوال المساعدة ---
+// --- الدوال المساعدة (كما هي من الإصلاح السابق - كلها تستخدم string) ---
 const sendMessage = async (chatId, text, reply_markup = null) => {
   await axios.post(`${TELEGRAM_API}/sendMessage`, {
     chat_id: chatId,
@@ -19,19 +19,16 @@ const answerCallbackQuery = async (callbackQueryId) => {
   });
 };
 
-// --- [تم التعديل] ---
-// userId هنا سيتم تمريره كـ string دائماً
 const getUser = async (userId) => { 
   const { data, error } = await supabase
     .from('users')
     .select('id, is_subscribed, is_admin, admin_state, state_data')
-    .eq('id', userId) // الاستعلام بـ string (سليم)
+    .eq('id', userId) 
     .single();
-
-  if (error && error.code === 'PGRST116') { // not found
+  if (error && error.code === 'PGRST116') { 
     const { data: newUser } = await supabase
       .from('users')
-      .insert({ id: userId, is_subscribed: false, is_admin: false }) // الإضافة كـ string (سليم)
+      .insert({ id: userId, is_subscribed: false, is_admin: false }) 
       .select('id, is_subscribed, is_admin, admin_state, state_data')
       .single();
     return newUser;
@@ -39,13 +36,11 @@ const getUser = async (userId) => {
   return data;
 };
 
-// --- [تم التعديل] ---
-// userId هنا سيتم تمريره كـ string دائماً
 const setAdminState = async (userId, state, data = null) => {
   await supabase
     .from('users')
     .update({ admin_state: state, state_data: data })
-    .eq('id', userId); // الاستعلام بـ string (سليم)
+    .eq('id', userId);
 };
 
 // --- دوال الأدمن (كما هي) ---
@@ -84,23 +79,18 @@ const fetchAndSendCoursesMenu = async (chatId, text, stateData, callback_prefix)
   const { data: courses, error } = await supabase.from('courses').select('id, title').order('title');
   if (error || !courses || courses.length === 0) {
     await sendMessage(chatId, 'خطأ: لم يتم العثور على كورسات. أضف كورسات أولاً.');
-    await setAdminState(chatId, null, null); // chatId هو string (سليم)
+    await setAdminState(chatId, null, null);
     return;
   }
-  
-  await setAdminState(chatId, 'awaiting_course_selection', stateData); // chatId هو string (سليم)
-
+  await setAdminState(chatId, 'awaiting_course_selection', stateData);
   const keyboard = courses.map(c => ([{ text: c.title, callback_data: `${callback_prefix}_${c.id}` }]));
-  
   if (callback_prefix === 'assign_course') {
      keyboard.unshift([{ text: '✅ منح صلاحية لكل الكورسات', callback_data: 'assign_all_courses' }]);
      keyboard.push([{ text: '👍 إنهاء ومنح الصلاحيات المحددة', callback_data: 'assign_finish' }]);
   }
-  
   if (callback_prefix === 'select_video_course') {
      keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: 'admin_manage_content' }]);
   }
-  
   await sendMessage(chatId, text, { inline_keyboard: keyboard });
 };
 
@@ -108,11 +98,10 @@ const fetchAndSendVideosMenu = async (chatId, courseId) => {
   const { data: videos, error } = await supabase.from('videos').select('id, title').eq('course_id', courseId).order('id');
   if (error || !videos || videos.length === 0) {
     await sendMessage(chatId, 'لا توجد فيديوهات في هذا الكورس.');
-    await setAdminState(chatId, null, null); // chatId هو string (سليم)
+    await setAdminState(chatId, null, null);
     return;
   }
-  
-  await setAdminState(chatId, 'awaiting_video_deletion', { course_id: courseId }); // chatId هو string (سليم)
+  await setAdminState(chatId, 'awaiting_video_deletion', { course_id: courseId });
   const keyboard = videos.map(v => ([{ text: v.title, callback_data: `delete_video_confirm_${v.id}` }]));
   keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: 'admin_manage_content' }]);
   await sendMessage(chatId, 'اختر الفيديو الذي تريد حذفه:', { inline_keyboard: keyboard });
@@ -128,10 +117,8 @@ export default async (req, res) => {
 
     if (callback_query) {
       chatId = callback_query.message.chat.id;
-      // --- [تم التعديل] ---
-      // تحويل ID الأدمن إلى string فوراً
-      userId = String(callback_query.from.id);
-      user = await getUser(userId); // تمرير string
+      userId = String(callback_query.from.id); // استخدام string دائماً
+      user = await getUser(userId);
       const command = callback_query.data;
       await answerCallbackQuery(callback_query.id);
 
@@ -140,9 +127,9 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // --- 1. معالجة أزرار التنقل الرئيسية ---
+      // ... (أزرار التنقل كما هي) ...
       if (command === 'admin_main_menu') {
-        await setAdminState(userId, null, null); // userId هو string (سليم)
+        await setAdminState(userId, null, null);
         await sendAdminMenu(chatId);
         return res.status(200).send('OK');
       }
@@ -151,46 +138,72 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
       if (command === 'admin_manage_content') {
-        await setAdminState(userId, null, null); // userId هو string (سليم)
+        await setAdminState(userId, null, null);
         await sendContentMenu(chatId);
         return res.status(200).send('OK');
       }
 
       // --- 2. معالجة أزرار "إدارة المستخدمين" ---
-      // (هذا الكود كان سليماً بالفعل لأنه يعتمد على المدخلات النصية)
       if (command === 'admin_add_users') {
         await setAdminState(userId, 'awaiting_user_ids');
         await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر (افصل بينهم بمسافة أو سطر جديد):');
         return res.status(200).send('OK');
       }
+      // "صلاحية كاملة" (هذا كان سليماً)
       if (command === 'assign_all_courses') {
         const usersToUpdate = user.state_data.users; // (string[])
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: true }));
-        await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
-        await sendMessage(chatId, `✅ تم منح صلاحية كاملة لـ ${usersToUpdate.length} مستخدم.`);
+        const { error } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
+        
+        if (error) {
+           await sendMessage(chatId, `حدث خطأ: ${error.message}`);
+        } else {
+           await sendMessage(chatId, `✅ تم منح صلاحية كاملة لـ ${usersToUpdate.length} مستخدم.`);
+        }
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
+      
+      // --- [هذا هو الإصلاح الرئيسي] ---
+      // "صلاحية محددة" (اختيار كورس)
       if (command.startsWith('assign_course_')) {
         const courseId = parseInt(command.split('_')[1], 10);
         const stateData = user.state_data; 
         const usersToUpdate = stateData.users; // (string[])
         
-        const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
-        await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
-        
+        // الخطوة 1: ضمان وجود المستخدمين في جدول 'users' أولاً
+        // (upsert ينشئ المستخدم إذا لم يكن موجوداً)
+        // (ونضبط is_subscribed = false لضمان أنهم في وضع "الصلاحية المحددة")
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: false }));
-        await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
+        const { error: userUpsertError } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
+
+        if (userUpsertError) {
+          await sendMessage(chatId, `حدث خطأ أثناء تحديث المستخدمين: ${userUpsertError.message}`);
+          return res.status(200).send(await setAdminState(userId, null, null));
+        }
+
+        // الخطوة 2: الآن يمكن إضافة الصلاحيات بأمان (لأن المفتاح الأجنبي سيجدهم)
+        const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
+        const { error: accessUpsertError } = await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
+        
+        if (accessUpsertError) {
+           await sendMessage(chatId, `حدث خطأ أثناء إضافة الصلاحية: ${accessUpsertError.message}`);
+           return res.status(200).send(await setAdminState(userId, null, null));
+        }
+        // --- [نهاية الإصلاح] ---
 
         await sendMessage(chatId, `✅ تم إضافة صلاحية الكورس المحدد. اختر كورساً آخر أو اضغط "إنهاء".`);
         return res.status(200).send('OK');
       }
+      
+      // "إنهاء" الصلاحيات المحددة
       if (command === 'assign_finish') {
          await sendMessage(chatId, `👍 تم حفظ الصلاحيات المحددة للمستخدمين.`);
          await setAdminState(userId, null, null);
          return res.status(200).send('OK');
       }
 
+      // ... (باقي أزرار إدارة المحتوى والحذف كما هي، كانت سليمة) ...
       // --- 3. معالجة أزرار "إدارة المحتوى" (إضافة) ---
       if (command === 'admin_add_course') {
         await setAdminState(userId, 'awaiting_course_title');
@@ -252,11 +265,9 @@ export default async (req, res) => {
     // --- 3. معالجة الرسائل النصية (لإدخال البيانات) ---
     if (message && message.text && message.from) {
       chatId = message.chat.id;
-      // --- [تم التعديل] ---
-      // تحويل ID المستخدم (قد يكون أدمن أو عادي) إلى string فوراً
-      userId = String(message.from.id);
+      userId = String(message.from.id); // استخدام string دائماً
       text = message.text;
-      user = await getUser(userId); // تمرير string
+      user = await getUser(userId);
 
       // أمر /start
       if (text === '/start') {
@@ -272,7 +283,7 @@ export default async (req, res) => {
       
       // أمر /cancel
       if (user && user.is_admin && text === '/cancel') {
-         await setAdminState(userId, null, null); // userId هو string (سليم)
+         await setAdminState(userId, null, null);
          await sendMessage(chatId, '👍 تم إلغاء العملية.');
          return res.status(200).send('OK');
       }
@@ -281,7 +292,7 @@ export default async (req, res) => {
       if (user && user.is_admin && user.admin_state) {
         switch (user.admin_state) {
           
-          // (هذا الكود كان سليماً بالفعل لأنه يحول لـ string)
+          // (هذا الكود كان سليماً لأنه يحول لـ string)
           case 'awaiting_user_ids':
             const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (ids.length === 0) {
@@ -296,17 +307,16 @@ export default async (req, res) => {
             );
             break;
 
+          // (باقي الحالات سليمة)
           case 'awaiting_course_title':
             await supabase.from('courses').insert({ title: text });
             await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح.`);
             await setAdminState(userId, null, null);
             break;
-
           case 'awaiting_video_title':
             await setAdminState(userId, 'awaiting_youtube_id', { video: { title: text } });
             await sendMessage(chatId, `👍 العنوان: "${text}"\n\nالآن أرسل "كود يوتيوب":`);
             break;
-
           case 'awaiting_youtube_id':
             const videoData = user.state_data.video;
             videoData.youtube_id = text;
@@ -329,6 +339,10 @@ export default async (req, res) => {
 
   } catch (e) {
     console.error("Error in webhook:", e.message);
+    // [جديد] إرسال رسالة خطأ للأدمن إذا حدث شيء غير متوقع
+    if (chatId) {
+       await sendMessage(chatId, `حدث خطأ جسيم في الخادم: ${e.message}`);
+    }
   }
   
   res.status(200).send('OK');
