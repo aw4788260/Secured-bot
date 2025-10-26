@@ -23,6 +23,11 @@ export default function WatchPage() {
     // --- متغيرات حالة لموقع العلامة المائية ---
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
+    
+    // --- متغيرات حالة جديدة للسحب ---
+    const [isSeeking, setIsSeeking] = useState(false);
+    const progressBarRef = useRef(null);
+
 
     useEffect(() => {
         // التحقق من وجود كائن تليجرام
@@ -52,7 +57,7 @@ export default function WatchPage() {
 
         // تحديث الوقت الحالي للفيديو
         const progressInterval = setInterval(() => {
-            if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+            if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) {
                 setCurrentTime(playerRef.current.getCurrentTime());
             }
         }, 500);
@@ -70,7 +75,7 @@ export default function WatchPage() {
             clearInterval(watermarkIntervalRef.current);
         };
 
-    }, [videoId]);
+    }, [videoId, isSeeking]);
 
     const handlePlayPause = () => {
         if (!playerRef.current) return;
@@ -100,15 +105,47 @@ export default function WatchPage() {
         setDuration(event.target.getDuration());
     };
 
-    const handleProgressBarClick = (e) => {
-        if (!playerRef.current || duration === 0) return;
-        const bar = e.currentTarget;
-        const clickPosition = e.clientX - bar.getBoundingClientRect().left;
-        const barWidth = bar.offsetWidth;
-        const seekTime = (clickPosition / barWidth) * duration;
-        playerRef.current.seekTo(seekTime, true);
-        setCurrentTime(seekTime);
+    // --- دوال السحب الجديدة ---
+    const calculateSeekTime = (e) => {
+        if (!progressBarRef.current || duration === 0) return null;
+        const bar = progressBarRef.current;
+        const rect = bar.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        const seekRatio = boundedX / rect.width;
+        return seekRatio * duration;
     };
+
+    const handleScrubStart = (e) => {
+        e.preventDefault();
+        setIsSeeking(true);
+        const seekTime = calculateSeekTime(e);
+        if (seekTime !== null) {
+            setCurrentTime(seekTime);
+            playerRef.current.seekTo(seekTime, true);
+        }
+        window.addEventListener('mousemove', handleScrubbing);
+        window.addEventListener('touchmove', handleScrubbing);
+        window.addEventListener('mouseup', handleScrubEnd);
+        window.addEventListener('touchend', handleScrubEnd);
+    };
+
+    const handleScrubbing = (e) => {
+        const seekTime = calculateSeekTime(e);
+        if (seekTime !== null) {
+            setCurrentTime(seekTime);
+            playerRef.current.seekTo(seekTime, true);
+        }
+    };
+
+    const handleScrubEnd = () => {
+        setIsSeeking(false);
+        window.removeEventListener('mousemove', handleScrubbing);
+        window.removeEventListener('touchmove', handleScrubbing);
+        window.removeEventListener('mouseup', handleScrubEnd);
+        window.removeEventListener('touchend', handleScrubEnd);
+    };
+
 
     const formatTime = (timeInSeconds) => {
         if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00';
@@ -117,7 +154,6 @@ export default function WatchPage() {
         return `${minutes}:${seconds}`;
     };
 
-    // --- حالات العرض (خطأ أو تحميل) ---
     if (error) {
         return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
     }
@@ -138,9 +174,7 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تم استخدام خاصية aspect-ratio هنا لجعل الفيديو متجاوبًا */}
             <div className="player-wrapper">
-                
                 <YouTube
                     videoId={youtubeId}
                     opts={opts}
@@ -152,9 +186,7 @@ export default function WatchPage() {
                     onEnd={() => setIsPlaying(false)}
                 />
 
-                {/* طبقة الدرع والعلامة المائية */}
                 <div className="controls-overlay">
-                    {/* مناطق التحكم الشفافة */}
                     <div className="interaction-grid">
                         <div className="seek-zone" onDoubleClick={() => handleSeek('backward')}></div>
                         <div className="play-pause-zone" onClick={handlePlayPause}>
@@ -163,23 +195,27 @@ export default function WatchPage() {
                         <div className="seek-zone" onDoubleClick={() => handleSeek('forward')}></div>
                     </div>
 
-                    {/* شريط التحكم السفلي */}
                     <div className="bottom-controls">
                         <span className="time-display">{formatTime(currentTime)}</span>
-                        <div className="progress-bar-container" onClick={handleProgressBarClick}>
+                        <div
+                            ref={progressBarRef}
+                            className="progress-bar-container"
+                            onMouseDown={handleScrubStart}
+                            onTouchStart={handleScrubStart}
+                        >
+                            <div className="progress-bar-track"></div>
                             <div className="progress-bar-filled" style={{ width: `${(currentTime / duration) * 100}%` }}></div>
+                            <div className="progress-bar-handle" style={{ left: `${(currentTime / duration) * 100}%` }}></div>
                         </div>
                         <span className="time-display">{formatTime(duration)}</span>
                     </div>
 
-                    {/* أيقونة التقديم والتأخير */}
                     {showSeekIcon.visible && (
                         <div className={`seek-indicator ${showSeekIcon.direction}`}>
                             {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
                         </div>
                     )}
 
-                    {/* العلامة المائية */}
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
                         {user.first_name} ({user.id})
                     </div>
@@ -190,7 +226,7 @@ export default function WatchPage() {
                 body {
                     margin: 0;
                     background: #000;
-                    overscroll-behavior: contain; /* لمنع السحب لتحديث الصفحة */
+                    overscroll-behavior: contain;
                 }
                 .page-container {
                     display: flex;
@@ -214,7 +250,7 @@ export default function WatchPage() {
                     position: relative;
                     width: 100%;
                     max-width: 900px;
-                    aspect-ratio: 16 / 9; /* أهم تعديل: يضمن أبعاد الفيديو الصحيحة */
+                    aspect-ratio: 16 / 9;
                     background: #111;
                 }
                 .youtube-player, .youtube-iframe {
@@ -246,7 +282,6 @@ export default function WatchPage() {
                     cursor: pointer;
                 }
                 .play-icon {
-                    /* تعديل: حجم متجاوب */
                     font-size: clamp(40px, 10vw, 80px);
                     color: white;
                     text-shadow: 0 0 15px rgba(0,0,0,0.8);
@@ -262,28 +297,59 @@ export default function WatchPage() {
                 }
                 .time-display {
                     color: white;
-                    font-size: clamp(11px, 2.5vw, 14px); /* تعديل: حجم متجاوب */
+                    font-size: clamp(11px, 2.5vw, 14px);
                     margin: 0 10px;
                     min-width: 40px;
                     text-align: center;
                 }
                 .progress-bar-container {
+                    position: relative;
                     flex-grow: 1;
-                    height: 4px;
-                    background: rgba(255,255,255,0.3);
-                    border-radius: 2px;
+                    height: 15px;
+                    display: flex;
+                    align-items: center;
                     cursor: pointer;
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                }
+                .progress-bar-track {
+                    position: absolute;
+                    width: 100%;
+                    height: 4px;
+                    background: rgba(255, 255, 255, 0.3);
+                    border-radius: 2px;
+                    transition: height 0.1s ease;
                 }
                 .progress-bar-filled {
-                    height: 100%;
+                    position: absolute;
+                    height: 4px;
                     background: #FF0000;
                     border-radius: 2px;
+                    transition: height 0.1s ease;
+                }
+                .progress-bar-handle {
+                    position: absolute;
+                    width: 12px;
+                    height: 12px;
+                    background-color: #FF0000;
+                    border-radius: 50%;
+                    transform: translateX(-50%);
+                    transition: transform 0.1s ease, height 0.1s ease, width 0.1s ease;
+                }
+                .progress-bar-container:hover .progress-bar-track,
+                .progress-bar-container:hover .progress-bar-filled {
+                    height: 6px;
+                }
+                .progress-bar-container:hover .progress-bar-handle {
+                    transform: translateX(-50%) scale(1.2);
                 }
                 .seek-indicator {
                     position: absolute;
                     top: 50%;
                     transform: translate(-50%, -50%);
-                    font-size: clamp(30px, 6vw, 40px); /* تعديل: حجم متجاوب */
+                    font-size: clamp(30px, 6vw, 40px);
                     color: white;
                     opacity: 0.8;
                     animation: seek-pop 0.6s ease-out;
@@ -301,7 +367,7 @@ export default function WatchPage() {
                     padding: 4px 8px;
                     background: rgba(0, 0, 0, 0.7);
                     color: white;
-                    font-size: clamp(10px, 2.5vw, 14px); /* تعديل: حجم متجاوب */
+                    font-size: clamp(10px, 2.5vw, 14px);
                     border-radius: 4px;
                     font-weight: bold;
                     pointer-events: none;
