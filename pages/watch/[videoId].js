@@ -271,6 +271,7 @@ export default function WatchPage() {
                 .interaction-grid {
                     flex-grow: 1;
                     display: flex;
+                    direction: ltr;
                 }
                 .seek-zone { flex: 1; height: 100%; }
                 .play-pause-zone {
@@ -313,6 +314,7 @@ export default function WatchPage() {
                     -moz-user-select: none;
                     -ms-user-select: none;
                     user-select: none;
+                    direction: ltr;
                 }
                 .progress-bar-track {
                     position: absolute;
