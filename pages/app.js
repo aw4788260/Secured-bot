@@ -3,41 +3,12 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 
-// --- [تعديل] إضافة try...catch هنا للأمان ---
 const loadFingerprint = async () => {
-  try {
-    const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
-    
-    const fp = await FingerprintJS.load({
-      monitoring: false 
-    });
-
-    const result = await fp.get({
-      components: [
-        'platform',      
-        'vendorWebGL',   
-        'rendererWebGL', 
-        'fonts'          
-      ]
-    });
-
-    const components = result.components;
-    const stableFingerprint = JSON.stringify({
-      p: components.platform.value,
-      v: components.vendorWebGL.value,
-      r: components.rendererWebGL.value,
-      f: components.fonts.value.map(font => font.family).join(',')
-    });
-
-    return stableFingerprint;
-  } catch (e) {
-    // إذا فشلت الدالة، قم برمي الخطأ ليتم التقاطه في .catch
-    console.error("Fingerprint load failed:", e);
-    throw new Error(`Fingerprint component failed: ${e.message}`);
-  }
+  const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
+  const fp = await FingerprintJS.load();
+  const result = await fp.get();
+  return result.visitorId;
 };
-// --- [نهاية التعديل] ---
-
 
 export default function App() {
   const [status, setStatus] = useState('جاري التحقق من هويتك...');
@@ -52,14 +23,14 @@ export default function App() {
       window.Telegram.WebApp.expand();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
 
-      if (!tgUser || !tgUser.id) {
+      if (!tgUser || !tgUser.id) { // <-- [تحسين] التأكد من وجود ID
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من تليجرام.');
         return;
       }
       setUser(tgUser);
       setStatus('جاري التحقق من الاشتراك...');
 
-      // --- الخطوة 1: التحقق من الاشتراك (كما هي) ---
+      // --- الخطوة 1: التحقق من الاشتراك ---
       fetch('/api/auth/check-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,7 +45,7 @@ export default function App() {
 
         // --- الخطوة 2: التحقق من بصمة الجهاز ---
         setStatus('جاري التحقق من بصمة الجهاز...');
-        loadFingerprint().then(fingerprint => { 
+        loadFingerprint().then(fingerprint => {
           fetch('/api/auth/check-device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -87,8 +58,11 @@ export default function App() {
             } else {
               setStatus('جاري جلب الكورسات...');
               
+              // --- [هذا هو الإصلاح] ---
+              // نقوم بتحويل الـ ID إلى نص صريح قبل إرساله في الرابط
               const userIdString = String(tgUser.id);
-              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
+              
+              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) // <-- استخدام المتغير الجديد
                 .then(res => res.json())
                 .then(courseData => {
                   setCourses(courseData); 
@@ -99,14 +73,7 @@ export default function App() {
                 });
             }
           });
-        })
-        // --- [هذا هو الإصلاح الرئيسي] ---
-        // إضافة .catch() لالتقاط أي خطأ يحدث أثناء loadFingerprint
-        .catch(err => {
-          console.error("Error loading fingerprint:", err);
-          setError("حدث خطأ أثناء التحقق من بصمة الجهاز. قد لا يكون متصفحك مدعوماً.");
         });
-        // --- [نهاية الإصلاح] ---
 
       })
       .catch(err => {
