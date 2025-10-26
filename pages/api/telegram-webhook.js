@@ -15,7 +15,24 @@ const escapeMarkdown = (text) => {
   return str.replace(/([_*\[\]()~`>#+-=|{}.!])/g, '\\$1');
 };
 
+const getYouTubeID = (url) => {
+  if (!url) return null;
+  
+  // Regex للتعامل مع كل أشكال روابط يوتيوب (watch, youtu.be, shorts, etc.)
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=|\?v=)([^#&?]*).*/;
+  const match = url.match(regExp);
 
+  if (match && match[2].length === 11) {
+    // الرابط صحيح وتم استخراج الكود
+    return match[2];
+  } else if (url.length === 11) {
+    // المستخدم أدخل الكود مباشرة (كدعم للطريقة القديمة)
+    return url;
+  }
+  
+  // لم يتم العثور على كود صالح
+  return null;
+};
 
 // [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
 // [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
@@ -641,23 +658,39 @@ export default async (req, res) => {
             break;
           case 'awaiting_video_title':
             await setAdminState(userId, 'awaiting_youtube_id', { video: { title: text } });
-            await sendMessage(chatId, `👍 العنوان: "${escapeMarkdown(text)}"\n\nالآن أرسل "كود يوتيوب":`);
+            // ✅ [تعديل] نطلب الرابط بدلاً من الكود
+            await sendMessage(chatId, `👍 العنوان: "${escapeMarkdown(text)}"\n\nالآن أرسل "رابط يوتيوب" (Link) الخاص بالفيديو:`);
             break;
           case 'awaiting_youtube_id':
              if (!user.state_data || !user.state_data.video) {
-                await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
+                await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة. يرجى البدء من جديد.");
                 return res.status(200).send(await setAdminState(userId, null, null));
             }
+
+            // --- [ ✅ تعديل: معالجة الرابط ] ---
+            const videoUrl = text; // النص المُرسل هو الرابط
+            const videoId = getYouTubeID(videoUrl); // نستخرج الكود من الرابط
+
+            // 1. التحقق إذا كان الرابط صالحاً
+            if (!videoId) {
+                await sendMessage(chatId, 'خطأ: الرابط الذي أرسلته غير صالح. أرسل رابط يوتيوب صحيح أو اضغط /cancel');
+                // نبقى في نفس الحالة وننتظر رابط صحيح
+                return res.status(200).send('OK');
+            }
+
+            // 2. الرابط صالح، نكمل العملية
             const videoData = user.state_data.video;
-            // --- [ ✅ الحل هنا ] ---
-            videoData.youtube_video_id = text; // تم تعديل اسم الحقل
-await fetchAndSendCoursesMenu(
+            videoData.youtube_video_id = videoId; // نحفظ الكود المُستخرج
+
+            await fetchAndSendCoursesMenu(
               chatId,
-              '👍 تم حفظ كود اليوتيوب\\.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
+              // نغير الرسالة لتأكيد النجاح
+              `👍 تم استخراج كود الفيديو بنجاح.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:`,
               { video: videoData },
               'add_video_to_course'
             );
             break;
+            // --- [ نهاية التعديل ] ---
         }
         return res.status(200).send('OK');
       }
