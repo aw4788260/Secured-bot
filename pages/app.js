@@ -28,30 +28,53 @@ export default function App() {
         return;
       }
       setUser(tgUser);
+      setStatus('جاري التحقق من الاشتراك...'); // تحديث الحالة
 
-      // 1. التحقق من بصمة الجهاز
-      loadFingerprint().then(fingerprint => {
-        fetch('/api/auth/check-device', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: tgUser.id, fingerprint: fingerprint }),
-        })
-        .then(res => res.json())
-        .then(data => {
-          if (!data.success) {
-            setError(data.message); // عرض رسالة الخطأ (مثل: جهاز آخر)
-          } else {
-            setStatus('جاري جلب الكورسات...');
-            // 2. جلب قائمة الفيديوهات
-            fetch('/api/data/get-all-videos')
-              .then(res => res.json())
-              .then(videoData => {
-                setVideos(videoData);
-                setStatus(''); // إخفاء رسالة التحميل
-              });
-          }
+      // --- الخطوة 1: التحقق من الاشتراك أولاً ---
+      fetch('/api/auth/check-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: tgUser.id }),
+      })
+      .then(res => res.json())
+      .then(subData => {
+        if (!subData.isSubscribed) {
+          setError('أنت غير مشترك. الرجاء تفعيل اشتراكك أولاً.');
+          return; // إيقاف التنفيذ إذا لم يكن مشتركاً
+        }
+
+        // --- الخطوة 2: التحقق من بصمة الجهاز (فقط إذا كان مشتركاً) ---
+        setStatus('جاري التحقق من بصمة الجهاز...');
+        loadFingerprint().then(fingerprint => {
+          fetch('/api/auth/check-device', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: tgUser.id, fingerprint: fingerprint }),
+          })
+          .then(res => res.json())
+          .then(deviceData => {
+            if (!deviceData.success) {
+              setError(deviceData.message); // عرض رسالة الخطأ (مثل: جهاز آخر)
+            } else {
+              setStatus('جاري جلب الكورسات...');
+              // --- الخطوة 3: جلب قائمة الفيديوهات (فقط إذا نجح كل شيء) ---
+              fetch('/api/data/get-all-videos')
+                .then(res => res.json())
+                .then(videoData => {
+                  setVideos(videoData);
+                  setStatus(''); // إخفاء رسالة التحميل
+                });
+            }
+          });
         });
+
+      })
+      .catch(err => {
+         // معالجة أي خطأ عام في الشبكة
+         setError('حدث خطأ أثناء التحقق. حاول مرة أخرى.');
+         console.error(err);
       });
+
     } else if (typeof window !== 'undefined') {
       // هذا سيعمل إذا لم يتم تحميل السكريبت
       setError('الرجاء فتح التطبيق من داخل تليجرام.');
