@@ -17,20 +17,14 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'Mark
         chat_id: chatId,
         text: text,
         ...(reply_markup && { reply_markup }),
-        parse_mode: parse_mode // استخدام البارامتر
+        parse_mode: parse_mode,
+        // ✅ إضافة خاصية الحماية هنا
+        protect_content: true
       });
   } catch (error) {
        console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
-       // Handle specific errors like blocked bot if needed
   }
 };
-
-// دالة تنظيف MarkdownV2 (سنحتاجها لباقي الرسائل)
-const escapeMarkdown = (text) => {
-  if (typeof text !== 'string') return '';
-  return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
-};
-
 const answerCallbackQuery = async (callbackQueryId) => {
   await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
     callback_query_id: callbackQueryId,
