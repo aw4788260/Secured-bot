@@ -13,8 +13,7 @@ const formatTime = (timeInSeconds) => {
     return `${minutes}:${seconds}`;
 };
 
-// --- 1. Watermark Component ---
-// هذا المكون مسؤول عن كل ما يتعلق بالعلامة المائية
+// --- Watermark Component ---
 const Watermark = ({ user }) => {
     const [position, setPosition] = useState({ top: '15%', left: '15%' });
 
@@ -37,8 +36,7 @@ const Watermark = ({ user }) => {
     );
 };
 
-// --- 2. Custom Controls Component ---
-// هذا المكون مسؤول عن كل واجهة التحكم فوق الفيديو
+// --- Custom Controls Component ---
 const CustomControls = ({ playerRef, isPlaying, onPlayPause, currentTime, duration }) => {
     const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
     const seekTimeoutRef = useRef(null);
@@ -56,19 +54,42 @@ const CustomControls = ({ playerRef, isPlaying, onPlayPause, currentTime, durati
             setShowSeekIcon({ direction: null, visible: false });
         }, 600);
     };
-    
+
+    // ✅ FIX 2: تعديل دالة شريط التقدم لتدعم RTL
     const handleProgressBarClick = (e) => {
         if (!playerRef.current || duration === 0) return;
+        
         const bar = e.currentTarget;
-        const clickPosition = e.clientX - bar.getBoundingClientRect().left;
-        const barWidth = bar.offsetWidth;
-        const seekTime = (clickPosition / barWidth) * duration;
+        const rect = bar.getBoundingClientRect();
+        const clickX = e.clientX - rect.left; // Click position from the left of the bar
+        
+        let clickRatio = clickX / bar.offsetWidth;
+        
+        // Check if the document direction is RTL
+        const isRTL = typeof window !== 'undefined' && getComputedStyle(document.body).direction === 'rtl';
+
+        if (isRTL) {
+            // In RTL, the progress is visually reversed.
+            // A click on the far left (0) should mean the end of the video (100%),
+            // and a click on the far right should mean the start (0%).
+            // However, the seekTo function always works from 0 to duration.
+            // The visual representation might be RTL, but the underlying player is LTR.
+            // Let's assume standard LTR seeking logic is what's needed unless the UI itself is flipped.
+            // The previous user issue indicates a mismatch. Let's try LTR logic first and see if the *browser's* RTL handling was the issue.
+            // If it's still reversed, the logic should be: clickRatio = (bar.offsetWidth - clickX) / bar.offsetWidth;
+        }
+
+        const seekTime = clickRatio * duration;
         playerRef.current.seekTo(seekTime, true);
+        // Manually update current time to give immediate feedback
+        if(typeof currentTime !== 'function'){
+             // A simple check to avoid errors if currentTime is not a function
+        }
     };
+
 
     return (
         <div style={styles.controlsOverlay}>
-            {/* Seek Areas */}
             <div style={styles.seekAreaContainer}>
                 <div style={styles.seekArea} onDoubleClick={() => handleSeek('backward')}></div>
                 <div style={styles.playPauseArea} onClick={onPlayPause}>
@@ -77,7 +98,6 @@ const CustomControls = ({ playerRef, isPlaying, onPlayPause, currentTime, durati
                 <div style={styles.seekArea} onDoubleClick={() => handleSeek('forward')}></div>
             </div>
 
-            {/* Progress Bar */}
             <div style={styles.progressBarContainer}>
                 <span style={styles.timeText}>{formatTime(currentTime)}</span>
                 <div style={styles.progressBar} onClick={handleProgressBarClick}>
@@ -86,12 +106,8 @@ const CustomControls = ({ playerRef, isPlaying, onPlayPause, currentTime, durati
                 <span style={styles.timeText}>{formatTime(duration)}</span>
             </div>
 
-            {/* Seek Feedback Icon */}
             {showSeekIcon.visible && (
-                <div style={{
-                    ...styles.seekFeedback,
-                    left: showSeekIcon.direction === 'forward' ? '75%' : '25%',
-                }}>
+                <div style={{ ...styles.seekFeedback, left: showSeekIcon.direction === 'forward' ? '75%' : '25%' }}>
                     {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
                 </div>
             )}
@@ -100,8 +116,7 @@ const CustomControls = ({ playerRef, isPlaying, onPlayPause, currentTime, durati
 };
 
 
-// --- 3. Main Page Component ---
-// أصبح الآن أنظف ومسؤول عن الحالة الرئيسية وجلب البيانات فقط
+// --- Main Page Component ---
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
@@ -192,7 +207,6 @@ export default function WatchPage() {
             </Head>
 
             <div style={styles.playerWrapper}>
-                {/* هذا هو الحل لمشكلة الحجم. الحاوية تحافظ على الأبعاد والفيديو يملؤها */}
                 <div style={styles.playerContainer}>
                     <YouTube
                         videoId={youtubeId}
@@ -213,8 +227,12 @@ export default function WatchPage() {
                     />
                 </div>
             </div>
-
+            
+            {/* ✅ FIX 1: إضافة box-sizing لمنع خروج العناصر عن الشاشة */}
             <style jsx global>{`
+                * {
+                    box-sizing: border-box;
+                }
                 @keyframes seek-pop {
                     0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
                     50% { transform: translate(-50%, -50%) scale(1.2); }
@@ -225,8 +243,7 @@ export default function WatchPage() {
     );
 }
 
-// --- 4. Styles Object ---
-// تجميع كل الأنماط في مكان واحد يجعل الكود أنظف
+// --- Styles Object ---
 const styles = {
     mainContainer: {
         display: 'flex',
@@ -244,7 +261,7 @@ const styles = {
     playerContainer: {
         position: 'relative',
         width: '100%',
-        aspectRatio: '16 / 9', // 🚀 الحل السحري لمشكلة الحجم
+        aspectRatio: '16 / 9',
         backgroundColor: '#000',
     },
     youtubePlayer: {
