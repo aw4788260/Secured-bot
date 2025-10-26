@@ -49,10 +49,15 @@ a {
 
 /* --- (تعديلات) أنماط ديناميكية لصفحة الكورسات --- */
 
-.app-container {
-  padding: 20px 15px; /* زيادة الحشو العلوي */
-  max-width: 800px;
+app-container {
+  padding: 20px 15px;
   margin: 0 auto;
+  
+  /* --- ✅ الإضافة هنا --- */
+  /* هذا يضمن أن الحاوية تملأ الشاشة عمودياً */
+  min-height: 100vh; 
+  display: flex;
+  flex-direction: column;
 }
 
 /* (جديد) تنسيق العنوان الرئيسي */
