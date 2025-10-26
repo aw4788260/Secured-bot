@@ -5,7 +5,20 @@ import { supabase } from '../../lib/supabaseClient';
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
 
 // --- الدوال المساعدة ---
+const escapeMarkdown = (text) => {
+  if (text === null || typeof text === 'undefined') {
+    return '';
+  }
+  const str = String(text);
+  // قائمة الحروف الخاصة بـ MarkdownV2 التي يجب عمل "escape" لها
+  // _ * [ ] ( ) ~ ` > # + - = | { } . !
+  return str.replace(/([_*\[\]()~`>#+-=|{}.!])/g, '\\$1');
+};
 
+
+// [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
+const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'MarkdownV2') => {
+    // ... (باقي الكود كما هو) ...
 // [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
 const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'MarkdownV2') => {
     if (!text || text.trim() === '') {
