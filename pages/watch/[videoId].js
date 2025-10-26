@@ -13,8 +13,7 @@ export default function WatchPage() {
   
   const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef(null);
-  
-  const [playerSize, setPlayerSize] = useState({ width: '100%', height: 'auto' });
+  const [playerSize, setPlayerSize] = useState(null);
   const wrapperRef = useRef(null);
 
   // --- متغيرات حالة لشريط التقدم والتحكم ---
@@ -57,7 +56,7 @@ export default function WatchPage() {
       }
     };
 
-    
+    updateSize();
     window.addEventListener('resize', updateSize);
 
     const interval = setInterval(() => {
@@ -107,10 +106,6 @@ export default function WatchPage() {
   const onPlayerReady = (event) => {
     playerRef.current = event.target;
     setDuration(event.target.getDuration());
-    if (wrapperRef.current) {
-        const containerWidth = wrapperRef.current.offsetWidth;
-        const calculatedHeight = containerWidth * (13 / 16); // يمكنك تعديل النسبة حسب الحاجة
-        setPlayerSize({ width: containerWidth, height: calculatedHeight });
   };
 
   const handleProgressBarClick = (e) => {
@@ -132,11 +127,10 @@ export default function WatchPage() {
 
   if (error) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-  }
-  if (!youtubeId || !user || playerSize.width === 0) {
+                       }
+if (!youtubeId || !user || !playerSize) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
   }
-
   const opts = {
     height: playerSize.height,
     width: playerSize.width,
