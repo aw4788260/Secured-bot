@@ -23,7 +23,7 @@ export default function App() {
       window.Telegram.WebApp.expand();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
 
-      if (!tgUser) {
+      if (!tgUser || !tgUser.id) { // <-- [تحسين] التأكد من وجود ID
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من تليجرام.');
         return;
       }
@@ -58,12 +58,18 @@ export default function App() {
             } else {
               setStatus('جاري جلب الكورسات...');
               
-              // --- الخطوة 3: [تعديل] إرسال userId لجلب الكورسات ---
-              fetch(`/api/data/get-structured-courses?userId=${tgUser.id}`) 
+              // --- [هذا هو الإصلاح] ---
+              // نقوم بتحويل الـ ID إلى نص صريح قبل إرساله في الرابط
+              const userIdString = String(tgUser.id);
+              
+              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) // <-- استخدام المتغير الجديد
                 .then(res => res.json())
                 .then(courseData => {
                   setCourses(courseData); 
                   setStatus(''); 
+                })
+                .catch(err => {
+                  setError('حدث خطأ أثناء جلب الكورسات.');
                 });
             }
           });
@@ -136,3 +142,5 @@ export default function App() {
       </ul>
       {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
     </div>
+  );
+}
