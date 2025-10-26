@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
 
-// --- الدوال المساعدة (كما هي من الإصلاح السابق - كلها تستخدم string) ---
+// --- الدوال المساعدة (كما هي) ---
 const sendMessage = async (chatId, text, reply_markup = null) => {
   await axios.post(`${TELEGRAM_API}/sendMessage`, {
     chat_id: chatId,
@@ -111,9 +111,12 @@ const fetchAndSendVideosMenu = async (chatId, courseId) => {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(200).send('OK');
 
+  // --- [هذا هو الإصلاح] ---
+  // تم نقل المتغيرات هنا لتكون متاحة في CATCH
+  let user, chatId, userId, text;
+
   try {
     const { message, callback_query } = req.body;
-    let user, chatId, userId, text;
 
     if (callback_query) {
       chatId = callback_query.message.chat.id;
@@ -149,7 +152,7 @@ export default async (req, res) => {
         await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر (افصل بينهم بمسافة أو سطر جديد):');
         return res.status(200).send('OK');
       }
-      // "صلاحية كاملة" (هذا كان سليماً)
+      // "صلاحية كاملة"
       if (command === 'assign_all_courses') {
         const usersToUpdate = user.state_data.users; // (string[])
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: true }));
@@ -164,7 +167,6 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
       
-      // --- [هذا هو الإصلاح الرئيسي] ---
       // "صلاحية محددة" (اختيار كورس)
       if (command.startsWith('assign_course_')) {
         const courseId = parseInt(command.split('_')[1], 10);
@@ -172,25 +174,24 @@ export default async (req, res) => {
         const usersToUpdate = stateData.users; // (string[])
         
         // الخطوة 1: ضمان وجود المستخدمين في جدول 'users' أولاً
-        // (upsert ينشئ المستخدم إذا لم يكن موجوداً)
-        // (ونضبط is_subscribed = false لضمان أنهم في وضع "الصلاحية المحددة")
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: false }));
         const { error: userUpsertError } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
 
         if (userUpsertError) {
+          // هنا سيرسل رسالة الخطأ بدلاً من الانهيار
           await sendMessage(chatId, `حدث خطأ أثناء تحديث المستخدمين: ${userUpsertError.message}`);
           return res.status(200).send(await setAdminState(userId, null, null));
         }
 
-        // الخطوة 2: الآن يمكن إضافة الصلاحيات بأمان (لأن المفتاح الأجنبي سيجدهم)
+        // الخطوة 2: الآن يمكن إضافة الصلاحيات بأمان
         const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
         const { error: accessUpsertError } = await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
         
         if (accessUpsertError) {
+           // هنا سيرسل رسالة الخطأ بدلاً من الانهيار
            await sendMessage(chatId, `حدث خطأ أثناء إضافة الصلاحية: ${accessUpsertError.message}`);
            return res.status(200).send(await setAdminState(userId, null, null));
         }
-        // --- [نهاية الإصلاح] ---
 
         await sendMessage(chatId, `✅ تم إضافة صلاحية الكورس المحدد. اختر كورساً آخر أو اضغط "إنهاء".`);
         return res.status(200).send('OK');
@@ -203,7 +204,7 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
-      // ... (باقي أزرار إدارة المحتوى والحذف كما هي، كانت سليمة) ...
+      // ... (باقي أزرار إدارة المحتوى والحذف كما هي) ...
       // --- 3. معالجة أزرار "إدارة المحتوى" (إضافة) ---
       if (command === 'admin_add_course') {
         await setAdminState(userId, 'awaiting_course_title');
@@ -292,7 +293,6 @@ export default async (req, res) => {
       if (user && user.is_admin && user.admin_state) {
         switch (user.admin_state) {
           
-          // (هذا الكود كان سليماً لأنه يحول لـ string)
           case 'awaiting_user_ids':
             const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (ids.length === 0) {
@@ -307,7 +307,6 @@ export default async (req, res) => {
             );
             break;
 
-          // (باقي الحالات سليمة)
           case 'awaiting_course_title':
             await supabase.from('courses').insert({ title: text });
             await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح.`);
@@ -339,7 +338,7 @@ export default async (req, res) => {
 
   } catch (e) {
     console.error("Error in webhook:", e.message);
-    // [جديد] إرسال رسالة خطأ للأدمن إذا حدث شيء غير متوقع
+    // الآن هذا الكود سيعمل لأن chatId معرف في النطاق الصحيح
     if (chatId) {
        await sendMessage(chatId, `حدث خطأ جسيم في الخادم: ${e.message}`);
     }
