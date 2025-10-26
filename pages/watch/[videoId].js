@@ -56,61 +56,69 @@ export default function WatchPage() {
     playerRef.current = event.target;
   };
 
-  if (error) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-  if (!youtubeId || !user) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  if (error) return <div className="container"><h1>{error}</h1></div>;
+  if (!youtubeId || !user) return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
 
   const opts = {
     playerVars: {
-      autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1,
+      autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, iv_load_policy: 3
     },
   };
 
   // --- ستايلات CSS النهائية ---
-  const containerStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#000', padding: '10px' };
-  const videoWrapperStyle = { position: 'relative', width: '100%', maxWidth: '900px', paddingTop: '56.25%', overflow: 'hidden' };
+  const pageStyle = { position: 'relative', width: '100vw', height: '100vh', background: '#000', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const videoWrapperStyle = { position: 'relative', width: '100%', maxWidth: '900px', paddingTop: '56.25%' };
   const playerStyle = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' };
 
   return (
-    <div style={containerStyle}>
+    <div style={pageStyle}>
       <Head>
         <title>مشاهدة الدرس</title>
-        {/* السماح بالزوم */}
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
+      
+      {/* حاوية الفيديو (الطبقة السفلية) */}
       <div style={videoWrapperStyle}>
+        <YouTube 
+          videoId={youtubeId} 
+          opts={opts} 
+          style={playerStyle} 
+          onReady={onPlayerReady} 
+          onPlay={() => setIsPlaying(true)} 
+          onPause={() => setIsPlaying(false)} 
+          onEnd={() => setIsPlaying(false)} 
+        />
+      </div>
+      
+      {/* --- الدرع الذي يملأ الشاشة بالكامل (الطبقة العلوية) --- */}
+      <div style={{
+          position: 'fixed', // أهم تعديل: يجعله ثابتاً بالنسبة للشاشة
+          top: 0,
+          left: 0,
+          width: '100vw', // يملأ عرض الشاشة
+          height: '100vh', // يملأ ارتفاع الشاشة
+          zIndex: 100, // يضمن أنه فوق كل شيء
+          display: 'flex'
+      }}>
         
-        <YouTube videoId={youtubeId} opts={opts} style={playerStyle} onReady={onPlayerReady} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnd={() => setIsPlaying(false)} />
+        <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
         
-        {/* --- طبقة التحكم النهائية (الدرع المتمركز الفائض) --- */}
-        <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            /* التعديل النهائي: درع أكبر بكثير وتمركز ذكي */
-            width: '150%', 
-            height: '150%',
-            transform: 'translate(-50%, -50%)',
-            /* ------------------------------------------- */
-            zIndex: 10, 
-            display: 'flex'
-        }}>
-          
-          <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
-          
-          <div style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }} onClick={handlePlayPause}>
-            {!isPlaying && <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
-          </div>
-          
-          <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
+        <div style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }} onClick={handlePlayPause}>
+          {!isPlaying && <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
+        </div>
+        
+        <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
 
-          {/* العلامة المائية */}
-          <div style={{
-            position: 'absolute', bottom: '15px', right: '15px',
-            fontSize: '1.5vw', color: 'rgba(255, 255, 255, 0.4)',
-            fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
-            pointerEvents: 'none',
-          }}>
-            {user.first_name} {user.last_name || ''}
-          </div>
+        {/* العلامة المائية */}
+        <div style={{
+          position: 'absolute', bottom: '15px', right: '15px',
+          fontSize: '1.5vw', color: 'rgba(255, 255, 255, 0.4)',
+          fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
+          pointerEvents: 'none',
+        }}>
+          {user.first_name} {user.last_name || ''}
         </div>
       </div>
+    </div>
+  );
+}
