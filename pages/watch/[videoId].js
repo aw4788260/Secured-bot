@@ -1,6 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react'; // أضفنا useCallback
 import Head from 'next/head';
 import YouTube from 'react-youtube';
 
@@ -27,6 +27,12 @@ export default function WatchPage() {
     // --- متغيرات حالة جديدة للسحب ---
     const [isSeeking, setIsSeeking] = useState(false);
     const progressBarRef = useRef(null);
+
+    // --- متغيرات حالة جديدة للتحكم في الجودة والسرعة ---
+    const [playbackRate, setPlaybackRate] = useState(1); // سرعة التشغيل الافتراضية 1x
+    const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]); // سرعات التشغيل المتاحة
+    const [videoQuality, setVideoQuality] = useState('auto'); // الجودة الافتراضية تلقائي
+    const [availableQualityLevels, setAvailableQualityLevels] = useState([]); // الجودات المتاحة
 
 
     useEffect(() => {
@@ -100,10 +106,23 @@ export default function WatchPage() {
         }, 600);
     };
 
-    const onPlayerReady = (event) => {
+    const onPlayerReady = useCallback((event) => { // استخدم useCallback لتحسين الأداء
         playerRef.current = event.target;
         setDuration(event.target.getDuration());
-    };
+
+        // جلب الجودات المتاحة وسرعات التشغيل
+        const qualities = playerRef.current.getAvailableQualityLevels();
+        if (qualities && qualities.length > 0) {
+            setAvailableQualityLevels(['auto', ...qualities]); // إضافة 'auto' كخيار
+            setVideoQuality(playerRef.current.getPlaybackQuality()); // تعيين الجودة الافتراضية للفيديو
+        }
+
+        const rates = playerRef.current.getAvailablePlaybackRates();
+        if (rates && rates.length > 0) {
+            setAvailablePlaybackRates(rates);
+            setPlaybackRate(playerRef.current.getPlaybackRate()); // تعيين السرعة الافتراضية
+        }
+    }, []); // لا يوجد تبعيات هنا لأن playerRef.current يتم تعيينه داخل الدالة
 
     // --- دوال السحب الجديدة ---
     const calculateSeekTime = (e) => {
@@ -146,6 +165,22 @@ export default function WatchPage() {
         window.removeEventListener('touchend', handleScrubEnd);
     };
 
+    // --- دوال التحكم في الجودة والسرعة ---
+    const handleSetPlaybackRate = (e) => {
+        const newRate = parseFloat(e.target.value);
+        if (playerRef.current && !isNaN(newRate)) {
+            playerRef.current.setPlaybackRate(newRate);
+            setPlaybackRate(newRate);
+        }
+    };
+
+    const handleSetQuality = (e) => {
+        const newQuality = e.target.value;
+        if (playerRef.current) {
+            playerRef.current.setPlaybackQuality(newQuality);
+            setVideoQuality(newQuality);
+        }
+    };
 
     const formatTime = (timeInSeconds) => {
         if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00';
@@ -196,6 +231,25 @@ export default function WatchPage() {
                     </div>
 
                     <div className="bottom-controls">
+                        {/* عناصر التحكم الجديدة (الجودة والسرعة) */}
+                        <div className="extra-controls">
+                            {availableQualityLevels.length > 0 && (
+                                <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
+                                    {availableQualityLevels.map(quality => (
+                                        <option key={quality} value={quality}>{quality === 'auto' ? 'تلقائي' : quality}</option>
+                                    ))}
+                                </select>
+                            )}
+
+                            {availablePlaybackRates.length > 0 && (
+                                <select className="control-select" value={playbackRate} onChange={handleSetPlaybackRate}>
+                                    {availablePlaybackRates.map(rate => (
+                                        <option key={rate} value={rate}>{rate}x</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
                         <span className="time-display">{formatTime(currentTime)}</span>
                         <div
                             ref={progressBarRef}
@@ -295,7 +349,38 @@ export default function WatchPage() {
                     padding: 0 10px;
                     background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
                     z-index: 11;
+                    gap: 10px; /* **جديد: مسافة بين العناصر** */
                 }
+
+                /* **جديد: حاوية لعناصر التحكم الإضافية** */
+                .extra-controls {
+                    display: flex;
+                    gap: 8px; /* مسافة بين قوائم الجودة والسرعة */
+                    direction: ltr; /* لضمان عرضها بشكل صحيح */
+                }
+
+                /* **جديد: أنماط لقوائم الاختيار (select)** */
+                .control-select {
+                    background-color: rgba(255, 255, 255, 0.2);
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    font-size: clamp(11px, 2.5vw, 14px);
+                    cursor: pointer;
+                    -webkit-appearance: none; /* لإزالة الأنماط الافتراضية للمتصفح */
+                    -moz-appearance: none;
+                    appearance: none;
+                    direction: ltr; /* لضمان عرض النص داخلها بشكل صحيح */
+                    text-align: center;
+                    text-align-last: center; /* لمحاذاة النص في المنتصف */
+                }
+                .control-select option {
+                    background-color: #333; /* خلفية داكنة للخيارات */
+                    color: white;
+                }
+
+
                 .time-display {
                     color: white;
                     font-size: clamp(11px, 2.5vw, 14px);
