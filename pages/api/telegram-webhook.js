@@ -428,22 +428,36 @@ export default async (req, res) => {
         await sendMessage(chatId, '🚀 أرسل "عنوان" الفيديو:');
         return res.status(200).send('OK');
       }
-      if (command.startsWith('add_video_to_course_')) {
-         if (!user.state_data || !user.state_data.video) {
-            await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
-            return res.status(200).send(await setAdminState(userId, null, null));
-        }
-        const courseId = parseInt(command.split('_')[4], 10);
-        if (isNaN(courseId)) {
-           await sendMessage(chatId, 'خطأ: لم يتم التعرف على الكورس\\. تم الإلغاء\\.');
-           return res.status(200).send(await setAdminState(userId, null, null));
-        }
-        const videoData = user.state_data.video;
-        await supabase.from('videos').insert({ ...videoData, course_id: courseId });
-        await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
-        await setAdminState(userId, null, null);
-        return res.status(200).send('OK');
-      }
+     if (command.startsWith('add_video_to_course_')) {
+         if (!user.state_data || !user.state_data.video) {
+            await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
+            return res.status(200).send(await setAdminState(userId, null, null));
+        }
+        const courseId = parseInt(command.split('_')[4], 10);
+        if (isNaN(courseId)) {
+           await sendMessage(chatId, 'خطأ: لم يتم التعرف على الكورس\\. تم الإلغاء\\.');
+           return res.status(200).send(await setAdminState(userId, null, null));
+        }
+        const videoData = user.state_data.video;
+
+        // --- [ ✅ الحل هنا ] ---
+        // 1. نقوم بالتقاط الخطأ المحتمل
+        const { error: insertError } = await supabase.from('videos').insert({ ...videoData, course_id: courseId });
+
+        // 2. نتحقق من الخطأ
+        if (insertError) {
+            console.error("Error inserting video:", insertError);
+            // 3. نرسل رسالة الخطأ الحقيقية للأدمن بدلاً من رسالة النجاح
+            await sendMessage(chatId, `❌ حدث خطأ أثناء إضافة الفيديو: ${insertError.message}`);
+        } else {
+            // 4. نرسل رسالة النجاح فقط إذا لم يكن هناك خطأ
+            await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
+        }
+        // --- [ نهاية الحل ] ---
+
+        await setAdminState(userId, null, null);
+        return res.status(200).send('OK');
+      }
       if (command === 'admin_delete_course') {
         await fetchAndSendCoursesMenu(chatId, 'اختر الكورس الذي تريد حذفه:', {}, 'delete_course_confirm');
         return res.status(200).send('OK');
