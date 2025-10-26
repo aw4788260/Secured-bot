@@ -20,6 +20,7 @@ const answerCallbackQuery = async (callbackQueryId) => {
 };
 
 const getUser = async (userId) => {
+  // (userId هنا هو number من تليجرام، وهذا سليم لعمليات .eq())
   const { data, error } = await supabase
     .from('users')
     .select('id, is_subscribed, is_admin, admin_state, state_data')
@@ -133,7 +134,7 @@ export default async (req, res) => {
 
     if (callback_query) {
       chatId = callback_query.message.chat.id;
-      userId = callback_query.from.id;
+      userId = callback_query.from.id; // هذا number وهو سليم
       user = await getUser(userId);
       const command = callback_query.data;
       await answerCallbackQuery(callback_query.id);
@@ -167,7 +168,8 @@ export default async (req, res) => {
       }
       // "صلاحية كاملة"
       if (command === 'assign_all_courses') {
-        const usersToUpdate = user.state_data.users; // IDs من الحالة
+        const usersToUpdate = user.state_data.users; // IDs (string[] من الحالة)
+        // (هنا الـ id هو string، وهو سليم لـ .upsert() على حقل BigInt)
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: true }));
         await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
         await sendMessage(chatId, `✅ تم منح صلاحية كاملة لـ ${usersToUpdate.length} مستخدم.`);
@@ -178,13 +180,13 @@ export default async (req, res) => {
       if (command.startsWith('assign_course_')) {
         const courseId = parseInt(command.split('_')[1], 10);
         const stateData = user.state_data; // { users: [...] }
-        const usersToUpdate = stateData.users;
+        const usersToUpdate = stateData.users; // (string[])
         
-        // أضف الصلاحية للجدول الجديد
+        // (هنا user_id هو string، وهو سليم لـ .upsert() على حقل BigInt)
         const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
         await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
         
-        // (مهم) تأكد أن is_subscribed = false لهؤلاء المستخدمين
+        // (هنا id هو string، وهو سليم لـ .upsert() على حقل BigInt)
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: false }));
         await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
 
@@ -226,36 +228,29 @@ export default async (req, res) => {
       }
       
       // --- 4. معالجة أزرار "إدارة المحتوى" (حذف) ---
-      // خطوة 1: طلب حذف كورس -> إظهار قائمة الكورسات
+      // (الكود هنا سليم كما هو)
       if (command === 'admin_delete_course') {
         await fetchAndSendCoursesMenu(chatId, 'اختر الكورس الذي تريد حذفه:', {}, 'delete_course_confirm');
         return res.status(200).send('OK');
       }
-      // خطوة 2: تأكيد حذف الكورس
       if (command.startsWith('delete_course_confirm_')) {
         const courseId = parseInt(command.split('_')[1], 10);
-        // (مهم) احذف الفيديوهات المرتبطة أولاً
         await supabase.from('videos').delete().eq('course_id', courseId);
-        // (مهم) احذف الصلاحيات المرتبطة أولاً
         await supabase.from('user_course_access').delete().eq('course_id', courseId);
-        // أخيراً احذف الكورس
         await supabase.from('courses').delete().eq('id', courseId);
         await sendMessage(chatId, `🗑️ تم حذف الكورس وكل فيديوهاته وصلاحياته بنجاح.`);
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
-      // خطوة 1: طلب حذف فيديو -> إظهار قائمة الكورسات
       if (command === 'admin_delete_video') {
          await fetchAndSendCoursesMenu(chatId, 'أولاً، اختر "الكورس" الذي يحتوي على الفيديو:', {}, 'select_video_course');
          return res.status(200).send('OK');
       }
-      // خطوة 2: اختيار الكورس -> إظهار قائمة الفيديوهات
       if (command.startsWith('select_video_course_')) {
          const courseId = parseInt(command.split('_')[1], 10);
          await fetchAndSendVideosMenu(chatId, courseId);
          return res.status(200).send('OK');
       }
-      // خطوة 3: تأكيد حذف الفيديو
       if (command.startsWith('delete_video_confirm_')) {
         const videoId = parseInt(command.split('_')[1], 10);
         await supabase.from('videos').delete().eq('id', videoId);
@@ -270,7 +265,7 @@ export default async (req, res) => {
     // --- 3. معالجة الرسائل النصية (لإدخال البيانات) ---
     if (message && message.text && message.from) {
       chatId = message.chat.id;
-      userId = message.from.id;
+      userId = message.from.id; // هذا number وهو سليم
       text = message.text;
       user = await getUser(userId);
 
@@ -281,7 +276,7 @@ export default async (req, res) => {
         } else if (user && user.is_subscribed) {
           await sendMessage(chatId, 'أهلاً بك! اضغط على زر القائمة في الأسفل لبدء الكورسات.');
         } else {
-          // (سنقوم بتعديل هذا لاحقاً في check-subscription)
+          // (هذه الرسالة سليمة، لأن check-subscription سيتحقق من الصلاحيات)
           await sendMessage(chatId, 'أنت غير مشترك في الخدمة أو ليس لديك صلاحية لأي كورس.');
         }
         return res.status(200).send('OK');
@@ -298,21 +293,26 @@ export default async (req, res) => {
       if (user && user.is_admin && user.admin_state) {
         switch (user.admin_state) {
           
+          // --- [هذا هو الإصلاح] ---
           case 'awaiting_user_ids':
-            const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id)).map(id => parseInt(id, 10));
+            // نحافظ على الـ IDs كـ string
+            const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id));
+            
             if (ids.length === 0) {
               await sendMessage(chatId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
               return res.status(200).send('OK');
             }
+            
             // نجح، الآن اعرض خيارات الصلاحية
             await fetchAndSendCoursesMenu(
               chatId, 
               `تم تحديد ${ids.length} مستخدم. اختر نوع الصلاحية:`, 
-              { users: ids }, // تخزين IDs المستخدمين في الحالة
+              { users: ids }, // تخزين (string[]) في الحالة
               'assign_course'
             );
             break;
 
+          // (باقي الحالات سليمة كما هي)
           case 'awaiting_course_title':
             await supabase.from('courses').insert({ title: text });
             await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح.`);
