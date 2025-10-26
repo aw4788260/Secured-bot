@@ -49,7 +49,7 @@ export default function WatchPage() {
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        // **تعديل 1: تغيير نسبة الأبعاد إلى 13 (عرض) لـ 16 (ارتفاع)**
+        // **تصحيح 1: تطبيق نسبة الأبعاد المطلوبة 13:16**
         const calculatedHeight = containerWidth * (16 / 13); 
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
@@ -58,7 +58,7 @@ export default function WatchPage() {
     updateSize(); 
     window.addEventListener('resize', updateSize);
 
-    const interval = setInterval(() => {
+    const timeInterval = setInterval(() => {
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         setCurrentTime(playerRef.current.getCurrentTime());
       }
@@ -66,28 +66,60 @@ export default function WatchPage() {
 
     watermarkIntervalRef.current = setInterval(() => {
         const newTop = Math.floor(Math.random() * 70) + 10; 
-        const newLeft = Math.floor(Math.random() * 60) + 10; // تقليل النطاق الأفقي
+        const newLeft = Math.floor(Math.random() * 60) + 10;
         setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
     }, 5000); 
 
-
     return () => {
         window.removeEventListener('resize', updateSize);
-        clearInterval(interval);
+        clearInterval(timeInterval);
         clearInterval(watermarkIntervalRef.current);
     };
   }, [videoId]);
 
-  const handlePlayPause = () => { /* ... (تبقى كما هي) ... */ };
-  const handleSeek = (direction) => { /* ... (تبقى كما هي) ... */ };
-  const onPlayerReady = (event) => { /* ... (تبقى كما هي) ... */ };
-  const handleProgressBarClick = (e) => { /* ... (تبقى كما هي) ... */ };
-  const formatTime = (timeInSeconds) => { /* ... (تبقى كما هي) ... */ };
-  
-  // (منطق التحكم يبقى كما هو بدون تغيير)
+  // --- (باقي دوال التحكم تبقى كما هي) ---
+  const handlePlayPause = () => {
+    if (!playerRef.current) return;
+    const playerState = playerRef.current.getPlayerState();
+    if (playerState === 1) { // is playing
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
+  };
+  const handleSeek = (direction) => {
+    if (!playerRef.current) return;
+    const currentTimeVal = playerRef.current.getCurrentTime();
+    const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10;
+    playerRef.current.seekTo(newTime, true);
+    setShowSeekIcon({ direction: direction, visible: true });
+    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    seekTimeoutRef.current = setTimeout(() => {
+      setShowSeekIcon({ direction: null, visible: false });
+    }, 600);
+  };
+  const onPlayerReady = (event) => {
+    playerRef.current = event.target;
+    setDuration(event.target.getDuration());
+  };
+  const handleProgressBarClick = (e) => {
+    if (!playerRef.current || duration === 0) return;
+    const bar = e.currentTarget;
+    const clickPosition = e.clientX - bar.getBoundingClientRect().left;
+    const barWidth = bar.offsetWidth;
+    const seekTime = (clickPosition / barWidth) * duration;
+    playerRef.current.seekTo(seekTime, true);
+    setCurrentTime(seekTime); 
+  };
+  const formatTime = (timeInSeconds) => {
+    if (isNaN(timeInSeconds) || timeInSeconds < 0) return '0:00';
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
 
   if (error) return <div className="container"><h1>{error}</h1></div>;
-  if (!youtubeId || !user || playerSize.width === 0) return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
+  if (!youtubeId || !user || !playerSize.width || playerSize.width === '100%') return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
 
   const opts = {
     height: playerSize.height,
@@ -104,8 +136,7 @@ export default function WatchPage() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
       
-      <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '450px' }}> {/* تقليل العرض الأقصى ليناسب الأبعاد الطولية */}
-        
+      <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '450px' }}>
         <div style={{ position: 'relative', width: playerSize.width, height: playerSize.height }}>
           
           <YouTube 
@@ -118,66 +149,50 @@ export default function WatchPage() {
             onEnd={() => setIsPlaying(false)}
           />
           
-          <div style={{
-              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-              zIndex: 10, 
-              display: 'flex',
-              flexDirection: 'column' 
-          }}>
-            <div style={{ flexGrow: 1, display: 'flex' }}>
-                <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
-                <div style={{ flex: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }} onClick={handlePlayPause}>
-                  {!isPlaying && <div style={{ fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
+          {/* **تصحيح 2: فصل الطبقات المرئية عن طبقة التحكم** */}
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
+              {/* الطبقة المرئية (Visual Layer) - لا تتفاعل مع اللمس */}
+              {!isPlaying && <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
+              
+              {showSeekIcon.visible && (
+                <div style={{
+                  position: 'absolute', top: '50%', left: showSeekIcon.direction === 'forward' ? '75%' : '25%',
+                  transform: 'translate(-50%, -50%)', fontSize: '40px', color: 'white',
+                  animation: 'seek-pop 0.6s ease-out'
+                }}>
+                  {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
                 </div>
-                <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
-            </div>
-
-            <div style={{ height: '40px', display: 'flex', alignItems: 'center', padding: '0 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)', zIndex: 11 }}>
-                <span style={{ color: 'white', fontSize: '12px', marginRight: '10px', minWidth: '40px' }}>{formatTime(currentTime)}</span>
-                <div 
-                  style={{ flexGrow: 1, height: '4px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px', cursor: 'pointer', position: 'relative' }}
-                  onClick={handleProgressBarClick}
-                >
-                  <div style={{ height: '100%', width: `${(currentTime / duration) * 100}%`, background: '#FF0000', borderRadius: '2px' }}></div>
-                </div>
-                <span style={{ color: 'white', fontSize: '12px', marginLeft: '10px', minWidth: '40px' }}>{formatTime(duration)}</span>
-            </div>
-
-            {showSeekIcon.visible && (
+              )}
+              
               <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: showSeekIcon.direction === 'forward' ? '75%' : '25%',
-                transform: 'translate(-50%, -50%)',
-                fontSize: '40px',
-                color: 'white',
-                opacity: 0.8,
-                transition: 'opacity 0.5s ease-out',
-                animation: 'seek-pop 0.6s ease-out',
-                pointerEvents: 'none'
+                position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
+                padding: '4px 8px', background: 'rgba(0, 0, 0, 0.8)', color: 'white',
+                fontSize: '12px', borderRadius: '4px', fontWeight: 'bold',
+                transition: 'top 2s ease-in-out, left 2s ease-in-out', whiteSpace: 'nowrap'
               }}>
-                {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
+                {user.first_name} ({user.id})
               </div>
-            )}
-            
-            {/* **تعديل 2: العلامة المائية الجديدة** */}
-            <div style={{
-              position: 'absolute',
-              top: watermarkPos.top,
-              left: watermarkPos.left,
-              padding: '4px 8px', // إضافة هوامش داخلية
-              background: 'rgba(0, 0, 0, 0.8)', // خلفية سوداء شفافة
-              color: 'white', // كتابة بيضاء
-              fontSize: '12px', // حجم خط أصغر
-              borderRadius: '4px', // حواف دائرية
-              fontWeight: 'bold',
-              pointerEvents: 'none',
-              transition: 'top 2s ease-in-out, left 2s ease-in-out',
-              whiteSpace: 'nowrap' // منع التفاف النص
-            }}>
-              {user.first_name} ({user.id})
-            </div>
           </div>
+
+          {/* طبقة التحكم (Control Layer) - هي التي تستقبل النقرات */}
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 'calc(100% - 40px)', zIndex: 12, display: 'flex' }}>
+              <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
+              <div style={{ flex: 2, height: '100%', cursor: 'pointer' }} onClick={handlePlayPause}></div>
+              <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
+          </div>
+          
+          {/* شريط التحكم السفلي */}
+          <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '40px', display: 'flex', alignItems: 'center', padding: '0 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)', zIndex: 11 }}>
+              <span style={{ color: 'white', fontSize: '12px', marginRight: '10px', minWidth: '40px' }}>{formatTime(currentTime)}</span>
+              <div 
+                style={{ flexGrow: 1, height: '4px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px', cursor: 'pointer' }}
+                onClick={handleProgressBarClick}
+              >
+                <div style={{ height: '100%', width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`, background: '#FF0000', borderRadius: '2px' }}></div>
+              </div>
+              <span style={{ color: 'white', fontSize: '12px', marginLeft: '10px', minWidth: '40px' }}>{formatTime(duration)}</span>
+          </div>
+
         </div>
       </div>
       
