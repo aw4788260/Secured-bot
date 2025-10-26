@@ -1,6 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef, useCallback } from 'react'; // أضفنا useCallback
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import YouTube from 'react-youtube';
 
@@ -14,83 +14,49 @@ export default function WatchPage() {
     const [isPlaying, setIsPlaying] = useState(false);
     const playerRef = useRef(null);
 
-    // --- متغيرات حالة لشريط التقدم والتحكم ---
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
     const seekTimeoutRef = useRef(null);
 
-    // --- متغيرات حالة لموقع العلامة المائية ---
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
     
-    // --- متغيرات حالة جديدة للسحب ---
     const [isSeeking, setIsSeeking] = useState(false);
     const progressBarRef = useRef(null);
 
-    // --- متغيرات حالة جديدة للتحكم في الجودة والسرعة ---
-    const [playbackRate, setPlaybackRate] = useState(1); // سرعة التشغيل الافتراضية 1x
-    const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]); // سرعات التشغيل المتاحة
-    const [videoQuality, setVideoQuality] = useState('auto'); // الجودة الافتراضية تلقائي
-    const [availableQualityLevels, setAvailableQualityLevels] = useState([]); // الجودات المتاحة
-
+    const [playbackRate, setPlaybackRate] = useState(1);
+    const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]);
+    const [videoQuality, setVideoQuality] = useState('auto');
+    const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
+    const [qualitiesFetched, setQualitiesFetched] = useState(false); // **جديد**
 
     useEffect(() => {
-        // التحقق من وجود كائن تليجرام
+        // ... (الكود هنا لم يتغير)
         if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-
-            if (tgUser) {
-                setUser(tgUser);
-            } else {
-                setError("خطأ: لا يمكن التعرف على المستخدم.");
-                return;
-            }
-
+            if (tgUser) { setUser(tgUser); } else { setError("خطأ: لا يمكن التعرف على المستخدم."); return; }
             if (videoId) {
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                    .then(res => {
-                        if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو');
-                        return res.json();
-                    })
+                    .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
                     .then(data => setYoutubeId(data.youtube_video_id))
                     .catch(err => setError(err.message));
             }
-        } else {
-            setError("الرجاء الفتح من تليجرام.");
-        }
-
-        // تحديث الوقت الحالي للفيديو
-        const progressInterval = setInterval(() => {
-            if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) {
-                setCurrentTime(playerRef.current.getCurrentTime());
-            }
-        }, 500);
-
-        // بدء حركة العلامة المائية
+        } else { setError("الرجاء الفتح من تليجرام."); }
+        const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
-            const newTop = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
-            const newLeft = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
+            const newTop = Math.floor(Math.random() * 70) + 10;
+            const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
-        }, 5000); // تغيير الموقع كل 5 ثوانٍ
-
-        // دالة التنظيف
-        return () => {
-            clearInterval(progressInterval);
-            clearInterval(watermarkIntervalRef.current);
-        };
-
+        }, 5000);
+        return () => { clearInterval(progressInterval); clearInterval(watermarkIntervalRef.current); };
     }, [videoId, isSeeking]);
 
     const handlePlayPause = () => {
         if (!playerRef.current) return;
         const playerState = playerRef.current.getPlayerState();
-        if (playerState === 1) { // is playing
-            playerRef.current.pauseVideo();
-        } else {
-            playerRef.current.playVideo();
-        }
+        if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); }
     };
 
     const handleSeek = (direction) => {
@@ -98,33 +64,35 @@ export default function WatchPage() {
         const currentTimeVal = playerRef.current.getCurrentTime();
         const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10;
         playerRef.current.seekTo(newTime, true);
-
         setShowSeekIcon({ direction: direction, visible: true });
         if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-        seekTimeoutRef.current = setTimeout(() => {
-            setShowSeekIcon({ direction: null, visible: false });
-        }, 600);
+        seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600);
     };
 
-    const onPlayerReady = useCallback((event) => { // استخدم useCallback لتحسين الأداء
+    const onPlayerReady = useCallback((event) => {
         playerRef.current = event.target;
         setDuration(event.target.getDuration());
-
-        // جلب الجودات المتاحة وسرعات التشغيل
-        const qualities = playerRef.current.getAvailableQualityLevels();
-        if (qualities && qualities.length > 0) {
-            setAvailableQualityLevels(['auto', ...qualities]); // إضافة 'auto' كخيار
-            setVideoQuality(playerRef.current.getPlaybackQuality()); // تعيين الجودة الافتراضية للفيديو
-        }
-
         const rates = playerRef.current.getAvailablePlaybackRates();
         if (rates && rates.length > 0) {
             setAvailablePlaybackRates(rates);
-            setPlaybackRate(playerRef.current.getPlaybackRate()); // تعيين السرعة الافتراضية
+            setPlaybackRate(playerRef.current.getPlaybackRate());
         }
-    }, []); // لا يوجد تبعيات هنا لأن playerRef.current يتم تعيينه داخل الدالة
+    }, []);
 
-    // --- دوال السحب الجديدة ---
+    // **الدالة الجديدة هنا**
+    const handleOnPlay = () => {
+        setIsPlaying(true);
+        if (playerRef.current && !qualitiesFetched) {
+            const qualities = playerRef.current.getAvailableQualityLevels();
+            if (qualities && qualities.length > 0) {
+                setAvailableQualityLevels(['auto', ...qualities]);
+                setVideoQuality(playerRef.current.getPlaybackQuality());
+                setQualitiesFetched(true);
+            }
+        }
+    };
+    
+    // ... (باقي الدوال لم تتغير)
     const calculateSeekTime = (e) => {
         if (!progressBarRef.current || duration === 0) return null;
         const bar = progressBarRef.current;
@@ -134,54 +102,29 @@ export default function WatchPage() {
         const seekRatio = boundedX / rect.width;
         return seekRatio * duration;
     };
-
     const handleScrubStart = (e) => {
-        e.preventDefault();
-        setIsSeeking(true);
-        const seekTime = calculateSeekTime(e);
-        if (seekTime !== null) {
-            setCurrentTime(seekTime);
-            playerRef.current.seekTo(seekTime, true);
-        }
-        window.addEventListener('mousemove', handleScrubbing);
-        window.addEventListener('touchmove', handleScrubbing);
-        window.addEventListener('mouseup', handleScrubEnd);
-        window.addEventListener('touchend', handleScrubEnd);
+        e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e);
+        if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); }
+        window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing);
+        window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd);
     };
-
     const handleScrubbing = (e) => {
         const seekTime = calculateSeekTime(e);
-        if (seekTime !== null) {
-            setCurrentTime(seekTime);
-            playerRef.current.seekTo(seekTime, true);
-        }
+        if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); }
     };
-
     const handleScrubEnd = () => {
         setIsSeeking(false);
-        window.removeEventListener('mousemove', handleScrubbing);
-        window.removeEventListener('touchmove', handleScrubbing);
-        window.removeEventListener('mouseup', handleScrubEnd);
-        window.removeEventListener('touchend', handleScrubEnd);
+        window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing);
+        window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd);
     };
-
-    // --- دوال التحكم في الجودة والسرعة ---
     const handleSetPlaybackRate = (e) => {
         const newRate = parseFloat(e.target.value);
-        if (playerRef.current && !isNaN(newRate)) {
-            playerRef.current.setPlaybackRate(newRate);
-            setPlaybackRate(newRate);
-        }
+        if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); }
     };
-
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
-        if (playerRef.current) {
-            playerRef.current.setPlaybackQuality(newQuality);
-            setVideoQuality(newQuality);
-        }
+        if (playerRef.current) { playerRef.current.setPlaybackQuality(newQuality); setVideoQuality(newQuality); }
     };
-
     const formatTime = (timeInSeconds) => {
         if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00';
         const minutes = Math.floor(timeInSeconds / 60);
@@ -189,18 +132,9 @@ export default function WatchPage() {
         return `${minutes}:${seconds}`;
     };
 
-    if (error) {
-        return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-    }
-    if (!youtubeId || !user) {
-        return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
-    }
-
-    const opts = {
-        playerVars: {
-            autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1,
-        },
-    };
+    if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
+    if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
+    const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
 
     return (
         <div className="page-container">
@@ -216,7 +150,7 @@ export default function WatchPage() {
                     className="youtube-player"
                     iframeClassName="youtube-iframe"
                     onReady={onPlayerReady}
-                    onPlay={() => setIsPlaying(true)}
+                    onPlay={handleOnPlay} // **<-- تم التحديث هنا**
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
                 />
@@ -231,7 +165,6 @@ export default function WatchPage() {
                     </div>
 
                     <div className="bottom-controls">
-                        {/* عناصر التحكم الجديدة (الجودة والسرعة) */}
                         <div className="extra-controls">
                             {availableQualityLevels.length > 0 && (
                                 <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
@@ -240,7 +173,6 @@ export default function WatchPage() {
                                     ))}
                                 </select>
                             )}
-
                             {availablePlaybackRates.length > 0 && (
                                 <select className="control-select" value={playbackRate} onChange={handleSetPlaybackRate}>
                                     {availablePlaybackRates.map(rate => (
@@ -249,7 +181,6 @@ export default function WatchPage() {
                                 </select>
                             )}
                         </div>
-
                         <span className="time-display">{formatTime(currentTime)}</span>
                         <div
                             ref={progressBarRef}
@@ -277,192 +208,33 @@ export default function WatchPage() {
             </div>
 
             <style jsx global>{`
-                body {
-                    margin: 0;
-                    background: #000;
-                    overscroll-behavior: contain;
-                }
-                .page-container {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: 100vh;
-                    width: 100%;
-                    padding: 10px;
-                    box-sizing: border-box;
-                }
-                .message-container {
-                     display: flex;
-                     align-items: center;
-                     justify-content: center;
-                     height: 100vh;
-                     color: white;
-                     padding: 20px;
-                     text-align: center;
-                }
-                .player-wrapper {
-                    position: relative;
-                    width: 100%;
-                    max-width: 900px;
-                    aspect-ratio: 16 / 9;
-                    background: #111;
-                }
-                .youtube-player, .youtube-iframe {
-                    width: 100%;
-                    height: 100%;
-                }
-                .controls-overlay {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    z-index: 10;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                }
-                .interaction-grid {
-                    flex-grow: 1;
-                    display: flex;
-                    direction: ltr;
-                }
+                /* ... (كل أنماط CSS لم تتغير) ... */
+                body { margin: 0; background: #000; overscroll-behavior: contain; }
+                .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
+                .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
+                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 9; background: #111; }
+                .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
+                .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
+                .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
                 .seek-zone { flex: 1; height: 100%; }
-                .play-pause-zone {
-                    flex: 2;
-                    height: 100%;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    cursor: pointer;
-                }
-                .play-icon {
-                    font-size: clamp(40px, 10vw, 80px);
-                    color: white;
-                    text-shadow: 0 0 15px rgba(0,0,0,0.8);
-                    opacity: 0.9;
-                }
-                .bottom-controls {
-                    height: 40px;
-                    display: flex;
-                    align-items: center;
-                    padding: 0 10px;
-                    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
-                    z-index: 11;
-                    gap: 10px; /* **جديد: مسافة بين العناصر** */
-                }
-
-                /* **جديد: حاوية لعناصر التحكم الإضافية** */
-                .extra-controls {
-                    display: flex;
-                    gap: 8px; /* مسافة بين قوائم الجودة والسرعة */
-                    direction: ltr; /* لضمان عرضها بشكل صحيح */
-                }
-
-                /* **جديد: أنماط لقوائم الاختيار (select)** */
-                .control-select {
-                    background-color: rgba(255, 255, 255, 0.2);
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 4px 8px;
-                    font-size: clamp(11px, 2.5vw, 14px);
-                    cursor: pointer;
-                    -webkit-appearance: none; /* لإزالة الأنماط الافتراضية للمتصفح */
-                    -moz-appearance: none;
-                    appearance: none;
-                    direction: ltr; /* لضمان عرض النص داخلها بشكل صحيح */
-                    text-align: center;
-                    text-align-last: center; /* لمحاذاة النص في المنتصف */
-                }
-                .control-select option {
-                    background-color: #333; /* خلفية داكنة للخيارات */
-                    color: white;
-                }
-
-
-                .time-display {
-                    color: white;
-                    font-size: clamp(11px, 2.5vw, 14px);
-                    margin: 0 10px;
-                    min-width: 40px;
-                    text-align: center;
-                }
-                .progress-bar-container {
-                    position: relative;
-                    flex-grow: 1;
-                    height: 15px;
-                    display: flex;
-                    align-items: center;
-                    cursor: pointer;
-                    -webkit-user-select: none;
-                    -moz-user-select: none;
-                    -ms-user-select: none;
-                    user-select: none;
-                    direction: ltr;
-                }
-                .progress-bar-track {
-                    position: absolute;
-                    width: 100%;
-                    height: 4px;
-                    background: rgba(255, 255, 255, 0.3);
-                    border-radius: 2px;
-                    transition: height 0.1s ease;
-                }
-                .progress-bar-filled {
-                    position: absolute;
-                    height: 4px;
-                    background: #FF0000;
-                    border-radius: 2px;
-                    transition: height 0.1s ease;
-                }
-                .progress-bar-handle {
-                    position: absolute;
-                    width: 12px;
-                    height: 12px;
-                    background-color: #FF0000;
-                    border-radius: 50%;
-                    transform: translateX(-50%);
-                    transition: transform 0.1s ease, height 0.1s ease, width 0.1s ease;
-                }
-                .progress-bar-container:hover .progress-bar-track,
-                .progress-bar-container:hover .progress-bar-filled {
-                    height: 6px;
-                }
-                .progress-bar-container:hover .progress-bar-handle {
-                    transform: translateX(-50%) scale(1.2);
-                }
-                .seek-indicator {
-                    position: absolute;
-                    top: 50%;
-                    transform: translate(-50%, -50%);
-                    font-size: clamp(30px, 6vw, 40px);
-                    color: white;
-                    opacity: 0.8;
-                    animation: seek-pop 0.6s ease-out;
-                    pointer-events: none;
-                    direction: ltr;
-                }
+                .play-pause-zone { flex: 2; height: 100%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+                .play-icon { font-size: clamp(40px, 10vw, 80px); color: white; text-shadow: 0 0 15px rgba(0,0,0,0.8); opacity: 0.9; }
+                .bottom-controls { height: 40px; display: flex; align-items: center; padding: 0 10px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); z-index: 11; gap: 10px; }
+                .extra-controls { display: flex; gap: 8px; direction: ltr; }
+                .control-select { background-color: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: clamp(11px, 2.5vw, 14px); cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; direction: ltr; text-align: center; text-align-last: center; }
+                .control-select option { background-color: #333; color: white; }
+                .time-display { color: white; font-size: clamp(11px, 2.5vw, 14px); margin: 0 10px; min-width: 40px; text-align: center; }
+                .progress-bar-container { position: relative; flex-grow: 1; height: 15px; display: flex; align-items: center; cursor: pointer; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; direction: ltr; }
+                .progress-bar-track { position: absolute; width: 100%; height: 4px; background: rgba(255, 255, 255, 0.3); border-radius: 2px; transition: height 0.1s ease; }
+                .progress-bar-filled { position: absolute; height: 4px; background: #FF0000; border-radius: 2px; transition: height 0.1s ease; }
+                .progress-bar-handle { position: absolute; width: 12px; height: 12px; background-color: #FF0000; border-radius: 50%; transform: translateX(-50%); transition: transform 0.1s ease, height 0.1s ease, width 0.1s ease; }
+                .progress-bar-container:hover .progress-bar-track, .progress-bar-container:hover .progress-bar-filled { height: 6px; }
+                .progress-bar-container:hover .progress-bar-handle { transform: translateX(-50%) scale(1.2); }
+                .seek-indicator { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: clamp(30px, 6vw, 40px); color: white; opacity: 0.8; animation: seek-pop 0.6s ease-out; pointer-events: none; direction: ltr; }
                 .seek-indicator.forward { left: 75%; }
                 .seek-indicator.backward { left: 25%; }
-                @keyframes seek-pop {
-                    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
-                    50% { transform: translate(-50%, -50%) scale(1.2); }
-                    100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
-                }
-                .watermark {
-                    position: absolute;
-                    padding: 4px 8px;
-                    background: rgba(0, 0, 0, 0.7);
-                    color: white;
-                    font-size: clamp(10px, 2.5vw, 14px);
-                    border-radius: 4px;
-                    font-weight: bold;
-                    pointer-events: none;
-                    transition: top 2s ease-in-out, left 2s ease-in-out;
-                    white-space: nowrap;
-                    z-index: 20;
-                }
+                @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+                .watermark { position: absolute; padding: 4px 8px; background: rgba(0, 0, 0, 0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; pointer-events: none; transition: top 2s ease-in-out, left 2s ease-in-out; white-space: nowrap; z-index: 20; }
             `}</style>
         </div>
     );
