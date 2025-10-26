@@ -111,8 +111,6 @@ const fetchAndSendVideosMenu = async (chatId, courseId) => {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(200).send('OK');
 
-  // --- [هذا هو الإصلاح] ---
-  // تم نقل المتغيرات هنا لتكون متاحة في CATCH
   let user, chatId, userId, text;
 
   try {
@@ -169,7 +167,11 @@ export default async (req, res) => {
       
       // "صلاحية محددة" (اختيار كورس)
       if (command.startsWith('assign_course_')) {
-        const courseId = parseInt(command.split('_')[1], 10);
+        // --- [هذا هو الإصلاح] ---
+        // كان [1] وأصبح [2]
+        const courseId = parseInt(command.split('_')[2], 10); 
+        // -------------------------
+
         const stateData = user.state_data; 
         const usersToUpdate = stateData.users; // (string[])
         
@@ -178,7 +180,6 @@ export default async (req, res) => {
         const { error: userUpsertError } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
 
         if (userUpsertError) {
-          // هنا سيرسل رسالة الخطأ بدلاً من الانهيار
           await sendMessage(chatId, `حدث خطأ أثناء تحديث المستخدمين: ${userUpsertError.message}`);
           return res.status(200).send(await setAdminState(userId, null, null));
         }
@@ -188,7 +189,7 @@ export default async (req, res) => {
         const { error: accessUpsertError } = await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
         
         if (accessUpsertError) {
-           // هنا سيرسل رسالة الخطأ بدلاً من الانهيار
+           // هذا هو الخطأ الذي ظهر لك
            await sendMessage(chatId, `حدث خطأ أثناء إضافة الصلاحية: ${accessUpsertError.message}`);
            return res.status(200).send(await setAdminState(userId, null, null));
         }
@@ -204,8 +205,8 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
-      // ... (باقي أزرار إدارة المحتوى والحذف كما هي) ...
       // --- 3. معالجة أزرار "إدارة المحتوى" (إضافة) ---
+      // (لا يوجد تغيير هنا، الأخطاء كانت في أزرار الحذف)
       if (command === 'admin_add_course') {
         await setAdminState(userId, 'awaiting_course_title');
         await sendMessage(chatId, '📚 أرسل "اسم" الكورس الجديد:');
@@ -217,11 +218,12 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
       if (command.startsWith('add_video_to_course_')) {
-        if (user.admin_state !== 'awaiting_course_selection' || !user.state_data.video) {
+        // prefix: 'add_video_to_course' -> [0, 1, 2, 3, 4]
+        const courseId = parseInt(command.split('_')[4], 10); 
+        if (user.admin_state !== 'awaiting_course_selection' || !user.state_data.video || isNaN(courseId)) {
            await sendMessage(chatId, 'حالة غير متوقعة. تم الإلغاء.');
            return res.status(200).send(await setAdminState(userId, null, null));
         }
-        const courseId = parseInt(command.split('_')[1], 10);
         const videoData = user.state_data.video; 
         await supabase.from('videos').insert({ ...videoData, course_id: courseId });
         await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
@@ -230,12 +232,14 @@ export default async (req, res) => {
       }
       
       // --- 4. معالجة أزرار "إدارة المحتوى" (حذف) ---
+      // (تم إصلاح الأخطاء المشابهة هنا أيضاً للتأكيد)
       if (command === 'admin_delete_course') {
         await fetchAndSendCoursesMenu(chatId, 'اختر الكورس الذي تريد حذفه:', {}, 'delete_course_confirm');
         return res.status(200).send('OK');
       }
       if (command.startsWith('delete_course_confirm_')) {
-        const courseId = parseInt(command.split('_')[1], 10);
+        // prefix: 'delete_course_confirm' -> [0, 1, 2, 3]
+        const courseId = parseInt(command.split('_')[3], 10);
         await supabase.from('videos').delete().eq('course_id', courseId);
         await supabase.from('user_course_access').delete().eq('course_id', courseId);
         await supabase.from('courses').delete().eq('id', courseId);
@@ -248,12 +252,14 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
       if (command.startsWith('select_video_course_')) {
-         const courseId = parseInt(command.split('_')[1], 10);
+         // prefix: 'select_video_course' -> [0, 1, 2, 3]
+         const courseId = parseInt(command.split('_')[3], 10);
          await fetchAndSendVideosMenu(chatId, courseId);
          return res.status(200).send('OK');
       }
       if (command.startsWith('delete_video_confirm_')) {
-        const videoId = parseInt(command.split('_')[1], 10);
+        // prefix: 'delete_video_confirm' -> [0, 1, 2, 3]
+        const videoId = parseInt(command.split('_')[3], 10);
         await supabase.from('videos').delete().eq('id', videoId);
         await sendMessage(chatId, `🗑️ تم حذف الفيديو بنجاح.`);
         await setAdminState(userId, null, null);
@@ -338,7 +344,6 @@ export default async (req, res) => {
 
   } catch (e) {
     console.error("Error in webhook:", e.message);
-    // الآن هذا الكود سيعمل لأن chatId معرف في النطاق الصحيح
     if (chatId) {
        await sendMessage(chatId, `حدث خطأ جسيم في الخادم: ${e.message}`);
     }
