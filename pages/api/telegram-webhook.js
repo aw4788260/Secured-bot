@@ -73,7 +73,8 @@ const sendUserMenu = async (chatId) => {
    const keyboard = {
     inline_keyboard: [
       [{ text: '➕ إضافة/تحديث مستخدمين', callback_data: 'admin_add_users' }],
-      // [جديد] زر حذف البصمة
+      // [جديد] زر سحب الصلاحيات
+      [{ text: '❌ سحب الصلاحيات', callback_data: 'admin_revoke_permissions' }],
       [{ text: '🔄 إعادة تعيين جهاز (حذف البصمة)', callback_data: 'admin_reset_device' }],
       [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
     ],
@@ -158,11 +159,17 @@ export default async (req, res) => {
         await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر (افصل بينهم بمسافة أو سطر جديد):');
         return res.status(200).send('OK');
       }
-
-      // --- [جديد] معالجة زر حذف البصمة ---
+      
       if (command === 'admin_reset_device') {
         await setAdminState(userId, 'awaiting_device_reset_id');
-        await sendMessage(chatId, '👤 أرسل ID المستخدم (أو عدة IDs) الذي تريد حذف بصمته (للسماح له بالتسجيل من جديد):');
+        await sendMessage(chatId, '👤 أرسل ID المستخدم (أو عدة IDs) الذي تريد حذف بصمته:');
+        return res.status(200).send('OK');
+      }
+      
+      // --- [جديد] معالجة زر سحب الصلاحيات ---
+      if (command === 'admin_revoke_permissions') {
+        await setAdminState(userId, 'awaiting_user_id_for_revoke');
+        await sendMessage(chatId, '👤 أرسل ID المستخدم (أو عدة IDs) الذي تريد "سحب" جميع صلاحياته (الكاملة والمحددة):');
         return res.status(200).send('OK');
       }
       
@@ -186,7 +193,6 @@ export default async (req, res) => {
         const stateData = user.state_data; 
         const usersToUpdate = stateData.users; 
         
-        // الخطوة 1: ضمان وجود المستخدمين في جدول 'users' أولاً
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: false }));
         const { error: userUpsertError } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
         if (userUpsertError) {
@@ -194,7 +200,6 @@ export default async (req, res) => {
           return res.status(200).send(await setAdminState(userId, null, null));
         }
 
-        // الخطوة 2: الآن يمكن إضافة الصلاحيات بأمان
         const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
         const { error: accessUpsertError } = await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
         if (accessUpsertError) {
@@ -202,7 +207,6 @@ export default async (req, res) => {
            return res.status(200).send(await setAdminState(userId, null, null));
         }
 
-        // --- [هذا هو التعديل] ---
         // إرسال رسالة التأكيد ومعها زر الإنهاء
         const finishKeyboard = {
           inline_keyboard: [[{ text: '👍 إنهاء', callback_data: 'assign_finish' }]]
@@ -222,7 +226,7 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
-      // --- 3. معالجة أزرار "إدارة المحتوى" ---
+      // --- (باقي أزرار إدارة المحتوى والحذف كما هي) ---
       if (command === 'admin_add_course') {
         await setAdminState(userId, 'awaiting_course_title');
         await sendMessage(chatId, '📚 أرسل "اسم" الكورس الجديد:');
@@ -245,8 +249,6 @@ export default async (req, res) => {
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
-      
-      // --- 4. معالجة أزرار "إدارة المحتوى" (حذف) ---
       if (command === 'admin_delete_course') {
         await fetchAndSendCoursesMenu(chatId, 'اختر الكورس الذي تريد حذفه:', {}, 'delete_course_confirm');
         return res.status(200).send('OK');
@@ -324,24 +326,55 @@ export default async (req, res) => {
             );
             break;
           
-          // --- [جديد] حالة حذف البصمة ---
           case 'awaiting_device_reset_id':
             const resetIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (resetIds.length === 0) {
               await sendMessage(chatId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
               return res.status(200).send('OK');
             }
-            
-            // حذف البصمات من جدول devices
             const { error: deleteError } = await supabase
               .from('devices')
               .delete()
-              .in('user_id', resetIds); // .in() لحذف كل الـ IDs
+              .in('user_id', resetIds); 
 
             if (deleteError) {
                await sendMessage(chatId, `حدث خطأ: ${deleteError.message}`);
             } else {
-               await sendMessage(chatId, `✅ تم حذف البصمات المسجلة لـ ${resetIds.length} مستخدم. يمكنهم الآن التسجيل من جديد.`);
+               await sendMessage(chatId, `✅ تم حذف البصمات المسجلة لـ ${resetIds.length} مستخدم.`);
+            }
+            await setAdminState(userId, null, null);
+            break;
+            
+          // --- [جديد] حالة سحب الصلاحيات ---
+          case 'awaiting_user_id_for_revoke':
+            const revokeIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
+            if (revokeIds.length === 0) {
+              await sendMessage(chatId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
+              return res.status(200).send('OK');
+            }
+
+            // الخطوة 1: حذف الصلاحيات المحددة
+            const { error: accessError } = await supabase
+              .from('user_course_access')
+              .delete()
+              .in('user_id', revokeIds);
+            
+            if (accessError) {
+               await sendMessage(chatId, `حدث خطأ أثناء حذف الصلاحيات المحددة: ${accessError.message}`);
+               // (سنكمل للخطوة التالية بغض النظر عن الخطأ هنا)
+            }
+
+            // الخطوة 2: إلغاء الصلاحيات الكاملة (تحديث is_subscribed)
+            // نستخدم upsert لضمان تحديث المستخدم حتى لو لم يكن موجوداً في جدول access
+            const userObjects = revokeIds.map(id => ({ id: id, is_subscribed: false }));
+            const { error: userError } = await supabase
+              .from('users')
+              .upsert(userObjects, { onConflict: 'id' }); 
+
+            if (userError) {
+                await sendMessage(chatId, `حدث خطأ أثناء تحديث الصلاحية الكاملة: ${userError.message}`);
+            } else {
+                await sendMessage(chatId, `✅ تم سحب "جميع" الصلاحيات (الكاملة والمحددة) لـ ${revokeIds.length} مستخدم.`);
             }
             await setAdminState(userId, null, null);
             break;
