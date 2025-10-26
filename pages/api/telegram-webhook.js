@@ -43,7 +43,9 @@ const setAdminState = async (userId, state, data = null) => {
     .eq('id', userId);
 };
 
-// --- دوال الأدمن (كما هي) ---
+// --- دوال الأدمن ---
+
+// 1. القائمة الرئيسية للأدمن
 const sendAdminMenu = async (chatId) => {
   const keyboard = {
     inline_keyboard: [
@@ -54,6 +56,7 @@ const sendAdminMenu = async (chatId) => {
   await sendMessage(chatId, 'Panel Admin:\nاختر القسم:', keyboard);
 };
 
+// 2. قائمة إدارة المحتوى
 const sendContentMenu = async (chatId) => {
   const keyboard = {
     inline_keyboard: [
@@ -65,16 +68,20 @@ const sendContentMenu = async (chatId) => {
   await sendMessage(chatId, 'إدارة المحتوى:', keyboard);
 };
 
+// 3. قائمة إدارة المستخدمين --- [تم التعديل] ---
 const sendUserMenu = async (chatId) => {
    const keyboard = {
     inline_keyboard: [
       [{ text: '➕ إضافة/تحديث مستخدمين', callback_data: 'admin_add_users' }],
+      // [جديد] زر حذف البصمة
+      [{ text: '🔄 إعادة تعيين جهاز (حذف البصمة)', callback_data: 'admin_reset_device' }],
       [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
     ],
   };
   await sendMessage(chatId, 'إدارة المستخدمين:', keyboard);
 };
 
+// 4. قائمة جلب الكورسات (للاختيار منها)
 const fetchAndSendCoursesMenu = async (chatId, text, stateData, callback_prefix) => {
   const { data: courses, error } = await supabase.from('courses').select('id, title').order('title');
   if (error || !courses || courses.length === 0) {
@@ -94,6 +101,7 @@ const fetchAndSendCoursesMenu = async (chatId, text, stateData, callback_prefix)
   await sendMessage(chatId, text, { inline_keyboard: keyboard });
 };
 
+// 5. قائمة جلب الفيديوهات (لحذف فيديو)
 const fetchAndSendVideosMenu = async (chatId, courseId) => {
   const { data: videos, error } = await supabase.from('videos').select('id, title').eq('course_id', courseId).order('id');
   if (error || !videos || videos.length === 0) {
@@ -128,7 +136,7 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // ... (أزرار التنقل كما هي) ...
+      // --- 1. معالجة أزرار التنقل الرئيسية ---
       if (command === 'admin_main_menu') {
         await setAdminState(userId, null, null);
         await sendAdminMenu(chatId);
@@ -150,12 +158,19 @@ export default async (req, res) => {
         await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر (افصل بينهم بمسافة أو سطر جديد):');
         return res.status(200).send('OK');
       }
+
+      // --- [جديد] معالجة زر حذف البصمة ---
+      if (command === 'admin_reset_device') {
+        await setAdminState(userId, 'awaiting_device_reset_id');
+        await sendMessage(chatId, '👤 أرسل ID المستخدم (أو عدة IDs) الذي تريد حذف بصمته (للسماح له بالتسجيل من جديد):');
+        return res.status(200).send('OK');
+      }
+      
       // "صلاحية كاملة"
       if (command === 'assign_all_courses') {
-        const usersToUpdate = user.state_data.users; // (string[])
+        const usersToUpdate = user.state_data.users; 
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: true }));
         const { error } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
-        
         if (error) {
            await sendMessage(chatId, `حدث خطأ: ${error.message}`);
         } else {
@@ -167,18 +182,13 @@ export default async (req, res) => {
       
       // "صلاحية محددة" (اختيار كورس)
       if (command.startsWith('assign_course_')) {
-        // --- [هذا هو الإصلاح] ---
-        // كان [1] وأصبح [2]
         const courseId = parseInt(command.split('_')[2], 10); 
-        // -------------------------
-
         const stateData = user.state_data; 
-        const usersToUpdate = stateData.users; // (string[])
+        const usersToUpdate = stateData.users; 
         
         // الخطوة 1: ضمان وجود المستخدمين في جدول 'users' أولاً
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: false }));
         const { error: userUpsertError } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
-
         if (userUpsertError) {
           await sendMessage(chatId, `حدث خطأ أثناء تحديث المستخدمين: ${userUpsertError.message}`);
           return res.status(200).send(await setAdminState(userId, null, null));
@@ -187,14 +197,21 @@ export default async (req, res) => {
         // الخطوة 2: الآن يمكن إضافة الصلاحيات بأمان
         const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
         const { error: accessUpsertError } = await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
-        
         if (accessUpsertError) {
-           // هذا هو الخطأ الذي ظهر لك
            await sendMessage(chatId, `حدث خطأ أثناء إضافة الصلاحية: ${accessUpsertError.message}`);
            return res.status(200).send(await setAdminState(userId, null, null));
         }
 
-        await sendMessage(chatId, `✅ تم إضافة صلاحية الكورس المحدد. اختر كورساً آخر أو اضغط "إنهاء".`);
+        // --- [هذا هو التعديل] ---
+        // إرسال رسالة التأكيد ومعها زر الإنهاء
+        const finishKeyboard = {
+          inline_keyboard: [[{ text: '👍 إنهاء', callback_data: 'assign_finish' }]]
+        };
+        await sendMessage(
+          chatId,
+          `✅ تم إضافة صلاحية الكورس المحدد. اختر كورساً آخر (من القائمة السابقة) أو اضغط "إنهاء".`,
+          finishKeyboard 
+        );
         return res.status(200).send('OK');
       }
       
@@ -205,8 +222,7 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
-      // --- 3. معالجة أزرار "إدارة المحتوى" (إضافة) ---
-      // (لا يوجد تغيير هنا، الأخطاء كانت في أزرار الحذف)
+      // --- 3. معالجة أزرار "إدارة المحتوى" ---
       if (command === 'admin_add_course') {
         await setAdminState(userId, 'awaiting_course_title');
         await sendMessage(chatId, '📚 أرسل "اسم" الكورس الجديد:');
@@ -218,7 +234,6 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
       if (command.startsWith('add_video_to_course_')) {
-        // prefix: 'add_video_to_course' -> [0, 1, 2, 3, 4]
         const courseId = parseInt(command.split('_')[4], 10); 
         if (user.admin_state !== 'awaiting_course_selection' || !user.state_data.video || isNaN(courseId)) {
            await sendMessage(chatId, 'حالة غير متوقعة. تم الإلغاء.');
@@ -232,13 +247,11 @@ export default async (req, res) => {
       }
       
       // --- 4. معالجة أزرار "إدارة المحتوى" (حذف) ---
-      // (تم إصلاح الأخطاء المشابهة هنا أيضاً للتأكيد)
       if (command === 'admin_delete_course') {
         await fetchAndSendCoursesMenu(chatId, 'اختر الكورس الذي تريد حذفه:', {}, 'delete_course_confirm');
         return res.status(200).send('OK');
       }
       if (command.startsWith('delete_course_confirm_')) {
-        // prefix: 'delete_course_confirm' -> [0, 1, 2, 3]
         const courseId = parseInt(command.split('_')[3], 10);
         await supabase.from('videos').delete().eq('course_id', courseId);
         await supabase.from('user_course_access').delete().eq('course_id', courseId);
@@ -252,13 +265,11 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
       if (command.startsWith('select_video_course_')) {
-         // prefix: 'select_video_course' -> [0, 1, 2, 3]
          const courseId = parseInt(command.split('_')[3], 10);
          await fetchAndSendVideosMenu(chatId, courseId);
          return res.status(200).send('OK');
       }
       if (command.startsWith('delete_video_confirm_')) {
-        // prefix: 'delete_video_confirm' -> [0, 1, 2, 3]
         const videoId = parseInt(command.split('_')[3], 10);
         await supabase.from('videos').delete().eq('id', videoId);
         await sendMessage(chatId, `🗑️ تم حذف الفيديو بنجاح.`);
@@ -312,7 +323,30 @@ export default async (req, res) => {
               'assign_course'
             );
             break;
+          
+          // --- [جديد] حالة حذف البصمة ---
+          case 'awaiting_device_reset_id':
+            const resetIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
+            if (resetIds.length === 0) {
+              await sendMessage(chatId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
+              return res.status(200).send('OK');
+            }
+            
+            // حذف البصمات من جدول devices
+            const { error: deleteError } = await supabase
+              .from('devices')
+              .delete()
+              .in('user_id', resetIds); // .in() لحذف كل الـ IDs
 
+            if (deleteError) {
+               await sendMessage(chatId, `حدث خطأ: ${deleteError.message}`);
+            } else {
+               await sendMessage(chatId, `✅ تم حذف البصمات المسجلة لـ ${resetIds.length} مستخدم. يمكنهم الآن التسجيل من جديد.`);
+            }
+            await setAdminState(userId, null, null);
+            break;
+
+          // (باقي الحالات كما هي)
           case 'awaiting_course_title':
             await supabase.from('courses').insert({ title: text });
             await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح.`);
@@ -327,7 +361,7 @@ export default async (req, res) => {
             videoData.youtube_id = text;
             await fetchAndSendCoursesMenu(
               chatId,
-              '👍 تم حفظ كود اليوتيوب.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
+              '👍 تم حفظ كود اليوتيوب.\n\الآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
               { video: videoData }, 
               'add_video_to_course'
             );
