@@ -16,9 +16,7 @@ const escapeMarkdown = (text) => {
 };
 
 
-// [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
-const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'MarkdownV2') => {
-    // ... (باقي الكود كما هو) ...
+
 // [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
 const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'MarkdownV2') => {
     if (!text || text.trim() === '') {
