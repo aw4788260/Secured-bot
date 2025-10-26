@@ -49,7 +49,6 @@ export default function WatchPage() {
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        // **تصحيح 1: تطبيق نسبة الأبعاد المطلوبة 13:16**
         const calculatedHeight = containerWidth * (16 / 13); 
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
@@ -73,11 +72,10 @@ export default function WatchPage() {
     return () => {
         window.removeEventListener('resize', updateSize);
         clearInterval(timeInterval);
-        clearInterval(watermarkIntervalRef.current);
+        if(watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current);
     };
   }, [videoId]);
 
-  // --- (باقي دوال التحكم تبقى كما هي) ---
   const handlePlayPause = () => {
     if (!playerRef.current) return;
     const playerState = playerRef.current.getPlayerState();
@@ -118,8 +116,12 @@ export default function WatchPage() {
     return `${minutes}:${seconds}`;
   };
 
-  if (error) return <div className="container"><h1>{error}</h1></div>;
-  if (!youtubeId || !user || !playerSize.width || playerSize.width === '100%') return <div className="container"><h1>جاري تحميل الفيديو...</h1></div>;
+  if (error) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+  
+  // This is the corrected condition
+  if (!youtubeId || !user || playerSize.width === '100%') {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px', textAlign: 'center' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  }
 
   const opts = {
     height: playerSize.height,
@@ -149,9 +151,7 @@ export default function WatchPage() {
             onEnd={() => setIsPlaying(false)}
           />
           
-          {/* **تصحيح 2: فصل الطبقات المرئية عن طبقة التحكم** */}
           <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
-              {/* الطبقة المرئية (Visual Layer) - لا تتفاعل مع اللمس */}
               {!isPlaying && <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '80px', color: 'white', textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>▶</div>}
               
               {showSeekIcon.visible && (
@@ -174,14 +174,12 @@ export default function WatchPage() {
               </div>
           </div>
 
-          {/* طبقة التحكم (Control Layer) - هي التي تستقبل النقرات */}
           <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 'calc(100% - 40px)', zIndex: 12, display: 'flex' }}>
               <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('backward')}></div>
               <div style={{ flex: 2, height: '100%', cursor: 'pointer' }} onClick={handlePlayPause}></div>
               <div style={{ flex: 1, height: '100%' }} onDoubleClick={() => handleSeek('forward')}></div>
           </div>
           
-          {/* شريط التحكم السفلي */}
           <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '40px', display: 'flex', alignItems: 'center', padding: '0 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)', zIndex: 11 }}>
               <span style={{ color: 'white', fontSize: '12px', marginRight: '10px', minWidth: '40px' }}>{formatTime(currentTime)}</span>
               <div 
