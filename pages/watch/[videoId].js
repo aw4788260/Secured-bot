@@ -56,7 +56,7 @@ export default function WatchPage() {
       }
     };
 
-    updateSize();
+    const timer = setTimeout(updateSize, 100);
     window.addEventListener('resize', updateSize);
 
     const interval = setInterval(() => {
