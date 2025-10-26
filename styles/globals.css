@@ -47,16 +47,12 @@ a {
   height: 100%;
 }
 
-/* --- (تعديلات) أنماط ديناميكية لصفحة الكورسات --- */
 .app-container {
-  padding: 20px 15px; /* */
-
-  /* 1. حذفنا العرض الأقصى و الهوامش التلقائية */
-  /* max-width: 800px; */ /* (تم الحذف) */
-  margin: 0; /* (تم التعديل) */
-
-  /* 2. أضفنا هذا لملء الطول (كما في الرد السابق) */
-  min-height: 100vh; 
+  /* 1. تم حذف padding و max-width و margin: auto */
+  margin: 0;
+  
+  /* 2. نتأكد أنه يملأ الطول */
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
