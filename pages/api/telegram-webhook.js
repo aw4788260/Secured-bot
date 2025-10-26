@@ -13,6 +13,7 @@ const sendMessage = async (chatId, text) => {
 };
 
 const getUser = async (userId) => {
+  // هذه الدالة تتوقع userId كـ number
   const { data, error } = await supabase
     .from('users')
     .select('id, is_subscribed, is_admin, admin_state, state_data')
@@ -22,7 +23,7 @@ const getUser = async (userId) => {
   if (error && error.code === 'PGRST116') { // not found
     const { data: newUser } = await supabase
       .from('users')
-      .insert({ id: userId, is_subscribed: false, is_admin: false })
+      .insert({ id: userId, is_subscribed: false, is_admin: false }) // تستخدم number
       .select('id, is_subscribed, is_admin, admin_state, state_data')
       .single();
     return newUser;
@@ -31,6 +32,7 @@ const getUser = async (userId) => {
 };
 
 const setAdminState = async (userId, state, data = null) => {
+  // هذه الدالة تتوقع userId كـ number
   await supabase
     .from('users')
     .update({ admin_state: state, state_data: data })
@@ -50,62 +52,58 @@ export default async (req, res) => {
     }
 
     const chatId = message.chat.id;
-    // --- **هذا هو التعديل** ---
-    // قمنا بتحويل ID المستخدم (الأدمن) إلى BigInt لضمان تطابق الأنواع
-    const userId = BigInt(message.from.id);
-    // -------------------------
+    // هنا ID المستخدم هو number وهو ما تتوقعه getUser
+    const userId = message.from.id; 
     const text = message.text;
 
-    const user = await getUser(userId);
+    const user = await getUser(userId); // استدعاء getUser بـ number
 
     // --- منطقة الأدمن ---
     if (user && user.is_admin) {
-      // ... (أمر /adduser يبقى كما هو)
       if (text.startsWith('/adduser')) {
         const targetUserId = text.split(' ')[1];
         if (!targetUserId || !/^\d+$/.test(targetUserId)) {
           await sendMessage(chatId, 'خطأ. الصيغة: /adduser 123456789');
         } else {
-          // هذا السطر صحيح لأنه يحول النص القادم من الأمر إلى BigInt
+          // --- **هذا هو التعديل** ---
+          // نستخدم parseInt لتحويل النص إلى number ليتطابق مع باقي الدوال
           await supabase
             .from('users')
-            .upsert({ id: BigInt(targetUserId), is_subscribed: true }, { onConflict: 'id' });
+            .upsert({ id: parseInt(targetUserId, 10), is_subscribed: true }, { onConflict: 'id' });
+          // -------------------------
           await sendMessage(chatId, `✅ تم تفعيل الاشتراك للمستخدم ${targetUserId}.`);
         }
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
 
-      // --- الأمر الجديد: بدء محادثة إضافة كورس ---
+      // ... (باقي أوامر الأدمن كما هي) ...
       if (text === '/addcourse') {
         await setAdminState(userId, 'awaiting_course_title');
         await sendMessage(chatId, '📚 حسناً، أرسل "اسم" الكورس الجديد:');
         return res.status(200).send('OK');
       }
 
-      // ... (أمر /addvideo يبقى كما هو)
       if (text === '/addvideo') {
         await setAdminState(userId, 'awaiting_video_title');
         await sendMessage(chatId, '🚀 حسناً، أرسل "عنوان" الفيديو:');
         return res.status(200).send('OK');
       }
       
-      // ... (أمر /cancel يبقى كما هو)
       if (text === '/cancel') {
         await setAdminState(userId, null, null);
         await sendMessage(chatId, '👍 تم إلغاء العملية.');
         return res.status(200).send('OK');
       }
 
-      // --- معالجة المحادثة (الحالة) ---
+      // ... (باقي معالجة الحالات كما هي) ...
       if (user.admin_state) {
         switch (user.admin_state) {
-          // --- الحالة الجديدة: كان ينتظر اسم الكورس ---
           case 'awaiting_course_title':
             const { data: newCourse, error } = await supabase
               .from('courses')
               .insert({ title: text })
-              .select('id') // طلب إرجاع ID الكورس الجديد
+              .select('id') 
               .single();
 
             if (error) {
@@ -116,7 +114,6 @@ export default async (req, res) => {
             await setAdminState(userId, null, null);
             break;
 
-          // ... (حالات إضافة الفيديو تبقى كما هي)
           case 'awaiting_video_title':
             await setAdminState(userId, 'awaiting_youtube_id', { title: text });
             await sendMessage(chatId, `👍 العنوان: "${text}"\n\nالآن أرسل "كود يوتيوب":`);
@@ -163,7 +160,8 @@ export default async (req, res) => {
     await sendMessage(chatId, 'الأمر غير معروف. اضغط /start');
 
   } catch (e) {
-    console.error("Error in webhook:", e.message);
+    // هذا السطر هو الذي أظهر الخطأ
+    console.error("Error in webhook:", e.message); 
   }
   res.status(200).send('OK');
 };
