@@ -50,7 +50,10 @@ export default async (req, res) => {
     }
 
     const chatId = message.chat.id;
-    const userId = message.from.id;
+    // --- **هذا هو التعديل** ---
+    // قمنا بتحويل ID المستخدم (الأدمن) إلى BigInt لضمان تطابق الأنواع
+    const userId = BigInt(message.from.id);
+    // -------------------------
     const text = message.text;
 
     const user = await getUser(userId);
@@ -63,6 +66,7 @@ export default async (req, res) => {
         if (!targetUserId || !/^\d+$/.test(targetUserId)) {
           await sendMessage(chatId, 'خطأ. الصيغة: /adduser 123456789');
         } else {
+          // هذا السطر صحيح لأنه يحول النص القادم من الأمر إلى BigInt
           await supabase
             .from('users')
             .upsert({ id: BigInt(targetUserId), is_subscribed: true }, { onConflict: 'id' });
