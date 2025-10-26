@@ -14,12 +14,10 @@ export default function WatchPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef(null);
   
-  // -- جديد: لتخزين أبعاد المشغل المحسوبة --
-  const [playerSize, setPlayerSize] = useState({ width: 0, height: 0 });
+  const [playerSize, setPlayerSize] = useState({ width: '100%', height: 'auto' }); // قيمة أولية مرنة
   const wrapperRef = useRef(null); // للوصول إلى الحاوية وقياسها
 
   useEffect(() => {
-    // ... (منطق جلب البيانات يبقى كما هو)
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
@@ -40,37 +38,50 @@ export default function WatchPage() {
        setError("الرجاء الفتح من تليجرام.");
     }
 
-    // -- جديد: دالة حساب وتحديث الأبعاد --
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        // حساب الارتفاع المثالي بناءً على العرض
         const calculatedHeight = containerWidth * (9 / 16);
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
     };
 
-    // حساب الأبعاد عند تحميل الصفحة لأول مرة
     updateSize(); 
-    // إعادة حساب الأبعاد عند تغيير حجم النافذة (مهم للهواتف عند تدوير الشاشة)
     window.addEventListener('resize', updateSize);
-
-    // تنظيف المستمع عند إغلاق الصفحة
     return () => window.removeEventListener('resize', updateSize);
-
   }, [videoId]);
 
-  // --- دوال التحكم ---
-  const handlePlayPause = () => { /* ... (تبقى كما هي) ... */ };
-  const handleSeek = (direction) => { /* ... (تبقى كما هي) ... */ };
-  const onPlayerReady = (event) => { /* ... (تبقى كما هي) ... */ };
+  const handlePlayPause = () => {
+    if (!playerRef.current) return;
+    const playerState = playerRef.current.getPlayerState();
+    if (playerState === 1) { // is playing
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
+  };
 
-  if (error) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-  if (!youtubeId || !user) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  const handleSeek = (direction) => {
+    if (!playerRef.current) return;
+    const currentTime = playerRef.current.getCurrentTime();
+    const newTime = direction === 'forward' ? currentTime + 10 : currentTime - 10;
+    playerRef.current.seekTo(newTime, true);
+  };
+  
+  const onPlayerReady = (event) => {
+    playerRef.current = event.target;
+  };
+
+  if (error) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+  }
+  if (!youtubeId || !user || playerSize.width === 0) { // التأكد من حساب الحجم
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  }
 
   const opts = {
-    height: playerSize.height, // تطبيق الارتفاع المحسوب
-    width: playerSize.width,   // تطبيق العرض المحسوب
+    height: playerSize.height,
+    width: playerSize.width,
     playerVars: {
       autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1,
     },
@@ -83,12 +94,12 @@ export default function WatchPage() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
       
-      {/* **تعديل 1: إضافة ref للحاوية** */}
       <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '900px' }}>
         
-        {/* نستخدم الأبعاد المحسوبة هنا */}
+        {/* **الحاوية الداخلية التي تأخذ الأبعاد الديناميكية** */}
         <div style={{ position: 'relative', width: playerSize.width, height: playerSize.height }}>
-          {/* مشغل يوتيوب (الطبقة السفلية) */}
+          
+          {/* 1. مشغل يوتيوب (يملأ الحاوية الداخلية) */}
           <YouTube 
             videoId={youtubeId} 
             opts={opts}
@@ -99,7 +110,7 @@ export default function WatchPage() {
             onEnd={() => setIsPlaying(false)}
           />
           
-          {/* طبقة التحكم (الطبقة العلوية) */}
+          {/* 2. الدرع الشفاف (يملأ نفس الحاوية الداخلية بالضبط) */}
           <div style={{
               position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
               zIndex: 10, 
