@@ -17,13 +17,16 @@ export default function WatchPage() {
   const [playerSize, setPlayerSize] = useState({ width: '100%', height: 'auto' });
   const wrapperRef = useRef(null);
 
+  // --- متغيرات حالة لشريط التقدم والتحكم ---
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
   const seekTimeoutRef = useRef(null);
 
+  // --- جديد: متغيرات حالة لموقع العلامة المائية ---
   const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
   const watermarkIntervalRef = useRef(null);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -49,7 +52,7 @@ export default function WatchPage() {
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        const calculatedHeight = containerWidth * (10 / 16);
+        const calculatedHeight = containerWidth * (10 / 16); // يمكنك تعديل 10 لزيادة/نقصان الارتفاع
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
     };
@@ -63,16 +66,18 @@ export default function WatchPage() {
       }
     }, 500);
 
+    // --- جديد: بدء حركة العلامة المائية ---
     watermarkIntervalRef.current = setInterval(() => {
-        const newTop = Math.floor(Math.random() * 70) + 10;
-        const newLeft = Math.floor(Math.random() * 60) + 10;
+        const newTop = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
+        const newLeft = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
         setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
-    }, 5000); 
+    }, 5000); // تغيير الموقع كل 5 ثوانٍ
+
 
     return () => {
         window.removeEventListener('resize', updateSize);
         clearInterval(interval);
-        clearInterval(watermarkIntervalRef.current);
+        clearInterval(watermarkIntervalRef.current); // تنظيف مؤقت العلامة المائية
     };
   }, [videoId]);
 
@@ -115,7 +120,7 @@ export default function WatchPage() {
   };
 
   const formatTime = (timeInSeconds) => {
-    if (isNaN(timeInSeconds) || timeInSeconds < 0) return '0:00';
+    if (isNaN(timeInSeconds) || timeInSeconds === 0) return '0:00';
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
     return `${minutes}:${seconds}`;
@@ -124,7 +129,7 @@ export default function WatchPage() {
   if (error) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
-  if (!youtubeId || !user || playerSize.width === 0 || playerSize.width === '100%') {
+  if (!youtubeId || !user || playerSize.width === 0) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
   }
 
@@ -177,7 +182,7 @@ export default function WatchPage() {
                   style={{ flexGrow: 1, height: '4px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px', cursor: 'pointer', position: 'relative' }}
                   onClick={handleProgressBarClick}
                 >
-                  <div style={{ height: '100%', width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`, background: '#FF0000', borderRadius: '2px' }}></div>
+                  <div style={{ height: '100%', width: `${(currentTime / duration) * 100}%`, background: '#FF0000', borderRadius: '2px' }}></div>
                 </div>
                 <span style={{ color: 'white', fontSize: '12px', marginLeft: '10px', minWidth: '40px' }}>{formatTime(duration)}</span>
             </div>
@@ -199,22 +204,19 @@ export default function WatchPage() {
               </div>
             )}
             
-            {/* --- العلامة المائية المعدلة --- */}
+            {/* --- العلامة المائية المتحركة --- */}
             <div style={{
               position: 'absolute',
-              top: watermarkPos.top,
-              left: watermarkPos.left,
-              padding: '4px 8px', // إضافة هوامش داخلية
-              background: 'rgba(0, 0, 0, 0.8)', // خلفية سوداء شفافة 80%
-              color: 'white', // كتابة بيضاء
-              fontSize: '12px', // حجم خط مناسب
-              borderRadius: '4px', // حواف دائرية
+              top: watermarkPos.top,    // الموضع العلوي الديناميكي
+              left: watermarkPos.left,  // الموضع الأيسر الديناميكي
+              fontSize: '1.5vw',
+              color: 'rgba(255, 255, 255, 0.4)',
               fontWeight: 'bold',
+              textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
               pointerEvents: 'none',
-              transition: 'top 2s ease-in-out, left 2s ease-in-out',
-              whiteSpace: 'nowrap' // منع التفاف النص
+              transition: 'top 2s ease-in-out, left 2s ease-in-out' // حركة سلسة
             }}>
-              {user.first_name} ({user.id})
+              {user.first_name} {user.last_name || ''}
             </div>
           </div>
         </div>
