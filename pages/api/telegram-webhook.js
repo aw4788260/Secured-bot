@@ -18,23 +18,46 @@ const escapeMarkdown = (text) => {
 
 
 // [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
+// [تم التعديل] دالة لإرسال الرسائل تدعم parse_mode مختلف
+// وتقوم بعمل Escape تلقائي لـ MarkdownV2
 const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'MarkdownV2') => {
     if (!text || text.trim() === '') {
         console.warn(`Attempted to send empty message to chat ID: ${chatId}`);
         return;
     }
-  try {
-      await axios.post(`${TELEGRAM_API}/sendMessage`, {
-        chat_id: chatId,
-        text: text,
-        ...(reply_markup && { reply_markup }),
-        parse_mode: parse_mode,
-        // ✅ إضافة خاصية الحماية هنا
-        protect_content: true
-      });
-  } catch (error) {
-       console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
-  }
+
+    // ✅ [الحل هنا]
+    // نقوم بتهريب النص تلقائيًا فقط إذا كان الوضع هو MarkdownV2
+    const processedText = (parse_mode === 'MarkdownV2') ? escapeMarkdown(text) : text;
+
+    try {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: processedText, // <--- نستخدم النص المُعالج
+            ...(reply_markup && { reply_markup }),
+            parse_mode: parse_mode,
+            protect_content: true
+        });
+    } catch (error) {
+        console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
+        
+        // [تحسين إضافي]
+        // إذا فشل الإرسال بسبب خطأ Markdown، نحاول الإرسال مرة أخرى كنص عادي
+        if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
+            console.warn(`Markdown parsing failed for chat ${chatId}. Resending as plain text.`);
+            try {
+                await axios.post(`${TELEGRAM_API}/sendMessage`, {
+                    chat_id: chatId,
+                    text: text, // <--- نستخدم النص الأصلي
+                    ...(reply_markup && { reply_markup }),
+                    // لا نرسل parse_mode (سيستخدم الوضع الافتراضي)
+                    protect_content: true
+                });
+            } catch (retryError) {
+                console.error(`Failed to resend plain text message to chat ${chatId}:`, retryError.response?.data || retryError.message);
+            }
+        }
+    }
 };
 const answerCallbackQuery = async (callbackQueryId) => {
   await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
