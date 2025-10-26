@@ -52,7 +52,7 @@ export default function WatchPage() {
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        const calculatedHeight = containerWidth * (10 / 16); // يمكنك تعديل 10 لزيادة/نقصان الارتفاع
+        const calculatedHeight = containerWidth * (13 / 16); // يمكنك تعديل 10 لزيادة/نقصان الارتفاع
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
     };
@@ -148,7 +148,7 @@ export default function WatchPage() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
       
-      <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '900px' }}>
+      <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: '100%' }}>
         
         <div style={{ position: 'relative', width: playerSize.width, height: playerSize.height }}>
           
