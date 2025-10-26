@@ -3,39 +3,38 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 
-// --- [هذا هو التعديل] ---
-// قمنا بتعديل هذه الدالة لتجميع بصمة "مستقرة وفريدة"
+// --- [تعديل] إضافة try...catch هنا للأمان ---
 const loadFingerprint = async () => {
-  const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
-  
-  const fp = await FingerprintJS.load({
-    monitoring: false 
-  });
+  try {
+    const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
+    
+    const fp = await FingerprintJS.load({
+      monitoring: false 
+    });
 
-  // طلب المكونات الجديدة (المستقرة + الفريدة)
-  const result = await fp.get({
-    components: [
-      // مكونات مستقرة (قد تتشابه بين جهازين نفس النوع)
-      'platform',      // 1. نوع نظام التشغيل/الجهاز
-      'vendorWebGL',   // 2. نوع كارت الشاشة (Vendor)
-      'rendererWebGL', // 3. اسم كارت الشاشة (Renderer)
-      
-      // مكون مستقر وفريد (يختلف بناءً على التطبيقات المثبتة)
-      'fonts'          // 4. قائمة الخطوط المثبتة
-    ]
-  });
+    const result = await fp.get({
+      components: [
+        'platform',      
+        'vendorWebGL',   
+        'rendererWebGL', 
+        'fonts'          
+      ]
+    });
 
-  // نقوم بتجميع القيم في نص واحد لإنشاء البصمة
-  const components = result.components;
-  const stableFingerprint = JSON.stringify({
-    p: components.platform.value,
-    v: components.vendorWebGL.value,
-    r: components.rendererWebGL.value,
-    // (سنقوم بضغط قائمة الخطوط لتقليل حجم البصمة)
-    f: components.fonts.value.map(font => font.family).join(',')
-  });
+    const components = result.components;
+    const stableFingerprint = JSON.stringify({
+      p: components.platform.value,
+      v: components.vendorWebGL.value,
+      r: components.rendererWebGL.value,
+      f: components.fonts.value.map(font => font.family).join(',')
+    });
 
-  return stableFingerprint;
+    return stableFingerprint;
+  } catch (e) {
+    // إذا فشلت الدالة، قم برمي الخطأ ليتم التقاطه في .catch
+    console.error("Fingerprint load failed:", e);
+    throw new Error(`Fingerprint component failed: ${e.message}`);
+  }
 };
 // --- [نهاية التعديل] ---
 
@@ -73,9 +72,9 @@ export default function App() {
           return;
         }
 
-        // --- الخطوة 2: التحقق من بصمة الجهاز (تستخدم الدالة المعدلة) ---
+        // --- الخطوة 2: التحقق من بصمة الجهاز ---
         setStatus('جاري التحقق من بصمة الجهاز...');
-        loadFingerprint().then(fingerprint => { // <-- ستُرجع البصمة المستقرة
+        loadFingerprint().then(fingerprint => { 
           fetch('/api/auth/check-device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -100,7 +99,14 @@ export default function App() {
                 });
             }
           });
+        })
+        // --- [هذا هو الإصلاح الرئيسي] ---
+        // إضافة .catch() لالتقاط أي خطأ يحدث أثناء loadFingerprint
+        .catch(err => {
+          console.error("Error loading fingerprint:", err);
+          setError("حدث خطأ أثناء التحقق من بصمة الجهاز. قد لا يكون متصفحك مدعوماً.");
         });
+        // --- [نهاية الإصلاح] ---
 
       })
       .catch(err => {
