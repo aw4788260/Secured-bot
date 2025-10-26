@@ -356,6 +356,7 @@ export default function WatchPage() {
                     opacity: 0.8;
                     animation: seek-pop 0.6s ease-out;
                     pointer-events: none;
+                    direction: ltr;
                 }
                 .seek-indicator.forward { left: 75%; }
                 .seek-indicator.backward { left: 25%; }
