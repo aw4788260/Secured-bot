@@ -57,7 +57,7 @@ export default function WatchPage() {
       }
     };
 
-    updateSize(); 
+    
     window.addEventListener('resize', updateSize);
 
     const interval = setInterval(() => {
@@ -107,6 +107,10 @@ export default function WatchPage() {
   const onPlayerReady = (event) => {
     playerRef.current = event.target;
     setDuration(event.target.getDuration());
+    if (wrapperRef.current) {
+        const containerWidth = wrapperRef.current.offsetWidth;
+        const calculatedHeight = containerWidth * (13 / 16); // يمكنك تعديل النسبة حسب الحاجة
+        setPlayerSize({ width: containerWidth, height: calculatedHeight });
   };
 
   const handleProgressBarClick = (e) => {
