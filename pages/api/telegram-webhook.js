@@ -10,6 +10,8 @@ const sendMessage = async (chatId, text, reply_markup = null) => {
     chat_id: chatId,
     text: text,
     ...(reply_markup && { reply_markup }),
+    // إضافة parse_mode للسماح بـ `...`
+    parse_mode: 'Markdown' 
   });
 };
 
@@ -68,13 +70,12 @@ const sendContentMenu = async (chatId) => {
   await sendMessage(chatId, 'إدارة المحتوى:', keyboard);
 };
 
-// 3. قائمة إدارة المستخدمين --- [تم التعديل] ---
+// 3. قائمة إدارة المستخدمين
 const sendUserMenu = async (chatId) => {
    const keyboard = {
     inline_keyboard: [
       [{ text: '➕ إضافة/تحديث مستخدمين', callback_data: 'admin_add_users' }],
-      // [جديد] زر سحب الصلاحيات
-      [{ text: '❌ سحب الصلاحيات', callback_data: 'admin_revoke_permissions' }],
+      [{ text: '❌ سحب الصلاحيات (محدد/كامل)', callback_data: 'admin_revoke_permissions' }],
       [{ text: '🔄 إعادة تعيين جهاز (حذف البصمة)', callback_data: 'admin_reset_device' }],
       [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
     ],
@@ -116,6 +117,80 @@ const fetchAndSendVideosMenu = async (chatId, courseId) => {
   await sendMessage(chatId, 'اختر الفيديو الذي تريد حذفه:', { inline_keyboard: keyboard });
 };
 
+
+// --- [دالة جديدة] ---
+// 6. قائمة سحب الصلاحيات التفاعلية
+const sendRevokeMenu = async (adminChatId, targetUserId) => {
+  try {
+    // جلب حالة الاشتراك الكامل
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('is_subscribed')
+      .eq('id', targetUserId)
+      .single();
+
+    if (userError && userError.code !== 'PGRST116') throw userError;
+
+    // جلب الكورسات المحددة
+    const { data: accessData, error: accessError } = await supabase
+      .from('user_course_access')
+      .select('course_id')
+      .eq('user_id', targetUserId);
+    if (accessError) throw accessError;
+
+    let courses = [];
+    if (accessData && accessData.length > 0) {
+      const courseIds = accessData.map(a => a.course_id);
+      const { data: coursesData, error: coursesError } = await supabase
+        .from('courses')
+        .select('id, title')
+        .in('id', courseIds);
+      if (coursesError) throw coursesError;
+      courses = coursesData;
+    }
+
+    // بناء الرسالة والأزرار
+    let message = `*مراجعة صلاحيات المستخدم:*\n\`${targetUserId}\`\n\n`;
+    const keyboard = [];
+
+    if (user && user.is_subscribed) {
+      message += "الحالة: 💎 **مشترك (صلاحية كاملة)**\n";
+    } else {
+      message += "الحالة: 🔒 **صلاحية محددة**\n";
+    }
+
+    if (courses.length > 0) {
+      message += "*الكورسات المحددة:*\n";
+      courses.forEach(course => {
+        message += `- ${course.title}\n`;
+        // زر لسحب هذا الكورس المحدد
+        keyboard.push([{
+          text: `❌ سحب [${course.title}]`,
+          callback_data: `revoke_specific_${targetUserId}_course_${course.id}`
+        }]);
+      });
+    } else {
+      message += "لا يمتلك صلاحية لأي كورس محدد.\n";
+    }
+
+    // زر سحب كل الصلاحيات
+    keyboard.unshift([{
+      text: '⛔️ سحب "جميع" الصلاحيات (الكاملة والمحددة)',
+      callback_data: `revoke_all_${targetUserId}`
+    }]);
+    
+    // زر الإلغاء
+    keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: 'admin_manage_users' }]);
+
+    await sendMessage(adminChatId, message, { inline_keyboard: keyboard });
+
+  } catch (error) {
+    await sendMessage(adminChatId, `حدث خطأ أثناء جلب بيانات المستخدم: ${error.message}`);
+    await setAdminState(adminChatId, null, null); 
+  }
+};
+
+
 // --- الـ Webhook الرئيسي ---
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(200).send('OK');
@@ -127,7 +202,7 @@ export default async (req, res) => {
 
     if (callback_query) {
       chatId = callback_query.message.chat.id;
-      userId = String(callback_query.from.id); // استخدام string دائماً
+      userId = String(callback_query.from.id); // الأدمن
       user = await getUser(userId);
       const command = callback_query.data;
       await answerCallbackQuery(callback_query.id);
@@ -159,17 +234,17 @@ export default async (req, res) => {
         await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر (افصل بينهم بمسافة أو سطر جديد):');
         return res.status(200).send('OK');
       }
-      
       if (command === 'admin_reset_device') {
         await setAdminState(userId, 'awaiting_device_reset_id');
         await sendMessage(chatId, '👤 أرسل ID المستخدم (أو عدة IDs) الذي تريد حذف بصمته:');
         return res.status(200).send('OK');
       }
       
-      // --- [جديد] معالجة زر سحب الصلاحيات ---
+      // [تعديل] زر سحب الصلاحيات (الخطوة 1: طلب الـ ID)
       if (command === 'admin_revoke_permissions') {
         await setAdminState(userId, 'awaiting_user_id_for_revoke');
-        await sendMessage(chatId, '👤 أرسل ID المستخدم (أو عدة IDs) الذي تريد "سحب" جميع صلاحياته (الكاملة والمحددة):');
+        // تعديل: نطلب مستخدم واحد فقط لهذه العملية
+        await sendMessage(chatId, '👤 أرسل "ID المستخدم الواحد" الذي تريد مراجعة صلاحياته:');
         return res.status(200).send('OK');
       }
       
@@ -207,7 +282,6 @@ export default async (req, res) => {
            return res.status(200).send(await setAdminState(userId, null, null));
         }
 
-        // إرسال رسالة التأكيد ومعها زر الإنهاء
         const finishKeyboard = {
           inline_keyboard: [[{ text: '👍 إنهاء', callback_data: 'assign_finish' }]]
         };
@@ -225,6 +299,38 @@ export default async (req, res) => {
          await setAdminState(userId, null, null);
          return res.status(200).send('OK');
       }
+      
+      // --- [جديد] معالجات أزرار سحب الصلاحيات ---
+      // 1. سحب "كل" الصلاحيات
+      if (command.startsWith('revoke_all_')) {
+        const targetUserId = command.split('_')[2];
+        // الخطوة 1: حذف الصلاحيات المحددة
+        await supabase.from('user_course_access').delete().eq('user_id', targetUserId);
+        // الخطوة 2: إلغاء الصلاحية الكاملة
+        await supabase.from('users').update({ is_subscribed: false }).eq('id', targetUserId);
+        
+        await sendMessage(chatId, `✅ تم سحب "جميع" الصلاحيات من المستخدم \`${targetUserId}\`.`);
+        await setAdminState(userId, null, null);
+        return res.status(200).send('OK');
+      }
+      
+      // 2. سحب كورس "محدد"
+      if (command.startsWith('revoke_specific_')) {
+        const parts = command.split('_');
+        const targetUserId = parts[2];
+        const courseId = parts[4];
+
+        // الخطوة 1: حذف الصلاحية المحددة
+        await supabase.from('user_course_access').delete().match({ user_id: targetUserId, course_id: courseId });
+        // الخطوة 2 (احتياطي): التأكد أن اشتراكه ليس كاملاً
+        await supabase.from('users').update({ is_subscribed: false }).eq('id', targetUserId);
+
+        await sendMessage(chatId, `✅ تم سحب صلاحية الكورس. جاري تحديث القائمة...`);
+        // تحديث القائمة (نعيد استدعاء الدالة)
+        await sendRevokeMenu(chatId, targetUserId);
+        return res.status(200).send('OK');
+      }
+
 
       // --- (باقي أزرار إدارة المحتوى والحذف كما هي) ---
       if (command === 'admin_add_course') {
@@ -285,7 +391,7 @@ export default async (req, res) => {
     // --- 3. معالجة الرسائل النصية (لإدخال البيانات) ---
     if (message && message.text && message.from) {
       chatId = message.chat.id;
-      userId = String(message.from.id); // استخدام string دائماً
+      userId = String(message.from.id); // الأدمن
       text = message.text;
       user = await getUser(userId);
 
@@ -345,38 +451,24 @@ export default async (req, res) => {
             await setAdminState(userId, null, null);
             break;
             
-          // --- [جديد] حالة سحب الصلاحيات ---
+          // [تعديل] حالة سحب الصلاحيات (الخطوة 2: استلام الـ ID)
           case 'awaiting_user_id_for_revoke':
             const revokeIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
+            if (revokeIds.length > 1) {
+                 await sendMessage(chatId, 'خطأ. هذه الميزة تعمل لمستخدم واحد فقط في كل مرة. أرسل ID واحد.');
+                 return res.status(200).send('OK');
+            }
             if (revokeIds.length === 0) {
-              await sendMessage(chatId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
+              await sendMessage(chatId, 'خطأ. أرسل ID صالح. حاول مجدداً أو اضغط /cancel');
               return res.status(200).send('OK');
             }
-
-            // الخطوة 1: حذف الصلاحيات المحددة
-            const { error: accessError } = await supabase
-              .from('user_course_access')
-              .delete()
-              .in('user_id', revokeIds);
             
-            if (accessError) {
-               await sendMessage(chatId, `حدث خطأ أثناء حذف الصلاحيات المحددة: ${accessError.message}`);
-               // (سنكمل للخطوة التالية بغض النظر عن الخطأ هنا)
-            }
-
-            // الخطوة 2: إلغاء الصلاحيات الكاملة (تحديث is_subscribed)
-            // نستخدم upsert لضمان تحديث المستخدم حتى لو لم يكن موجوداً في جدول access
-            const userObjects = revokeIds.map(id => ({ id: id, is_subscribed: false }));
-            const { error: userError } = await supabase
-              .from('users')
-              .upsert(userObjects, { onConflict: 'id' }); 
-
-            if (userError) {
-                await sendMessage(chatId, `حدث خطأ أثناء تحديث الصلاحية الكاملة: ${userError.message}`);
-            } else {
-                await sendMessage(chatId, `✅ تم سحب "جميع" الصلاحيات (الكاملة والمحددة) لـ ${revokeIds.length} مستخدم.`);
-            }
-            await setAdminState(userId, null, null);
+            const targetUserId = revokeIds[0];
+            
+            // إلغاء الحالة الحالية
+            await setAdminState(userId, null, null); 
+            // إظهار القائمة التفاعلية الجديدة
+            await sendRevokeMenu(chatId, targetUserId);
             break;
 
           // (باقي الحالات كما هي)
