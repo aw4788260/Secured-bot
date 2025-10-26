@@ -13,12 +13,11 @@ const sendMessage = async (chatId, text) => {
   });
 };
 
-// دالة جديدة لإرسال قائمة الأدمن
 const sendAdminMenu = async (chatId) => {
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '➕ إضافة مستخدم', callback_data: 'admin_adduser' },
+        { text: '➕ إضافة مستخدمين', callback_data: 'admin_adduser' },
       ],
       [
         { text: '📚 إضافة كورس', callback_data: 'admin_addcourse' },
@@ -34,7 +33,6 @@ const sendAdminMenu = async (chatId) => {
   });
 };
 
-// دالة جديدة للرد على ضغطة الزر (لإخفاء علامة التحميل)
 const answerCallbackQuery = async (callbackQueryId) => {
   await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
     callback_query_id: callbackQueryId,
@@ -66,6 +64,42 @@ const setAdminState = async (userId, state, data = null) => {
     .eq('id', userId);
 };
 
+// --- دالة جديدة: إرسال قائمة الكورسات للاختيار ---
+const sendCourseSelectionMenu = async (chatId) => {
+  try {
+    const { data: courses, error } = await supabase
+      .from('courses')
+      .select('id, title')
+      .order('title', { ascending: true });
+
+    if (error) throw error;
+
+    if (!courses || courses.length === 0) {
+      await sendMessage(chatId, 'لم يتم العثور على أي كورسات. يجب إضافة كورس أولاً عبر /addcourse');
+      await setAdminState(chatId, null, null); // ألغِ العملية لأنها لا يمكن أن تكتمل
+      return;
+    }
+
+    // بناء الأزرار من الكورسات
+    const keyboard = courses.map(course => ([
+      { text: course.title, callback_data: `course_${course.id}` }
+    ]));
+
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: '👍 تم حفظ كود اليوتيوب.\n\nالآن، اختر الكورس الذي ينتمي إليه هذا الفيديو:',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
+
+  } catch (err) {
+    await sendMessage(chatId, `حدث خطأ أثناء جلب الكورسات: ${err.message}`);
+    await setAdminState(chatId, null, null);
+  }
+};
+
+
 // --- الـ Webhook الرئيسي (معدل بالكامل) ---
 export default async (req, res) => {
   if (req.method !== 'POST') {
@@ -86,23 +120,52 @@ export default async (req, res) => {
 
       const user = await getUser(userId);
 
-      if (user && user.is_admin) {
-        switch (command) {
-          case 'admin_adduser':
-            await setAdminState(userId, 'awaiting_user_id');
-            await sendMessage(chatId, '👤 أرسل الآن "ID" المستخدم الذي تريد تفعيل اشتراكه:');
-            break;
-          case 'admin_addcourse':
-            await setAdminState(userId, 'awaiting_course_title');
-            await sendMessage(chatId, '📚 حسناً، أرسل "اسم" الكورس الجديد:');
-            break;
-          case 'admin_addvideo':
-            await setAdminState(userId, 'awaiting_video_title');
-            await sendMessage(chatId, '🚀 حسناً، أرسل "عنوان" الفيديو:');
-            break;
-        }
-      } else {
+      if (!user || !user.is_admin) {
         await sendMessage(chatId, 'أنت لست أدمن.');
+        return res.status(200).send('OK');
+      }
+
+      // --- [جديد] معالجة اختيار الكورس ---
+      if (command.startsWith('course_')) {
+        if (user.admin_state !== 'awaiting_course_selection') {
+          await sendMessage(chatId, 'حالة غير متوقعة. تم الإلغاء.');
+          await setAdminState(userId, null, null);
+          return res.status(200).send('OK');
+        }
+
+        const courseId = parseInt(command.split('_')[1], 10);
+        const videoData = user.state_data; // { title, youtube_id }
+
+        const { error: videoError } = await supabase.from('videos').insert({
+          title: videoData.title,
+          youtube_video_id: videoData.youtube_id,
+          course_id: courseId
+        });
+
+        if (videoError) {
+          await sendMessage(chatId, `حدث خطأ أثناء حفظ الفيديو: ${videoError.message}`);
+        } else {
+          await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
+        }
+        await setAdminState(userId, null, null);
+        return res.status(200).send('OK');
+      }
+
+      // --- معالجة أزرار الأدمن الرئيسية ---
+      switch (command) {
+        case 'admin_adduser':
+          await setAdminState(userId, 'awaiting_user_id');
+          // [تعديل] تغيير نص الرسالة لدعم الإضافة المتعددة
+          await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر (افصل بينهم بمسافة أو سطر جديد):');
+          break;
+        case 'admin_addcourse':
+          await setAdminState(userId, 'awaiting_course_title');
+          await sendMessage(chatId, '📚 حسناً، أرسل "اسم" الكورس الجديد:');
+          break;
+        case 'admin_addvideo':
+          await setAdminState(userId, 'awaiting_video_title');
+          await sendMessage(chatId, '🚀 حسناً، أرسل "عنوان" الفيديو:');
+          break;
       }
       return res.status(200).send('OK');
     }
@@ -128,32 +191,46 @@ export default async (req, res) => {
         if (user.admin_state) {
           switch (user.admin_state) {
             
-            // --- حالة جديدة: إضافة مستخدم ---
+            // --- [تعديل] حالة إضافة مستخدمين (تدعم الإضافة المتعددة) ---
             case 'awaiting_user_id':
-              const targetUserId = text;
-              if (!targetUserId || !/^\d+$/.test(targetUserId)) {
-                await sendMessage(chatId, 'خطأ. أرسل ID صحيح (أرقام فقط). حاول مجدداً أو اضغط /cancel');
-              } else {
-                await supabase
-                  .from('users')
-                  .upsert({ id: parseInt(targetUserId, 10), is_subscribed: true }, { onConflict: 'id' });
-                await sendMessage(chatId, `✅ تم تفعيل الاشتراك للمستخدم ${targetUserId}.`);
-                await setAdminState(userId, null, null);
+              // تقسيم النص بناءً على أي فراغ (مسافة، سطر جديد، ..)
+              const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id));
+
+              if (ids.length === 0) {
+                await sendMessage(chatId, 'خطأ. لم يتم العثور على IDs صالحة. أرسل أرقام فقط. حاول مجدداً أو اضغط /cancel');
+                return res.status(200).send('OK');
               }
+
+              // تحويل مصفوفة الـ IDs إلى مصفوفة كائنات لـ upsert
+              const usersToUpsert = ids.map(id => ({
+                id: parseInt(id, 10),
+                is_subscribed: true
+              }));
+
+              const { error } = await supabase
+                .from('users')
+                .upsert(usersToUpsert, { onConflict: 'id' });
+
+              if (error) {
+                 await sendMessage(chatId, `حدث خطأ: ${error.message}`);
+              } else {
+                 await sendMessage(chatId, `✅ تم تفعيل الاشتراك بنجاح لـ ${ids.length} مستخدم.`);
+              }
+              await setAdminState(userId, null, null);
               break;
 
             // --- حالة إضافة كورس ---
             case 'awaiting_course_title':
-              const { data: newCourse, error } = await supabase
+              const { data: newCourse, error: courseError } = await supabase
                 .from('courses')
                 .insert({ title: text })
                 .select('id')
                 .single();
 
-              if (error) {
-                await sendMessage(chatId, `حدث خطأ: ${error.message}`);
+              if (courseError) {
+                await sendMessage(chatId, `حدث خطأ: ${courseError.message}`);
               } else {
-                await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح!\n\nرقم الكورس (Course ID) هو: \`${newCourse.id}\`\n(استخدم هذا الرقم عند إضافة الفيديوهات)`);
+                await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح!\n\nرقم الكورس (Course ID) هو: \`${newCourse.id}\``);
               }
               await setAdminState(userId, null, null);
               break;
@@ -163,30 +240,18 @@ export default async (req, res) => {
               await setAdminState(userId, 'awaiting_youtube_id', { title: text });
               await sendMessage(chatId, `👍 العنوان: "${text}"\n\nالآن أرسل "كود يوتيوب":`);
               break;
+
+            // --- [تعديل] حالة انتظار كود يوتيوب ---
             case 'awaiting_youtube_id':
               const title = user.state_data.title;
-              await setAdminState(userId, 'awaiting_course_id', { title: title, youtube_id: text });
-              await sendMessage(chatId, `👍 كود اليوتيوب: "${text}"\n\nالآن أرسل "رقم الكورس" (Course ID):`);
+              const youtube_id = text;
+              // تخزين البيانات والانتقال لحالة "انتظار اختيار الكورس"
+              await setAdminState(userId, 'awaiting_course_selection', { title: title, youtube_id: youtube_id });
+              // استدعاء الدالة الجديدة لإظهار الأزرار
+              await sendCourseSelectionMenu(chatId);
               break;
-            case 'awaiting_course_id':
-              const videoData = user.state_data;
-              const courseId = parseInt(text);
-              if (isNaN(courseId)) {
-                await sendMessage(chatId, 'خطأ. أرسل "رقم" الكورس. حاول مجدداً:');
-                break;
-              }
-              const { error: videoError } = await supabase.from('videos').insert({
-                title: videoData.title,
-                youtube_video_id: videoData.youtube_id,
-                course_id: courseId
-              });
-              if (videoError) {
-                await sendMessage(chatId, `حدث خطأ: ${videoError.message}`);
-              } else {
-                await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
-              }
-              await setAdminState(userId, null, null);
-              break;
+            
+            // (تم حذف حالة awaiting_course_id لأنها استبدلت بالأزرار)
           }
           return res.status(200).send('OK');
         }
