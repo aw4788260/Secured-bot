@@ -204,19 +204,22 @@ export default function WatchPage() {
               </div>
             )}
             
-            {/* --- العلامة المائية المتحركة --- */}
+            {/* **التعديل: العلامة المائية الجديدة** */}
             <div style={{
               position: 'absolute',
-              top: watermarkPos.top,    // الموضع العلوي الديناميكي
-              left: watermarkPos.left,  // الموضع الأيسر الديناميكي
-              fontSize: '1.5vw',
-              color: 'rgba(255, 255, 255, 0.4)',
+              top: watermarkPos.top,
+              left: watermarkPos.left,
+              padding: '4px 8px', // إضافة هوامش داخلية
+              background: 'rgba(0, 0, 0, 0.8)', // خلفية سوداء شفافة 80%
+              color: 'white', // كتابة بيضاء
+              fontSize: '12px', // حجم خط مناسب
+              borderRadius: '4px', // حواف دائرية
               fontWeight: 'bold',
-              textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
               pointerEvents: 'none',
-              transition: 'top 2s ease-in-out, left 2s ease-in-out' // حركة سلسة
+              transition: 'top 2s ease-in-out, left 2s ease-in-out',
+              whiteSpace: 'nowrap' // منع التفاف النص
             }}>
-              {user.first_name} {user.last_name || ''}
+              {user.first_name} ({user.id})
             </div>
           </div>
         </div>
