@@ -4,363 +4,281 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import YouTube from 'react-youtube';
 
-// --- Helper Functions & Components ---
-
-const formatTime = (timeInSeconds) => {
-    if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00';
-    const minutes = Math.floor(timeInSeconds / 60);
-    const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0');
-    return `${minutes}:${seconds}`;
+// --- Helper ---
+const formatTime = (s) => {
+  if (!s || s <= 0) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
 };
 
-// --- Watermark Component ---
+// --- Watermark ---
 const Watermark = ({ user }) => {
-    const [position, setPosition] = useState({ top: '15%', left: '15%' });
+  const [pos, setPos] = useState({ top: '10%', left: '10%' });
 
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            const newTop = Math.floor(Math.random() * 70) + 10;
-            const newLeft = Math.floor(Math.random() * 70) + 10;
-            setPosition({ top: `${newTop}%`, left: `${newLeft}%` });
-        }, 5000);
+  useEffect(() => {
+    const move = setInterval(() => {
+      setPos({
+        top: `${Math.floor(Math.random() * 70) + 10}%`,
+        left: `${Math.floor(Math.random() * 70) + 10}%`
+      });
+    }, 5000);
+    return () => clearInterval(move);
+  }, []);
 
-        return () => clearInterval(intervalId);
-    }, []);
+  if (!user) return null;
 
-    if (!user) return null;
-
-    return (
-        <div style={{ ...styles.watermark, top: position.top, left: position.left }}>
-            {user.first_name} ({user.id})
-        </div>
-    );
+  return (
+    <div style={{ ...styles.watermark, top: pos.top, left: pos.left }}>
+      {user.first_name} ({user.id})
+    </div>
+  );
 };
 
-// --- Custom Controls Component ---
+// --- Controls ---
 const CustomControls = ({ playerRef, isPlaying, onPlayPause, currentTime, duration }) => {
-    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
-    const seekTimeoutRef = useRef(null);
-
-    const handleSeek = (direction) => {
-        if (!playerRef.current) return;
-        const player = playerRef.current;
-        const currentTimeVal = player.getCurrentTime();
-        const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10;
-        player.seekTo(newTime, true);
-
-        setShowSeekIcon({ direction, visible: true });
-        if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-        seekTimeoutRef.current = setTimeout(() => {
-            setShowSeekIcon({ direction: null, visible: false });
-        }, 600);
-    };
-
-    // ✅ FIX 2: تعديل دالة شريط التقدم لتدعم RTL
-    const handleProgressBarClick = (e) => {
-        if (!playerRef.current || duration === 0) return;
-        
-        const bar = e.currentTarget;
-        const rect = bar.getBoundingClientRect();
-        const clickX = e.clientX - rect.left; // Click position from the left of the bar
-        
-        let clickRatio = clickX / bar.offsetWidth;
-        
-        // Check if the document direction is RTL
-        const isRTL = typeof window !== 'undefined' && getComputedStyle(document.body).direction === 'rtl';
-
-        if (isRTL) {
-            // In RTL, the progress is visually reversed.
-            // A click on the far left (0) should mean the end of the video (100%),
-            // and a click on the far right should mean the start (0%).
-            // However, the seekTo function always works from 0 to duration.
-            // The visual representation might be RTL, but the underlying player is LTR.
-            // Let's assume standard LTR seeking logic is what's needed unless the UI itself is flipped.
-            // The previous user issue indicates a mismatch. Let's try LTR logic first and see if the *browser's* RTL handling was the issue.
-            // If it's still reversed, the logic should be: clickRatio = (bar.offsetWidth - clickX) / bar.offsetWidth;
-        }
-
-        const seekTime = clickRatio * duration;
-        playerRef.current.seekTo(seekTime, true);
-        // Manually update current time to give immediate feedback
-        if(typeof currentTime !== 'function'){
-             // A simple check to avoid errors if currentTime is not a function
-        }
-    };
-
-
-    return (
-        <div style={styles.controlsOverlay}>
-            <div style={styles.seekAreaContainer}>
-                <div style={styles.seekArea} onDoubleClick={() => handleSeek('backward')}></div>
-                <div style={styles.playPauseArea} onClick={onPlayPause}>
-                    {!isPlaying && <div style={styles.playIcon}>▶</div>}
-                </div>
-                <div style={styles.seekArea} onDoubleClick={() => handleSeek('forward')}></div>
-            </div>
-
-            <div style={styles.progressBarContainer}>
-                <span style={styles.timeText}>{formatTime(currentTime)}</span>
-                <div style={styles.progressBar} onClick={handleProgressBarClick}>
-                    <div style={{ ...styles.progressFill, width: `${(currentTime / duration) * 100}%` }}></div>
-                </div>
-                <span style={styles.timeText}>{formatTime(duration)}</span>
-            </div>
-
-            {showSeekIcon.visible && (
-                <div style={{ ...styles.seekFeedback, left: showSeekIcon.direction === 'forward' ? '75%' : '25%' }}>
-                    {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
-                </div>
-            )}
+  return (
+    <div style={styles.controls}>
+      <div style={styles.playPauseArea} onClick={onPlayPause}>
+        {!isPlaying && <div style={styles.playIcon}>▶</div>}
+      </div>
+      <div style={styles.progressContainer}>
+        <span style={styles.time}>{formatTime(currentTime)}</span>
+        <div
+          style={styles.progressBar}
+          onClick={(e) => {
+            if (!playerRef.current || !duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = (e.clientX - rect.left) / rect.width;
+            playerRef.current.seekTo(ratio * duration, true);
+          }}
+        >
+          <div style={{ ...styles.progressFill, width: `${(currentTime / duration) * 100}%` }} />
         </div>
-    );
+        <span style={styles.time}>{formatTime(duration)}</span>
+      </div>
+    </div>
+  );
 };
 
-
-// --- Main Page Component ---
+// --- Main Page ---
 export default function WatchPage() {
-    const router = useRouter();
-    const { videoId } = router.query;
-    const [youtubeId, setYoutubeId] = useState(null);
-    const [user, setUser] = useState(null);
-    const [error, setError] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+  const { videoId } = router.query;
+  const [youtubeId, setYoutubeId] = useState(null);
+  const [user, setUser] = useState(null);
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const playerRef = useRef(null);
 
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
-    const [currentTime, setCurrentTime] = useState(0);
-    const playerRef = useRef(null);
-
-    useEffect(() => {
-        setIsLoading(true);
-        if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.ready();
-            const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-
-            if (tgUser) {
-                setUser(tgUser);
-            } else {
-                setError("خطأ: لا يمكن التعرف على المستخدم.");
-                return;
-            }
-
-            if (videoId) {
-                fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                    .then(res => {
-                        if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو');
-                        return res.json();
-                    })
-                    .then(data => {
-                        setYoutubeId(data.youtube_video_id);
-                        setIsLoading(false);
-                    })
-                    .catch(err => setError(err.message));
-            }
-        } else {
-            setError("الرجاء الفتح من تليجرام.");
-        }
-    }, [videoId]);
-    
-    useEffect(() => {
-        const timeUpdateInterval = setInterval(() => {
-            if (playerRef.current?.getCurrentTime) {
-                setCurrentTime(playerRef.current.getCurrentTime());
-            }
-        }, 500);
-
-        return () => clearInterval(timeUpdateInterval);
-    }, []);
-
-    const onPlayerReady = useCallback((event) => {
-        playerRef.current = event.target;
-        setDuration(event.target.getDuration());
-    }, []);
-
-    const handlePlayPause = useCallback(() => {
-        if (!playerRef.current) return;
-        const playerState = playerRef.current.getPlayerState();
-        if (playerState === 1) {
-            playerRef.current.pauseVideo();
-        } else {
-            playerRef.current.playVideo();
-        }
-    }, []);
-    
-    if (error) {
-        return <div style={styles.messageContainer}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      document.addEventListener('contextmenu', (e) => e.preventDefault());
+      document.onselectstart = () => false;
+      document.ondragstart = () => false;
     }
-    
-    if (isLoading || !youtubeId || !user) {
-        return <div style={styles.messageContainer}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+      window.Telegram.WebApp.ready();
+      const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+      if (!tgUser) {
+        setError('لا يمكن تحديد المستخدم.');
+        return;
+      }
+      setUser(tgUser);
+
+      if (videoId) {
+        fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
+          .then((res) => {
+            if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة الفيديو');
+            return res.json();
+          })
+          .then((d) => {
+            setYoutubeId(d.youtube_video_id);
+            setIsLoading(false);
+          })
+          .catch((e) => setError(e.message));
+      }
+    } else {
+      setError('افتح من داخل تليجرام.');
     }
+  }, [videoId]);
 
-    const playerOptions = {
-        playerVars: {
-            autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1,
-        },
-    };
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (playerRef.current?.getCurrentTime) {
+        setCurrentTime(playerRef.current.getCurrentTime());
+      }
+    }, 500);
+    return () => clearInterval(t);
+  }, []);
 
+  const onPlayerReady = (e) => {
+    playerRef.current = e.target;
+    setDuration(e.target.getDuration());
+  };
+
+  const handlePlayPause = () => {
+    if (!playerRef.current) return;
+    const s = playerRef.current.getPlayerState();
+    s === 1 ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
+  };
+
+  if (error)
     return (
-        <div style={styles.mainContainer}>
-            <Head>
-                <title>مشاهدة الدرس</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-            </Head>
-
-            <div style={styles.playerWrapper}>
-                <div style={styles.playerContainer}>
-                    <YouTube
-                        videoId={youtubeId}
-                        opts={playerOptions}
-                        onReady={onPlayerReady}
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
-                        onEnd={() => setIsPlaying(false)}
-                        style={styles.youtubePlayer}
-                    />
-                    <Watermark user={user} />
-                    <CustomControls
-                        playerRef={playerRef}
-                        isPlaying={isPlaying}
-                        onPlayPause={handlePlayPause}
-                        currentTime={currentTime}
-                        duration={duration}
-                    />
-                </div>
-            </div>
-            
-            {/* ✅ FIX 1: إضافة box-sizing لمنع خروج العناصر عن الشاشة */}
-            <style jsx global>{`
-                * {
-                    box-sizing: border-box;
-                }
-                @keyframes seek-pop {
-                    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
-                    50% { transform: translate(-50%, -50%) scale(1.2); }
-                    100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
-                }
-            `}</style>
-        </div>
+      <div style={styles.msg}>
+        <h1>{error}</h1>
+      </div>
     );
+
+  if (isLoading)
+    return (
+      <div style={styles.msg}>
+        <h1>جاري تحميل الفيديو...</h1>
+      </div>
+    );
+
+  const opts = {
+    playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, disablekb: 1 }
+  };
+
+  return (
+    <div style={styles.page}>
+      <Head>
+        <title>مشاهدة الدرس</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </Head>
+
+      <div style={styles.videoWrapper}>
+        <div style={styles.videoBox}>
+          <YouTube
+            videoId={youtubeId}
+            opts={opts}
+            onReady={onPlayerReady}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnd={() => setIsPlaying(false)}
+            style={styles.player}
+          />
+          <Watermark user={user} />
+          <CustomControls
+            playerRef={playerRef}
+            isPlaying={isPlaying}
+            onPlayPause={handlePlayPause}
+            currentTime={currentTime}
+            duration={duration}
+          />
+        </div>
+      </div>
+
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+          user-select: none;
+        }
+      `}</style>
+    </div>
+  );
 }
 
-// --- Styles Object ---
+// --- Styles ---
 const styles = {
-    mainContainer: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        background: '#000',
-        padding: '10px',
-    },
-    playerWrapper: {
-        position: 'relative',
-        width: '100%',
-        maxWidth: '100%',
-    },
-    playerContainer: {
-        position: 'relative',
-        width: '100%',
-        aspectRatio: '16 / 9',
-        backgroundColor: '#000',
-    },
-    youtubePlayer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-    },
-    messageContainer: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        color: 'white',
-        padding: '20px',
-        textAlign: 'center',
-    },
-    watermark: {
-        position: 'absolute',
-        padding: '4px 8px',
-        background: 'rgba(0, 0, 0, 0.8)',
-        color: 'white',
-        fontSize: '12px',
-        borderRadius: '4px',
-        fontWeight: 'bold',
-        pointerEvents: 'none',
-        transition: 'top 2s ease-in-out, left 2s ease-in-out',
-        whiteSpace: 'nowrap',
-        zIndex: 20,
-    },
-    controlsOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        zIndex: 10,
-        display: 'flex',
-        flexDirection: 'column',
-    },
-    seekAreaContainer: {
-        flexGrow: 1,
-        display: 'flex',
-    },
-    seekArea: {
-        flex: 1,
-        height: '100%',
-    },
-    playPauseArea: {
-        flex: 2,
-        height: '100%',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        cursor: 'pointer',
-    },
-    playIcon: {
-        fontSize: '80px',
-        color: 'white',
-        textShadow: '0 0 15px rgba(0,0,0,0.8)',
-    },
-    progressBarContainer: {
-        height: '40px',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 10px',
-        background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)',
-        zIndex: 11,
-    },
-    progressBar: {
-        flexGrow: 1,
-        height: '4px',
-        background: 'rgba(255,255,255,0.3)',
-        borderRadius: '2px',
-        cursor: 'pointer',
-        position: 'relative',
-        margin: '0 10px',
-    },
-    progressFill: {
-        height: '100%',
-        background: '#FF0000',
-        borderRadius: '2px',
-    },
-    timeText: {
-        color: 'white',
-        fontSize: '12px',
-        minWidth: '40px',
-        textAlign: 'center',
-    },
-    seekFeedback: {
-        position: 'absolute',
-        top: '50%',
-        transform: 'translate(-50%, -50%)',
-        fontSize: '40px',
-        color: 'white',
-        opacity: 0.8,
-        transition: 'opacity 0.5s ease-out',
-        animation: 'seek-pop 0.6s ease-out',
-        pointerEvents: 'none',
-    }
+  page: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    background: '#000',
+    minHeight: '100vh',
+    padding: '10px'
+  },
+  videoWrapper: {
+    width: '100%',
+    maxWidth: '900px'
+  },
+  videoBox: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '16 / 9',
+    background: '#000',
+    overflow: 'hidden',
+    borderRadius: '10px'
+  },
+  player: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%'
+  },
+  msg: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    color: 'white',
+    height: '100vh',
+    textAlign: 'center'
+  },
+  watermark: {
+    position: 'absolute',
+    background: 'rgba(0, 0, 0, 0.6)',
+    color: '#fff',
+    padding: '3px 7px',
+    fontSize: '12px',
+    borderRadius: '4px',
+    zIndex: 10,
+    transition: 'top 2s ease, left 2s ease',
+    pointerEvents: 'none'
+  },
+  controls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    zIndex: 9
+  },
+  playPauseArea: {
+    height: '60%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    cursor: 'pointer'
+  },
+  playIcon: {
+    fontSize: '60px',
+    color: 'white'
+  },
+  progressContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    padding: '5px 10px'
+  },
+  progressBar: {
+    flexGrow: 1,
+    height: '4px',
+    background: 'rgba(255,255,255,0.3)',
+    margin: '0 10px',
+    borderRadius: '2px',
+    cursor: 'pointer'
+  },
+  progressFill: {
+    height: '100%',
+    background: '#FF0000',
+    borderRadius: '2px'
+  },
+  time: {
+    color: '#fff',
+    fontSize: '12px',
+    width: '40px',
+    textAlign: 'center'
+  }
 };
