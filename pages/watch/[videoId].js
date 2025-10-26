@@ -22,7 +22,7 @@ export default function WatchPage() {
   const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
   const seekTimeoutRef = useRef(null);
 
-  // --- جديد: متغيرات حالة لموقع العلامة المائية ---
+  // --- متغيرات حالة لموقع العلامة المائية ---
   const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
   const watermarkIntervalRef = useRef(null);
 
@@ -45,13 +45,13 @@ export default function WatchPage() {
           .catch(err => setError(err.message));
       }
     } else {
-       setError("الرجاء الفتح من تليجرام.");
+        setError("الرجاء الفتح من تليجرام.");
     }
 
     const updateSize = () => {
       if (wrapperRef.current) {
         const containerWidth = wrapperRef.current.offsetWidth;
-        const calculatedHeight = containerWidth * (13 / 16); // يمكنك تعديل 10 لزيادة/نقصان الارتفاع
+        const calculatedHeight = containerWidth * (13 / 16);
         setPlayerSize({ width: containerWidth, height: calculatedHeight });
       }
     };
@@ -65,19 +65,18 @@ export default function WatchPage() {
       }
     }, 500);
 
-    // --- جديد: بدء حركة العلامة المائية ---
     watermarkIntervalRef.current = setInterval(() => {
-        const newTop = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
-        const newLeft = Math.floor(Math.random() * 70) + 10; // بين 10% و 80%
+        const newTop = Math.floor(Math.random() * 70) + 10;
+        const newLeft = Math.floor(Math.random() * 70) + 10;
         setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
-    }, 5000); // تغيير الموقع كل 5 ثوانٍ
+    }, 5000);
 
 
     return () => {
       clearTimeout(timer);
-        window.removeEventListener('resize', updateSize);
-        clearInterval(interval);
-        clearInterval(watermarkIntervalRef.current); // تنظيف مؤقت العلامة المائية
+      window.removeEventListener('resize', updateSize);
+      clearInterval(interval);
+      clearInterval(watermarkIntervalRef.current);
     };
   }, [videoId]);
 
@@ -128,8 +127,8 @@ export default function WatchPage() {
 
   if (error) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-                       }
-if (!youtubeId || !user || !playerSize) {
+  }
+  if (!youtubeId || !user || !playerSize) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'white', padding: '20px' }}><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
   }
   const opts = {
@@ -203,20 +202,19 @@ if (!youtubeId || !user || !playerSize) {
               </div>
             )}
             
-            {/* **التعديل: العلامة المائية الجديدة** */}
             <div style={{
               position: 'absolute',
               top: watermarkPos.top,
               left: watermarkPos.left,
-              padding: '4px 8px', // إضافة هوامش داخلية
-              background: 'rgba(0, 0, 0, 0.8)', // خلفية سوداء شفافة 80%
-              color: 'white', // كتابة بيضاء
-              fontSize: '12px', // حجم خط مناسب
-              borderRadius: '4px', // حواف دائرية
+              padding: '4px 8px',
+              background: 'rgba(0, 0, 0, 0.8)',
+              color: 'white',
+              fontSize: '12px',
+              borderRadius: '4px',
               fontWeight: 'bold',
               pointerEvents: 'none',
               transition: 'top 2s ease-in-out, left 2s ease-in-out',
-              whiteSpace: 'nowrap' // منع التفاف النص
+              whiteSpace: 'nowrap'
             }}>
               {user.first_name} ({user.id})
             </div>
