@@ -22,7 +22,7 @@ export default async (req, res) => {
 
     if (user && user.is_subscribed) {
       // --- الحالة 1: صلاحية كاملة ---
-      // اجلب كل الكورسات والفيديوهات (نفس الكود القديم)
+      // (هذا الجزء كان سليماً)
       query = supabase
         .from('courses')
         .select(`
@@ -35,7 +35,6 @@ export default async (req, res) => {
 
     } else {
       // --- الحالة 2: صلاحية محددة ---
-      // اجلب الكورسات فقط من جدول الصلاحيات
       query = supabase
         .from('user_course_access') // نبدأ من جدول الصلاحيات
         .select(`
@@ -46,8 +45,11 @@ export default async (req, res) => {
           )
         `)
         .eq('user_id', userId)
-        .order('title', { foreignTable: 'courses', ascending: true })
-        .order('id', { foreignTable: 'courses.videos', ascending: true });
+        .order('title', { foreignTable: 'courses', ascending: true });
+      
+      // --- [تم الإصلاح] ---
+      // تم حذف السطر المسبب للخطأ من هنا
+      // .order('id', { foreignTable: 'courses.videos', ascending: true });
     }
     
     const { data, error } = await query;
