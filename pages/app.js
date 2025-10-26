@@ -4,36 +4,38 @@ import Head from 'next/head';
 import Link from 'next/link';
 
 // --- [هذا هو التعديل] ---
-// قمنا بتعديل هذه الدالة لتجميع بصمة "محدودة"
+// قمنا بتعديل هذه الدالة لتجميع بصمة "مستقرة وفريدة"
 const loadFingerprint = async () => {
   const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
   
-  // نقوم بتحميل المكتبة
   const fp = await FingerprintJS.load({
-    monitoring: false // تعطيل المراقبة غير الضرورية
+    monitoring: false 
   });
 
-  // نطلب المكونات المحددة التي طلبتها
+  // طلب المكونات الجديدة (المستقرة + الفريدة)
   const result = await fp.get({
     components: [
-      'canvas',        // 1. بصمة الكانفاس (الرسم)
+      // مكونات مستقرة (قد تتشابه بين جهازين نفس النوع)
+      'platform',      // 1. نوع نظام التشغيل/الجهاز
       'vendorWebGL',   // 2. نوع كارت الشاشة (Vendor)
       'rendererWebGL', // 3. اسم كارت الشاشة (Renderer)
-      'platform',      // 4. نوع نظام التشغيل/الجهاز
+      
+      // مكون مستقر وفريد (يختلف بناءً على التطبيقات المثبتة)
+      'fonts'          // 4. قائمة الخطوط المثبتة
     ]
   });
 
-  // نقوم بتجميع القيم في نص واحد لإنشاء البصمة المحدودة
+  // نقوم بتجميع القيم في نص واحد لإنشاء البصمة
   const components = result.components;
-  const limitedFingerprint = JSON.stringify({
-    c: components.canvas.value,
+  const stableFingerprint = JSON.stringify({
+    p: components.platform.value,
     v: components.vendorWebGL.value,
     r: components.rendererWebGL.value,
-    p: components.platform.value
+    // (سنقوم بضغط قائمة الخطوط لتقليل حجم البصمة)
+    f: components.fonts.value.map(font => font.family).join(',')
   });
 
-  // هذه هي البصمة الجديدة التي سنرسلها للخادم
-  return limitedFingerprint;
+  return stableFingerprint;
 };
 // --- [نهاية التعديل] ---
 
@@ -73,7 +75,7 @@ export default function App() {
 
         // --- الخطوة 2: التحقق من بصمة الجهاز (تستخدم الدالة المعدلة) ---
         setStatus('جاري التحقق من بصمة الجهاز...');
-        loadFingerprint().then(fingerprint => { // <-- ستُرجع البصمة المحدودة
+        loadFingerprint().then(fingerprint => { // <-- ستُرجع البصمة المستقرة
           fetch('/api/auth/check-device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
