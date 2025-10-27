@@ -2,7 +2,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 
 export default async (req, res) => {
-  // سطر فحص جديد: هل الملف يعمل أصلاً؟
   console.log("API Route /api/data/get-structured-courses started.");
 
   const { userId } = req.query; 
@@ -23,88 +22,63 @@ export default async (req, res) => {
       
     if (userError && userError.code !== 'PGRST116') throw userError;
 
-    let allowedCourseIds = [];
-    let allCourses = [];
-    let allVideos = [];
+    let finalData = [];
 
     if (user && user.is_subscribed) {
-      // --- الحالة 1: صلاحية كاملة ---
-      console.log("User has full subscription. Fetching all courses.");
+      // --- [ ✅ تعديل: الحالة 1: صلاحية كاملة ] ---
+      console.log("User has full subscription. Fetching all courses with nested videos.");
       
+      // استعلام واحد "ذكي" يجلب الكورسات وبداخلها الفيديوهات
       const { data: coursesData, error: coursesError } = await supabase
         .from('courses')
-        .select('id, title')
-        .order('title', { ascending: true });
-      if (coursesError) throw coursesError;
-      allCourses = coursesData;
+        .select(`
+          id, 
+          title, 
+          videos ( id, title )
+        `)
+        .order('title', { ascending: true })
+        .order('id', { foreignTable: 'videos', ascending: true }); // ترتيب الفيديوهات أيضاً
 
-      const { data: videosData, error: videosError } = await supabase
-        .from('videos')
-        .select('id, title, course_id')
-        .order('id', { ascending: true });
-      if (videosError) throw videosError;
-      allVideos = videosData;
+      if (coursesError) throw coursesError;
+      finalData = coursesData;
 
     } else {
-      // --- الحالة 2: صلاحية محددة ---
-      console.log("User has limited access. Fetching allowed course IDs.");
+      // --- [ ✅ تعديل: الحالة 2: صلاحية محددة ] ---
+      console.log("User has limited access. Fetching allowed courses with nested videos.");
 
+      // استعلام واحد "ذكي" يجلب الكورسات المسموحة فقط، وبداخلها الفيديوهات
       const { data: accessData, error: accessError } = await supabase
         .from('user_course_access')
-        .select('course_id')
-        .eq('user_id', userId);
+        .select(`
+          courses ( 
+            id, 
+            title, 
+            videos ( id, title )
+          )
+        `)
+        .eq('user_id', userId)
+        .order('title', { foreignTable: 'courses', ascending: true })
+        .order('id', { foreignTable: 'courses.videos', ascending: true });
+
       if (accessError) throw accessError;
 
       if (!accessData || accessData.length === 0) {
         console.log("User has no specific course access. Returning empty array.");
         return res.status(200).json([]);
       }
-      allowedCourseIds = accessData.map(item => item.course_id);
-      console.log(`User has access to course IDs: ${allowedCourseIds.join(', ')}`);
-
-      const { data: coursesData, error: coursesError } = await supabase
-        .from('courses')
-        .select('id, title')
-        .in('id', allowedCourseIds)
-        .order('title', { ascending: true });
-      if (coursesError) throw coursesError;
-      allCourses = coursesData;
-
-      const { data: videosData, error: videosError } = await supabase
-        .from('videos')
-        .select('id, title, course_id')
-        .in('course_id', allowedCourseIds)
-        .order('id', { ascending: true });
-      if (videosError) throw videosError;
-      allVideos = videosData;
+      
+      // Supabase سترجع مصفوفة من { courses: { ... } }
+      // نحن نحتاج لاستخلاص الكورسات منها
+      finalData = accessData.map(item => item.courses).filter(Boolean); // .filter(Boolean) لإزالة أي قيم null
     }
 
-    // --- خطوة التجميع ---
-    console.log("Step 2: Assembling data...");
-    const coursesMap = new Map();
-    allCourses.forEach(course => {
-      coursesMap.set(course.id, {
-        ...course,
-        videos: [] 
-      });
-    });
+    // --- خطوة التجميع (لم نعد بحاجة إليها) ---
+    // قاعدة البيانات قامت بالتجميع بدلاً منا
 
-    allVideos.forEach(video => {
-      const course = coursesMap.get(video.course_id);
-      if (course) {
-        course.videos.push({
-          id: video.id,
-          title: video.title
-        });
-      }
-    });
-
-    const finalData = Array.from(coursesMap.values());
     console.log(`Successfully assembled data for ${finalData.length} courses.`);
     res.status(200).json(finalData);
 
   } catch (err) {
-    // هذا هو اللوج الذي لا يظهر عندك
     console.error("CRITICAL Error in get-structured-courses:", err.message, err.stack);
     res.status(500).json({ message: err.message, details: err.stack });
   }
