@@ -73,12 +73,36 @@ export default function WatchPage() {
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
     const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
-    const handleSetQuality = (e) => { const newQuality = e.target.value; if (playerRef.current) { playerRef.current.setPlaybackQuality(newQuality); setVideoQuality(newQuality); } };
+    // ✅ دالة تغيير الجودة بشكل فعلي
+const handleSetQuality = (e) => {
+  const newQuality = e.target.value;
+  setVideoQuality(newQuality);
+
+  if (playerRef.current) {
+    // 🕒 احفظ وقت التشغيل الحالي
+    const currentTime = playerRef.current.getCurrentTime();
+
+    // 🎬 هل الفيديو متوقف حالياً؟
+    const isPaused = playerRef.current.getPlayerState() !== 1;
+
+    // 🔁 أعد تحميل الفيديو بنفس الجودة الجديدة
+    playerRef.current.loadVideoById({
+      videoId: youtubeId,
+      startSeconds: currentTime,
+      suggestedQuality: newQuality, // 💡 هنا السر
+    });
+
+    // ⏸️ أوقف الفيديو لو كان متوقف قبل التبديل
+    if (isPaused) {
+      setTimeout(() => playerRef.current.pauseVideo(), 600);
+    }
+  }
+};
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    const opts = { playerVars: { autoplay: 0, controls: 1, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
+    const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
 
     return (
         <div className="page-container">
