@@ -76,27 +76,35 @@ export default function WatchPage() {
     // ✅ دالة تغيير الجودة بشكل فعلي
 const handleSetQuality = (e) => {
   const newQuality = e.target.value;
-  setVideoQuality(newQuality);
+  const oldQuality = videoQuality; // حفظ الجودة القديمة مؤقتًا
+  if (!playerRef.current) return;
 
-  if (playerRef.current) {
-    // 🕒 احفظ وقت التشغيل الحالي
-    const currentTime = playerRef.current.getCurrentTime();
+  const currentTime = playerRef.current.getCurrentTime?.() || 0;
+  const wasPlaying = playerRef.current.getPlayerState?.() === 1;
 
-    // 🎬 هل الفيديو متوقف حالياً؟
-    const isPaused = playerRef.current.getPlayerState() !== 1;
+  // نحاول نطلب الجودة الجديدة
+  playerRef.current.loadVideoById({
+    videoId: youtubeId,
+    startSeconds: currentTime,
+    suggestedQuality: newQuality,
+  });
 
-    // 🔁 أعد تحميل الفيديو بنفس الجودة الجديدة
-    playerRef.current.loadVideoById({
-      videoId: youtubeId,
-      startSeconds: currentTime,
-      suggestedQuality: newQuality, // 💡 هنا السر
-    });
+  // لو الفيديو كان متوقف، نوقفه بعد التحميل
+  if (!wasPlaying) setTimeout(() => playerRef.current.pauseVideo?.(), 600);
 
-    // ⏸️ أوقف الفيديو لو كان متوقف قبل التبديل
-    if (isPaused) {
-      setTimeout(() => playerRef.current.pauseVideo(), 600);
+  // ننتظر شوية ونتحقق فعلاً هل الجودة اتغيرت
+  setTimeout(() => {
+    const actualQuality = playerRef.current.getPlaybackQuality?.();
+    if (actualQuality === newQuality) {
+      // ✅ الجودة اتغيرت فعلاً → نثبت التغيير
+      setVideoQuality(newQuality);
+      console.log(`✅ تم تغيير الجودة إلى ${newQuality}`);
+    } else {
+      // ❌ الجودة ما اتغيرتش → نرجع للقيمة القديمة
+      setVideoQuality(oldQuality);
+      console.log(`❌ لم تتغير الجودة (ما زالت ${actualQuality})`);
     }
-  }
+  }, 1000); // الانتظار ثانية واحدة قبل التحقق
 };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
