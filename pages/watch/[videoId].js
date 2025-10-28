@@ -159,7 +159,7 @@ export default function WatchPage() {
                 body { margin: 0; background: #000; overscroll-behavior: contain; }
                 .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
-                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 9; background: #111; }
+                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
                 .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
                 .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
                 .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
