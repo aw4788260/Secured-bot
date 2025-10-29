@@ -5,6 +5,7 @@ import Head from 'next/head';
 import YouTube from 'react-youtube';
 
 export default function WatchPage() {
+    // ... (كل متغيرات الحالة لم تتغير)
     const router = useRouter();
     const { videoId } = router.query;
     const [youtubeId, setYoutubeId] = useState(null);
@@ -22,20 +23,13 @@ export default function WatchPage() {
     const progressBarRef = useRef(null);
     const [playbackRate, setPlaybackRate] = useState(1);
     const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]);
-
-    // --- ⬇️ تعديلات متغيرات الحالة الخاصة بالجودة ⬇️ ---
-    const [videoQuality, setVideoQuality] = useState('auto'); // الجودة *الفعلية* المعروضة
-    const [desiredQuality, setDesiredQuality] = useState('auto'); // الجودة *المطلوبة* من المستخدم
-    const qualitySuggestionIntervalRef = useRef(null); // لتكرار الاقتراح
-    // --- ⬆️ نهاية التعديلات ⬆️ ---
-
+    const [videoQuality, setVideoQuality] = useState('auto');
     const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
 
-
-    // useEffect لجلب بيانات الفيديو وتحديث الوقت والعلامة المائية
+    // ... (useEffect لم يتغير)
     useEffect(() => {
-         if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+        if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
             if (tgUser) { setUser(tgUser); } else { setError("خطأ: لا يمكن التعرف على المستخدم."); return; }
@@ -52,21 +46,10 @@ export default function WatchPage() {
             const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
-
-        // تنظيف عند إغلاق الصفحة
-        return () => {
-             clearInterval(progressInterval);
-             clearInterval(watermarkIntervalRef.current);
-             // --- ✅ إضافة: إيقاف محاولات تغيير الجودة ---
-             if (qualitySuggestionIntervalRef.current) {
-                 clearInterval(qualitySuggestionIntervalRef.current);
-             }
-             // --- نهاية الإضافة ---
-        };
+        return () => { clearInterval(progressInterval); clearInterval(watermarkIntervalRef.current); };
     }, [videoId, isSeeking]);
 
-
-    // دالة ترجمة أسماء الجودات
+    // --- **جديد: دالة لترجمة أسماء الجودات** ---
     const formatQualityLabel = (quality) => {
         const qualityMap = {
             hd1080: '1080p',
@@ -80,106 +63,19 @@ export default function WatchPage() {
         return qualityMap[quality] || quality;
     };
 
+    // ... (باقي الدوال لم تتغير)
+    const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
+    const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
+    const onPlayerReady = useCallback((event) => { playerRef.current = event.target; setDuration(event.target.getDuration()); const rates = playerRef.current.getAvailablePlaybackRates(); if (rates && rates.length > 0) { setAvailablePlaybackRates(rates); setPlaybackRate(playerRef.current.getPlaybackRate()); } }, []);
+    const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
+    const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
+    const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
+    const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
+    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
+    const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
+    const handleSetQuality = (e) => { const newQuality = e.target.value; if (playerRef.current) { playerRef.current.setPlaybackQuality(newQuality); setVideoQuality(newQuality); } };
+    const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
-    // دالة onPlayerReady: تُستدعى عندما يكون المشغل جاهزاً
-    const onPlayerReady = useCallback((event) => {
-        playerRef.current = event.target;
-        setDuration(event.target.getDuration());
-        const rates = playerRef.current.getAvailablePlaybackRates();
-        if (rates && rates.length > 0) {
-            setAvailablePlaybackRates(rates);
-            setPlaybackRate(playerRef.current.getPlaybackRate());
-        }
-
-        // اختياري: محاولة تحديد جودة مبدئية
-        const initialDesiredQuality = 'hd720'; // أو 'auto'
-        setDesiredQuality(initialDesiredQuality);
-        if (playerRef.current && typeof playerRef.current.setPlaybackQuality === 'function') {
-            console.log(`Attempting to set initial quality to: ${initialDesiredQuality}`);
-            playerRef.current.setPlaybackQuality(initialDesiredQuality);
-        }
-
-        // الاستماع لتغير الجودة الفعلي
-        if (playerRef.current && typeof playerRef.current.on === 'function') {
-             playerRef.current.on('onPlaybackQualityChange', (event) => {
-                const actualQuality = event.data;
-                console.log("Actual quality changed to:", actualQuality);
-                setVideoQuality(actualQuality); // تحديث القائمة المنسدلة بالجودة الفعلية
-             });
-        }
-
-    }, []);
-
-
-    // دالة handleOnPlay: تُستدعى عند بدء التشغيل
-    const handleOnPlay = () => {
-        setIsPlaying(true);
-        // جلب الجودات المتاحة لعرضها في القائمة
-        if (playerRef.current && !qualitiesFetched) {
-            const qualities = playerRef.current.getAvailableQualityLevels();
-            if (qualities && qualities.length > 0) {
-                setAvailableQualityLevels(['auto', ...qualities.filter(q => q !== 'auto')]);
-                // تحديث الحالة بالجودة الفعلية الحالية
-                const currentActualQuality = playerRef.current.getPlaybackQuality();
-                setVideoQuality(currentActualQuality);
-                setQualitiesFetched(true);
-            }
-        }
-    };
-
-
-    // دالة handleSetQuality: تُستدعى عند اختيار المستخدم لجودة جديدة
-    const handleSetQuality = (e) => {
-        const newDesiredQuality = e.target.value;
-        setDesiredQuality(newDesiredQuality); // تخزين الجودة التي يريدها المستخدم
-
-        if (playerRef.current && typeof playerRef.current.setPlaybackQuality === 'function') {
-            console.log(`User requested quality: ${newDesiredQuality}. Suggesting now.`);
-            playerRef.current.setPlaybackQuality(newDesiredQuality); // إرسال الاقتراح الأول
-
-            // إيقاف أي محاولات سابقة
-            if (qualitySuggestionIntervalRef.current) {
-                clearInterval(qualitySuggestionIntervalRef.current);
-            }
-
-            // --- ⬇️ التعديل هنا ⬇️ ---
-            // بدء محاولات دورية في الخلفية (كل نصف ثانية)
-            qualitySuggestionIntervalRef.current = setInterval(() => {
-                if (playerRef.current) {
-                    const currentActualQuality = playerRef.current.getPlaybackQuality();
-                    // إذا كانت الجودة الفعلية لا تطابق الجودة المطلوبة، نرسل الاقتراح مجدداً
-                    if (currentActualQuality !== newDesiredQuality) {
-                        console.log(`Retrying suggestion: ${newDesiredQuality} (Current: ${currentActualQuality})`);
-                        playerRef.current.setPlaybackQuality(newDesiredQuality);
-                    } else {
-                        // الجودة تطابقت، نوقف المحاولات
-                        console.log(`Quality successfully set to ${newDesiredQuality}. Stopping retries.`);
-                        clearInterval(qualitySuggestionIntervalRef.current);
-                        qualitySuggestionIntervalRef.current = null;
-                    }
-                } else {
-                     // إذا اختفى المشغل، نوقف المحاولات
-                     clearInterval(qualitySuggestionIntervalRef.current);
-                     qualitySuggestionIntervalRef.current = null;
-                }
-            }, 500); // <-- تم تغيير القيمة إلى 500 ميللي ثانية
-            // --- ⬆️ نهاية التعديل ⬆️ ---
-        }
-    };
-
-
-    // ... (باقي الدوال كما هي: handlePlayPause, handleSeek, etc.) ...
-     const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
-     const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
-     const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
-     const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
-     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
-     const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
-     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
-     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
-
-
-    // ... (باقي الكود للعرض JSX والأنماط CSS كما هو) ...
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
     const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
@@ -192,7 +88,7 @@ export default function WatchPage() {
             </Head>
 
             <div className="player-wrapper">
-                 <YouTube
+                <YouTube
                     videoId={youtubeId}
                     opts={opts}
                     className="youtube-player"
@@ -201,7 +97,7 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
-                 />
+                />
 
                 <div className="controls-overlay">
                     <div className="interaction-grid">
@@ -217,6 +113,7 @@ export default function WatchPage() {
                             {availableQualityLevels.length > 0 && (
                                 <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
                                     {availableQualityLevels.map(quality => (
+                                        // **--- التعديل هنا ---**
                                         <option key={quality} value={quality}>
                                             {formatQualityLabel(quality)}
                                         </option>
@@ -231,21 +128,21 @@ export default function WatchPage() {
                                 </select>
                             )}
                         </div>
-                         <span className="time-display">{formatTime(currentTime)}</span>
-                         <div
+                        <span className="time-display">{formatTime(currentTime)}</span>
+                        <div
                             ref={progressBarRef}
                             className="progress-bar-container"
                             onMouseDown={handleScrubStart}
                             onTouchStart={handleScrubStart}
-                         >
+                        >
                             <div className="progress-bar-track"></div>
                             <div className="progress-bar-filled" style={{ width: `${(currentTime / duration) * 100}%` }}></div>
                             <div className="progress-bar-handle" style={{ left: `${(currentTime / duration) * 100}%` }}></div>
-                         </div>
-                         <span className="time-display">{formatTime(duration)}</span>
+                        </div>
+                        <span className="time-display">{formatTime(duration)}</span>
                     </div>
 
-                     {showSeekIcon.visible && (
+                    {showSeekIcon.visible && (
                         <div className={`seek-indicator ${showSeekIcon.direction}`}>
                             {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
                         </div>
@@ -257,8 +154,8 @@ export default function WatchPage() {
                 </div>
             </div>
 
-            {/* (باقي الأنماط CSS كما هي) */}
             <style jsx global>{`
+                /* ... (كل أنماط CSS لم تتغير) ... */
                 body { margin: 0; background: #000; overscroll-behavior: contain; }
                 .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
