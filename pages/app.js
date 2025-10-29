@@ -3,13 +3,6 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 
-const loadFingerprint = async () => {
-  const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
-  const fp = await FingerprintJS.load();
-  const result = await fp.get();
-  return result.visitorId;
-};
-
 export default function App() {
   const [status, setStatus] = useState('جاري التحقق من هويتك...');
   const [error, setError] = useState(null);
@@ -18,73 +11,125 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
+    // --- [بداية التعديل] ---
+    // 1. قراءة البارامترات من الرابط القادم من تطبيق الأندرويد
+    const urlParams = new URLSearchParams(window.location.search);
+    const androidUserId = urlParams.get('android_user_id');
+    const androidDeviceId = urlParams.get('android_device_id'); // <-- بصمة الجهاز الفعلية
+    
+    let tgUser = null;
+
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+      // 2. الوضع القديم: المستخدم يفتح من داخل تليجرام
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
-      const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+      tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+      
+    } else if (androidUserId) {
+      // 3. الوضع الجديد: المستخدم يفتح من تطبيق الأندرويد
+      console.log("Running in secure Android WebView wrapper");
+      // "نصنع" كائن مستخدم بناءً على الـ ID القادم من الرابط
+      tgUser = { id: androidUserId, first_name: "App User" }; 
+    }
+    // --- [نهاية التعديل] ---
 
-      if (!tgUser || !tgUser.id) { // <-- [تحسين] التأكد من وجود ID
-        setError('لا يمكن التعرف على هويتك. الرجاء الفتح من تليجرام.');
+
+    if (!tgUser || !tgUser.id) { 
+      setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
+      return;
+    }
+    setUser(tgUser);
+    setStatus('جاري التحقق من الاشتراك...');
+
+    // --- الخطوة 1: التحقق من الاشتراك (لا تغيير هنا) ---
+    fetch('/api/auth/check-subscription', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: tgUser.id }),
+    })
+    .then(res => res.json())
+    .then(subData => {
+      if (!subData.isSubscribed) {
+        setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
         return;
       }
-      setUser(tgUser);
-      setStatus('جاري التحقق من الاشتراك...');
 
-      // --- الخطوة 1: التحقق من الاشتراك ---
-      fetch('/api/auth/check-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: tgUser.id }),
-      })
-      .then(res => res.json())
-      .then(subData => {
-        if (!subData.isSubscribed) {
-          setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
-          return;
-        }
+      // --- [تعديل] الخطوة 2: التحقق من بصمة الجهاز ---
+      setStatus('جاري التحقق من بصمة الجهاز...');
 
-        // --- الخطوة 2: التحقق من بصمة الجهاز ---
-        setStatus('جاري التحقق من بصمة الجهاز...');
-        loadFingerprint().then(fingerprint => {
-          fetch('/api/auth/check-device', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: tgUser.id, fingerprint: fingerprint }),
-          })
-          .then(res => res.json())
-          .then(deviceData => {
-            if (!deviceData.success) {
-              setError(deviceData.message);
-            } else {
-              setStatus('جاري جلب الكورسات...');
-              
-              // --- [هذا هو الإصلاح] ---
-              // نقوم بتحويل الـ ID إلى نص صريح قبل إرساله في الرابط
-              const userIdString = String(tgUser.id);
-              
-              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) // <-- استخدام المتغير الجديد
-                .then(res => res.json())
-                .then(courseData => {
-                  setCourses(courseData); 
-                  setStatus(''); 
-                })
-                .catch(err => {
-                  setError('حدث خطأ أثناء جلب الكورسات.');
-                });
-            }
-          });
+      if (androidDeviceId) {
+        // --- نحن في تطبيق الأندرويد ---
+        // نستخدم بصمة الأندرويد الفعلية مباشرة
+        checkDeviceApi(tgUser.id, androidDeviceId);
+      } else {
+        // --- نحن في تليجرام ويب (كوضع احتياطي أو للأدمن) ---
+        // نستخدم بصمة المتصفح القديمة (fingerprint.js)
+        
+        const loadBrowserFingerprint = async () => {
+          // نحتاج تعريف الدالة هنا الآن
+          const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
+          const fp = await FingerprintJS.load();
+          const result = await fp.get();
+          return result.visitorId;
+        };
+        
+        loadBrowserFingerprint().then(fingerprint => {
+            checkDeviceApi(tgUser.id, fingerprint);
+        }).catch(err => {
+            console.error('Fingerprint.js error:', err);
+            setError('خطأ في تحميل بصمة المتصفح.');
         });
+      }
+    })
+    .catch(err => {
+       setError('حدث خطأ أثناء التحقق. حاول مرة أخرى.');
+       console.error(err);
+    });
 
-      })
-      .catch(err => {
-         setError('حدث خطأ أثناء التحقق. حاول مرة أخرى.');
-         console.error(err);
-      });
-
-    } else if (typeof window !== 'undefined') {
+    // 5. فصل دالة التحقق من البصمة
+    const checkDeviceApi = (userId, deviceFingerprint) => {
+        fetch('/api/auth/check-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // إرسال البصمة (سواء كانت من أندرويد أو المتصفح)
+          body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
+        })
+        .then(res => res.json())
+        .then(deviceData => {
+          if (!deviceData.success) {
+            setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
+          } else {
+            // ... (باقي الكود لجلب الكورسات كما هو) ...
+            setStatus('جاري جلب الكورسات...');
+            const userIdString = String(userId);
+            
+            fetch(`/api/data/get-structured-courses?userId=${userIdString}`)
+              .then(res => {
+                  if (!res.ok) throw new Error('Network response was not ok');
+                  return res.json();
+              })
+              .then(courseData => {
+                setCourses(courseData); 
+                setStatus(''); 
+              })
+              .catch(err => {
+                console.error('Error fetching courses:', err);
+                setError('حدث خطأ أثناء جلب الكورسات.');
+              });
+          }
+        })
+        .catch(err => {
+            console.error('Check device API error:', err);
+            setError('خطأ في الاتصال بخادم التحقق من الجهاز.');
+        });
+    }
+    
+    } else if (typeof window !== 'undefined' && !androidUserId) { // تم إضافة شرط !androidUserId
       setError('الرجاء فتح التطبيق من داخل تليجرام.');
     }
   }, []);
+
+  // --- باقي الكود (جزء العرض) كما هو ---
 
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
@@ -93,7 +138,6 @@ export default function App() {
     return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
 
-  // --- العرض (كما هو) ---
   if (!selectedCourse) {
     return (
       <div className="app-container">
@@ -105,7 +149,7 @@ export default function App() {
               <li key={course.id}>
                 <button className="button-link" onClick={() => setSelectedCourse(course)}>
                   {course.title}
-                  <span>({course.videos.length} فيديو)</span>
+                  <span>({course.videos ? course.videos.length : 0} فيديو)</span>
                 </button>
               </li>
              ))
@@ -126,7 +170,7 @@ export default function App() {
       </button>
       <h1>{selectedCourse.title}</h1>
       <ul className="item-list">
-        {selectedCourse.videos.length > 0 ? (
+        {selectedCourse.videos && selectedCourse.videos.length > 0 ? (
           selectedCourse.videos.map(video => (
             <li key={video.id}>
               <Link href={`/watch/${video.id}`}>
