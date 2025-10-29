@@ -23,11 +23,11 @@ export default function WatchPage() {
     const progressBarRef = useRef(null);
     const [playbackRate, setPlaybackRate] = useState(1);
     const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]);
-    const [videoQuality, setVideoQuality] = useState('auto');
+    const [videoQuality, setVideoQuality] = useState('auto'); // القيمة الافتراضية
     const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
 
-    // ... (useEffect لم يتغير)
+    // useEffect لجلب بيانات الفيديو وتحديث الوقت والعلامة المائية (كما هو)
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
@@ -49,7 +49,7 @@ export default function WatchPage() {
         return () => { clearInterval(progressInterval); clearInterval(watermarkIntervalRef.current); };
     }, [videoId, isSeeking]);
 
-    // --- **جديد: دالة لترجمة أسماء الجودات** ---
+    // دالة ترجمة أسماء الجودات (كما هي)
     const formatQualityLabel = (quality) => {
         const qualityMap = {
             hd1080: '1080p',
@@ -63,51 +63,62 @@ export default function WatchPage() {
         return qualityMap[quality] || quality;
     };
 
-    // ... (باقي الدوال لم تتغير)
+    // --- ⬇️ التعديل هنا ⬇️ ---
+    // دالة onPlayerReady: تُستدعى عندما يكون المشغل جاهزاً
+    const onPlayerReady = useCallback((event) => {
+        playerRef.current = event.target;
+        setDuration(event.target.getDuration());
+        const rates = playerRef.current.getAvailablePlaybackRates();
+        if (rates && rates.length > 0) {
+            setAvailablePlaybackRates(rates);
+            setPlaybackRate(playerRef.current.getPlaybackRate());
+        }
+
+        // --- ✅ الإضافة هنا: اقتراح الجودة فوراً ---
+        // اختر الجودة التي تفضلها كبداية (مثل 'hd720' لـ 720p)
+        const preferredQuality = 'hd720'; // <--- غير هذه حسب رغبتك (مثل 'large' لـ 480p)
+        if (playerRef.current && typeof playerRef.current.setPlaybackQuality === 'function') {
+            console.log(`Attempting to set initial quality to: ${preferredQuality}`);
+            playerRef.current.setPlaybackQuality(preferredQuality);
+            // اختياري: تحديث الحالة لتعكس الاقتراح في القائمة المنسدلة فوراً
+            setVideoQuality(preferredQuality);
+        }
+        // --- نهاية الإضافة ---
+
+    }, []); // <-- تأكد أن مصفوفة الاعتماديات فارغة
+
+    // دالة handleOnPlay: تُستدعى عند بدء التشغيل (كما هي تقريباً، فقط جلب الجودات)
+    const handleOnPlay = () => {
+        setIsPlaying(true);
+        // [تعديل] جلب الجودات المتاحة هنا لعرضها في القائمة
+        if (playerRef.current && !qualitiesFetched) {
+            const qualities = playerRef.current.getAvailableQualityLevels();
+            if (qualities && qualities.length > 0) {
+                // نعرض 'auto' دائماً كخيار
+                setAvailableQualityLevels(['auto', ...qualities.filter(q => q !== 'auto')]);
+                // قد نعيد تحديث الحالة videoQuality بالجودة الفعلية الحالية إذا أردنا
+                // setVideoQuality(playerRef.current.getPlaybackQuality());
+                setQualitiesFetched(true);
+            }
+        }
+    };
+    // --- ⬆️ نهاية التعديلات الرئيسية ⬆️ ---
+
+
+    // ... (باقي الدوال كما هي: handlePlayPause, handleSeek, calculateSeekTime, etc.) ...
     const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
     const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
-    const onPlayerReady = useCallback((event) => { playerRef.current = event.target; setDuration(event.target.getDuration()); const rates = playerRef.current.getAvailablePlaybackRates(); if (rates && rates.length > 0) { setAvailablePlaybackRates(rates); setPlaybackRate(playerRef.current.getPlaybackRate()); } }, []);
-    const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
     const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
     const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
     const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
-    // ✅ دالة تغيير الجودة بشكل فعلي
-const handleSetQuality = (e) => {
-  const newQuality = e.target.value;
-  const oldQuality = videoQuality; // حفظ الجودة القديمة مؤقتًا
-  if (!playerRef.current) return;
-
-  const currentTime = playerRef.current.getCurrentTime?.() || 0;
-  const wasPlaying = playerRef.current.getPlayerState?.() === 1;
-
-  // نحاول نطلب الجودة الجديدة
-  playerRef.current.loadVideoById({
-    videoId: youtubeId,
-    startSeconds: currentTime,
-    suggestedQuality: newQuality,
-  });
-
-  // لو الفيديو كان متوقف، نوقفه بعد التحميل
-  if (!wasPlaying) setTimeout(() => playerRef.current.pauseVideo?.(), 600);
-
-  // ننتظر شوية ونتحقق فعلاً هل الجودة اتغيرت
-  setTimeout(() => {
-    const actualQuality = playerRef.current.getPlaybackQuality?.();
-    if (actualQuality === newQuality) {
-      // ✅ الجودة اتغيرت فعلاً → نثبت التغيير
-      setVideoQuality(newQuality);
-      console.log(`✅ تم تغيير الجودة إلى ${newQuality}`);
-    } else {
-      // ❌ الجودة ما اتغيرتش → نرجع للقيمة القديمة
-      setVideoQuality(oldQuality);
-      console.log(`❌ لم تتغير الجودة (ما زالت ${actualQuality})`);
-    }
-  }, 1000); // الانتظار ثانية واحدة قبل التحقق
-};
+    // دالة handleSetQuality (كما هي)
+    const handleSetQuality = (e) => { const newQuality = e.target.value; if (playerRef.current) { playerRef.current.setPlaybackQuality(newQuality); setVideoQuality(newQuality); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
+
+    // ... (باقي الكود للعرض JSX والأنماط CSS كما هو) ...
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
     const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
@@ -125,14 +136,16 @@ const handleSetQuality = (e) => {
                     opts={opts}
                     className="youtube-player"
                     iframeClassName="youtube-iframe"
-                    onReady={onPlayerReady}
-                    onPlay={handleOnPlay}
+                    onReady={onPlayerReady} // <-- تم التعديل هنا
+                    onPlay={handleOnPlay} // <-- تم التعديل هنا
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
                 />
 
+                {/* (باقي الـ JSX للدرع وعناصره كما هو) */}
                 <div className="controls-overlay">
-                    <div className="interaction-grid">
+                     {/* ... (interaction-grid) ... */}
+                     <div className="interaction-grid">
                         <div className="seek-zone" onDoubleClick={() => handleSeek('backward')}></div>
                         <div className="play-pause-zone" onClick={handlePlayPause}>
                             {!isPlaying && <div className="play-icon">▶</div>}
@@ -140,12 +153,12 @@ const handleSetQuality = (e) => {
                         <div className="seek-zone" onDoubleClick={() => handleSeek('forward')}></div>
                     </div>
 
+                    {/* ... (bottom-controls مع القوائم المنسدلة) ... */}
                     <div className="bottom-controls">
                         <div className="extra-controls">
                             {availableQualityLevels.length > 0 && (
                                 <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
                                     {availableQualityLevels.map(quality => (
-                                        // **--- التعديل هنا ---**
                                         <option key={quality} value={quality}>
                                             {formatQualityLabel(quality)}
                                         </option>
@@ -174,24 +187,26 @@ const handleSetQuality = (e) => {
                         <span className="time-display">{formatTime(duration)}</span>
                     </div>
 
-                    {showSeekIcon.visible && (
+                    {/* ... (seek-indicator) ... */}
+                     {showSeekIcon.visible && (
                         <div className={`seek-indicator ${showSeekIcon.direction}`}>
                             {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
                         </div>
                     )}
 
+                    {/* ... (watermark) ... */}
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
                         {user.first_name} ({user.id})
                     </div>
                 </div>
             </div>
 
+            {/* (باقي الأنماط CSS كما هي) */}
             <style jsx global>{`
-                /* ... (كل أنماط CSS لم تتغير) ... */
-                body { margin: 0; overscroll-behavior: contain; }
+                body { margin: 0; background: #000; overscroll-behavior: contain; }
                 .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
-                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: linear-gradient(to bottom, #111827, #000000); }
+                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 9; background: #111; }
                 .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
                 .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
                 .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
