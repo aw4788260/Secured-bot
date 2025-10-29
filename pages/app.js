@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 
+// ‼️ [تم الإلغاء] لم نعد بحاجة لاستيراد fingerprintjs في هذا المكان
+// import FingerprintJS from '@fingerprintjs/fingerprintjs';
+
 export default function App() {
   const [status, setStatus] = useState('جاري التحقق من هويتك...');
   const [error, setError] = useState(null);
@@ -35,6 +38,7 @@ export default function App() {
 
 
     if (!tgUser || !tgUser.id) { 
+      // [تعديل رسالة الخطأ]
       setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
       return;
     }
@@ -42,7 +46,7 @@ export default function App() {
     setStatus('جاري التحقق من الاشتراك...');
 
     // --- الخطوة 1: التحقق من الاشتراك (لا تغيير هنا) ---
-    fetch('/api/auth/check-subscription', {
+    fetch('/api/auth/check-subscription', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: tgUser.id }),
@@ -75,9 +79,6 @@ export default function App() {
         
         loadBrowserFingerprint().then(fingerprint => {
             checkDeviceApi(tgUser.id, fingerprint);
-        }).catch(err => {
-            console.error('Fingerprint.js error:', err);
-            setError('خطأ في تحميل بصمة المتصفح.');
         });
       }
     })
@@ -88,7 +89,7 @@ export default function App() {
 
     // 5. فصل دالة التحقق من البصمة
     const checkDeviceApi = (userId, deviceFingerprint) => {
-        fetch('/api/auth/check-device', {
+        fetch('/api/auth/check-device', { 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // إرسال البصمة (سواء كانت من أندرويد أو المتصفح)
@@ -103,34 +104,26 @@ export default function App() {
             setStatus('جاري جلب الكورسات...');
             const userIdString = String(userId);
             
-            fetch(`/api/data/get-structured-courses?userId=${userIdString}`)
-              .then(res => {
-                  if (!res.ok) throw new Error('Network response was not ok');
-                  return res.json();
-              })
+            fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
+              .then(res => res.json())
               .then(courseData => {
                 setCourses(courseData); 
                 setStatus(''); 
               })
               .catch(err => {
-                console.error('Error fetching courses:', err);
                 setError('حدث خطأ أثناء جلب الكورسات.');
               });
           }
-        })
-        .catch(err => {
-            console.error('Check device API error:', err);
-            setError('خطأ في الاتصال بخادم التحقق من الجهاز.');
         });
     }
     
-    } else if (typeof window !== 'undefined' && !androidUserId) { // تم إضافة شرط !androidUserId
+    // [تعديل الشرط]
+    } else if (typeof window !== 'undefined' && !androidUserId) { 
       setError('الرجاء فتح التطبيق من داخل تليجرام.');
     }
   }, []);
 
-  // --- باقي الكود (جزء العرض) كما هو ---
-
+  // ... (باقي كود الـ return كما هو) ...
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
@@ -138,6 +131,7 @@ export default function App() {
     return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
 
+  // --- العرض (كما هو) ---
   if (!selectedCourse) {
     return (
       <div className="app-container">
@@ -149,7 +143,7 @@ export default function App() {
               <li key={course.id}>
                 <button className="button-link" onClick={() => setSelectedCourse(course)}>
                   {course.title}
-                  <span>({course.videos ? course.videos.length : 0} فيديو)</span>
+                  <span>({course.videos.length} فيديو)</span>
                 </button>
               </li>
              ))
@@ -170,7 +164,7 @@ export default function App() {
       </button>
       <h1>{selectedCourse.title}</h1>
       <ul className="item-list">
-        {selectedCourse.videos && selectedCourse.videos.length > 0 ? (
+        {selectedCourse.videos.length > 0 ? (
           selectedCourse.videos.map(video => (
             <li key={video.id}>
               <Link href={`/watch/${video.id}`}>
