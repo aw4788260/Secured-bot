@@ -73,7 +73,38 @@ export default function WatchPage() {
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
     const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
-    const handleSetQuality = (e) => { const newQuality = e.target.value; if (playerRef.current) { playerRef.current.setPlaybackQuality(newQuality); setVideoQuality(newQuality); } };
+    const handleSetQuality = (e) => {
+  const newQuality = e.target.value;
+  const oldQuality = videoQuality; // حفظ الجودة القديمة مؤقتًا
+  if (!playerRef.current) return;
+
+  const currentTime = playerRef.current.getCurrentTime?.() || 0;
+  const wasPlaying = playerRef.current.getPlayerState?.() === 1;
+
+  // نحاول نطلب الجودة الجديدة
+  playerRef.current.loadVideoById({
+    videoId: youtubeId,
+    startSeconds: currentTime,
+    suggestedQuality: newQuality,
+  });
+
+  // لو الفيديو كان متوقف، نوقفه بعد التحميل
+  if (!wasPlaying) setTimeout(() => playerRef.current.pauseVideo?.(), 600);
+
+  // ننتظر شوية ونتحقق فعلاً هل الجودة اتغيرت
+  setTimeout(() => {
+    const actualQuality = playerRef.current.getPlaybackQuality?.();
+    if (actualQuality === newQuality) {
+      // ✅ الجودة اتغيرت فعلاً → نثبت التغيير
+      setVideoQuality(newQuality);
+      console.log(`✅ تم تغيير الجودة إلى ${newQuality}`);
+    } else {
+      // ❌ الجودة ما اتغيرتش → نرجع للقيمة القديمة
+      setVideoQuality(oldQuality);
+      console.log(`❌ لم تتغير الجودة (ما زالت ${actualQuality})`);
+    }
+  }, 1000); // الانتظار ثانية واحدة قبل التحقق
+};
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
