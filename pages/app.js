@@ -3,9 +3,6 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 
-// ‼️ [تم الإلغاء] لم نعد بحاجة لاستيراد fingerprintjs في هذا المكان
-// import FingerprintJS from '@fingerprintjs/fingerprintjs';
-
 export default function App() {
   const [status, setStatus] = useState('جاري التحقق من هويتك...');
   const [error, setError] = useState(null);
@@ -14,38 +11,71 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // --- [بداية التعديل] ---
-    // 1. قراءة البارامترات من الرابط القادم من تطبيق الأندرويد
+    // 1. قراءة البارامترات من الرابط
     const urlParams = new URLSearchParams(window.location.search);
     const androidUserId = urlParams.get('android_user_id');
-    const androidDeviceId = urlParams.get('android_device_id'); // <-- بصمة الجهاز الفعلية
+    const androidDeviceId = urlParams.get('android_device_id'); 
     
     let tgUser = null;
 
+    // --- [هذا هو الإصلاح] ---
+    // 2. سلسلة التحقق من الهوية (تم إعادة ترتيبها)
     if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-      // 2. الوضع القديم: المستخدم يفتح من داخل تليجرام
+      // الوضع 1: الفتح من داخل تليجرام
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
       tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
       
     } else if (androidUserId) {
-      // 3. الوضع الجديد: المستخدم يفتح من تطبيق الأندرويد
+      // الوضع 2: الفتح من تطبيق الأندرويد
       console.log("Running in secure Android WebView wrapper");
-      // "نصنع" كائن مستخدم بناءً على الـ ID القادم من الرابط
-      tgUser = { id: androidUserId, first_name: "App User" }; 
-    }
-    // --- [نهاية التعديل] ---
+      tgUser = { id: androidUserId, first_name: "App User" };
 
-
-    if (!tgUser || !tgUser.id) { 
-      // [تعديل رسالة الخطأ]
+    } else if (typeof window !== 'undefined') {
+      // الوضع 3: الفتح من متصفح عادي (هذا هو الشرط الذي كان في غير مكانه)
       setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
+      return; // نوقف التنفيذ
+    }
+    // --- [نهاية الإصلاح] ---
+
+
+    // 3. التحقق من وجود المستخدم
+    if (!tgUser || !tgUser.id) { 
+      setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
       return;
     }
+    
     setUser(tgUser);
     setStatus('جاري التحقق من الاشتراك...');
 
-    // --- الخطوة 1: التحقق من الاشتراك (لا تغيير هنا) ---
+    // 4. فصل دالة التحقق من البصمة (يجب تعريفها قبل استدعائها)
+    const checkDeviceApi = (userId, deviceFingerprint) => {
+        fetch('/api/auth/check-device', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
+        })
+        .then(res => res.json())
+        .then(deviceData => {
+          if (!deviceData.success) {
+            setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
+          } else {
+            setStatus('جاري جلب الكورسات...');
+            const userIdString = String(userId);
+            fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
+              .then(res => res.json())
+              .then(courseData => {
+                setCourses(courseData); 
+                setStatus(''); 
+              })
+              .catch(err => {
+                setError('حدث خطأ أثناء جلب الكورسات.');
+              });
+          }
+        });
+    }
+
+    // --- الخطوة 5: التحقق من الاشتراك ---
     fetch('/api/auth/check-subscription', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,19 +88,15 @@ export default function App() {
         return;
       }
 
-      // --- [تعديل] الخطوة 2: التحقق من بصمة الجهاز ---
+      // --- الخطوة 6: التحقق من بصمة الجهاز ---
       setStatus('جاري التحقق من بصمة الجهاز...');
 
       if (androidDeviceId) {
         // --- نحن في تطبيق الأندرويد ---
-        // نستخدم بصمة الأندرويد الفعلية مباشرة
         checkDeviceApi(tgUser.id, androidDeviceId);
       } else {
         // --- نحن في تليجرام ويب (كوضع احتياطي أو للأدمن) ---
-        // نستخدم بصمة المتصفح القديمة (fingerprint.js)
-        
         const loadBrowserFingerprint = async () => {
-          // نحتاج تعريف الدالة هنا الآن
           const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
           const fp = await FingerprintJS.load();
           const result = await fp.get();
@@ -87,41 +113,7 @@ export default function App() {
        console.error(err);
     });
 
-    // 5. فصل دالة التحقق من البصمة
-    const checkDeviceApi = (userId, deviceFingerprint) => {
-        fetch('/api/auth/check-device', { 
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // إرسال البصمة (سواء كانت من أندرويد أو المتصفح)
-          body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
-        })
-        .then(res => res.json())
-        .then(deviceData => {
-          if (!deviceData.success) {
-            setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
-          } else {
-            // ... (باقي الكود لجلب الكورسات كما هو) ...
-            setStatus('جاري جلب الكورسات...');
-            const userIdString = String(userId);
-            
-            fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
-              .then(res => res.json())
-              .then(courseData => {
-                setCourses(courseData); 
-                setStatus(''); 
-              })
-              .catch(err => {
-                setError('حدث خطأ أثناء جلب الكورسات.');
-              });
-          }
-        });
-    }
-    
-    // [تعديل الشرط]
-    } else if (typeof window !== 'undefined' && !androidUserId) { 
-      setError('الرجاء فتح التطبيق من داخل تليجرام.');
-    }
-  }, []);
+  }, []); // نهاية useEffect
 
   // ... (باقي كود الـ return كما هو) ...
   if (error) {
@@ -182,3 +174,4 @@ export default function App() {
     </div>
   );
 }
+
