@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
 
-// --- الدوال المساعدة (كما هي) ---
+// --- الدوال المساعدة (بدون تغيير) ---
 const escapeMarkdown = (text) => {
   if (text === null || typeof text === 'undefined') {
     return '';
@@ -58,9 +58,13 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = 'Mark
 };
 
 const answerCallbackQuery = async (callbackQueryId) => {
-  await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-    callback_query_id: callbackQueryId,
-  });
+  try {
+    await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+      callback_query_id: callbackQueryId,
+    });
+  } catch (e) {
+    console.error("Failed to answer callback query:", e.message);
+  }
 };
 
 const getUser = async (userId) => {
@@ -109,42 +113,40 @@ const sendAdminMenu = async (chatId) => {
   const keyboard = {
     inline_keyboard: [
       [{ text: '👤 إدارة المستخدمين', callback_data: 'admin_manage_users' }],
-      [{ text: '🗂️ إدارة المحتوى (جديد)', callback_data: 'admin_manage_content' }],
+      [{ text: '🗂️ إدارة المحتوى', callback_data: 'admin_manage_content' }],
     ],
   };
-  await sendMessage(chatId, 'Panel Admin:\nاختر القسم:', keyboard);
+  await sendMessage(chatId, 'Panel Admin:', keyboard);
 };
 
 const sendUserMenu = async (chatId) => {
    const keyboard = {
     inline_keyboard: [
       [{ text: '➕ إضافة/تحديث مستخدمين', callback_data: 'admin_add_users' }],
-      [{ text: '❌ سحب الصلاحيات (محدد/كامل)', callback_data: 'admin_revoke_permissions' }],
-      [{ text: '🔄 إعادة تعيين جهاز (حذف البصمة)', callback_data: 'admin_reset_device' }],
+      [{ text: '❌ سحب الصلاحيات', callback_data: 'admin_revoke_permissions' }],
+      [{ text: '🔄 إعادة تعيين جهاز', callback_data: 'admin_reset_device' }],
       [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
     ],
   };
-  await sendMessage(chatId, 'إدارة المستخدمين:', keyboard);
+  await sendMessage(chatId, '👤 إدارة المستخدمين:', keyboard);
 };
 
-// (دالة جلب الكورسات لمنح الصلاحيات - تبقى كما هي)
 const fetchAndSendCoursesMenu = async (chatId, text, stateData, callback_prefix) => {
   const { data: courses, error } = await supabase.from('courses').select('id, title').order('title');
   if (error || !courses || courses.length === 0) {
-    await sendMessage(chatId, 'خطأ: لم يتم العثور على كورسات\\. أضف كورسات أولاً\\.');
+    await sendMessage(chatId, 'خطأ: لا توجد كورسات\\. أضف كورسات أولاً\\.');
     await setAdminState(chatId, null, null);
     return;
   }
   await setAdminState(chatId, 'awaiting_course_selection', stateData);
   const keyboard = courses.map(c => ([{ text: escapeMarkdown(c.title), callback_data: `${callback_prefix}_${c.id}` }]));
   if (callback_prefix === 'assign_course') {
-     keyboard.unshift([{ text: '✅ منح صلاحية لكل الكورسات', callback_data: 'assign_all_courses' }]);
-     keyboard.push([{ text: '👍 إنهاء ومنح الصلاحيات المحددة', callback_data: 'assign_finish' }]);
+     keyboard.unshift([{ text: '✅ صلاحية كاملة', callback_data: 'assign_all_courses' }]);
+     keyboard.push([{ text: '👍 إنهاء ومنح (محدد)', callback_data: 'assign_finish' }]);
   }
   await sendMessage(chatId, text, { inline_keyboard: keyboard });
 };
 
-// (دالة قائمة سحب الصلاحيات - تبقى كما هي)
 const sendRevokeMenu = async (adminChatId, targetUserId) => {
   try {
     const { data: targetUser, error: userError } = await supabase
@@ -154,7 +156,7 @@ const sendRevokeMenu = async (adminChatId, targetUserId) => {
       .single();
 
     if (!targetUser || (userError && userError.code === 'PGRST116')) {
-      await sendMessage(adminChatId, `خطأ: المستخدم \`${targetUserId}\` غير موجود في قاعدة البيانات\\.`);
+      await sendMessage(adminChatId, `خطأ: المستخدم \`${targetUserId}\` غير موجود\\.`);
       return;
     }
     if (userError) throw userError;
@@ -176,17 +178,10 @@ const sendRevokeMenu = async (adminChatId, targetUserId) => {
       courses = coursesData;
     }
 
-    let message = `*مراجعة صلاحيات المستخدم:*\n`;
-    message += `👤 \`${targetUserId}\`\n\n`;
-
-    if (targetUser.is_subscribed) {
-      message += "الحالة: 💎 *مشترك \\(صلاحية كاملة\\)*\n";
-    } else {
-      message += "الحالة: 🔒 *صلاحية محددة*\n";
-    }
+    let message = `*صلاحيات المستخدم:*\n👤 \`${targetUserId}\`\n\n`;
+    message += (targetUser.is_subscribed) ? "الحالة: 💎 *صلاحية كاملة*\n" : "الحالة: 🔒 *صلاحية محددة*\n";
 
     const keyboard = [];
-
     if (courses.length > 0) {
       message += "*الكورسات المحددة:*\n";
       courses.forEach(course => {
@@ -197,27 +192,22 @@ const sendRevokeMenu = async (adminChatId, targetUserId) => {
           callback_data: `revoke_specific_${targetUserId}_course_${course.id}`
         }]);
       });
-    } else {
-      message += "لا يمتلك صلاحية لأي كورس محدد\\.\n";
     }
-
     keyboard.unshift([{
       text: '⛔️ سحب "جميع" الصلاحيات',
       callback_data: `revoke_all_${targetUserId}`
     }]);
     keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: 'admin_manage_users' }]);
-
     await sendMessage(adminChatId, message, { inline_keyboard: keyboard });
-
   } catch (error) {
     console.error("Error in sendRevokeMenu:", error);
-    await sendMessage(adminChatId, `حدث خطأ أثناء جلب بيانات المستخدم: ${escapeMarkdown(error.message)}`);
+    await sendMessage(adminChatId, `حدث خطأ: ${escapeMarkdown(error.message)}`);
     await setAdminState(adminChatId, null, null);
   }
 };
 
 
-// --- [ ✅✅ دوال إدارة المحتوى الهرمية الجديدة ] ---
+// --- [ ✅✅ دوال إدارة المحتوى الهرمية (مُعدلة) ] ---
 
 // (الدالة 1: عرض الكورسات)
 const sendContentMenu_Courses = async (chatId) => {
@@ -236,7 +226,7 @@ const sendContentMenu_Courses = async (chatId) => {
     courses.forEach(course => {
       keyboard.push([{
         text: `📚 ${escapeMarkdown(course.title)}`,
-        callback_data: `content_nav_course_${course.id}` // الذهاب للكورس
+        callback_data: `content_nav_course_${course.id}`
       }]);
     });
   }
@@ -244,15 +234,15 @@ const sendContentMenu_Courses = async (chatId) => {
   keyboard.push([{ text: '➕ إضافة كورس جديد', callback_data: 'content_add_course' }]);
   keyboard.push([{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }]);
 
-  await setAdminState(chatId, null, null); // مسح أي حالة سابقة
-  await sendMessage(chatId, '🗂️ *إدارة المحتوى: (الكورسات)*\n\nاختر كورساً للتعديل أو أضف كورساً جديداً:', { inline_keyboard: keyboard });
+  await setAdminState(chatId, null, null);
+  await sendMessage(chatId, '🗂️ *المحتوى: الكورسات*', { inline_keyboard: keyboard });
 };
 
 // (الدالة 2: عرض المجلدات داخل الكورس)
 const sendContentMenu_Folders = async (chatId, courseId) => {
   const { data: course, error } = await supabase
     .from('courses')
-    .select('title, sections (id, title)') // sections هو اسم الجدول الجديد (المجلدات)
+    .select('title, sections (id, title)') // sections = المجلدات
     .eq('id', courseId)
     .single();
 
@@ -260,34 +250,31 @@ const sendContentMenu_Folders = async (chatId, courseId) => {
     await sendMessage(chatId, 'خطأ: لم يتم العثور على الكورس.');
     return;
   }
-
   const courseTitle = escapeMarkdown(course.title);
-  const sections = course.sections || []; // جلب المجلدات
+  const sections = course.sections || [];
 
   const keyboard = [];
   sections.forEach(section => {
     keyboard.push([{
       text: `📁 ${escapeMarkdown(section.title)}`,
-      callback_data: `content_nav_folder_${section.id}` // الذهاب للمجلد
+      callback_data: `content_nav_folder_${section.id}`
     }]);
   });
-
-  // أزرار التحكم
   keyboard.push([
     { text: '➕ إضافة مجلد', callback_data: `content_add_folder_${courseId}` },
-    { text: '❌ حذف مجلد', callback_data: `content_del_folder_${courseId}` } // (تحتاج برمجة إضافية)
+    { text: '❌ حذف مجلد', callback_data: `content_del_folder_menu_${courseId}` } // <-- ✅ تعديل
   ]);
   keyboard.push([{ text: '🗑️ حذف هذا الكورس بالكامل', callback_data: `delete_course_confirm_${courseId}` }]);
   keyboard.push([{ text: '🔙 رجوع (للكورسات)', callback_data: 'admin_manage_content' }]);
 
-  await setAdminState(chatId, null, null);
-  await sendMessage(chatId, `🗂️ *الكورس: ${courseTitle}*\n\nاختر مجلداً للتعديل أو أضف مجلداً جديداً:`, { inline_keyboard: keyboard });
+  await setAdminState(chatId, null, { current_course_id: courseId }); // نحفظ الكورس الحالي
+  await sendMessage(chatId, `📚 *الكورس: ${courseTitle}*`, { inline_keyboard: keyboard });
 };
 
 // (الدالة 3: عرض الفيديوهات داخل المجلد)
 const sendContentMenu_Videos = async (chatId, sectionId) => {
   const { data: section, error } = await supabase
-    .from('sections') // جلب من جدول المجلدات
+    .from('sections')
     .select('title, course_id, videos (id, title)')
     .eq('id', sectionId)
     .single();
@@ -296,7 +283,6 @@ const sendContentMenu_Videos = async (chatId, sectionId) => {
     await sendMessage(chatId, 'خطأ: لم يتم العثور على المجلد.');
     return;
   }
-
   const sectionTitle = escapeMarkdown(section.title);
   const courseId = section.course_id;
   const videos = section.videos || [];
@@ -305,30 +291,53 @@ const sendContentMenu_Videos = async (chatId, sectionId) => {
   videos.forEach(video => {
     keyboard.push([{
       text: `▶️ ${escapeMarkdown(video.title)}`,
-      callback_data: `content_del_video_${video.id}_${sectionId}` // زر لحذف الفيديو + نمرر ID المجلد للرجوع
+      callback_data: `content_del_video_${video.id}_${sectionId}` // زر لحذف الفيديو + نمرر ID المجلد
     }]);
   });
   
   if (videos.length === 0) {
       keyboard.push([{ text: '(لا توجد فيديوهات بعد)', callback_data: 'noop' }]);
   }
-
-  // أزرار التحكم
   keyboard.push([
     { text: '➕ إضافة فيديو', callback_data: `content_add_video_${sectionId}` },
-    { text: '❌ حذف فيديو (اضغط عليه فوق)', callback_data: 'noop' }
+    { text: '❌ حذف فيديو (اضغط عليه)', callback_data: 'noop' }
   ]);
   keyboard.push([{ text: '🔙 رجوع (للمجلدات)', callback_data: `content_nav_course_${courseId}` }]);
 
-  await setAdminState(chatId, null, { current_folder_id: sectionId }); // نحفظ المجلد الحالي
-  await sendMessage(chatId, `📁 *المجلد: ${sectionTitle}*\n\nاختر فيديو لحذفه أو أضف فيديو جديد:`, { inline_keyboard: keyboard });
+  await setAdminState(chatId, null, { current_folder_id: sectionId, current_course_id: courseId }); // نحفظ المجلد والكورس
+  await sendMessage(chatId, `📁 *المجلد: ${sectionTitle}*`, { inline_keyboard: keyboard });
+};
+
+// --- [ ✅✅ ميزة جديدة: قائمة حذف المجلدات ] ---
+const sendFolderDeletionMenu = async (chatId, courseId) => {
+  const { data: sections, error } = await supabase
+    .from('sections')
+    .select('id, title')
+    .eq('course_id', courseId);
+
+  if (error || !sections || sections.length === 0) {
+    await sendMessage(chatId, 'لا توجد مجلدات لحذفها.');
+    await sendContentMenu_Folders(chatId, courseId); // الرجوع خطوة
+    return;
+  }
+
+  const keyboard = [];
+  sections.forEach(section => {
+    keyboard.push([{
+      text: `❌ حذف [${escapeMarkdown(section.title)}]`,
+      // نمرر ID المجلد + ID الكورس (للرجوع)
+      callback_data: `content_confirm_del_folder_${section.id}_${courseId}` 
+    }]);
+  });
+  keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: `content_nav_course_${courseId}` }]);
+  
+  await sendMessage(chatId, 'اختر المجلد الذي تريد حذفه (سيتم حذف كل الفيديوهات بداخله):', { inline_keyboard: keyboard });
 };
 
 // دالة وهمية للأزرار غير القابلة للضغط
 const noop = (chatId) => {
     // لا تفعل شيئاً
 };
-
 
 // --- الـ Webhook الرئيسي ---
 export default async (req, res) => {
@@ -346,17 +355,11 @@ export default async (req, res) => {
       const command = callback_query.data;
       await answerCallbackQuery(callback_query.id);
 
-      if (!user) {
-          console.error("Failed to get admin user:", userId);
-          if (chatId) await sendMessage(chatId, "حدث خطأ في جلب بيانات الأدمن\\.");
-          return res.status(200).send('OK');
-      }
-
+      if (!user) { return res.status(200).send('OK'); } // فشل جلب المستخدم
       if (!user.is_admin) {
         await sendMessage(chatId, 'أنت لست أدمن\\.');
         return res.status(200).send('OK');
       }
-
       if(command === 'noop') {
         return res.status(200).send('OK');
       }
@@ -373,15 +376,11 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // --- [ ✅✅ تعديل: نظام إدارة المحتوى الجديد ] ---
-      
-      // 2. الدخول إلى قائمة المحتوى (يبدأ بعرض الكورسات)
+      // --- [ ✅✅ نظام إدارة المحتوى الجديد ] ---
       if (command === 'admin_manage_content') {
         await sendContentMenu_Courses(chatId);
         return res.status(200).send('OK');
       }
-      
-      // 3. التنقل الهرمي
       if (command.startsWith('content_nav_course_')) {
         const courseId = parseInt(command.split('_')[3], 10);
         await sendContentMenu_Folders(chatId, courseId);
@@ -392,35 +391,44 @@ export default async (req, res) => {
         await sendContentMenu_Videos(chatId, folderId);
         return res.status(200).send('OK');
       }
-
-      // 4. أوامر الإضافة (تحديد الحالة)
       if (command === 'content_add_course') {
         await setAdminState(userId, 'awaiting_course_title');
-        await sendMessage(chatId, '📚 أرسل "اسم" الكورس الجديد: (أو /cancel للإلغاء)');
+        await sendMessage(chatId, 'أرسل اسم الكورس الجديد: (أو /cancel للإلغاء)');
         return res.status(200).send('OK');
       }
       if (command.startsWith('content_add_folder_')) {
         const courseId = parseInt(command.split('_')[3], 10);
         await setAdminState(userId, 'awaiting_folder_title', { course_id: courseId });
-        await sendMessage(chatId, '📁 أرسل "اسم" المجلد الجديد: (أو /cancel للإلغاء)');
+        await sendMessage(chatId, 'أرسل اسم المجلد الجديد: (أو /cancel للإلغاء)');
         return res.status(200).send('OK');
       }
       if (command.startsWith('content_add_video_')) {
         const sectionId = parseInt(command.split('_')[3], 10);
         await setAdminState(userId, 'awaiting_video_title', { section_id: sectionId });
-        await sendMessage(chatId, '🚀 أرسل "عنوان" الفيديو: (أو /cancel للإلغاء)');
+        await sendMessage(chatId, 'أرسل عنوان الفيديو: (أو /cancel للإلغاء)');
         return res.status(200).send('OK');
       }
+      
+      // --- [ ✅✅ ميزة حذف المجلدات (مكتملة) ] ---
+      if (command.startsWith('content_del_folder_menu_')) {
+        const courseId = parseInt(command.split('_')[4], 10);
+        await sendFolderDeletionMenu(chatId, courseId);
+        return res.status(200).send('OK');
+      }
+      if (command.startsWith('content_confirm_del_folder_')) {
+        const folderId = parseInt(command.split('_')[4], 10);
+        const courseId = parseInt(command.split('_')[5], 10);
+        // Cascade delete سيحذف المجلد والفيديوهات بداخله
+        await supabase.from('sections').delete().eq('id', folderId);
+        await sendMessage(chatId, '🗑️ تم حذف المجلد بنجاح\\.');
+        await sendContentMenu_Folders(chatId, courseId); // تحديث القائمة
+        return res.status(200).send('OK');
+      }
+      // --- [ نهاية ميزة حذف المجلدات ] ---
 
-      // 5. أوامر الحذف
-      if (command.startsWith('content_del_folder_')) {
-        await sendMessage(chatId, 'ميزة حذف المجلدات لم تكتمل بعد\\.');
-        // (تحتاج عرض قائمة بالمجلدات قابلة للحذف مع تأكيد)
-        return res.status(200).send('OK');
-      }
       if (command.startsWith('content_del_video_')) {
         const videoId = parseInt(command.split('_')[3], 10);
-        const sectionId = parseInt(command.split('_')[4], 10); // استلام ID المجلد
+        const sectionId = parseInt(command.split('_')[4], 10);
         await supabase.from('videos').delete().eq('id', videoId);
         await sendMessage(chatId, '🗑️ تم حذف الفيديو\\. (جاري تحديث القائمة...)');
         await sendContentMenu_Videos(chatId, sectionId); // تحديث القائمة
@@ -428,85 +436,61 @@ export default async (req, res) => {
       }
       if (command.startsWith('delete_course_confirm_')) {
         const courseId = parseInt(command.split('_')[3], 10);
-        // Cascade delete سيحذف الكورس، والمجلدات، والفيديوهات المرتبطة به
         await supabase.from('courses').delete().eq('id', courseId);
         await sendMessage(chatId, `🗑️ تم حذف الكورس وكل محتوياته بنجاح\\.`);
         await sendContentMenu_Courses(chatId); // العودة لقائمة الكورسات
         return res.status(200).send('OK');
       }
-      // --- [ نهاية تعديلات المحتوى ] ---
-
 
       // --- 2. معالجة أزرار "إدارة المستخدمين" (كما هي) ---
       if (command === 'admin_add_users') {
         await setAdminState(userId, 'awaiting_user_ids');
-        await sendMessage(chatId, '👤 أرسل الآن ID واحد أو أكثر \\(افصل بينهم بمسافة أو سطر جديد\\):');
+        await sendMessage(chatId, 'أرسل IDs المستخدمين (افصل بينهم بمسافة):');
         return res.status(200).send('OK');
       }
       if (command === 'admin_reset_device') {
         await setAdminState(userId, 'awaiting_device_reset_id');
-        await sendMessage(chatId, '👤 أرسل ID المستخدم \\(أو عدة IDs\\) الذي تريد حذف بصمته:');
+        await sendMessage(chatId, 'أرسل ID المستخدم لحذف بصمته:');
         return res.status(200).send('OK');
       }
       if (command === 'admin_revoke_permissions') {
         await setAdminState(userId, 'awaiting_user_id_for_revoke');
-        await sendMessage(chatId, '👤 أرسل *ID المستخدم الواحد* الذي تريد مراجعة صلاحياته:');
+        await sendMessage(chatId, 'أرسل ID المستخدم لمراجعة صلاحياته:');
         return res.status(200).send('OK');
       }
       if (command === 'assign_all_courses') {
         if (!user.state_data || !user.state_data.users) {
-            await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
+            await sendMessage(chatId, "خطأ: بيانات مفقودة\\. ابدأ من جديد\\.");
             return res.status(200).send(await setAdminState(userId, null, null));
         }
         const usersToUpdate = user.state_data.users;
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: true }));
         const { error } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
-        if (error) {
-           await sendMessage(chatId, `حدث خطأ: ${escapeMarkdown(error.message)}`);
-        } else {
-           await sendMessage(chatId, `✅ تم منح صلاحية كاملة لـ ${usersToUpdate.length} مستخدم\\.`);
-        }
+        if (error) { await sendMessage(chatId, `حدث خطأ: ${escapeMarkdown(error.message)}`); }
+        else { await sendMessage(chatId, `✅ تم منح صلاحية كاملة لـ ${usersToUpdate.length} مستخدم\\.`); }
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
       if (command.startsWith('assign_course_')) {
          if (!user.state_data || !user.state_data.users) {
-            await sendMessage(chatId, "خطأ: بيانات الحالة مفقودة\\. يرجى البدء من جديد\\.");
+            await sendMessage(chatId, "خطأ: بيانات مفقودة\\. ابدأ من جديد\\.");
             return res.status(200).send(await setAdminState(userId, null, null));
         }
         const courseId = parseInt(command.split('_')[2], 10);
-        if (isNaN(courseId)){
-             await sendMessage(chatId, "خطأ في تحديد الكورس\\. يرجى المحاولة مرة أخرى\\.");
-             return res.status(200).send(await setAdminState(userId, null, null));
-        }
         const stateData = user.state_data;
         const usersToUpdate = stateData.users;
         const userObjects = usersToUpdate.map(id => ({ id: id, is_subscribed: false }));
-        const { error: userUpsertError } = await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
-        if (userUpsertError) {
-          await sendMessage(chatId, `حدث خطأ أثناء تحديث المستخدمين: ${escapeMarkdown(userUpsertError.message)}`);
-          return res.status(200).send(await setAdminState(userId, null, null));
-        }
+        await supabase.from('users').upsert(userObjects, { onConflict: 'id' });
         const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
-        const { error: accessUpsertError } = await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
-        if (accessUpsertError) {
-           await sendMessage(chatId, `حدث خطأ أثناء إضافة الصلاحية: ${escapeMarkdown(accessUpsertError.message)}`);
-           return res.status(200).send(await setAdminState(userId, null, null));
-        }
+        await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
         const { data: course } = await supabase.from('courses').select('title').eq('id', courseId).single();
         const courseName = course ? escapeMarkdown(course.title) : 'المحدد';
-        const finishKeyboard = {
-          inline_keyboard: [[{ text: '👍 إنهاء', callback_data: 'assign_finish' }]]
-        };
-        await sendMessage(
-          chatId,
-          `✅ تم إضافة صلاحية كورس *${courseName}*\\.\n اختر كورساً آخر \\(من القائمة السابقة\\) أو اضغط "إنهاء"\\.`,
-          finishKeyboard
-        );
+        const finishKeyboard = { inline_keyboard: [[{ text: '👍 إنهاء', callback_data: 'assign_finish' }]] };
+        await sendMessage(chatId, `✅ تمت إضافة *${courseName}*\\. اختر كورساً آخر أو اضغط "إنهاء"\\.`, finishKeyboard );
         return res.status(200).send('OK');
       }
       if (command === 'assign_finish') {
-         await sendMessage(chatId, `👍 تم حفظ الصلاحيات المحددة للمستخدمين\\.`);
+         await sendMessage(chatId, `👍 تم حفظ الصلاحيات المحددة\\.`);
          await setAdminState(userId, null, null);
          return res.status(200).send('OK');
       }
@@ -514,7 +498,7 @@ export default async (req, res) => {
         const targetUserId = command.split('_')[2];
         await supabase.from('user_course_access').delete().eq('user_id', targetUserId);
         await supabase.from('users').update({ is_subscribed: false }).eq('id', targetUserId);
-        await sendMessage(chatId, `✅ تم سحب "جميع" الصلاحيات من المستخدم \`${targetUserId}\`\\.`);
+        await sendMessage(chatId, `✅ تم سحب "جميع" الصلاحيات من \`${targetUserId}\`\\.`);
         await setAdminState(userId, null, null);
         return res.status(200).send('OK');
       }
@@ -524,22 +508,21 @@ export default async (req, res) => {
         const courseId = parts[4];
         await supabase.from('user_course_access').delete().match({ user_id: targetUserId, course_id: courseId });
         await supabase.from('users').update({ is_subscribed: false }).eq('id', targetUserId);
-        await sendMessage(chatId, `✅ تم سحب صلاحية الكورس\\. جاري تحديث القائمة\\.\\.\\.`);
+        await sendMessage(chatId, `✅ تم سحب صلاحية الكورس\\. (جاري تحديث القائمة...)`);
         await sendRevokeMenu(chatId, targetUserId); // تحديث القائمة
         return res.status(200).send('OK');
       }
       if (command.startsWith('admin_grant_access_')) {
         const targetUserId = command.split('_')[3];
-        await setAdminState(userId, null, null); // Clear any previous state
+        await setAdminState(userId, null, null);
         await fetchAndSendCoursesMenu(
           chatId,
-          `🔑 منح صلاحيات للمستخدم \`${targetUserId}\`\\.\nاختر نوع الصلاحية:`,
+          `🔑 منح صلاحيات للمستخدم \`${targetUserId}\`\\:`,
           { users: [targetUserId] },
           'assign_course'
         );
         return res.status(200).send('OK');
       }
-
       return res.status(200).send('OK');
     }
 
@@ -552,7 +535,6 @@ export default async (req, res) => {
 
       if (!user) {
           console.error("Failed to get user:", userId);
-          if (chatId) await sendMessage(chatId, "حدث خطأ في جلب بيانات المستخدم\\.");
           return res.status(200).send('OK');
       }
 
@@ -566,7 +548,6 @@ export default async (req, res) => {
             .select('*', { count: 'exact', head: true })
             .eq('user_id', userId);
           if (accessCheckError && accessCheckError.code !== 'PGRST116') {
-                console.error("Error checking user access:", accessCheckError);
                 await sendMessage(chatId, "حدث خطأ أثناء التحقق من صلاحياتك\\.");
                 return res.status(200).send('OK');
            }
@@ -574,23 +555,19 @@ export default async (req, res) => {
           if (user.is_subscribed || hasSpecificAccess) {
             await sendMessage(chatId, 'أهلاً بك! اضغط على زر القائمة في الأسفل لبدء الكورسات\\.');
           } else {
-            await sendMessage(chatId, 'أنت غير مشترك في الخدمة\\. تم إرسال طلبك إلى الأدمن للمراجعة\\.');
+            await sendMessage(chatId, 'أنت غير مشترك\\. تم إرسال طلبك للأدمن للمراجعة\\.');
             const { data: admins } = await supabase.from('users').select('id').eq('is_admin', true);
             if (admins && admins.length > 0) {
               const newUserInfoFromMessage = message.from;
               const userName = `${newUserInfoFromMessage.first_name || ''} ${newUserInfoFromMessage.last_name || ''}`.trim();
               const userLink = `tg://user?id=${newUserInfoFromMessage.id}`;
               const userUsername = newUserInfoFromMessage.username ? `@${newUserInfoFromMessage.username}` : 'لا يوجد';
-              const language = newUserInfoFromMessage.language_code || 'غير محدد';
-              const isPremium = newUserInfoFromMessage.is_premium ? 'نعم ✅' : 'لا ❌';
               const { count: totalUsers } = await supabase.from('users').select('*', { count: 'exact', head: true });
-              let notificationMessage = `👤 <b>مستخدم جديد انضم!</b>\n\n` +
+              let notificationMessage = `👤 <b>مستخدم جديد انضم!</b>\n` +
                                         `<b>الاسم:</b> <a href="${userLink}">${userName}</a>\n` +
                                         `<b>المعرف:</b> ${userUsername}\n` +
                                         `<b>ID:</b> <code>${newUserInfoFromMessage.id}</code>\n` +
-                                        `<b>لغة التلجرام:</b> ${language}\n` +
-                                        `<b>حساب بريميوم:</b> ${isPremium}\n\n` +
-                                        `👥 أصبح العدد الكلي للمستخدمين: <b>${totalUsers || 0}</b>`;
+                                        `👥 العدد الكلي للمستخدمين: <b>${totalUsers || 0}</b>`;
               const grantAccessKeyboard = {
                 inline_keyboard: [[
                   { text: `🔑 منح صلاحيات لـ ${userName || 'المستخدم'}`, callback_data: `admin_grant_access_${newUserInfoFromMessage.id}` }
@@ -624,7 +601,7 @@ export default async (req, res) => {
           case 'awaiting_user_ids':
             const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (ids.length === 0) {
-              await sendMessage(chatId, 'خطأ\\. أرسل IDs صالحة\\. حاول مجدداً أو اضغط /cancel');
+              await sendMessage(chatId, 'خطأ\\. أرسل IDs صالحة\\. (أو /cancel)');
               return res.status(200).send('OK');
             }
             await fetchAndSendCoursesMenu(
@@ -637,24 +614,21 @@ export default async (req, res) => {
           case 'awaiting_device_reset_id':
             const resetIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (resetIds.length === 0) {
-              await sendMessage(chatId, 'خطأ\\. أرسل IDs صالحة\\. حاول مجدداً أو اضغط /cancel');
+              await sendMessage(chatId, 'خطأ\\. أرسل IDs صالحة\\. (أو /cancel)');
               return res.status(200).send('OK');
             }
             const { error: deleteError } = await supabase
               .from('devices')
               .delete()
               .in('user_id', resetIds);
-            if (deleteError) {
-               await sendMessage(chatId, `حدث خطأ: ${escapeMarkdown(deleteError.message)}`);
-            } else {
-               await sendMessage(chatId, `✅ تم حذف البصمات المسجلة لـ ${resetIds.length} مستخدم\\.`);
-            }
+            if (deleteError) { await sendMessage(chatId, `حدث خطأ: ${escapeMarkdown(deleteError.message)}`); }
+            else { await sendMessage(chatId, `✅ تم حذف البصمات لـ ${resetIds.length} مستخدم\\.`); }
             await setAdminState(userId, null, null);
             break;
           case 'awaiting_user_id_for_revoke':
             const revokeIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (revokeIds.length !== 1) {
-                 await sendMessage(chatId, 'خطأ\\. هذه الميزة تعمل لمستخدم واحد فقط في كل مرة\\. أرسل ID واحد فقط\\.');
+                 await sendMessage(chatId, 'خطأ\\. أرسل ID واحد فقط\\. (أو /cancel)');
                  return res.status(200).send('OK');
             }
             const targetUserId = revokeIds[0];
@@ -665,25 +639,25 @@ export default async (req, res) => {
           // --- [ ✅✅ تعديل حالات المحتوى ] ---
           case 'awaiting_course_title':
             await supabase.from('courses').insert({ title: text });
-            await sendMessage(chatId, `✅ تم إضافة الكورس "${escapeMarkdown(text)}" بنجاح\\.`);
+            await sendMessage(chatId, `✅ تم إضافة الكورس "${escapeMarkdown(text)}"\\.`);
             await setAdminState(userId, null, null);
             await sendContentMenu_Courses(chatId); // تحديث القائمة
             break;
 
           case 'awaiting_folder_title':
             if (!user.state_data || !user.state_data.course_id) {
-               await sendMessage(chatId, "خطأ: بيانات الكورس مفقودة\\. أعد المحاولة\\.");
+               await sendMessage(chatId, "خطأ: بيانات مفقودة\\. (أو /cancel)");
                await setAdminState(userId, null, null);
                break;
             }
             await supabase.from('sections').insert({ title: text, course_id: user.state_data.course_id });
-            await sendMessage(chatId, `✅ تم إضافة المجلد "${escapeMarkdown(text)}" بنجاح\\.`);
+            await sendMessage(chatId, `✅ تم إضافة المجلد "${escapeMarkdown(text)}"\\.`);
             await sendContentMenu_Folders(chatId, user.state_data.course_id); // تحديث القائمة
             break;
 
           case 'awaiting_video_title':
             if (!user.state_data || !user.state_data.section_id) {
-               await sendMessage(chatId, "خطأ: بيانات المجلد مفقودة\\. أعد المحاولة\\.");
+               await sendMessage(chatId, "خطأ: بيانات مفقودة\\. (أو /cancel)");
                await setAdminState(userId, null, null);
                break;
             }
@@ -691,12 +665,12 @@ export default async (req, res) => {
                 section_id: user.state_data.section_id, 
                 video_title: text 
             });
-            await sendMessage(chatId, `👍 العنوان: "${escapeMarkdown(text)}"\n\nالآن أرسل "رابط يوتيوب" الخاص بالفيديو:`);
+            await sendMessage(chatId, `👍 العنوان: "${escapeMarkdown(text)}"\n\nالآن أرسل رابط يوتيوب: (أو /cancel)`);
             break;
 
           case 'awaiting_youtube_id':
             if (!user.state_data || !user.state_data.section_id || !user.state_data.video_title) {
-               await sendMessage(chatId, "خطأ: الحالة مفقودة. أعد المحاولة.");
+               await sendMessage(chatId, "خطأ: الحالة مفقودة. (أو /cancel)");
                await setAdminState(userId, null, null);
                break;
             }
@@ -713,7 +687,7 @@ export default async (req, res) => {
                 section_id: user.state_data.section_id // ✅ الربط بالمجلد
             });
 
-            await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!');
+            await sendMessage(chatId, '✅ تم إضافة الفيديو بنجاح!');
             await sendContentMenu_Videos(chatId, user.state_data.section_id); // تحديث القائمة
             break;
             
@@ -721,7 +695,6 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // رسالة عامة
       if (!user.admin_state) {
         await sendMessage(chatId, 'الأمر غير معروف\\. اضغط /start');
       }
@@ -731,7 +704,7 @@ export default async (req, res) => {
     console.error("Error in webhook:", e);
     if (chatId) {
         try {
-           await sendMessage(chatId, `حدث خطأ جسيم في الخادم: ${escapeMarkdown(e.message)}`);
+           await sendMessage(chatId, `حدث خطأ جسيم: ${escapeMarkdown(e.message)}`);
         } catch (sendError) {
              console.error("Failed to send critical error message to admin:", sendError);
         }
