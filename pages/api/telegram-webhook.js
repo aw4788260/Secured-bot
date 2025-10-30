@@ -11,7 +11,90 @@ const escapeMarkdown = (text) => {
   const str = String(text);
   return str.replace(/([_*\[\]()~`>#+-=|{}.!])/g, '\\$1');
 };
+// --- [ ✅✅ دوال جديدة: قسم الإشراف ] ---
 
+// (قائمة قسم الإشراف)
+const sendSupervisionMenu = async (chatId) => {
+   const keyboard = {
+    inline_keyboard: [
+      [{ text: '📊 الإحصائيات', callback_data: 'admin_stats' }],
+      [{ text: '👮‍♂️ تعديل المشرفين', callback_data: 'admin_manage_admins' }],
+      [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
+    ],
+  };
+  await sendMessage(chatId, 'قسم الإشراف (للأدمن الرئيسي):', keyboard);
+};
+
+// (قائمة تعديل المشرفين)
+const sendAdminManagementMenu = async (chatId) => {
+   const keyboard = {
+    inline_keyboard: [
+      [{ text: '➕ إضافة مشرف جديد', callback_data: 'admin_add_admin' }],
+      [{ text: '➖ إزالة مشرف', callback_data: 'admin_remove_admin' }],
+      [{ text: '🔙 رجوع (للإشراف)', callback_data: 'admin_supervision' }],
+    ],
+  };
+  await sendMessage(chatId, 'إدارة المشرفين:', keyboard);
+};
+
+// (دالة جلب وعرض الإحصائيات)
+const sendStatistics = async (chatId) => {
+    try {
+        await sendMessage(chatId, 'جاري حساب الإحصائيات، يرجى الانتظار...');
+
+        // 1. إجمالي المستخدمين
+        const { count: totalUsers, error: totalError } = await supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true });
+        if (totalError) throw new Error(`Total Users Error: ${totalError.message}`);
+
+        // 2. المشتركون (الاشتراك الشامل)
+        const { count: fullSubscribers, error: fullSubError } = await supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_subscribed', true);
+        if (fullSubError) throw new Error(`Full Subscribers Error: ${fullSubError.message}`);
+        
+        // 3. المشتركون (اشتراك محدد - لكل كورس)
+        const { data: specificSubs, error: specificSubError } = await supabase
+            .from('user_course_access')
+            .select('courses ( title )'); // جلب عنوان الكورس المرتبط
+        if (specificSubError) throw new Error(`Specific Subs Error: ${specificSubError.message}`);
+
+        // (معالجة إحصائيات الكورسات المحددة)
+        const courseCounts = {};
+        let totalSpecificSubs = 0;
+        if (specificSubs) {
+            totalSpecificSubs = specificSubs.length;
+            specificSubs.forEach(sub => {
+                const title = sub.courses ? sub.courses.title : 'كورس محذوف';
+                courseCounts[title] = (courseCounts[title] || 0) + 1;
+            });
+        }
+
+        // 4. بناء الرسالة
+        let message = `📊 إحصائيات البوت:\n\n`;
+        message += `👤 إجمالي المستخدمين المسجلين: ${totalUsers}\n\n`;
+        message += `--- [ الاشتراكات ] ---\n`;
+        message += `💎 (الاشتراك الشامل): ${fullSubscribers} مشترك\n`;
+        message += `🔒 (الاشتراكات المحددة): ${totalSpecificSubs} اشتراك (موزعة كالتالي):\n`;
+
+        if (Object.keys(courseCounts).length > 0) {
+            for (const [title, count] of Object.entries(courseCounts)) {
+                message += `  - ${title}: ${count} مشترك\n`;
+            }
+        } else {
+            message += `  (لا توجد اشتراكات محددة)\n`;
+        }
+
+        await sendMessage(chatId, message);
+
+    } catch (error) {
+        console.error("Error in sendStatistics:", error);
+        await sendMessage(chatId, `حدث خطأ أثناء جلب الإحصائيات: ${error.message}`);
+    }
+};
+// --- [ نهاية الدوال الجديدة ] ---
 const getYouTubeID = (url) => {
   if (!url) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=|\?v=)([^#&?]*).*/;
@@ -134,7 +217,8 @@ const setUserState = async (userId, state, data = null) => {
 
 // --- دوال الأدمن: القوائم الرئيسية ---
 
-const sendAdminMenu = async (chatId) => {
+// --- [ (دالة مساعدة) ] ---
+const sendAdminMenu = async (chatId, user) => {
   const keyboard = {
     inline_keyboard: [
       [{ text: '📨 طلبات الاشتراك', callback_data: 'admin_view_requests' }],
@@ -142,6 +226,18 @@ const sendAdminMenu = async (chatId) => {
       [{ text: '🗂️ إدارة المحتوى', callback_data: 'admin_manage_content' }],
     ],
   };
+
+  // [ ✅✅ جديد: التحقق من الأدمن الرئيسي ]
+  // نقارن ID المستخدم بالـ ID المحفوظ في متغيرات البيئة
+  const MAIN_ADMIN_ID = process.env.MAIN_ADMIN_ID;
+  if (MAIN_ADMIN_ID && String(user.id) === MAIN_ADMIN_ID) {
+    // إذا كان هو الأدمن الرئيسي، أضف زر "الإشراف" في الأعلى
+    keyboard.inline_keyboard.unshift([
+      { text: '👑 الإشراف (للأدمن الرئيسي)', callback_data: 'admin_supervision' }
+    ]);
+  }
+  // --- [ نهاية التعديل ] ---
+
   await sendMessage(chatId, 'Panel Admin:\nاختر القسم:', keyboard);
 };
 
@@ -606,11 +702,54 @@ export default async (req, res) => {
       // --- [ (مسار الأدمن - ضغط الأزرار) ] ---
       
       // 1. التنقل الرئيسي للأدمن
+      // --- [ (داخل معالج callback_query للأدمن) ] ---
+      
+      // 1. التنقل الرئيسي للأدمن
       if (command === 'admin_main_menu') {
         await setUserState(userId, null, null);
-        await sendAdminMenu(chatId);
+        await sendAdminMenu(chatId, user); // [ ✅ تعديل: تمرير بيانات المستخدم ]
         return res.status(200).send('OK');
       }
+
+      // [ ✅✅ جديد: معالجات قسم الإشراف ]
+      if (command === 'admin_supervision') {
+        // (تأكيد إضافي أنه الأدمن الرئيسي)
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) {
+            await answerCallbackQuery(callback_query.id, { text: 'هذا القسم للأدمن الرئيسي فقط.' });
+            return res.status(200).send('OK');
+        }
+        await setUserState(userId, null, null);
+        await sendSupervisionMenu(chatId);
+        return res.status(200).send('OK');
+      }
+
+      if (command === 'admin_stats') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await sendStatistics(chatId);
+        return res.status(200).send('OK');
+      }
+
+      if (command === 'admin_manage_admins') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await setUserState(userId, null, null);
+        await sendAdminManagementMenu(chatId);
+        return res.status(200).send('OK');
+      }
+      
+      if (command === 'admin_add_admin') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await setUserState(userId, 'awaiting_admin_id_to_add');
+        await sendMessage(chatId, 'أرسل الـ ID الخاص بالمستخدم الذي تريد ترقيته لـ "مشرف": (أو /cancel)');
+        return res.status(200).send('OK');
+      }
+      
+      if (command === 'admin_remove_admin') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await setUserState(userId, 'awaiting_admin_id_to_remove');
+        await sendMessage(chatId, 'أرسل الـ ID الخاص بالمشرف الذي تريد إزالته: (أو /cancel)');
+        return res.status(200).send('OK');
+      }
+      // --- [ نهاية المعالجات الجديدة ] ---
       if (command === 'admin_manage_users') {
         await setUserState(userId, null, null);
         await sendUserMenu(chatId);
@@ -914,7 +1053,8 @@ export default async (req, res) => {
       // أمر /start
       if (text === '/start') {
         if (user.is_admin) {
-          await sendAdminMenu(chatId);
+          // [ ✅ تعديل: تمرير بيانات المستخدم ]
+          await sendAdminMenu(chatId, user);
         } else {
           // [ ✅✅ بداية التعديل: رسالة /start للمشتركين ]
           
@@ -1173,7 +1313,51 @@ export default async (req, res) => {
             // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
+            case 'awaiting_admin_id_to_add':
+            if (!/^\d+$/.test(text.trim())) {
+                await sendMessage(chatId, 'خطأ. أرسل ID رقمي صالح.');
+                return res.status(200).send('OK');
+            }
+            const { error: addError } = await supabase
+                .from('users')
+                .update({ is_admin: true })
+                .eq('id', Number(text.trim()));
             
+            if (addError) {
+                await sendMessage(chatId, `حدث خطأ: ${addError.message}`);
+            } else {
+                await sendMessage(chatId, `✅ تم ترقية المستخدم ${text.trim()} إلى مشرف بنجاح.`);
+            }
+            await setUserState(userId, null, null);
+            await sendAdminManagementMenu(chatId); // العودة لقائمة إدارة المشرفين
+            break;
+
+          case 'awaiting_admin_id_to_remove':
+            const adminIdToRemove = text.trim();
+            if (!/^\d+$/.test(adminIdToRemove)) {
+                await sendMessage(chatId, 'خطأ. أرسل ID رقمي صالح.');
+                return res.status(200).send('OK');
+            }
+            // (حماية إضافية: لا تدع الأدمن الرئيسي يحذف نفسه)
+            if (adminIdToRemove === process.env.MAIN_ADMIN_ID) {
+                await sendMessage(chatId, 'لا يمكنك إزالة الأدمن الرئيسي.');
+                return res.status(200).send('OK');
+            }
+
+            const { error: removeError } = await supabase
+                .from('users')
+                .update({ is_admin: false })
+                .eq('id', Number(adminIdToRemove));
+            
+            if (removeError) {
+                await sendMessage(chatId, `حدث خطأ: ${removeError.message}`);
+            } else {
+                await sendMessage(chatId, `✅ تم إزالة المستخدم ${adminIdToRemove} من قائمة المشرفين.`);
+            }
+            await setUserState(userId, null, null);
+            await sendAdminManagementMenu(chatId); // العودة لقائمة إدارة المشرفين
+            break;
+          // --- [ نهاية الحالات الجديدة ] ---
         } // نهاية الـ switch
         return res.status(200).send('OK');
       } // [ ✅ قوس إغلاق لـ 'if (user.is_admin && currentState)' ]
