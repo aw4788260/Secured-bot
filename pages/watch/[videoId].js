@@ -27,46 +27,33 @@ export default function WatchPage() {
     const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
 
-    // --- [ ✅ هذا هو الإصلاح الرئيسي ] ---
+    // [الكود الذي أضفناه سابقاً]
     useEffect(() => {
-        // 1. قراءة البارامترات من الرابط
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
-        
         let tgUser = null;
-
-        // 2. سلسلة التحقق من الهوية (الأولوية لـ URL)
         if (urlUserId && urlUserId.trim() !== '') {
-            // الوضع 1: الفتح من (Android) أو (Telegram) عبر الرابط المعدل
             tgUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
-        
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-            // الوضع 2: (احتياطي) الفتح من تليجرام مباشرة (إذا فشل الرابط)
             window.Telegram.WebApp.ready();
             tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
         }
-
-        // 3. التحقق من وجود المستخدم
         if (tgUser && tgUser.id) { 
             setUser(tgUser); 
         } else { 
             setError("خطأ: لا يمكن التعرف على المستخدم."); 
             return; 
         }
-
-        // 4. جلب الفيديو (نفس الكود السابق)
         if (videoId) {
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
                 .then(data => setYoutubeId(data.youtube_video_id))
                 .catch(err => setError(err.message));
         }
-        
-        // 5. باقي الكود (كما هو)
         const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
             const newTop = Math.floor(Math.random() * 70) + 10;
@@ -75,9 +62,8 @@ export default function WatchPage() {
         }, 5000);
         return () => { clearInterval(progressInterval); clearInterval(watermarkIntervalRef.current); };
     }, [videoId, isSeeking]);
-    // --- [ نهاية الإصلاح ] ---
 
-    // --- **جديد: دالة لترجمة أسماء الجودات** ---
+    // ... (دالة formatQualityLabel لم تتغير) ...
     const formatQualityLabel = (quality) => {
         const qualityMap = {
             hd1080: '1080p',
@@ -99,40 +85,22 @@ export default function WatchPage() {
     const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
     const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
-    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
+    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
+    
+    // --- [ ✅ هذا هو الإصلاح ] ---
+    // تم تبسيط الدالة لتستخدم الأمر الصحيح
     const handleSetQuality = (e) => {
-  const newQuality = e.target.value;
-  const oldQuality = videoQuality; // حفظ الجودة القديمة مؤقتًا
-  if (!playerRef.current) return;
+        const newQuality = e.target.value;
+        if (playerRef.current && typeof playerRef.current.setPlaybackQuality === 'function') {
+            // نستخدم الأمر المباشر لتغيير الجودة
+            playerRef.current.setPlaybackQuality(newQuality);
+            // نقوم بتحديث الحالة مباشرة في الواجهة
+            setVideoQuality(newQuality);
+        }
+    };
+    // --- [ نهاية الإصلاح ] ---
 
-  const currentTime = playerRef.current.getCurrentTime?.() || 0;
-  const wasPlaying = playerRef.current.getPlayerState?.() === 1;
-
-  // نحاول نطلب الجودة الجديدة
-  playerRef.current.loadVideoById({
-    videoId: youtubeId,
-    startSeconds: currentTime,
-    suggestedQuality: newQuality,
-  });
-
-  // لو الفيديو كان متوقف، نوقفه بعد التحميل
-  if (!wasPlaying) setTimeout(() => playerRef.current.pauseVideo?.(), 600);
-
-  // ننتظر شوية ونتحقق فعلاً هل الجودة اتغيرت
-  setTimeout(() => {
-    const actualQuality = playerRef.current.getPlaybackQuality?.();
-    if (actualQuality === newQuality) {
-      // ✅ الجودة اتغيرت فعلاً → نثبت التغيير
-      setVideoQuality(newQuality);
-      console.log(`✅ تم تغيير الجودة إلى ${newQuality}`);
-    } else {
-      // ❌ الجودة ما اتغيرتش → نرجع للقيمة القديمة
-      setVideoQuality(oldQuality);
-      console.log(`❌ لم تتغير الجودة (ما زالت ${actualQuality})`);
-    }
-  }, 1000); // الانتظار ثانية واحدة قبل التحقق
-};
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
@@ -172,7 +140,6 @@ export default function WatchPage() {
                             {availableQualityLevels.length > 0 && (
                                 <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
                                     {availableQualityLevels.map(quality => (
-                                        // **--- التعديل هنا ---**
                                         <option key={quality} value={quality}>
                                             {formatQualityLabel(quality)}
                                         </option>
@@ -208,7 +175,6 @@ export default function WatchPage() {
                     )}
 
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
-                        {/* هذا سيعمل الآن بشكل صحيح */}
                         {user.first_name} ({user.id})
                     </div>
                 </div>
