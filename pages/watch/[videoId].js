@@ -31,7 +31,7 @@ export default function WatchPage() {
     useEffect(() => {
         // 1. قراءة البارامترات من الرابط (الذي أرسله app.js)
         const urlParams = new URLSearchParams(window.location.search);
-        const urlUserId = urlParams.get('userId');
+        const urlUserId = urlParams.get('userId'); // (يأتي كنص)
         const urlFirstName = urlParams.get('firstName');
         
         let tgUser = null;
@@ -40,18 +40,18 @@ export default function WatchPage() {
         if (urlUserId && urlUserId.trim() !== '') {
             // الوضع 1: الفتح من (Android) أو (Telegram) عبر الرابط المعدل
             tgUser = { 
-                id: urlUserId, 
+                id: parseInt(urlUserId, 10), // <-- تحويل النص "123" إلى الرقم 123
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
         
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             // الوضع 2: (احتياطي) الفتح من تليجرام مباشرة
             window.Telegram.WebApp.ready();
-            tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+            tgUser = window.Telegram.WebApp.initDataUnsafe?.user; // (ID هنا رقم)
         }
 
         // 3. التحقق من وجود المستخدم
-        if (tgUser && tgUser.id) { 
+        if (tgUser && tgUser.id && !isNaN(tgUser.id)) { 
             setUser(tgUser); // <-- سيتم عرض الاسم الحقيقي في العلامة المائية
         } else { 
             setError("خطأ: لا يمكن التعرف على المستخدم."); 
@@ -99,7 +99,7 @@ export default function WatchPage() {
     const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
     const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
-    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
+    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
@@ -244,42 +244,4 @@ export default function WatchPage() {
                 .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
                 .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
                 .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
-                .seek-zone { flex: 1; height: 100%; }
-                .play-pause-zone { flex: 2; height: 100%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
-                .play-icon { font-size: clamp(40px, 10vw, 80px); color: white; text-shadow: 0 0 15px rgba(0,0,0,0.8); opacity: 0.9; }
-                .bottom-controls { height: 40px; display: flex; align-items: center; padding: 0 10px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); z-index: 11; gap: 10px; }
-                .extra-controls { display: flex; gap: 8px; direction: ltr; }
-                .control-select { background-color: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: clamp(11px, 2.5vw, 14px); cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; direction: ltr; text-align: center; text-align-last: center; }
-                .control-select option { background-color: #333; color: white; }
-                
-                /* --- [ ✅ إضافة كود الزر ] --- */
-                .control-button {
-                    background-color: rgba(255, 255, 255, 0.2);
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 4px 8px;
-                    font-size: clamp(11px, 2.5vw, 14px);
-                    cursor: pointer;
-                    font-weight: bold;
-                }
-                .control-button:hover {
-                    background-color: rgba(255, 255, 255, 0.3);
-                }
-                
-                .time-display { color: white; font-size: clamp(11px, 2.5vw, 14px); margin: 0 10px; min-width: 40px; text-align: center; }
-                .progress-bar-container { position: relative; flex-grow: 1; height: 15px; display: flex; align-items: center; cursor: pointer; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; direction: ltr; }
-                .progress-bar-track { position: absolute; width: 100%; height: 4px; background: rgba(255, 255, 255, 0.3); border-radius: 2px; transition: height 0.1s ease; }
-                .progress-bar-filled { position: absolute; height: 4px; background: #FF0000; border-radius: 2px; transition: height 0.1s ease; }
-                .progress-bar-handle { position: absolute; width: 12px; height: 12px; background-color: #FF0000; border-radius: 50%; transform: translateX(-50%); transition: transform 0.1s ease, height 0.1s ease, width 0.1s ease; }
-                .progress-bar-container:hover .progress-bar-track, .progress-bar-container:hover .progress-bar-filled { height: 6px; }
-                .progress-bar-container:hover .progress-bar-handle { transform: translateX(-50%) scale(1.2); }
-                .seek-indicator { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: clamp(30px, 6vw, 40px); color: white; opacity: 0.8; animation: seek-pop 0.6s ease-out; pointer-events: none; direction: ltr; }
-                .seek-indicator.forward { left: 75%; }
-                .seek-indicator.backward { left: 25%; }
-                @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
-                .watermark { position: absolute; padding: 4px 8px; background: rgba(0, 0, 0, 0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; pointer-events: none; transition: top 2s ease-in-out, left 2s ease-in-out; white-space: nowrap; z-index: 20; }
-            `}</style>
-        </div>
-    );
-}
+                .seek-zone { flex: 1; height
