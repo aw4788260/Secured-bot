@@ -11,8 +11,7 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    try { // نستخدم try...catch لالتقاط أي أخطاء
-      // 1. قراءة البارامترات من الرابط
+    try { 
       const urlParams = new URLSearchParams(window.location.search);
       const androidUserId = urlParams.get('android_user_id');
       const androidDeviceId = urlParams.get('android_device_id'); 
@@ -20,11 +19,11 @@ export default function App() {
       let tgUser = null;
 
       // 2. سلسلة التحقق من الهوية (بترتيب معكوس وصحيح)
-      if (androidUserId && androidUserId.trim() !== '') { // نتأكد أن الـ ID ليس فارغاً
-        // --- [ ✅ الإصلاح هنا ] ---
-        // الوضع 1: الفتح من تطبيق الأندرويد (يتم التحقق منه أولاً)
+      if (androidUserId && androidUserId.trim() !== '') { 
+        // --- [ ✅ التعديل هنا ] ---
+        // الوضع 1: الفتح من تطبيق الأندرويد (نجلب الرقم التعريفي فقط)
         console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: androidUserId, first_name: "App User" };
+        tgUser = { id: androidUserId }; // <-- الاسم سيتم جلبه من الـ API
 
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
         // الوضع 2: الفتح من داخل تليجرام (يتم التحقق منه ثانياً)
@@ -35,16 +34,16 @@ export default function App() {
       } else if (typeof window !== 'undefined') {
         // الوضع 3: الفتح من متصفح عادي أو بـ ID فارغ
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
-        return; // نوقف التنفيذ
+        return; 
       }
 
-      // 3. التحقق من وجود المستخدم (تم إصلاح الخطأ المطبعي هنا)
       if (!tgUser || !tgUser.id) { 
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
       
-      setUser(tgUser);
+      // (مؤقتاً بالرقم التعريفي فقط)
+      setUser(tgUser); 
       setStatus('جاري التحقق من الاشتراك...');
 
       // 4. فصل دالة التحقق من البصمة
@@ -57,12 +56,10 @@ export default function App() {
           .then(res => res.json())
           .then(deviceData => {
             if (!deviceData.success) {
-              setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
+              setError(deviceData.message); 
             } else {
               setStatus('جاري جلب الكورسات...');
               const userIdString = String(userId);
-              // --- [هذا هو الإصلاح] ---
-              // تم حذف علامة الخاطئة من السطر التالي
               fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
                 .then(res => res.json())
                 .then(courseData => {
@@ -81,7 +78,7 @@ export default function App() {
           });
       }
 
-      // --- الخطوة 5: التحقق من الاشتراك ---
+      // --- الخطوة 5: التحقق من الاشتراك (وجلب الاسم) ---
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,6 +90,13 @@ export default function App() {
           setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
           return;
         }
+
+        // --- [ ✅ التعديل هنا: تحديث المستخدم بالاسم الحقيقي ] ---
+        const finalUser = {
+            id: tgUser.id,
+            first_name: subData.first_name || (tgUser.first_name || "User")
+        };
+        setUser(finalUser); // <-- تحديث الحالة بالاسم الصحيح
 
         // --- الخطوة 6: التحقق من بصمة الجهاز ---
         setStatus('جاري التحقق من بصمة الجهاز...');
@@ -126,7 +130,6 @@ export default function App() {
 
   }, []); // نهاية useEffect
 
-  // ... (باقي كود الـ return كما هو) ...
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
@@ -134,7 +137,7 @@ export default function App() {
     return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
 
-  // --- العرض (كما هو) ---
+  // --- العرض ---
   if (!selectedCourse) {
     return (
       <div className="app-container">
@@ -168,10 +171,9 @@ export default function App() {
       <h1>{selectedCourse.title}</h1>
       <ul className="item-list">
         {selectedCourse.videos.length > 0 ? (
-        // ... (داخل دالة return)
           selectedCourse.videos.map(video => (
             <li key={video.id}>
-              {/* ✅ [الإصلاح هنا] نمرر بيانات المستخدم في الرابط */}
+              {/* --- [ ✅ التعديل هنا: تمرير بيانات المستخدم للرابط ] --- */}
               <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                 <a className="button-link video-link">
                   {video.title}
@@ -179,7 +181,6 @@ export default function App() {
               </Link>
             </li>
           ))
-// ...
         ) : (
           <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الكورس بعد.</p>
         )}
