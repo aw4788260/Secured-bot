@@ -485,14 +485,16 @@ export default async (req, res) => {
      // --- [ (داخل معالج callback_query) ] ---
 
       // --- [ (مسار المستخدم العادي - ضغط الأزرار) ] ---
+     // --- [ (داخل معالج callback_query) ] ---
+
+      // --- [ (مسار المستخدم العادي - ضغط الأزرار) ] ---
       if (!user.is_admin) {
         
         const currentState = user.admin_state;
-        const messageId = callback_query.message.message_id; // [ ✅ الأهم: جلب ID الرسالة ]
-        
+        const messageId = callback_query.message.message_id; // جلب ID الرسالة
+
         // (1. المستخدم يضغط على "الاشتراك الشامل")
         if (command === 'sub_req_toggle_all') {
-            // جلب الحالة من داخل المعالج لضمان الدقة
             const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
             let selected = stateData.selected_courses || [];
 
@@ -502,8 +504,7 @@ export default async (req, res) => {
             } else {
                 selected = [{ id: 'all', title: 'الاشتراك الشامل (كل الكورسات)' }]; // اختيار
             }
-            // [ ✅ تمرير ID الرسالة للتعديل ]
-            await sendSubscriptionCourses(chatId, { selected_courses: selected }, messageId);
+            await sendSubscriptionCourses(chatId, { selected_courses: selected }, messageId); // تعديل الرسالة
             return res.status(200).send('OK');
         }
 
@@ -512,10 +513,23 @@ export default async (req, res) => {
             const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
             let selected = stateData.selected_courses || [];
 
-            const parts = command.split('_')[2].split('|');
-            const courseId = parseInt(parts[0], 10);
-            const courseTitle = parts[1];
+            // --- [ ✅✅✅ هذا هو الإصلاح ] ---
+            // الكود السابق: const parts = command.split('_')[2].split('|');
+            // الكود الصحيح:
+            const dataString = command.substring('sub_req_toggle_'.length); // (e.g., "123|Course Title")
+            const parts = dataString.split('|');
+            // --- [ نهاية الإصلاح ] ---
             
+            const courseId = parseInt(parts[0], 10);
+            const courseTitle = parts[1]; // (الآن سيتم جلب الاسم بشكل صحيح)
+
+            // التأكد من أن البيانات صحيحة
+            if (isNaN(courseId) || !courseTitle) {
+                 console.error("Callback data parsing error:", command);
+                 await answerCallbackQuery(callback_query.id, { text: 'حدث خطأ، حاول مرة أخرى.' });
+                 return res.status(200).send('OK');
+            }
+
             if (selected.some(c => c.id === 'all')) {
                 selected = []; // إلغاء الشامل
             }
@@ -527,8 +541,7 @@ export default async (req, res) => {
                 selected.push({ id: courseId, title: courseTitle }); // اختيار
             }
             
-            // [ ✅ تمرير ID الرسالة للتعديل ]
-            await sendSubscriptionCourses(chatId, { selected_courses: selected }, messageId);
+            await sendSubscriptionCourses(chatId, { selected_courses: selected }, messageId); // تعديل الرسالة
             return res.status(200).send('OK');
         }
 
@@ -544,9 +557,9 @@ export default async (req, res) => {
              
              await setUserState(userId, 'awaiting_payment_proof', { selected_courses: selected });
              
+             // (الآن selected تحتوي على البيانات الصحيحة)
              const titles = selected.map(c => c.title).join('\n- ');
              
-             // [ ✅ حذف رسالة الاختيار ]
              try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: messageId }); } catch(e){}
              
              await sendMessage(
@@ -557,10 +570,9 @@ export default async (req, res) => {
             return res.status(200).send('OK');
         }
 
-        // (4. المستخدم يضغط "إلغاء" من قائمة الاختيار)
+        // (4. المستخدم يضغط "إلغاء")
         if (command === 'sub_req_cancel') {
             await setUserState(userId, null, null);
-            // [ ✅ حذف رسالة الاختيار ]
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: messageId }); } catch(e){}
             await sendMessage(chatId, 'تم إلغاء الطلب.', null, null, true);
             return res.status(200).send('OK');
@@ -568,13 +580,15 @@ export default async (req, res) => {
 
         // (5. المستخدم يضغط على الزر الرئيسي "طلب اشتراك")
         if (command === 'user_request_subscription') {
-            await sendSubscriptionCourses(chatId, null, null); // (null, null) = إرسال رسالة جديدة
+            await sendSubscriptionCourses(chatId, null, null); 
             return res.status(200).send('OK');
         }
 
         await sendMessage(chatId, 'أنت لست أدمن.', null, null, true);
         return res.status(200).send('OK');
       }
+
+// --- [ (نهاية التعديل - أكمل باقي كود الأدمن كما كان) ] ---
 
 // --- [ (نهاية التعديل - أكمل باقي كود الأدمن كما كان) ] ---
 
