@@ -21,9 +21,9 @@ export default function App() {
       // 2. سلسلة التحقق من الهوية (بترتيب معكوس وصحيح)
       if (androidUserId && androidUserId.trim() !== '') { 
         // --- [ ✅ هذا هو الإصلاح ] ---
-        // الوضع 1: الفتح من تطبيق الأندرويد (نحول النص إلى رقم)
+        // الوضع 1: الفتح من تطبيق الأندرويد (نتركه كنص)
         console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: parseInt(androidUserId, 10) }; // <-- تحويل النص "123" إلى الرقم 123
+        tgUser = { id: androidUserId }; // <-- (تمت إزالة parseInt)
 
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
         // الوضع 2: الفتح من داخل تليجرام (يأتي كرقم افتراضياً)
@@ -31,14 +31,20 @@ export default function App() {
         window.Telegram.WebApp.expand();
         tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
         
+        // --- [ ✅ إضافة: تحويل رقم تليجرام إلى نص لتوحيد النوع ] ---
+        if (tgUser) {
+            tgUser.id = String(tgUser.id);
+        }
+        
       } else if (typeof window !== 'undefined') {
         // الوضع 3: الفتح من متصفح عادي أو بـ ID فارغ
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
         return; 
       }
 
-      // التحقق من أن الرقم صالح
-      if (!tgUser || !tgUser.id || isNaN(tgUser.id)) { 
+      // --- [ ✅ هذا هو الإصلاح ] ---
+      // التحقق من أن النص صالح
+      if (!tgUser || !tgUser.id) { // <-- (تمت إزالة isNaN)
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
@@ -51,7 +57,7 @@ export default function App() {
           fetch('/api/auth/check-device', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
+            body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }), // <-- userId هو نص الآن
           })
           .then(res => res.json())
           .then(deviceData => {
@@ -59,8 +65,8 @@ export default function App() {
               setError(deviceData.message); 
             } else {
               setStatus('جاري جلب الكورسات...');
-              const userIdString = String(userId);
-              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
+              // const userIdString = String(userId); // <-- لم نعد بحاجة لهذا
+              fetch(`/api/data/get-structured-courses?userId=${userId}`) // <-- إرسال النص مباشرة
                 .then(res => res.json())
                 .then(courseData => {
                   setCourses(courseData); 
@@ -82,7 +88,7 @@ export default function App() {
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: tgUser.id }), // <-- الآن نرسل رقماً صحيحاً
+        body: JSON.stringify({ userId: tgUser.id }), // <-- الآن نرسل نصاً (String)
       })
       .then(res => res.json())
       .then(subData => {
