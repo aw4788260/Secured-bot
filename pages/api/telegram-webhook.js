@@ -405,26 +405,32 @@ const sendSubscriptionCourses = async (chatId, stateData = null, messageId = nul
 };
 
 
+// --- [ (دالة مساعدة) ] ---
 const notifyAdminsOfNewRequest = async (request) => {
     const { data: admins } = await supabase.from('users').select('id').eq('is_admin', true);
     if (!admins || admins.length === 0) return;
-    // (الكابشن يستخدم HTML)
+    
     let caption = `<b>🔔 طلب اشتراك جديد</b>\n\n` +
                   `<b>المستخدم:</b> ${request.user_name || 'غير متوفر'}\n` +
                   (request.user_username ? `<b>المعرف:</b> @${request.user_username}\n` : '') +
                   `<b>ID:</b> <code>${request.user_id}</code>\n\n` +
-                  `<b>الطلب:</b>\n${request.course_title}`; // (هذا الآن وصف للطلبات)
+                  `<b>الطلب:</b>\n${request.course_title}`;
                   
+    // [ ✅✅ تعديل: إضافة زر الرفض ]
     const keyboard = {
       inline_keyboard: [[
-        { text: '✅ منح الصلاحية المطلوبة', callback_data: `approve_sub_${request.id}` }
+        { text: '✅ موافقة', callback_data: `approve_sub_${request.id}` },
+        { text: '❌ رفض', callback_data: `reject_sub_${request.id}` }
       ]]
     };
+    // --- [ نهاية التعديل ] ---
+
     for (const admin of admins) {
       await sendPhotoMessage(admin.id, request.payment_file_id, caption, keyboard);
     }
 };
 
+// --- [ (دالة مساعدة) ] ---
 const sendPendingRequests = async (chatId) => {
     const { data: requests, error } = await supabase.from('subscription_requests').select('*').eq('status', 'pending').order('created_at', { ascending: true });
     if (error || !requests || requests.length === 0) {
@@ -438,11 +444,16 @@ const sendPendingRequests = async (chatId) => {
                       (request.user_username ? `<b>المعرف:</b> @${request.user_username}\n` : '') +
                       `<b>ID:</b> <code>${request.user_id}</code>\n\n` +
                       `<b>الطلب:</b>\n${request.course_title}`;
+        
+        // [ ✅✅ تعديل: إضافة زر الرفض ]
         const keyboard = {
           inline_keyboard: [[
-            { text: '✅ منح الصلاحية المطلوبة', callback_data: `approve_sub_${request.id}` }
+            { text: '✅ موافقة', callback_data: `approve_sub_${request.id}` },
+            { text: '❌ رفض', callback_data: `reject_sub_${request.id}` }
           ]]
         };
+        // --- [ نهاية التعديل ] ---
+
         await sendPhotoMessage(chatId, request.payment_file_id, caption, keyboard);
     }
 };
@@ -759,6 +770,40 @@ export default async (req, res) => {
       // 5. نظام طلبات الاشتراك
       if (command === 'admin_view_requests') {
           await sendPendingRequests(chatId);
+          return res.status(200).send('OK');
+      }
+
+      if (command.startsWith('reject_sub_')) {
+          const requestId = parseInt(command.split('_')[2], 10);
+          
+          // 1. جلب الطلب (للحصول على ID المستخدم)
+          const { data: request, error: reqError } = await supabase
+              .from('subscription_requests')
+              .select('user_id')
+              .eq('id', requestId)
+              .single();
+              
+          if (reqError || !request) {
+              await sendMessage(chatId, 'خطأ: لم يتم العثور على هذا الطلب.');
+              return res.status(200).send('OK');
+          }
+          
+          // (التحقق إذا تم التعامل معه مسبقاً)
+          if (callback_query.message.reply_markup && (!callback_query.message.reply_markup.inline_keyboard || callback_query.message.reply_markup.inline_keyboard.length === 0)) {
+               await sendMessage(chatId, 'تم التعامل مع هذا الطلب مسبقاً.');
+               return res.status(200).send('OK');
+          }
+
+          // 2. وضع الأدمن في حالة انتظار الملاحظة
+          await setUserState(userId, 'awaiting_rejection_reason', { 
+              request_id: requestId, 
+              target_user_id: request.user_id,
+              admin_message_id: callback_query.message.message_id, // ID رسالة الصورة
+              original_caption: callback_query.message.caption // الكابشن الأصلي
+          });
+          
+          // 3. إبلاغ الأدمن
+          await sendMessage(chatId, 'أرسل الآن "سبب الرفض" (سيتم إرسال ملاحظتك للمستخدم، أو اضغط /cancel للإلغاء):');
           return res.status(200).send('OK');
       }
       
