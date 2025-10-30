@@ -862,27 +862,73 @@ export default async (req, res) => {
       }
 
       // أمر /start
+     // ... (داخل معالج الرسائل النصية)
+// if (message && message.from) {
+// ... (الكود الخاص بتعريف user, chatId, text, etc.)
+
+      // أمر /start
       if (text === '/start') {
         if (user.is_admin) {
           await sendAdminMenu(chatId);
         } else {
+          // [ ✅✅ بداية التعديل: رسالة /start للمشتركين ]
+          
+          // 1. التحقق من الصلاحيات
            const { count, error: accessCheckError } = await supabase.from('user_course_access').select('*', { count: 'exact', head: true }).eq('user_id', userId);
            if (accessCheckError && accessCheckError.code !== 'PGRST116') {
                 await sendMessage(chatId, "حدث خطأ أثناء التحقق من صلاحياتك.", null, null, true);
                 return res.status(200).send('OK');
            }
           const hasSpecificAccess = count > 0;
+          
+          // 2. تجهيز زر "طلب اشتراك آخر"
+          const requestButtonKeyboard = { 
+              inline_keyboard: [[ { text: '📋 طلب اشتراك آخر', callback_data: 'user_request_subscription' } ]] 
+          };
+
+          // 3. (الحالة 1: المستخدم مشترك بالفعل)
           if (user.is_subscribed || hasSpecificAccess) {
-            await sendMessage(chatId, 'أهلاً بك! اضغط على زر القائمة في الأسفل لبدء الكورسات.', null, null, true);
+              
+              let message = `أهلاً بك، أنت مشترك بالفعل.\n\n`;
+              message += `هذا هو ID الخاص بك (استخدمه لتسجيل الدخول في التطبيق):\n${userId}\n\n`; // <-- عرض الـ ID
+              message += `اشتراكك الحالي:`;
+
+              if (user.is_subscribed) {
+                  // (اشتراك شامل)
+                  message += `\n- 📦 الاشتراك الشامل (كل الكورسات)`;
+              } else {
+                  // (اشتراك محدد - جلب الكورسات)
+                  const { data: accessData, error: accessError } = await supabase
+                      .from('user_course_access')
+                      .select('courses ( title )') // جلب العنوان من جدول الكورسات
+                      .eq('user_id', userId);
+                  
+                  if (accessData && accessData.length > 0) {
+                       accessData.forEach(access => {
+                          if (access.courses) { // التأكد أن الكورس لم يُحذف
+                              message += `\n- 📚 ${access.courses.title}`;
+                          }
+                      });
+                  }
+              }
+              
+              message += `\n\nيمكنك طلب اشتراك إضافي من الزر أدناه.`;
+              
+              // إرسال الرسالة مع زر "طلب اشتراك آخر"
+              await sendMessage(chatId, message, requestButtonKeyboard, null, true);
+
           } else {
-            // [ ✅ إصلاح: تنظيف الحالة قبل عرض الزر ]
+          // 4. (الحالة 2: المستخدم غير مشترك)
             await setUserState(userId, null, null); 
             const keyboard = { inline_keyboard: [[ { text: '📋 طلب اشتراك', callback_data: 'user_request_subscription' } ]] };
             await sendMessage(chatId, 'أنت غير مشترك في الخدمة. يمكنك طلب اشتراك من الزر أدناه.', keyboard, null, true);
           }
+          // [ ✅✅ نهاية التعديل ]
         }
         return res.status(200).send('OK');
       }
+
+// ... (باقي الكود الخاص بمعالجة /cancel والحالات)
 
       // أمر /cancel
       if (text === '/cancel') {
