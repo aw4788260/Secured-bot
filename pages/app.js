@@ -11,7 +11,7 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    try { // --- [إضافة] نستخدم try...catch لالتقاط أي أخطاء غير متوقعة
+    try { // نستخدم try...catch لالتقاط أي أخطاء
       // 1. قراءة البارامترات من الرابط
       const urlParams = new URLSearchParams(window.location.search);
       const androidUserId = urlParams.get('android_user_id');
@@ -37,11 +37,8 @@ export default function App() {
         return; // نوقف التنفيذ
       }
 
-      // 3. التحقق من وجود المستخدم
-      // --- [هذا هو الإصلاح] ---
-      // تم إصلاح الخطأ المطبعي (كان tgTUser.id)
+      // 3. التحقق من وجود المستخدم (تم إصلاح الخطأ المطبعي هنا)
       if (!tgUser || !tgUser.id) { 
-        // هذا الخطأ لا يجب أن يظهر الآن إلا إذا حدث شيء غريب جداً
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
@@ -49,7 +46,7 @@ export default function App() {
       setUser(tgUser);
       setStatus('جاري التحقق من الاشتراك...');
 
-      // 4. فصل دالة التحقق من البصمة (يجب تعريفها قبل استدعائها)
+      // 4. فصل دالة التحقق من البصمة
       const checkDeviceApi = (userId, deviceFingerprint) => {
           fetch('/api/auth/check-device', { 
             method: 'POST',
@@ -59,11 +56,13 @@ export default function App() {
           .then(res => res.json())
           .then(deviceData => {
             if (!deviceData.success) {
-              setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر" [cite: aw4788260/secured-bot/Secured-bot-a79c87b4e0cf475e87087d121c04d68029211b2c/pages/api/auth/check-device.js]
+              setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
             } else {
               setStatus('جاري جلب الكورسات...');
               const userIdString = String(userId);
-              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) [cite: aw4788260/secured-bot/Secured-bot-a79c87b4e0cf475e87087d121c04d68029211b2c/pages/api/data/get-structured-courses.js]
+              // --- [هذا هو الإصلاح] ---
+              // تم حذف علامة [cite: ...] الخاطئة من السطر التالي
+              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
                 .then(res => res.json())
                 .then(courseData => {
                   setCourses(courseData); 
@@ -82,7 +81,7 @@ export default function App() {
       }
 
       // --- الخطوة 5: التحقق من الاشتراك ---
-      fetch('/api/auth/check-subscription', { [cite: aw4788260/secured-bot/Secured-bot-a79c87b4e0cf475e87087d121c04d68029211b2c/pages/api/auth/check-subscription.js]
+      fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: tgUser.id }),
@@ -119,8 +118,7 @@ export default function App() {
          console.error("Error checking subscription:", err);
       });
 
-    } catch (e) { // --- [إضافة]
-      // هذا سيلتقط الخطأ المطبعي (Typo) أو أي خطأ آخر
+    } catch (e) { 
       console.error("Fatal error in useEffect:", e);
       setError(`خطأ فادح: ${e.message}`);
     }
@@ -186,3 +184,4 @@ export default function App() {
     </div>
   );
 }
+
