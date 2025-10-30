@@ -53,7 +53,7 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null,
         if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
             console.warn(`Markdown parsing failed for chat ${chatId}. Resending as plain text.`);
             const retryPayload = { ...payload, text: text };
-            delete retryPayload.parse_mode; // حذف parse_mode لإعادة الإرسال كنص عادي
+            delete retryPayload.parse_mode;
             try {
                 await axios.post(`${TELEGRAM_API}/sendMessage`, retryPayload);
             } catch (retryError) {
@@ -83,10 +83,11 @@ const sendPhotoMessage = async (chatId, photo_file_id, caption, reply_markup = n
 };
 
 // دالة الرد على Callback Query
-const answerCallbackQuery = async (callbackQueryId) => {
+const answerCallbackQuery = async (callbackQueryId, options = {}) => {
   try {
     await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
       callback_query_id: callbackQueryId,
+      ...options
     });
   } catch (e) {
       console.error("Failed to answer callback query:", e.message);
@@ -95,7 +96,7 @@ const answerCallbackQuery = async (callbackQueryId) => {
 
 // --- دوال إدارة قواعد البيانات (المستخدم والحالة) ---
 
-// (يستخدم 'admin_state' بناءً على طلبك السابق)
+// (يستخدم 'admin_state')
 const getUser = async (userId) => {
   const selectQuery = 'id, is_subscribed, is_admin, admin_state, state_data';
   let userData = null;
@@ -122,7 +123,7 @@ const getUser = async (userId) => {
   return userData || { id: userId, is_subscribed: false, is_admin: false };
 };
 
-// (يستخدم 'admin_state' بناءً على طلبك السابق)
+// (يستخدم 'admin_state')
 const setUserState = async (userId, state, data = null) => {
   try {
     await supabase.from('users').update({ admin_state: state, state_data: data }).eq('id', userId);
@@ -191,7 +192,7 @@ const sendRevokeMenu = async (adminChatId, targetUserId) => {
       if (coursesError) throw coursesError;
       courses = coursesData;
     }
-    // [ ✅ إصلاح: تم إزالة كل تنسيقات Markdown ]
+    // [ ✅ إصلاح: نص عادي ]
     let message = `مراجعة صلاحيات المستخدم: ${targetUserId}\n\n`;
     message += targetUser.is_subscribed ? "الحالة: 💎 مشترك (صلاحية كاملة)\n" : "الحالة: 🔒 صلاحية محددة\n";
     const keyboard = [];
@@ -248,7 +249,7 @@ const sendContentMenu_Folders = async (chatId, courseId) => {
   });
   keyboard.push([
     { text: '➕ إضافة مجلد', callback_data: `content_add_folder_${courseId}` },
-    { text: '❌ حذف مجلد', callback_data: `content_del_folder_${courseId}` } // <-- أصبح يعمل
+    { text: '❌ حذف مجلد', callback_data: `content_del_folder_${courseId}` }
   ]);
   keyboard.push([{ text: '🗑️ حذف هذا الكورس بالكامل', callback_data: `delete_course_confirm_${courseId}` }]);
   keyboard.push([{ text: '🔙 رجوع (للكورسات)', callback_data: 'admin_manage_content' }]);
@@ -291,7 +292,7 @@ const sendContentMenu_DeleteFolder = async (chatId, courseId) => {
         
     if (error || !sections || sections.length === 0) {
         await sendMessage(chatId, 'لا توجد مجلدات لحذفها في هذا الكورس.');
-        await sendContentMenu_Folders(chatId, courseId); // العودة للقائمة السابقة
+        await sendContentMenu_Folders(chatId, courseId);
         return;
     }
     
@@ -312,52 +313,81 @@ const sendContentMenu_DeleteFolder = async (chatId, courseId) => {
 
 // --- دوال نظام طلبات الاشتراك ---
 
-// [ ✅✅ تعديل: إضافة زر الاشتراك الشامل ]
-const sendSubscriptionCourses = async (chatId) => {
+// [ ✅✅ جديد: دالة مساعدة لإنشاء قائمة الكورسات ]
+/**
+ * يبني لوحة الأزرار الديناميكية لاختيار الكورسات
+ * @param {Array} allCourses - قائمة بكل الكورسات من DB
+ * @param {Array} selectedCourses - الكورسات المختارة حالياً من state_data
+ */
+const buildCoursesKeyboard = (allCourses, selectedCourses = []) => {
+    const keyboard = [];
+    
+    // 1. زر الاشتراك الشامل
+    const allSelected = selectedCourses.some(c => c.id === 'all');
+    keyboard.push([{
+        text: `${allSelected ? '✅' : ''} 📦 الاشتراك الشامل (كل الكورسات)`,
+        callback_data: 'sub_req_toggle_all'
+    }]);
+
+    // 2. الكورسات الفردية (تظهر فقط إذا لم يتم اختيار "الشامل")
+    if (!allSelected && allCourses && allCourses.length > 0) {
+        allCourses.forEach(c => {
+            const isSelected = selectedCourses.some(sel => sel.id === c.id);
+            keyboard.push([{ 
+                text: `${isSelected ? '✅' : ''} ${c.title}`, 
+                // نستخدم فاصل | لتجنب مشاكل في اسم الكورس
+                callback_data: `sub_req_toggle_${c.id}|${c.title}` 
+            }]);
+        });
+    }
+
+    // 3. زر التأكيد (يظهر فقط إذا كان هناك اختيار)
+    if (selectedCourses.length > 0) {
+         keyboard.push([{ text: '👍 تأكيد الإختيار والمتابعة', callback_data: 'sub_req_submit' }]);
+    }
+    
+    // 4. زر الإلغاء
+    keyboard.push([{ text: '🔙 إلغاء', callback_data: 'sub_req_cancel' }]);
+
+    return { inline_keyboard: keyboard };
+};
+
+
+// [ ✅✅ تعديل: دالة عرض الكورسات للاشتراك ]
+const sendSubscriptionCourses = async (chatId, stateData = null) => {
   const { data: courses, error } = await supabase.from('courses').select('id, title').order('title');
   if (error) {
     await sendMessage(chatId, 'عذراً، حدث خطأ أثناء جلب الكورسات.', null, null, true);
     return;
   }
-
-  const keyboard = [];
   
-  // 1. إضافة زر الاشتراك الشامل
-  keyboard.push([{
-      text: '📦 طلب الاشتراك الشامل (كل الكورسات)',
-      callback_data: 'sub_req_all_courses'
-  }]);
-
-  // 2. إضافة باقي الكورسات
-  if (courses && courses.length > 0) {
-      courses.forEach(c => {
-          keyboard.push([{ 
-              text: c.title, 
-              callback_data: `sub_req_course_${c.id}_${c.title}` 
-          }]);
-      });
-  } else {
-      await sendMessage(chatId, 'لا توجد كورسات متاحة للاشتراك حالياً.', null, null, true);
-      return;
-  }
+  const selected = stateData?.selected_courses || [];
   
-  await setUserState(chatId, null, null);
-  await sendMessage(chatId, 'اختر الكورس الذي ترغب بالاشتراك به، أو اطلب الاشتراك الشامل:', { inline_keyboard: keyboard }, null, true);
+  const keyboard = buildCoursesKeyboard(courses, selected);
+  
+  // نضع المستخدم في "حالة اختيار"
+  await setUserState(chatId, 'awaiting_course_selection', { selected_courses: selected });
+  
+  const messageText = selected.length === 0 ?
+    'اختر الكورسات التي ترغب بالاشتراك بها، أو اطلب الاشتراك الشامل:' :
+    'يمكنك اختيار أكثر من كورس. اضغط "تأكيد" عند الانتهاء:';
+    
+  await sendMessage(chatId, messageText, keyboard, null, true);
 };
+
 
 const notifyAdminsOfNewRequest = async (request) => {
     const { data: admins } = await supabase.from('users').select('id').eq('is_admin', true);
     if (!admins || admins.length === 0) return;
-    // (الكابشن يستخدم HTML وهو الوحيد المسموح له بذلك)
+    // (الكابشن يستخدم HTML)
     let caption = `<b>🔔 طلب اشتراك جديد</b>\n\n` +
                   `<b>المستخدم:</b> ${request.user_name || 'غير متوفر'}\n` +
                   (request.user_username ? `<b>المعرف:</b> @${request.user_username}\n` : '') +
                   `<b>ID:</b> <code>${request.user_id}</code>\n\n` +
-                  `<b>الطلب:</b>\n${request.course_title}`;
+                  `<b>الطلب:</b>\n${request.course_title}`; // (هذا الآن وصف للطلبات)
                   
     const keyboard = {
       inline_keyboard: [[
-        // الزر سيعرف ماذا يفعل بناءً على الطلب (شامل أم محدد)
         { text: '✅ منح الصلاحية المطلوبة', callback_data: `approve_sub_${request.id}` }
       ]]
     };
@@ -412,6 +442,7 @@ export default async (req, res) => {
       user = await getUser(userId); // (يستخدم admin_state)
       const command = callback_query.data;
       
+      // الرد أولاً لمنع "ساعة الانتظار"
       await answerCallbackQuery(callback_query.id);
 
       if (!user) {
@@ -424,45 +455,73 @@ export default async (req, res) => {
       // --- [ (مسار المستخدم العادي - ضغط الأزرار) ] ---
       if (!user.is_admin) {
         
-        // (المستخدم يختار كورس محدد)
-        if (command.startsWith('sub_req_course_')) {
-            const parts = command.split('_');
-            const courseId = parseInt(parts[3], 10);
-            const courseTitle = command.substring(command.indexOf(parts[4])); 
+        // (جلب الحالة الحالية للمستخدم)
+        const currentState = user.admin_state;
+        const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
+        let selected = stateData.selected_courses || [];
 
-            await setUserState(userId, 'awaiting_payment_proof', { 
-                course_id: courseId, // رقم الكورس
-                course_title: courseTitle,
-                all_courses: false // ليس اشتراك شامل
-            });
-            
-            await sendMessage(
-                chatId, 
-                `لقد اخترت كورس: ${courseTitle}\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`,
-                null, null, true // نص عادي
-            );
+        // (1. المستخدم يضغط على "الاشتراك الشامل")
+        if (command === 'sub_req_toggle_all') {
+            const isAllSelected = selected.some(c => c.id === 'all');
+            if (isAllSelected) {
+                selected = []; // إلغاء الاختيار
+            } else {
+                selected = [{ id: 'all', title: 'الاشتراك الشامل (كل الكورسات)' }]; // اختيار
+            }
+            // إعادة عرض القائمة بالحالة الجديدة
+            await sendSubscriptionCourses(chatId, { selected_courses: selected });
             return res.status(200).send('OK');
         }
-        
-        // ( [ ✅✅ جديد ] المستخدم يختار الاشتراك الشامل)
-        if (command === 'sub_req_all_courses') {
-            await setUserState(userId, 'awaiting_payment_proof', { 
-                course_id: null, // لا يوجد ID كورس محدد
-                course_title: 'الاشتراك الشامل (كل الكورسات)',
-                all_courses: true // اشتراك شامل
-            });
+
+        // (2. المستخدم يضغط على كورس محدد)
+        if (command.startsWith('sub_req_toggle_')) {
+            const parts = command.split('_')[2].split('|');
+            const courseId = parseInt(parts[0], 10);
+            const courseTitle = parts[1];
             
+            if (selected.some(c => c.id === 'all')) {
+                selected = []; // إلغاء الشامل
+            }
+
+            const index = selected.findIndex(c => c.id === courseId);
+            if (index > -1) {
+                selected.splice(index, 1); // إلغاء الاختيار
+            } else {
+                selected.push({ id: courseId, title: courseTitle }); // اختيار
+            }
+            
+            await sendSubscriptionCourses(chatId, { selected_courses: selected });
+            return res.status(200).send('OK');
+        }
+
+        // (3. المستخدم يضغط "تأكيد الإختيار")
+        if (command === 'sub_req_submit') {
+             if (selected.length === 0) {
+                 await answerCallbackQuery(callback_query.id, { text: 'الرجاء اختيار كورس واحد على الأقل.' });
+                 return res.status(200).send('OK');
+             }
+             
+             await setUserState(userId, 'awaiting_payment_proof', { selected_courses: selected });
+             
+             const titles = selected.map(c => c.title).join('\n- ');
              await sendMessage(
                 chatId, 
-                `لقد اخترت: الاشتراك الشامل (كل الكورسات)\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`,
-                null, null, true // نص عادي
-            );
+                `لقد اخترت:\n- ${titles}\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`,
+                null, null, true
+             );
             return res.status(200).send('OK');
         }
 
-        // (المستخدم يضغط زر طلب الاشتراك من /start)
+        // (4. المستخدم يضغط "إلغاء" من قائمة الاختيار)
+        if (command === 'sub_req_cancel') {
+            await setUserState(userId, null, null);
+            await sendMessage(chatId, 'تم إلغاء الطلب.', null, null, true);
+            return res.status(200).send('OK');
+        }
+
+        // (5. المستخدم يضغط على الزر الرئيسي "طلب اشتراك")
         if (command === 'user_request_subscription') {
-            await sendSubscriptionCourses(chatId);
+            await sendSubscriptionCourses(chatId, null); // بدء عملية اختيار جديدة
             return res.status(200).send('OK');
         }
 
@@ -519,13 +578,11 @@ export default async (req, res) => {
 
       // 3. إدارة المحتوى (الحذف)
       
-      // [ ✅✅ جديد: معالج زر "حذف مجلد" ]
       if (command.startsWith('content_del_folder_')) {
         const courseId = parseInt(command.split('_')[3], 10);
         await sendContentMenu_DeleteFolder(chatId, courseId);
         return res.status(200).send('OK');
       }
-      // [ ✅✅ جديد: معالج "تأكيد حذف مجلد" ]
       if (command.startsWith('confirm_del_folder_')) {
         const sectionId = parseInt(command.split('_')[3], 10);
         const courseId = parseInt(command.split('_')[4], 10);
@@ -645,8 +702,14 @@ export default async (req, res) => {
       // [ ✅✅ تعديل: ليدعم الاشتراك الشامل أو المحدد ]
       if (command.startsWith('approve_sub_')) {
           const requestId = parseInt(command.split('_')[2], 10);
-          const { data: request, error: reqError } = await supabase.from('subscription_requests').select('*').eq('id', requestId).single();
           
+          // [ ✅ تعديل: جلب requested_data ]
+          const { data: request, error: reqError } = await supabase
+              .from('subscription_requests')
+              .select('*, requested_data') // <-- جلب العمود الجديد
+              .eq('id', requestId)
+              .single();
+
           if (reqError || !request) {
               await sendMessage(chatId, 'خطأ: لم يتم العثور على هذا الطلب.');
               return res.status(200).send('OK');
@@ -657,15 +720,20 @@ export default async (req, res) => {
           }
 
           const targetUserId = request.user_id;
-          const courseId = request.course_id; // (قد يكون null)
-          const courseTitle = request.course_title;
-          let userMessage = '';
+          const courseTitleDesc = request.course_title; // "كورس 1, كورس 2"
+          const requestedData = request.requested_data || []; // (e.g., [{id: 1, title: 'A'}, {id: 'all'}])
 
-          // [ ✅✅ لوجيك الفصل ]
-          if (courseId === null) {
+          let userMessage = '';
+          let grantAll = false;
+
+          // [ ✅✅ لوجيك الفصل الجديد ]
+          if (requestedData.length > 0 && requestedData.some(c => c.id === 'all')) {
+              grantAll = true;
+          }
+
+          if (grantAll) {
               // --- منح اشتراك شامل ---
               await supabase.from('users').upsert({ id: targetUserId, is_subscribed: true });
-              // (اختياري: حذف أي صلاحيات محددة قديمة)
               await supabase.from('user_course_access').delete().eq('user_id', targetUserId);
               
               userMessage = `🎉 تهانينا، تمت الموافقة على اشتراكك!\n\n` +
@@ -674,24 +742,29 @@ export default async (req, res) => {
                             `هذا هو ID الخاص بك، استخدمه لتسجيل الدخول في التطبيق:\n` +
                             `${targetUserId}`;
           } else {
-              // --- منح اشتراك محدد ---
-              await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: courseId });
+              // --- منح اشتراك محدد (متعدد) ---
+              const accessObjects = requestedData
+                  .filter(c => c.id !== 'all') // تجاهل أي شيء آخر
+                  .map(course => ({ 
+                      user_id: targetUserId, 
+                      course_id: course.id 
+                  }));
+              
+              if (accessObjects.length > 0) {
+                  await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
+              }
               await supabase.from('users').upsert({ id: targetUserId, is_subscribed: false }); 
               
               userMessage = `🎉 تهانينا، تمت الموافقة على اشتراكك!\n\n` +
-                            `تم تفعيل اشتراكك في كورس: ${courseTitle}\n\n` +
+                            `تم تفعيل اشتراكك في الكورسات التالية:\n- ${courseTitleDesc.replace(/, /g, '\n- ')}\n\n` +
                             `هام جداً:\n` +
                             `هذا هو ID الخاص بك، استخدمه لتسجيل الدخول في التطبيق:\n` +
                             `${targetUserId}`;
           }
           
-          // 3. تحديث حالة الطلب
           await supabase.from('subscription_requests').update({ status: 'approved' }).eq('id', requestId);
+          await sendMessage(targetUserId, userMessage, null, null, true); // إبلاغ المستخدم (نص عادي، محمي)
 
-          // 4. إبلاغ المستخدم (نص عادي، محمي)
-          await sendMessage(targetUserId, userMessage, null, null, true); 
-
-          // 5. تعديل رسالة الأدمن (تأكيد)
           const adminName = from.first_name || 'Admin';
           const newCaption = callback_query.message.caption + `\n\n<b>✅ تمت الموافقة بواسطة:</b> ${adminName}`;
           try {
@@ -739,6 +812,8 @@ export default async (req, res) => {
           if (user.is_subscribed || hasSpecificAccess) {
             await sendMessage(chatId, 'أهلاً بك! اضغط على زر القائمة في الأسفل لبدء الكورسات.', null, null, true);
           } else {
+            // [ ✅ إصلاح: تنظيف الحالة قبل عرض الزر ]
+            await setUserState(userId, null, null); 
             const keyboard = { inline_keyboard: [[ { text: '📋 طلب اشتراك', callback_data: 'user_request_subscription' } ]] };
             await sendMessage(chatId, 'أنت غير مشترك في الخدمة. يمكنك طلب اشتراك من الزر أدناه.', keyboard, null, true);
           }
@@ -765,7 +840,7 @@ export default async (req, res) => {
         }
         
         const stateData = user.state_data;
-        if (!stateData || typeof stateData.course_title === 'undefined' || typeof stateData.all_courses === 'undefined') {
+        if (!stateData || !stateData.selected_courses || stateData.selected_courses.length === 0) {
             await sendMessage(chatId, 'حدث خطأ. بيانات الكورس مفقودة. ابدأ من جديد بالضغط على /start', null, null, true);
             await setUserState(userId, null, null);
             return res.status(200).send('OK');
@@ -775,13 +850,18 @@ export default async (req, res) => {
         const user_name = `${from.first_name || ''} ${from.last_name || ''}`.trim();
         const user_username = from.username || null;
         
-        // (course_id سيكون null إذا كان اشتراكاً شاملاً)
+        // [ ✅ تعديل: إنشاء الوصف ]
+        const selectedCourses = stateData.selected_courses;
+        const courseTitleDesc = selectedCourses.map(c => c.title).join(', ');
+        
+        // [ ✅ تعديل: حفظ البيانات في العمود الجديد ]
         const { data: newRequest, error: insertError } = await supabase
             .from('subscription_requests')
             .insert({
                 user_id: userId, user_name: user_name, user_username: user_username,
-                course_id: stateData.course_id, // (null أو رقم)
-                course_title: stateData.course_title,
+                course_id: null, // <-- نتركه null دائماً
+                course_title: courseTitleDesc, // <-- الوصف
+                requested_data: selectedCourses, // <-- العمود الجديد
                 payment_file_id: payment_file_id, status: 'pending'
             })
             .select().single();
