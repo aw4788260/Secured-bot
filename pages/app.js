@@ -19,18 +19,19 @@ export default function App() {
       
       let tgUser = null;
 
-      // 2. سلسلة التحقق من الهوية
-      if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-        // الوضع 1: الفتح من داخل تليجرام
+      // 2. سلسلة التحقق من الهوية (بترتيب معكوس وصحيح)
+      if (androidUserId && androidUserId.trim() !== '') { // نتأكد أن الـ ID ليس فارغاً
+        // --- [ ✅ الإصلاح هنا ] ---
+        // الوضع 1: الفتح من تطبيق الأندرويد (يتم التحقق منه أولاً)
+        console.log("Running in secure Android WebView wrapper");
+        tgUser = { id: androidUserId, first_name: "App User" };
+
+      } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+        // الوضع 2: الفتح من داخل تليجرام (يتم التحقق منه ثانياً)
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
         tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
         
-      } else if (androidUserId && androidUserId.trim() !== '') { // نتأكد أن الـ ID ليس فارغاً
-        // الوضع 2: الفتح من تطبيق الأندرويد
-        console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: androidUserId, first_name: "App User" };
-
       } else if (typeof window !== 'undefined') {
         // الوضع 3: الفتح من متصفح عادي أو بـ ID فارغ
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
@@ -61,7 +62,7 @@ export default function App() {
               setStatus('جاري جلب الكورسات...');
               const userIdString = String(userId);
               // --- [هذا هو الإصلاح] ---
-              // تم حذف علامة [cite: ...] الخاطئة من السطر التالي
+              // تم حذف علامة الخاطئة من السطر التالي
               fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
                 .then(res => res.json())
                 .then(courseData => {
@@ -184,4 +185,3 @@ export default function App() {
     </div>
   );
 }
-
