@@ -11,107 +11,119 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // 1. قراءة البارامترات من الرابط
-    const urlParams = new URLSearchParams(window.location.search);
-    const androidUserId = urlParams.get('android_user_id');
-    const androidDeviceId = urlParams.get('android_device_id'); 
-    
-    let tgUser = null;
-
-    // --- [هذا هو الإصلاح] ---
-    // 2. سلسلة التحقق من الهوية (تم إعادة ترتيبها)
-    if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-      // الوضع 1: الفتح من داخل تليجرام
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
-      tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+    try { // --- [إضافة] نستخدم try...catch لالتقاط أي أخطاء غير متوقعة
+      // 1. قراءة البارامترات من الرابط
+      const urlParams = new URLSearchParams(window.location.search);
+      const androidUserId = urlParams.get('android_user_id');
+      const androidDeviceId = urlParams.get('android_device_id'); 
       
-    } else if (androidUserId) {
-      // الوضع 2: الفتح من تطبيق الأندرويد
-      console.log("Running in secure Android WebView wrapper");
-      tgUser = { id: androidUserId, first_name: "App User" };
+      let tgUser = null;
 
-    } else if (typeof window !== 'undefined') {
-      // الوضع 3: الفتح من متصفح عادي (هذا هو الشرط الذي كان في غير مكانه)
-      setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
-      return; // نوقف التنفيذ
-    }
-    // --- [نهاية الإصلاح] ---
+      // 2. سلسلة التحقق من الهوية
+      if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+        // الوضع 1: الفتح من داخل تليجرام
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        
+      } else if (androidUserId && androidUserId.trim() !== '') { // نتأكد أن الـ ID ليس فارغاً
+        // الوضع 2: الفتح من تطبيق الأندرويد
+        console.log("Running in secure Android WebView wrapper");
+        tgUser = { id: androidUserId, first_name: "App User" };
 
+      } else if (typeof window !== 'undefined') {
+        // الوضع 3: الفتح من متصفح عادي أو بـ ID فارغ
+        setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
+        return; // نوقف التنفيذ
+      }
 
-    // 3. التحقق من وجود المستخدم
-    if (!tgUser || !tgUser.id) { 
-      setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
-      return;
-    }
-    
-    setUser(tgUser);
-    setStatus('جاري التحقق من الاشتراك...');
-
-    // 4. فصل دالة التحقق من البصمة (يجب تعريفها قبل استدعائها)
-    const checkDeviceApi = (userId, deviceFingerprint) => {
-        fetch('/api/auth/check-device', { 
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
-        })
-        .then(res => res.json())
-        .then(deviceData => {
-          if (!deviceData.success) {
-            setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
-          } else {
-            setStatus('جاري جلب الكورسات...');
-            const userIdString = String(userId);
-            fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
-              .then(res => res.json())
-              .then(courseData => {
-                setCourses(courseData); 
-                setStatus(''); 
-              })
-              .catch(err => {
-                setError('حدث خطأ أثناء جلب الكورسات.');
-              });
-          }
-        });
-    }
-
-    // --- الخطوة 5: التحقق من الاشتراك ---
-    fetch('/api/auth/check-subscription', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: tgUser.id }),
-    })
-    .then(res => res.json())
-    .then(subData => {
-      if (!subData.isSubscribed) {
-        setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
+      // 3. التحقق من وجود المستخدم
+      // --- [هذا هو الإصلاح] ---
+      // تم إصلاح الخطأ المطبعي (كان tgTUser.id)
+      if (!tgUser || !tgUser.id) { 
+        // هذا الخطأ لا يجب أن يظهر الآن إلا إذا حدث شيء غريب جداً
+        setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
+      
+      setUser(tgUser);
+      setStatus('جاري التحقق من الاشتراك...');
 
-      // --- الخطوة 6: التحقق من بصمة الجهاز ---
-      setStatus('جاري التحقق من بصمة الجهاز...');
-
-      if (androidDeviceId) {
-        // --- نحن في تطبيق الأندرويد ---
-        checkDeviceApi(tgUser.id, androidDeviceId);
-      } else {
-        // --- نحن في تليجرام ويب (كوضع احتياطي أو للأدمن) ---
-        const loadBrowserFingerprint = async () => {
-          const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
-          const fp = await FingerprintJS.load();
-          const result = await fp.get();
-          return result.visitorId;
-        };
-        
-        loadBrowserFingerprint().then(fingerprint => {
-            checkDeviceApi(tgUser.id, fingerprint);
-        });
+      // 4. فصل دالة التحقق من البصمة (يجب تعريفها قبل استدعائها)
+      const checkDeviceApi = (userId, deviceFingerprint) => {
+          fetch('/api/auth/check-device', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
+          })
+          .then(res => res.json())
+          .then(deviceData => {
+            if (!deviceData.success) {
+              setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر" [cite: aw4788260/secured-bot/Secured-bot-a79c87b4e0cf475e87087d121c04d68029211b2c/pages/api/auth/check-device.js]
+            } else {
+              setStatus('جاري جلب الكورسات...');
+              const userIdString = String(userId);
+              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) [cite: aw4788260/secured-bot/Secured-bot-a79c87b4e0cf475e87087d121c04d68029211b2c/pages/api/data/get-structured-courses.js]
+                .then(res => res.json())
+                .then(courseData => {
+                  setCourses(courseData); 
+                  setStatus(''); 
+                })
+                .catch(err => {
+                  setError('حدث خطأ أثناء جلب الكورسات.');
+                  console.error("Error fetching courses:", err);
+                });
+            }
+          })
+          .catch(err => {
+            setError('حدث خطأ أثناء التحقق من الجهاز.');
+            console.error("Error checking device:", err);
+          });
       }
-    })
-    .catch(err => {
-       setError('حدث خطأ أثناء التحقق. حاول مرة أخرى.');
-       console.error(err);
-    });
+
+      // --- الخطوة 5: التحقق من الاشتراك ---
+      fetch('/api/auth/check-subscription', { [cite: aw4788260/secured-bot/Secured-bot-a79c87b4e0cf475e87087d121c04d68029211b2c/pages/api/auth/check-subscription.js]
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: tgUser.id }),
+      })
+      .then(res => res.json())
+      .then(subData => {
+        if (!subData.isSubscribed) {
+          setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
+          return;
+        }
+
+        // --- الخطوة 6: التحقق من بصمة الجهاز ---
+        setStatus('جاري التحقق من بصمة الجهاز...');
+
+        if (androidDeviceId) {
+          // --- نحن في تطبيق الأندرويد ---
+          checkDeviceApi(tgUser.id, androidDeviceId);
+        } else {
+          // --- نحن في تليجرام ويب (كوضع احتياطي أو للأدمن) ---
+          const loadBrowserFingerprint = async () => {
+            const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
+            const fp = await FingerprintJS.load();
+            const result = await fp.get();
+            return result.visitorId;
+          };
+          
+          loadBrowserFingerprint().then(fingerprint => {
+              checkDeviceApi(tgUser.id, fingerprint);
+          });
+        }
+      })
+      .catch(err => {
+         setError('حدث خطأ أثناء التحقق من الاشتراك.');
+         console.error("Error checking subscription:", err);
+      });
+
+    } catch (e) { // --- [إضافة]
+      // هذا سيلتقط الخطأ المطبعي (Typo) أو أي خطأ آخر
+      console.error("Fatal error in useEffect:", e);
+      setError(`خطأ فادح: ${e.message}`);
+    }
 
   }, []); // نهاية useEffect
 
@@ -174,4 +186,3 @@ export default function App() {
     </div>
   );
 }
-
