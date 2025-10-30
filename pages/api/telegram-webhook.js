@@ -1036,6 +1036,7 @@ export default async (req, res) => {
 // ... (بعد معالجة حالة المستخدم العادي "if (!user.is_admin && ...)")
 
       // (2. حالات الأدمن - إدخال نصي)
+     // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         switch (currentState) {
 
@@ -1124,7 +1125,7 @@ export default async (req, res) => {
             await sendContentMenu_Videos(chatId, user.state_data.section_id);
             break;
             
-          // --- [ ✅✅ هذا هو الكود الذي كان مفقوداً ] ---
+          // --- [ حالة الرفض ] ---
           case 'awaiting_rejection_reason':
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
@@ -1172,8 +1173,27 @@ export default async (req, res) => {
             // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
-          // --- [ نهاية الكود المفقود ] ---
             
         } // نهاية الـ switch
         return res.status(200).send('OK');
+      } // [ ✅ قوس إغلاق لـ 'if (user.is_admin && currentState)' ]
+
+      // رسالة عامة (إذا لم يكن في أي حالة)
+      if (!currentState) {
+        await sendMessage(chatId, 'الأمر غير معروف. اضغط /start', null, null, true);
       }
+    } // [ ✅ قوس إغلاق لـ 'if (message && message.from)' ]
+
+  } catch (e) {
+    console.error("Error in webhook:", e);
+    if (chatId) {
+        try {
+           await sendMessage(chatId, `حدث خطأ جسيم في الخادم: ${e.message}`, null, null, true);
+        } catch (sendError) {
+             console.error("Failed to send critical error message:", sendError);
+        }
+    }
+  } // [ ✅ قوس إغلاق لـ 'try...catch' الرئيسي ]
+
+  res.status(200).send('OK');
+}; // [ ✅ قوس إغلاق لـ 'export default' ]
