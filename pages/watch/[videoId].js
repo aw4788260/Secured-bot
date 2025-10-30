@@ -85,21 +85,29 @@ export default function WatchPage() {
     const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
     const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
-    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
+    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     
-    // --- [ ✅ هذا هو الإصلاح ] ---
-    // تم تبسيط الدالة لتستخدم الأمر الصحيح
+    // --- [ ✅ الإصلاح 1: تعديل دالة الطلب ] ---
+    // هذه الدالة الآن "تطلب" التغيير فقط ولا تحدث الواجهة
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         if (playerRef.current && typeof playerRef.current.setPlaybackQuality === 'function') {
-            // نستخدم الأمر المباشر لتغيير الجودة
             playerRef.current.setPlaybackQuality(newQuality);
-            // نقوم بتحديث الحالة مباشرة في الواجهة
-            setVideoQuality(newQuality);
+            // (تم حذف سطر "setVideoQuality" من هنا)
         }
     };
-    // --- [ نهاية الإصلاح ] ---
+
+    // --- [ ✅ الإصلاح 2: إضافة دالة الاستماع ] ---
+    // هذه الدالة يتم استدعاؤها "فقط" عندما يؤكد اليوتيوب تغيير الجودة
+    const onActualQualityChange = (event) => {
+        const actualQuality = event.data;
+        if (actualQuality) {
+            // نقوم بتحديث الواجهة (القائمة المنسدلة) بالجودة الفعلية
+            setVideoQuality(actualQuality);
+        }
+    };
+    // --- [ نهاية الإصلاحات ] ---
 
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
@@ -124,6 +132,8 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
+                    // --- [ ✅ الإصلاح 3: إضافة المستمع للمشغل ] ---
+                    onPlaybackQualityChange={onActualQualityChange}
                 />
 
                 <div className="controls-overlay">
@@ -138,7 +148,12 @@ export default function WatchPage() {
                     <div className="bottom-controls">
                         <div className="extra-controls">
                             {availableQualityLevels.length > 0 && (
-                                <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
+                                <select 
+                                    className="control-select" 
+                                    // القيمة الآن مرتبطة بالحالة التي يؤكدها اليوتيوب
+                                    value={videoQuality} 
+                                    onChange={handleSetQuality}
+                                >
                                     {availableQualityLevels.map(quality => (
                                         <option key={quality} value={quality}>
                                             {formatQualityLabel(quality)}
