@@ -1032,6 +1032,10 @@ export default async (req, res) => {
       }
 
       // (2. حالات الأدمن - إدخال نصي)
+    // [ ... (داخل معالج الرسائل النصية والصور "if (message && message.from)") ]
+// ... (بعد معالجة حالة المستخدم العادي "if (!user.is_admin && ...)")
+
+      // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         switch (currentState) {
 
@@ -1043,6 +1047,7 @@ export default async (req, res) => {
             }
             await fetchAndSendCoursesMenu(chatId, `تم تحديد ${ids.length} مستخدم. اختر نوع الصلاحية:`, { users: ids }, 'assign_course');
             break;
+            
           case 'awaiting_device_reset_id':
             const resetIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (resetIds.length === 0) {
@@ -1054,6 +1059,7 @@ export default async (req, res) => {
             else { await sendMessage(chatId, `✅ تم حذف البصمات لـ ${resetIds.length} مستخدم.`); }
             await setUserState(userId, null, null);
             break;
+            
           case 'awaiting_user_id_for_revoke':
             const revokeIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (revokeIds.length !== 1) {
@@ -1072,6 +1078,7 @@ export default async (req, res) => {
             await setUserState(userId, null, null);
             await sendContentMenu_Courses(chatId);
             break;
+            
           case 'awaiting_folder_title':
             if (!user.state_data || !user.state_data.course_id) {
                await sendMessage(chatId, "خطأ: بيانات الكورس مفقودة. أعد المحاولة.");
@@ -1082,6 +1089,7 @@ export default async (req, res) => {
             await sendMessage(chatId, `✅ تم إضافة المجلد "${text}" بنجاح.`);
             await sendContentMenu_Folders(chatId, user.state_data.course_id);
             break;
+            
           case 'awaiting_video_title':
             if (!user.state_data || !user.state_data.section_id) {
                await sendMessage(chatId, "خطأ: بيانات المجلد مفقودة. أعد المحاولة.");
@@ -1094,6 +1102,7 @@ export default async (req, res) => {
             });
             await sendMessage(chatId, `👍 العنوان: "${text}"\n\nالآن أرسل "رابط يوتيوب" الخاص بالفيديو:`);
             break;
+            
           case 'awaiting_youtube_id':
             if (!user.state_data || !user.state_data.section_id || !user.state_data.video_title) {
                await sendMessage(chatId, "خطأ: الحالة مفقودة. أعد المحاولة.");
@@ -1115,26 +1124,56 @@ export default async (req, res) => {
             await sendContentMenu_Videos(chatId, user.state_data.section_id);
             break;
             
+          // --- [ ✅✅ هذا هو الكود الذي كان مفقوداً ] ---
+          case 'awaiting_rejection_reason':
+            if (!text || text.trim().length === 0) {
+                await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
+                return res.status(200).send('OK');
+            }
+            
+            const stateData = user.state_data;
+            if (!stateData || !stateData.request_id || !stateData.target_user_id) {
+                 await sendMessage(chatId, 'خطأ: الحالة مفقودة. تم الإلغاء.');
+                 await setUserState(userId, null, null);
+                 return res.status(200).send('OK');
+            }
+
+            // 1. إبلاغ المستخدم بالرفض + السبب
+            const userMessage = `نأسف، تم رفض طلب اشتراكك.\n\nالسبب: ${text}`;
+            await sendMessage(stateData.target_user_id, userMessage, null, null, true);
+
+            // 2. تحديث حالة الطلب في DB
+            await supabase
+                .from('subscription_requests')
+                .update({ status: 'rejected' })
+                .eq('id', stateData.request_id);
+
+            // 3. إبلاغ الأدمن
+            await sendMessage(chatId, '✅ تم إرسال الرفض والملاحظة للمستخدم.');
+
+            // 4. تعديل رسالة الأدمن الأصلية (الصورة)
+            try {
+                // (نستخدم الكابشن الأصلي المحفوظ في الحالة)
+                const newCaption = stateData.original_caption + 
+                                   `\n\n<b>❌ تم الرفض بواسطة:</b> ${from.first_name || 'Admin'}\n<b>السبب:</b> ${text}`;
+                
+                await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
+                      chat_id: chatId,
+                      message_id: stateData.admin_message_id,
+                      caption: newCaption,
+                      parse_mode: 'HTML',
+                      reply_markup: null // إزالة الأزرار
+                });
+            } catch(e) {
+                 console.error("Failed to edit admin message after rejection:", e.message);
+                 // (حتى لو فشل تعديل الرسالة، العملية نجحت)
+            }
+            
+            // 5. تنظيف الحالة
+            await setUserState(userId, null, null);
+            break;
+          // --- [ نهاية الكود المفقود ] ---
+            
         } // نهاية الـ switch
         return res.status(200).send('OK');
       }
-
-      // رسالة عامة (إذا لم يكن في أي حالة)
-      if (!currentState) {
-        await sendMessage(chatId, 'الأمر غير معروف. اضغط /start', null, null, true);
-      }
-    }
-
-  } catch (e) {
-    console.error("Error in webhook:", e);
-    if (chatId) {
-        try {
-           await sendMessage(chatId, `حدث خطأ جسيم في الخادم: ${e.message}`, null, null, true);
-        } catch (sendError) {
-             console.error("Failed to send critical error message:", sendError);
-        }
-    }
-  }
-
-  res.status(200).send('OK');
-};
