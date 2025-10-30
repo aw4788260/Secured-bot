@@ -354,7 +354,8 @@ const buildCoursesKeyboard = (allCourses, selectedCourses = []) => {
 
 
 // [ ✅✅ تعديل: دالة عرض الكورسات للاشتراك ]
-const sendSubscriptionCourses = async (chatId, stateData = null) => {
+// --- [ ✅✅ تعديل: دالة عرض الكورسات للاشتراك (لتقوم بتعديل الرسالة) ] ---
+const sendSubscriptionCourses = async (chatId, stateData = null, messageId = null) => {
   const { data: courses, error } = await supabase.from('courses').select('id, title').order('title');
   if (error) {
     await sendMessage(chatId, 'عذراً، حدث خطأ أثناء جلب الكورسات.', null, null, true);
@@ -363,6 +364,7 @@ const sendSubscriptionCourses = async (chatId, stateData = null) => {
   
   const selected = stateData?.selected_courses || [];
   
+  // (دالة buildCoursesKeyboard تبقى كما هي)
   const keyboard = buildCoursesKeyboard(courses, selected);
   
   // نضع المستخدم في "حالة اختيار"
@@ -372,7 +374,34 @@ const sendSubscriptionCourses = async (chatId, stateData = null) => {
     'اختر الكورسات التي ترغب بالاشتراك بها، أو اطلب الاشتراك الشامل:' :
     'يمكنك اختيار أكثر من كورس. اضغط "تأكيد" عند الانتهاء:';
     
-  await sendMessage(chatId, messageText, keyboard, null, true);
+  // [ ✅✅ جديد: منطق تعديل الرسالة ]
+  if (messageId) {
+      // إذا كان لدينا ID رسالة، نقوم بتعديلها
+      try {
+          await axios.post(`${TELEGRAM_API}/editMessageText`, {
+              chat_id: chatId,
+              message_id: messageId,
+              text: messageText,
+              reply_markup: keyboard
+          });
+      } catch (e) {
+          // (قد تفشل إذا لم يتغير النص، لا مشكلة)
+          // (قد تفشل أيضاً إذا ضغط المستخدم بسرعة كبيرة جداً، لذا نحاول تعديل الأزرار فقط)
+          try {
+               await axios.post(`${TELEGRAM_API}/editMessageReplyMarkup`, {
+                  chat_id: chatId,
+                  message_id: messageId,
+                  reply_markup: keyboard
+              });
+          } catch (e2) {
+              // تجاهل الأخطاء الناتجة عن الضغط السريع
+              // console.error("Failed to edit message markup:", e2.message);
+          }
+      }
+  } else {
+      // إذا لم يكن لدينا ID (أول مرة)، نرسل رسالة جديدة
+      await sendMessage(chatId, messageText, keyboard, null, true);
+  }
 };
 
 
@@ -453,28 +482,36 @@ export default async (req, res) => {
       if(command === 'noop') return res.status(200).send('OK');
 
       // --- [ (مسار المستخدم العادي - ضغط الأزرار) ] ---
+     // --- [ (داخل معالج callback_query) ] ---
+
+      // --- [ (مسار المستخدم العادي - ضغط الأزرار) ] ---
       if (!user.is_admin) {
         
-        // (جلب الحالة الحالية للمستخدم)
         const currentState = user.admin_state;
-        const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
-        let selected = stateData.selected_courses || [];
-
+        const messageId = callback_query.message.message_id; // [ ✅ الأهم: جلب ID الرسالة ]
+        
         // (1. المستخدم يضغط على "الاشتراك الشامل")
         if (command === 'sub_req_toggle_all') {
+            // جلب الحالة من داخل المعالج لضمان الدقة
+            const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
+            let selected = stateData.selected_courses || [];
+
             const isAllSelected = selected.some(c => c.id === 'all');
             if (isAllSelected) {
                 selected = []; // إلغاء الاختيار
             } else {
                 selected = [{ id: 'all', title: 'الاشتراك الشامل (كل الكورسات)' }]; // اختيار
             }
-            // إعادة عرض القائمة بالحالة الجديدة
-            await sendSubscriptionCourses(chatId, { selected_courses: selected });
+            // [ ✅ تمرير ID الرسالة للتعديل ]
+            await sendSubscriptionCourses(chatId, { selected_courses: selected }, messageId);
             return res.status(200).send('OK');
         }
 
         // (2. المستخدم يضغط على كورس محدد)
         if (command.startsWith('sub_req_toggle_')) {
+            const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
+            let selected = stateData.selected_courses || [];
+
             const parts = command.split('_')[2].split('|');
             const courseId = parseInt(parts[0], 10);
             const courseTitle = parts[1];
@@ -490,12 +527,16 @@ export default async (req, res) => {
                 selected.push({ id: courseId, title: courseTitle }); // اختيار
             }
             
-            await sendSubscriptionCourses(chatId, { selected_courses: selected });
+            // [ ✅ تمرير ID الرسالة للتعديل ]
+            await sendSubscriptionCourses(chatId, { selected_courses: selected }, messageId);
             return res.status(200).send('OK');
         }
 
         // (3. المستخدم يضغط "تأكيد الإختيار")
         if (command === 'sub_req_submit') {
+             const stateData = (currentState === 'awaiting_course_selection') ? (user.state_data || { selected_courses: [] }) : { selected_courses: [] };
+             let selected = stateData.selected_courses || [];
+
              if (selected.length === 0) {
                  await answerCallbackQuery(callback_query.id, { text: 'الرجاء اختيار كورس واحد على الأقل.' });
                  return res.status(200).send('OK');
@@ -504,6 +545,10 @@ export default async (req, res) => {
              await setUserState(userId, 'awaiting_payment_proof', { selected_courses: selected });
              
              const titles = selected.map(c => c.title).join('\n- ');
+             
+             // [ ✅ حذف رسالة الاختيار ]
+             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: messageId }); } catch(e){}
+             
              await sendMessage(
                 chatId, 
                 `لقد اخترت:\n- ${titles}\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`,
@@ -515,19 +560,23 @@ export default async (req, res) => {
         // (4. المستخدم يضغط "إلغاء" من قائمة الاختيار)
         if (command === 'sub_req_cancel') {
             await setUserState(userId, null, null);
+            // [ ✅ حذف رسالة الاختيار ]
+            try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: messageId }); } catch(e){}
             await sendMessage(chatId, 'تم إلغاء الطلب.', null, null, true);
             return res.status(200).send('OK');
         }
 
         // (5. المستخدم يضغط على الزر الرئيسي "طلب اشتراك")
         if (command === 'user_request_subscription') {
-            await sendSubscriptionCourses(chatId, null); // بدء عملية اختيار جديدة
+            await sendSubscriptionCourses(chatId, null, null); // (null, null) = إرسال رسالة جديدة
             return res.status(200).send('OK');
         }
 
         await sendMessage(chatId, 'أنت لست أدمن.', null, null, true);
         return res.status(200).send('OK');
       }
+
+// --- [ (نهاية التعديل - أكمل باقي كود الأدمن كما كان) ] ---
 
       // --- [ (مسار الأدمن - ضغط الأزرار) ] ---
       
