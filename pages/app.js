@@ -11,7 +11,8 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    try { 
+    try { // نستخدم try...catch لالتقاط أي أخطاء
+      // 1. قراءة البارامترات من الرابط
       const urlParams = new URLSearchParams(window.location.search);
       const androidUserId = urlParams.get('android_user_id');
       const androidDeviceId = urlParams.get('android_device_id'); 
@@ -19,37 +20,31 @@ export default function App() {
       let tgUser = null;
 
       // 2. سلسلة التحقق من الهوية (بترتيب معكوس وصحيح)
-      if (androidUserId && androidUserId.trim() !== '') { 
-        // --- [ ✅ هذا هو الإصلاح ] ---
-        // الوضع 1: الفتح من تطبيق الأندرويد (نتركه كنص)
+      if (androidUserId && androidUserId.trim() !== '') { // نتأكد أن الـ ID ليس فارغاً
+        // --- [ ✅ الإصلاح هنا ] ---
+        // الوضع 1: الفتح من تطبيق الأندرويد (يتم التحقق منه أولاً)
         console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: androidUserId }; // <-- (تمت إزالة parseInt)
+        tgUser = { id: androidUserId, first_name: "App User" };
 
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-        // الوضع 2: الفتح من داخل تليجرام (يأتي كرقم افتراضياً)
+        // الوضع 2: الفتح من داخل تليجرام (يتم التحقق منه ثانياً)
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
         tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
         
-        // --- [ ✅ إضافة: تحويل رقم تليجرام إلى نص لتوحيد النوع ] ---
-        if (tgUser) {
-            tgUser.id = String(tgUser.id);
-        }
-        
       } else if (typeof window !== 'undefined') {
         // الوضع 3: الفتح من متصفح عادي أو بـ ID فارغ
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
-        return; 
+        return; // نوقف التنفيذ
       }
 
-      // --- [ ✅ هذا هو الإصلاح ] ---
-      // التحقق من أن النص صالح
-      if (!tgUser || !tgUser.id) { // <-- (تمت إزالة isNaN)
+      // 3. التحقق من وجود المستخدم (تم إصلاح الخطأ المطبعي هنا)
+      if (!tgUser || !tgUser.id) { 
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
       
-      setUser(tgUser); 
+      setUser(tgUser);
       setStatus('جاري التحقق من الاشتراك...');
 
       // 4. فصل دالة التحقق من البصمة
@@ -57,16 +52,18 @@ export default function App() {
           fetch('/api/auth/check-device', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }), // <-- userId هو نص الآن
+            body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
           })
           .then(res => res.json())
           .then(deviceData => {
             if (!deviceData.success) {
-              setError(deviceData.message); 
+              setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
             } else {
               setStatus('جاري جلب الكورسات...');
-              // const userIdString = String(userId); // <-- لم نعد بحاجة لهذا
-              fetch(`/api/data/get-structured-courses?userId=${userId}`) // <-- إرسال النص مباشرة
+              const userIdString = String(userId);
+              // --- [هذا هو الإصلاح] ---
+              // تم حذف علامة الخاطئة من السطر التالي
+              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
                 .then(res => res.json())
                 .then(courseData => {
                   setCourses(courseData); 
@@ -84,38 +81,34 @@ export default function App() {
           });
       }
 
-      // --- الخطوة 5: التحقق من الاشتراك (وجلب الاسم) ---
+      // --- الخطوة 5: التحقق من الاشتراك ---
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: tgUser.id }), // <-- الآن نرسل نصاً (String)
+        body: JSON.stringify({ userId: tgUser.id }),
       })
       .then(res => res.json())
       .then(subData => {
         if (!subData.isSubscribed) {
-          setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.'); // <-- الخطأ الذي رأيته
+          setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
           return;
         }
-
-        // --- (تحديث المستخدم بالاسم الحقيقي) ---
-        const finalUser = {
-            id: tgUser.id,
-            first_name: subData.first_name || (tgUser.first_name || "User")
-        };
-        setUser(finalUser); 
 
         // --- الخطوة 6: التحقق من بصمة الجهاز ---
         setStatus('جاري التحقق من بصمة الجهاز...');
 
         if (androidDeviceId) {
+          // --- نحن في تطبيق الأندرويد ---
           checkDeviceApi(tgUser.id, androidDeviceId);
         } else {
+          // --- نحن في تليجرام ويب (كوضع احتياطي أو للأدمن) ---
           const loadBrowserFingerprint = async () => {
             const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
             const fp = await FingerprintJS.load();
             const result = await fp.get();
             return result.visitorId;
           };
+          
           loadBrowserFingerprint().then(fingerprint => {
               checkDeviceApi(tgUser.id, fingerprint);
           });
@@ -133,7 +126,7 @@ export default function App() {
 
   }, []); // نهاية useEffect
 
-  // (باقي الكود كما هو)
+  // ... (باقي كود الـ return كما هو) ...
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
@@ -141,6 +134,7 @@ export default function App() {
     return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
 
+  // --- العرض (كما هو) ---
   if (!selectedCourse) {
     return (
       <div className="app-container">
@@ -174,9 +168,10 @@ export default function App() {
       <h1>{selectedCourse.title}</h1>
       <ul className="item-list">
         {selectedCourse.videos.length > 0 ? (
+        // ... (داخل دالة return)
           selectedCourse.videos.map(video => (
             <li key={video.id}>
-              {/* (تمرير بيانات المستخدم للرابط) */}
+              {/* ✅ [الإصلاح هنا] نمرر بيانات المستخدم في الرابط */}
               <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                 <a className="button-link video-link">
                   {video.title}
@@ -184,6 +179,7 @@ export default function App() {
               </Link>
             </li>
           ))
+// ...
         ) : (
           <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الكورس بعد.</p>
         )}
