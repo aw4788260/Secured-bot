@@ -7,15 +7,12 @@ export default function App() {
   const [status, setStatus] = useState('جاري التحقق من هويتك...');
   const [error, setError] = useState(null);
   const [courses, setCourses] = useState([]);
-  const [user, setUser] = useState(null);
-
-  // --- [ ✅✅ حالة جديدة للمجلدات ] ---
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedSection, setSelectedSection] = useState(null);
-  
-  // (دالة useEffect تبقى كما هي تماماً، فهي لا تحتاج تعديل)
+  const [user, setUser] = useState(null);
+
   useEffect(() => {
-    try { 
+    try {
       // 1. قراءة البارامترات
       const urlParams = new URLSearchParams(window.location.search);
       const androidUserId = urlParams.get('android_user_id');
@@ -25,26 +22,28 @@ export default function App() {
       // 2. سلسلة التحقق
       if (androidUserId && androidUserId.trim() !== '') {
         console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: androidUserId, first_name: "App User" };
+        // [ ✅✅ تعديل: لا نضع اسم افتراضي هنا ]
+        tgUser = { id: androidUserId, first_name: "Loading..." }; // اسم مؤقت
+
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
         tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        
       } else if (typeof window !== 'undefined') {
         setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
         return;
       }
 
-      // 3. التحقق من وجود المستخدم
       if (!tgUser || !tgUser.id) { 
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
       
-      setUser(tgUser);
+      setUser(tgUser); // وضع المستخدم (بالاسم المؤقت أو اسم تليجرام)
       setStatus('جاري التحقق من الاشتراك...');
 
-      // 4. دالة التحقق من البصمة وجلب الكورسات
+      // 3. دالة التحقق من البصمة وجلب الكورسات
       const checkDeviceApi = (userId, deviceFingerprint) => {
           fetch('/api/auth/check-device', { 
             method: 'POST',
@@ -54,11 +53,30 @@ export default function App() {
           .then(res => res.json())
           .then(deviceData => {
             if (!deviceData.success) {
-              setError(deviceData.message); // "تم ربط هذا الحساب بجهاز آخر"
+              setError(deviceData.message);
             } else {
               setStatus('جاري جلب الكورسات...');
               const userIdString = String(userId);
-              // جلب الكورسات بالهيكل الجديد
+              
+              // [ ✅✅ جديد: جلب الاسم الحقيقي بالتوازي مع الكورسات ]
+              if (androidUserId) { // (فقط إذا كنا داخل الأندرويد)
+                fetch(`/api/auth/get-user-name?userId=${userIdString}`)
+                  .then(res => res.json())
+                  .then(nameData => {
+                    // تحديث اسم المستخدم بالاسم الحقيقي
+                    setUser({ id: userId, first_name: nameData.name });
+                  })
+                  .catch(err => {
+                    // (إذا فشل، نستخدم اسم افتراضي)
+                    console.error("Error fetching user name:", err);
+                     setUser({ id: userId, first_name: `User ${userId}` });
+                  });
+              } else if (tgUser) {
+                  // (إذا كنا في تليجرام ويب، الاسم موجود لدينا بالفعل)
+                  setUser(tgUser);
+              }
+
+              // (الكود الأصلي لجلب الكورسات بالهيكل الهرمي)
               fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
                 .then(res => res.json())
                 .then(courseData => {
@@ -77,7 +95,7 @@ export default function App() {
           });
       }
 
-      // --- الخطوة 5: التحقق من الاشتراك ---
+      // 4. التحقق من الاشتراك
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -90,11 +108,12 @@ export default function App() {
           return;
         }
 
-        // --- الخطوة 6: التحقق من بصمة الجهاز ---
+        // 5. التحقق من بصمة الجهاز
         setStatus('جاري التحقق من بصمة الجهاز...');
         if (androidDeviceId) {
           checkDeviceApi(tgUser.id, androidDeviceId);
         } else {
+          // (الوضع الاحتياطي للمتصفح العادي)
           const loadBrowserFingerprint = async () => {
             const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
             const fp = await FingerprintJS.load();
@@ -118,15 +137,13 @@ export default function App() {
 
   }, []); // نهاية useEffect
 
-  // (الرسائل الأولية كما هي)
+  // (الرسائل الأولية)
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
-  if (status) {
+  if (status || !user || user.first_name === "Loading...") { // (ننتظر تحميل الاسم)
     return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
-
-  // --- [ ✅✅ واجهة المستخدم الجديدة ثلاثية المستويات ] ---
 
   // (المستوى 3: عرض الفيديوهات)
   if (selectedCourse && selectedSection) {
@@ -141,7 +158,7 @@ export default function App() {
           {selectedSection.videos.length > 0 ? (
             selectedSection.videos.map(video => (
               <li key={video.id}>
-                {/* تمرير بيانات المستخدم للرابط كما هي */}
+                {/* [ ✅ إصلاح: الآن سيتم تمرير الاسم الحقيقي ] */}
                 <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                   <a className="button-link video-link">
                     {video.title}
