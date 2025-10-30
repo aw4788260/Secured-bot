@@ -20,13 +20,13 @@ export default function App() {
 
       // 2. سلسلة التحقق من الهوية (بترتيب معكوس وصحيح)
       if (androidUserId && androidUserId.trim() !== '') { 
-        // --- [ ✅ التعديل هنا ] ---
-        // الوضع 1: الفتح من تطبيق الأندرويد (نجلب الرقم التعريفي فقط)
+        // --- [ ✅ هذا هو الإصلاح ] ---
+        // الوضع 1: الفتح من تطبيق الأندرويد (نحول النص إلى رقم)
         console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: androidUserId }; // <-- الاسم سيتم جلبه من الـ API
+        tgUser = { id: parseInt(androidUserId, 10) }; // <-- تحويل النص "123" إلى الرقم 123
 
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-        // الوضع 2: الفتح من داخل تليجرام (يتم التحقق منه ثانياً)
+        // الوضع 2: الفتح من داخل تليجرام (يأتي كرقم افتراضياً)
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
         tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
@@ -37,12 +37,12 @@ export default function App() {
         return; 
       }
 
-      if (!tgUser || !tgUser.id) { 
+      // التحقق من أن الرقم صالح
+      if (!tgUser || !tgUser.id || isNaN(tgUser.id)) { 
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
       
-      // (مؤقتاً بالرقم التعريفي فقط)
       setUser(tgUser); 
       setStatus('جاري التحقق من الاشتراك...');
 
@@ -82,37 +82,34 @@ export default function App() {
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: tgUser.id }),
+        body: JSON.stringify({ userId: tgUser.id }), // <-- الآن نرسل رقماً صحيحاً
       })
       .then(res => res.json())
       .then(subData => {
         if (!subData.isSubscribed) {
-          setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.');
+          setError('أنت غير مشترك أو ليس لديك صلاحية لأي كورس.'); // <-- الخطأ الذي رأيته
           return;
         }
 
-        // --- [ ✅ التعديل هنا: تحديث المستخدم بالاسم الحقيقي ] ---
+        // --- (تحديث المستخدم بالاسم الحقيقي) ---
         const finalUser = {
             id: tgUser.id,
             first_name: subData.first_name || (tgUser.first_name || "User")
         };
-        setUser(finalUser); // <-- تحديث الحالة بالاسم الصحيح
+        setUser(finalUser); 
 
         // --- الخطوة 6: التحقق من بصمة الجهاز ---
         setStatus('جاري التحقق من بصمة الجهاز...');
 
         if (androidDeviceId) {
-          // --- نحن في تطبيق الأندرويد ---
           checkDeviceApi(tgUser.id, androidDeviceId);
         } else {
-          // --- نحن في تليجرام ويب (كوضع احتياطي أو للأدمن) ---
           const loadBrowserFingerprint = async () => {
             const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
             const fp = await FingerprintJS.load();
             const result = await fp.get();
             return result.visitorId;
           };
-          
           loadBrowserFingerprint().then(fingerprint => {
               checkDeviceApi(tgUser.id, fingerprint);
           });
@@ -130,6 +127,7 @@ export default function App() {
 
   }, []); // نهاية useEffect
 
+  // (باقي الكود كما هو)
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
@@ -137,7 +135,6 @@ export default function App() {
     return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
   }
 
-  // --- العرض ---
   if (!selectedCourse) {
     return (
       <div className="app-container">
@@ -173,7 +170,7 @@ export default function App() {
         {selectedCourse.videos.length > 0 ? (
           selectedCourse.videos.map(video => (
             <li key={video.id}>
-              {/* --- [ ✅ التعديل هنا: تمرير بيانات المستخدم للرابط ] --- */}
+              {/* (تمرير بيانات المستخدم للرابط) */}
               <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                 <a className="button-link video-link">
                   {video.title}
