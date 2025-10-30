@@ -11,12 +11,7 @@ export default function WatchPage() {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     
-    // تم حذف أغلب متغيرات الحالة (مثل isPlaying, currentTime, videoQuality)
-    // لأن مشغل يوتيوب الأصلي سيتعامل معها
-
     const playerRef = useRef(null);
-    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
-    const seekTimeoutRef = useRef(null);
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
 
@@ -60,31 +55,21 @@ export default function WatchPage() {
         };
     }, [videoId]); 
 
-    // [الإبقاء على دالة التقديم]
-    const handleSeek = (direction) => { 
-        if (!playerRef.current) return; 
-        const currentTimeVal = playerRef.current.getCurrentTime(); 
-        const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; 
-        playerRef.current.seekTo(newTime, true); 
-        setShowSeekIcon({ direction: direction, visible: true }); 
-        if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); 
-        seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); 
-    };
-
-    // [تبسيط دالة onReady]
+    // [دالة onReady كما هي]
     const onPlayerReady = useCallback((event) => { 
         playerRef.current = event.target; 
     }, []);
 
+    // --- [ ✅ تم حذف دالة handleSeek وكل ما يتعلق بها ] ---
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
     
-    // --- [ ✅ تفعيل أزرار التحكم الأصلية ] ---
+    // [إظهار أزرار التحكم الأصلية كما هي]
     const opts = { 
         playerVars: { 
             autoplay: 0, 
-            controls: 1, // <-- 1 = إظهار الأزرار الأصلية
+            controls: 1, 
             rel: 0, 
             showinfo: 0, 
             modestbranding: 1, 
@@ -99,7 +84,6 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تعديل النسبة لتناسب مشغل يوتيوب */}
             <div className="player-wrapper">
                 <YouTube
                     videoId={youtubeId}
@@ -109,31 +93,17 @@ export default function WatchPage() {
                     onReady={onPlayerReady}
                 />
 
-                {/* هذه الطبقة الآن شفافة للأحداث (ما عدا مناطق التقديم) */}
-                <div className="controls-overlay-simplified">
-                    
-                    {/* (الإبقاء على مناطق التقديم) */}
-                    <div className="interaction-grid">
-                        <div className="seek-zone" onDoubleClick={() => handleSeek('backward')}></div>
-                        <div className="play-pause-zone-hidden"></div>
-                        <div className="seek-zone" onDoubleClick={() => handleSeek('forward')}></div>
-                    </div>
-                    
-                    {/* (مؤشر التقديم) */}
-                    {showSeekIcon.visible && (
-                        <div className={`seek-indicator ${showSeekIcon.direction}`}>
-                            {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
-                        </div>
-                    )}
-
-                    {/* (العلامة المائية) */}
+                {/* --- [ ✅ تم تبسيط الطبقة العلوية ] --- */}
+                {/* هذه الطبقة الآن تحتوي فقط على العلامة المائية 
+                   وهي لا تعترض أي أحداث لمس (pointer-events: none) */}
+                <div className="watermark-overlay">
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
                         {user.first_name} ({user.id})
                     </div>
                 </div>
             </div>
 
-            {/* --- [ CSS المعدل ] --- */}
+            {/* --- [ ✅ CSS المعدل والنهائي ] --- */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
@@ -143,42 +113,38 @@ export default function WatchPage() {
                     position: relative; 
                     width: 100%; 
                     max-width: 900px; 
-                    aspect-ratio: 16 / 9; /* <-- نسبة 16:9 مناسبة ليوتيوب */
+                    aspect-ratio: 16 / 9;
                     background: #111; 
                 }
                 .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
 
-                .controls-overlay-simplified { 
+                /* (طبقة العلامة المائية فقط) */
+                .watermark-overlay { 
                     position: absolute; 
                     top: 0; 
                     left: 0; 
                     width: 100%; 
                     height: 100%; 
                     z-index: 10; 
-                    pointer-events: none; /* <-- جعل الطبقة شفافة للأحداث (لتصل الأزرار الأصلية) */
-                }
-                .interaction-grid { 
-                    height: 100%;
-                    display: flex; 
-                    direction: ltr; 
-                }
-                .seek-zone { 
-                    flex: 1; 
-                    height: 100%; 
-                    pointer-events: auto; /* <-- تفعيل الأحداث لهذه المنطقة فقط (للـ Double-tap) */
-                }
-                .play-pause-zone-hidden {
-                    flex: 2;
-                    height: 100%;
-                    pointer-events: none; /* <-- منطقة الوسط معطلة */
+                    pointer-events: none; /* <-- أهم سطر: يجعل الطبقة شفافة تماماً للضغط */
                 }
                 
-                .seek-indicator { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: clamp(30px, 6vw, 40px); color: white; opacity: 0.8; animation: seek-pop 0.6s ease-out; pointer-events: none; direction: ltr; }
-                .seek-indicator.forward { left: 75%; }
-                .seek-indicator.backward { left: 25%; }
-                @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+                /* (العلامة المائية كما هي) */
+                .watermark { 
+                    position: absolute; 
+                    padding: 4px 8px; 
+                    background: rgba(0, 0, 0, 0.7); 
+                    color: white; 
+                    font-size: clamp(10px, 2.5vw, 14px); 
+                    border-radius: 4px; 
+                    font-weight: bold; 
+                    pointer-events: none; 
+                    transition: top 2s ease-in-out, left 2s ease-in-out; 
+                    white-space: nowrap; 
+                    z-index: 20; 
+                }
                 
-                .watermark { position: absolute; padding: 4px 8px; background: rgba(0, 0, 0, 0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; pointer-events: none; transition: top 2s ease-in-out, left 2s ease-in-out; white-space: nowrap; z-index: 20; }
+                /* --- (تم حذف كل ما يتعلق بـ seek-zone و interaction-grid و seek-indicator) --- */
             `}</style>
         </div>
     );
