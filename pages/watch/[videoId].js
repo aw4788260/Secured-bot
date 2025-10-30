@@ -27,19 +27,46 @@ export default function WatchPage() {
     const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
 
-    // ... (useEffect لم يتغير)
+    // --- [ ✅ هذا هو الإصلاح الرئيسي ] ---
     useEffect(() => {
-        if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+        // 1. قراءة البارامترات من الرابط
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlUserId = urlParams.get('userId');
+        const urlFirstName = urlParams.get('firstName');
+        
+        let tgUser = null;
+
+        // 2. سلسلة التحقق من الهوية (الأولوية لـ URL)
+        if (urlUserId && urlUserId.trim() !== '') {
+            // الوضع 1: الفتح من (Android) أو (Telegram) عبر الرابط المعدل
+            tgUser = { 
+                id: urlUserId, 
+                first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
+            };
+        
+        } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+            // الوضع 2: (احتياطي) الفتح من تليجرام مباشرة (إذا فشل الرابط)
             window.Telegram.WebApp.ready();
-            const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (tgUser) { setUser(tgUser); } else { setError("خطأ: لا يمكن التعرف على المستخدم."); return; }
-            if (videoId) {
-                fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                    .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
-                    .then(data => setYoutubeId(data.youtube_video_id))
-                    .catch(err => setError(err.message));
-            }
-        } else { setError("الرجاء الفتح من تليجرام."); }
+            tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        }
+
+        // 3. التحقق من وجود المستخدم
+        if (tgUser && tgUser.id) { 
+            setUser(tgUser); 
+        } else { 
+            setError("خطأ: لا يمكن التعرف على المستخدم."); 
+            return; 
+        }
+
+        // 4. جلب الفيديو (نفس الكود السابق)
+        if (videoId) {
+            fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
+                .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
+                .then(data => setYoutubeId(data.youtube_video_id))
+                .catch(err => setError(err.message));
+        }
+        
+        // 5. باقي الكود (كما هو)
         const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
             const newTop = Math.floor(Math.random() * 70) + 10;
@@ -48,6 +75,7 @@ export default function WatchPage() {
         }, 5000);
         return () => { clearInterval(progressInterval); clearInterval(watermarkIntervalRef.current); };
     }, [videoId, isSeeking]);
+    // --- [ نهاية الإصلاح ] ---
 
     // --- **جديد: دالة لترجمة أسماء الجودات** ---
     const formatQualityLabel = (quality) => {
@@ -180,6 +208,7 @@ export default function WatchPage() {
                     )}
 
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
+                        {/* هذا سيعمل الآن بشكل صحيح */}
                         {user.first_name} ({user.id})
                     </div>
                 </div>
