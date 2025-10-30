@@ -168,15 +168,18 @@ export default function App() {
       <h1>{selectedCourse.title}</h1>
       <ul className="item-list">
         {selectedCourse.videos.length > 0 ? (
+        // ... (داخل دالة return)
           selectedCourse.videos.map(video => (
             <li key={video.id}>
-              <Link href={`/watch/${video.id}`}>
+              {/* ✅ [الإصلاح هنا] نمرر بيانات المستخدم في الرابط */}
+              <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                 <a className="button-link video-link">
                   {video.title}
                 </a>
               </Link>
             </li>
           ))
+// ...
         ) : (
           <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الكورس بعد.</p>
         )}
