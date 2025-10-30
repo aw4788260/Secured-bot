@@ -40,7 +40,7 @@ export default function WatchPage() {
         if (urlUserId && urlUserId.trim() !== '') {
             // الوضع 1: الفتح من (Android) أو (Telegram) عبر الرابط المعدل
             tgUser = { 
-                id: parseInt(urlUserId, 10), // <-- تحويل النص "123" إلى الرقم 123
+                id: urlUserId, // <-- (تمت إزالة parseInt)
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
         
@@ -48,10 +48,15 @@ export default function WatchPage() {
             // الوضع 2: (احتياطي) الفتح من تليجرام مباشرة
             window.Telegram.WebApp.ready();
             tgUser = window.Telegram.WebApp.initDataUnsafe?.user; // (ID هنا رقم)
+            
+            // --- [ ✅ إضافة: تحويل رقم تليجرام إلى نص لتوحيد النوع ] ---
+            if (tgUser) {
+                tgUser.id = String(tgUser.id);
+            }
         }
 
         // 3. التحقق من وجود المستخدم
-        if (tgUser && tgUser.id && !isNaN(tgUser.id)) { 
+        if (tgUser && tgUser.id) { // <-- (تمت إزالة isNaN)
             setUser(tgUser); // <-- سيتم عرض الاسم الحقيقي في العلامة المائية
         } else { 
             setError("خطأ: لا يمكن التعرف على المستخدم."); 
@@ -200,6 +205,7 @@ export default function WatchPage() {
                                 <select className="control-select" value={playbackRate} onChange={handleSetPlaybackRate}>
                                     {availablePlaybackRates.map(rate => (
                                         <option key={rate} value={rate}>{rate}x</option>
+
                                     ))}
                                 </select>
                             )}
