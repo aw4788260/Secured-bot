@@ -5,7 +5,6 @@ import Head from 'next/head';
 import YouTube from 'react-youtube';
 
 export default function WatchPage() {
-    // ... (كل متغيرات الحالة لم تتغير)
     const router = useRouter();
     const { videoId } = router.query;
     const [youtubeId, setYoutubeId] = useState(null);
@@ -26,43 +25,33 @@ export default function WatchPage() {
     const [videoQuality, setVideoQuality] = useState('auto');
     const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
-
-    // --- [ ✅ جديد: متغير حالة لملء الشاشة ] ---
     const [isFullscreen, setIsFullscreen] = useState(false);
 
+    // --- [ ✅ تعديل: إضافة Ref للعنصر الحاوي ] ---
+    const playerWrapperRef = useRef(null);
 
-    // ... (useEffect معدل)
     useEffect(() => {
-        // --- [ ✅ تعديل: التوافق مع الأندرويد وقراءة البارامترات ] ---
-        // 1. قراءة البارامترات من الرابط
+        // (التوافق مع الأندرويد كما هو)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
         let tgUser = null;
-
-        // 2. سلسلة التحقق
         if (urlUserId && urlUserId.trim() !== '') {
-            // الوضع 1: الفتح من داخل التطبيق (عبر رابط من app.js)
             tgUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-            // الوضع 2: الفتح من تليجرام مباشرة (كوضع احتياطي)
             window.Telegram.WebApp.ready();
             tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
         }
-
-        // 3. التحقق النهائي
         if (tgUser && tgUser.id) { 
             setUser(tgUser); 
         } else { 
             setError("خطأ: لا يمكن التعرف على المستخدم."); 
             return; 
         }
-        // --- [ نهاية تعديل التوافق ] ---
 
-        // 4. (الكود الأصلي) جلب الفيديو
         if (videoId) {
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
@@ -70,7 +59,6 @@ export default function WatchPage() {
                 .catch(err => setError(err.message));
         }
 
-        // 5. (الكود الأصلي) فواصل التحديث
         const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
             const newTop = Math.floor(Math.random() * 70) + 10;
@@ -78,7 +66,7 @@ export default function WatchPage() {
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
         
-        // --- [ ✅ جديد: متابعة حالة ملء الشاشة (للخروج بـ Esc) ] ---
+        // (متابعة حالة ملء الشاشة كما هي)
         const handleFullscreenChange = () => {
             const isFs = !!(document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
             setIsFullscreen(isFs);
@@ -91,15 +79,14 @@ export default function WatchPage() {
         return () => { 
             clearInterval(progressInterval); 
             clearInterval(watermarkIntervalRef.current); 
-            // إزالة متابعة الحدث
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
             document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
             document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
             document.removeEventListener('msfullscreenchange', handleFullscreenChange);
         };
-    }, [videoId, isSeeking]); //
+    }, [videoId, isSeeking]);
 
-    // --- (دالة ترجمة الجودات لم تتغير) ---
+    // --- (باقي الدوال كما هي) ---
     const formatQualityLabel = (quality) => {
         const qualityMap = {
             hd1080: '1080p',
@@ -111,61 +98,50 @@ export default function WatchPage() {
             auto: 'تلقائي'
         };
         return qualityMap[quality] || quality;
-    }; //
-
-    // ... (باقي الدوال لم تتغير)
-    const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } }; //
-    const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); }; //
-    const onPlayerReady = useCallback((event) => { playerRef.current = event.target; setDuration(event.target.getDuration()); const rates = playerRef.current.getAvailablePlaybackRates(); if (rates && rates.length > 0) { setAvailablePlaybackRates(rates); setPlaybackRate(playerRef.current.getPlaybackRate()); } }, []); //
-    const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } }; //
-    const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; }; //
-    const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); }; //
-    const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } }; //
-    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); }; //
-    const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } }; //
+    };
+    const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
+    const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
+    const onPlayerReady = useCallback((event) => { playerRef.current = event.target; setDuration(event.target.getDuration()); const rates = playerRef.current.getAvailablePlaybackRates(); if (rates && rates.length > 0) { setAvailablePlaybackRates(rates); setPlaybackRate(playerRef.current.getPlaybackRate()); } }, []);
+    const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
+    const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
+    const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
+    const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
+    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
+    const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         const oldQuality = videoQuality; 
         if (!playerRef.current) return;
-
         const currentTime = playerRef.current.getCurrentTime?.() || 0;
         const wasPlaying = playerRef.current.getPlayerState?.() === 1;
-
         playerRef.current.loadVideoById({
             videoId: youtubeId,
             startSeconds: currentTime,
             suggestedQuality: newQuality,
         });
-
         if (!wasPlaying) setTimeout(() => playerRef.current.pauseVideo?.(), 600);
-
         setTimeout(() => {
             const actualQuality = playerRef.current.getPlaybackQuality?.();
             if (actualQuality === newQuality) {
                 setVideoQuality(newQuality);
-                console.log(`✅ تم تغيير الجودة إلى ${newQuality}`);
             } else {
                 setVideoQuality(oldQuality);
-                console.log(`❌ لم تتغير الجودة (ما زالت ${actualQuality})`);
             }
         }, 1000); 
-    }; //
-    const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; }; //
+    };
+    const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
 
-    // --- [ ✅ جديد: دالة ملء الشاشة ] ---
+    // --- [ ✅ تعديل: دالة ملء الشاشة تستهدف العنصر الحاوي ] ---
     const handleFullscreen = () => {
-        if (!playerRef.current) return;
-        // نستخدم getIframe() للوصول إلى عنصر الـ iframe
-        const iframe = playerRef.current.getIframe(); 
-        if (!iframe) return;
+        const elem = playerWrapperRef.current; // استهداف العنصر الحاوي
+        if (!elem) return;
 
-        // الشيفرة القياسية للتعامل مع ملء الشاشة في مختلف المتصفحات
-        const requestFS = iframe.requestFullscreen || iframe.mozRequestFullScreen || iframe.webkitRequestFullscreen || iframe.msRequestFullscreen;
+        const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
         const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
 
         if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
             if (requestFS) {
-                requestFS.call(iframe);
+                requestFS.call(elem); // طلب ملء الشاشة للعنصر الحاوي
                 setIsFullscreen(true);
             }
         } else {
@@ -175,6 +151,7 @@ export default function WatchPage() {
             }
         }
     };
+    // --- [ نهاية التعديل ] ---
 
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
@@ -188,7 +165,8 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            <div className="player-wrapper">
+            {/* --- [ ✅ تعديل: إضافة Ref هنا ] --- */}
+            <div className="player-wrapper" ref={playerWrapperRef}>
                 <YouTube
                     videoId={youtubeId}
                     opts={opts}
@@ -241,9 +219,7 @@ export default function WatchPage() {
                         </div>
                         <span className="time-display">{formatTime(duration)}</span>
                         
-                        {/* --- [ ✅ إضافة: زر ملء الشاشة ] --- */}
                         <button className="fullscreen-btn" onClick={handleFullscreen} title="ملء الشاشة">
-                            {/* أيقونات بسيطة لملء الشاشة والخروج */}
                             {isFullscreen ? '⤡' : '⛶'}
                         </button>
                     </div>
@@ -260,12 +236,26 @@ export default function WatchPage() {
                 </div>
             </div>
 
+            {/* --- [ ✅ تعديل: إضافة CSS للتعامل مع ملء الشاشة ] --- */}
             <style jsx global>{`
-                /* ... (كل أنماط CSS لم تتغير) ... */
+                /* (الأنماط السابقة كما هي) */
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
                 .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
+                
+                /* --- [ CSS جديد هنا ] --- */
+                /* هذا يضمن أن المشغل يملأ الشاشة عند تفعيل fulllscreen */
+                .player-wrapper:fullscreen,
+                .player-wrapper:-webkit-full-screen,
+                .player-wrapper:-moz-full-screen,
+                .player-wrapper:-ms-fullscreen {
+                    width: 100%;
+                    height: 100%;
+                    max-width: none;
+                    aspect-ratio: auto; /* إلغاء النسبة الثابتة */
+                }
+                
                 .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
                 .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
                 .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
@@ -288,22 +278,8 @@ export default function WatchPage() {
                 .seek-indicator.backward { left: 25%; }
                 @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
                 .watermark { position: absolute; padding: 4px 8px; background: rgba(0, 0, 0, 0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; pointer-events: none; transition: top 2s ease-in-out, left 2s ease-in-out; white-space: nowrap; z-index: 20; }
-            
-                /* --- [ ✅ CSS جديد: لزر ملء الشاشة ] --- */
-                .fullscreen-btn {
-                    background: none;
-                    border: none;
-                    color: white;
-                    font-size: clamp(18px, 3vw, 22px);
-                    cursor: pointer;
-                    padding: 0 5px;
-                    line-height: 1;
-                    font-weight: bold;
-                    min-width: 25px;
-                }
-                .fullscreen-btn:hover {
-                    color: #FF0000;
-                }
+                .fullscreen-btn { background: none; border: none; color: white; font-size: clamp(18px, 3vw, 22px); cursor: pointer; padding: 0 5px; line-height: 1; font-weight: bold; min-width: 25px; }
+                .fullscreen-btn:hover { color: #FF0000; }
             `}</style>
         </div>
     );
