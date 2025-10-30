@@ -26,10 +26,12 @@ export default function WatchPage() {
     const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    
+    // Ref للعنصر الحاوي (لإصلاح ملء الشاشة)
     const playerWrapperRef = useRef(null);
 
-    // (دالة useEffect كما هي مع إصلاحات التوافق وملء الشاشة)
     useEffect(() => {
+        // (إصلاح التوافق مع الأندرويد)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
@@ -64,6 +66,7 @@ export default function WatchPage() {
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
         
+        // (متابعة حالة ملء الشاشة)
         const handleFullscreenChange = () => {
             const isFs = !!(document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
             setIsFullscreen(isFs);
@@ -83,7 +86,7 @@ export default function WatchPage() {
         };
     }, [videoId, isSeeking]);
 
-    // (باقي الدوال المساعدة كما هي)
+    // (دالة ترجمة الجودات)
     const formatQualityLabel = (quality) => {
         const qualityMap = {
             hd1080: '1080p',
@@ -96,46 +99,66 @@ export default function WatchPage() {
         };
         return qualityMap[quality] || quality;
     };
+    
+    // (دوال التحكم الأساسية)
     const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
     const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
-    const onPlayerReady = useCallback((event) => { playerRef.current = event.target; setDuration(event.target.getDuration()); const rates = playerRef.current.getAvailablePlaybackRates(); if (rates && rates.length > 0) { setAvailablePlaybackRates(rates); setPlaybackRate(playerRef.current.getPlaybackRate()); } }, []);
+    
+    // --- [ ✅ إصلاح سماحية ملء الشاشة مدمج هنا ] ---
+    const onPlayerReady = useCallback((event) => {
+        playerRef.current = event.target;
+        setDuration(event.target.getDuration());
+        const rates = playerRef.current.getAvailablePlaybackRates();
+        if (rates && rates.length > 0) {
+            setAvailablePlaybackRates(rates);
+            setPlaybackRate(playerRef.current.getPlaybackRate());
+        }
+
+        // (هذا هو الكود المضاف لضمان السماحية للـ WebView)
+        try {
+            const iframe = event.target.getIframe();
+            if (iframe) {
+                iframe.setAttribute('allow', 'fullscreen; autoplay; encrypted-media');
+                iframe.setAttribute('allowfullscreen', 'true');
+            }
+        } catch (e) {
+            console.error("Failed to set iframe attributes:", e);
+        }
+    }, []); // نهاية onPlayerReady
+
     const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
+    
+    // (دوال شريط التمرير)
     const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
     const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
     const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
     const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
+    
+    // (دالة السرعة وتنسيق الوقت)
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
-
-    // --- [ ✅✅✅ هذا هو الإصلاح لدالة الجودة ] ---
-
-    // الخطوة 1: دالة "طلب" تغيير الجودة
+    
+    // --- [ ✅ إصلاح زر الجودة (لعرض القيمة الحقيقية) ] ---
+    // 1. دالة "طلب" تغيير الجودة
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         if (!playerRef.current) return;
-
-        // فقط نطلب من يوتيوب تغيير الجودة
         playerRef.current.setPlaybackQuality(newQuality);
-        
-        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}... في انتظار استجابة المشغل.`);
-        
-        // لا نغير الحالة هنا، سننتظر الرد
+        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}...`);
     };
-
-    // الخطوة 2: دالة "الاستجابة" عند تغيير الجودة الفعلي
+    // 2. دالة "الاستجابة" عند تغيير الجودة الفعلي
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
         if (actualQuality) {
             console.log(`✅ الجودة تغيرت بالفعل إلى: ${actualQuality}`);
-            // هنا فقط نقوم بتحديث القائمة المنسدلة
-            setVideoQuality(actualQuality);
+            setVideoQuality(actualQuality); // تحديث القائمة
         }
     };
-    // --- [ نهاية الإصلاح ] ---
+    // --- [ نهاية إصلاح الجودة ] ---
 
-    // (دالة ملء الشاشة كما هي)
+    // --- [ ✅ إصلاح دالة ملء الشاشة (لاستهداف الحاوية) ] ---
     const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; 
+        const elem = playerWrapperRef.current; // استهداف العنصر الحاوي
         if (!elem) return;
         const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
         const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
@@ -151,6 +174,7 @@ export default function WatchPage() {
             }
         }
     };
+    // --- [ نهاية إصلاح ملء الشاشة ] ---
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
@@ -163,6 +187,7 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
+            {/* (إضافة Ref هنا) */}
             <div className="player-wrapper" ref={playerWrapperRef}>
                 <YouTube
                     videoId={youtubeId}
@@ -173,7 +198,7 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
-                    // --- [ ✅✅✅ الخطوة 3: ربط دالة الاستجابة ] ---
+                    // (ربط دالة استجابة الجودة)
                     onPlaybackQualityChange={handleActualQualityChange}
                 />
 
@@ -188,7 +213,6 @@ export default function WatchPage() {
 
                     <div className="bottom-controls">
                         <div className="extra-controls">
-                            {/* القائمة الآن ستعرض الجودة الحقيقية */}
                             {availableQualityLevels.length > 0 && (
                                 <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
                                     {availableQualityLevels.map(quality => (
@@ -236,13 +260,14 @@ export default function WatchPage() {
                 </div>
             </div>
 
-            {/* (الـ CSS بالكامل كما هو ولم يتغير) */}
+            {/* (الـ CSS بالكامل مع إصلاح ملء الشاشة) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
                 .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
                 
+                /* (CSS لملء الشاشة) */
                 .player-wrapper:fullscreen,
                 .player-wrapper:-webkit-full-screen,
                 .player-wrapper:-moz-full-screen,
