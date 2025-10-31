@@ -13,47 +13,28 @@ const escapeMarkdown = (text) => {
 };
 // --- [ ✅✅ دوال جديدة: قسم الإشراف ] ---
 
-// --- [ (دالة مساعدة) ] ---
+// (قائمة قسم الإشراف)
+const sendSupervisionMenu = async (chatId) => {
+   const keyboard = {
+    inline_keyboard: [
+      [{ text: '📊 الإحصائيات', callback_data: 'admin_stats' }],
+      [{ text: '👮‍♂️ تعديل المشرفين', callback_data: 'admin_manage_admins' }],
+      [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
+    ],
+  };
+  await sendMessage(chatId, 'قسم الإشراف (للأدمن الرئيسي):', keyboard);
+};
 
-// [ ✅✅ تعديل: قائمة تعديل المشرفين أصبحت ديناميكية ]
+// (قائمة تعديل المشرفين)
 const sendAdminManagementMenu = async (chatId) => {
-   
-   // 1. جلب المشرفين الحاليين
-   const { data: admins, error } = await supabase
-       .from('users')
-       .select('id')
-       .eq('is_admin', true);
-   
-   let message = 'إدارة المشرفين:\n\n';
-   const MAIN_ADMIN_ID = process.env.MAIN_ADMIN_ID;
-
-   if (error) {
-       message += 'خطأ في جلب قائمة المشرفين.';
-   } else if (!admins || admins.length === 0) {
-       message += 'لا يوجد مشرفون حالياً.';
-   } else {
-       message += 'المشرفون الحاليون:\n';
-       admins.forEach(admin => {
-           if (String(admin.id) === MAIN_ADMIN_ID) {
-               message += `👑 ${admin.id} (الأدمن الرئيسي)\n`;
-           } else {
-               message += `👮‍♂️ ${admin.id}\n`;
-           }
-       });
-   }
-   message += '\nاختر الإجراء الذي تريده:';
-   // --- [ نهاية جلب القائمة ] ---
-
    const keyboard = {
     inline_keyboard: [
       [{ text: '➕ إضافة مشرف جديد', callback_data: 'admin_add_admin' }],
       [{ text: '➖ إزالة مشرف', callback_data: 'admin_remove_admin' }],
-      [{ text: '🔙 رجوع للقائمة الرئيسية', callback_data: 'admin_main_menu' }],
+      [{ text: '🔙 رجوع (للإشراف)', callback_data: 'admin_supervision' }],
     ],
   };
-  
-  // 2. إرسال الرسالة الجديدة
-  await sendMessage(chatId, message, keyboard);
+  await sendMessage(chatId, 'إدارة المشرفين:', keyboard);
 };
 
 // (دالة جلب وعرض الإحصائيات)
@@ -237,33 +218,28 @@ const setUserState = async (userId, state, data = null) => {
 // --- دوال الأدمن: القوائم الرئيسية ---
 
 // --- [ (دالة مساعدة) ] ---
-// --- [ (دالة مساعدة) ] ---
-// [ ✅✅ تعديل: دمج "الإحصائيات" و "تعديل المشرفين" في القائمة الرئيسية ]
 const sendAdminMenu = async (chatId, user) => {
   const keyboard = {
     inline_keyboard: [
       [{ text: '📨 طلبات الاشتراك', callback_data: 'admin_view_requests' }],
       [{ text: '👤 إدارة المستخدمين', callback_data: 'admin_manage_users' }],
       [{ text: '🗂️ إدارة المحتوى', callback_data: 'admin_manage_content' }],
-      [{ text: '📊 الإحصائيات', callback_data: 'admin_stats' }] // <-- (متاح لكل المشرفين)
     ],
   };
 
   // [ ✅✅ جديد: التحقق من الأدمن الرئيسي ]
+  // نقارن ID المستخدم بالـ ID المحفوظ في متغيرات البيئة
   const MAIN_ADMIN_ID = process.env.MAIN_ADMIN_ID;
   if (MAIN_ADMIN_ID && String(user.id) === MAIN_ADMIN_ID) {
-    // إضافة زر "تعديل المشرفين" فقط للأدمن الرئيسي
-    keyboard.inline_keyboard.push([
-      { text: '👑 تعديل المشرفين', callback_data: 'admin_manage_admins' }
+    // إذا كان هو الأدمن الرئيسي، أضف زر "الإشراف" في الأعلى
+    keyboard.inline_keyboard.unshift([
+      { text: '👑 الإشراف (للأدمن الرئيسي)', callback_data: 'admin_supervision' }
     ]);
   }
   // --- [ نهاية التعديل ] ---
 
   await sendMessage(chatId, 'Panel Admin:\nاختر القسم:', keyboard);
 };
-  // --- [ نهاية التعديل ] ---
-
-
 
 const sendUserMenu = async (chatId) => {
    const keyboard = {
@@ -710,38 +686,7 @@ export default async (req, res) => {
         }
 
         // (5. المستخدم يضغط على الزر الرئيسي "طلب اشتراك")
-        if (command === 'user_request_sif (command === 'admin_main_menu') {
-        await setUserState(userId, null, null);
-        await sendAdminMenu(chatId, user); // (تمرير user)
-        return res.status(200).send('OK');
-      }
-
-      // [ ✅✅ جديد: معالج الإحصائيات (لكل المشرفين) ]
-      if (command === 'admin_stats') {
-          await sendStatistics(chatId); // (الدالة sendStatistics تبقى كما هي)
-          return res.status(200).send('OK');
-      }
-
-      // [ ✅✅ تعديل: قسم الإشراف (للأدمن الرئيسي فقط) ]
-      if (command === 'admin_manage_admins' || command === 'admin_add_admin' || command === 'admin_remove_admin') {
-          // التحقق أولاً: هل هذا هو الأدمن الرئيسي؟
-          if (String(user.id) !== process.env.MAIN_ADMIN_ID) {
-              await answerCallbackQuery(callback_query.id, { text: 'هذا القسم للأدمن الرئيسي فقط.', show_alert: true });
-              return res.status(200).send('OK');
-          }
-          
-          
-          if (command === 'admin_add_admin') {
-              await setUserState(userId, 'awaiting_admin_id_to_add');
-              await sendMessage(chatId, 'أرسل الـ ID الخاص بالمستخدم الذي تريد ترقيته لـ "مشرف": (أو /cancel)');
-              return res.status(200).send('OK');
-          }
-          if (command === 'admin_remove_admin') {
-              await setUserState(userId, 'awaiting_admin_id_to_remove');
-              await sendMessage(chatId, 'أرسل الـ ID الخاص بالمشرف الذي تريد إزالته: (أو /cancel)');
-              return res.status(200).send('OK');
-          }
-                }ubscription') {
+        if (command === 'user_request_subscription') {
             await sendSubscriptionCourses(chatId, null, null); 
             return res.status(200).send('OK');
         }
@@ -760,7 +705,50 @@ export default async (req, res) => {
       // --- [ (داخل معالج callback_query للأدمن) ] ---
       
       // 1. التنقل الرئيسي للأدمن
+      if (command === 'admin_main_menu') {
+        await setUserState(userId, null, null);
+        await sendAdminMenu(chatId, user); // [ ✅ تعديل: تمرير بيانات المستخدم ]
+        return res.status(200).send('OK');
+      }
+
+      // [ ✅✅ جديد: معالجات قسم الإشراف ]
+      if (command === 'admin_supervision') {
+        // (تأكيد إضافي أنه الأدمن الرئيسي)
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) {
+            await answerCallbackQuery(callback_query.id, { text: 'هذا القسم للأدمن الرئيسي فقط.' });
+            return res.status(200).send('OK');
+        }
+        await setUserState(userId, null, null);
+        await sendSupervisionMenu(chatId);
+        return res.status(200).send('OK');
+      }
+
+      if (command === 'admin_stats') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await sendStatistics(chatId);
+        return res.status(200).send('OK');
+      }
+
+      if (command === 'admin_manage_admins') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await setUserState(userId, null, null);
+        await sendAdminManagementMenu(chatId);
+        return res.status(200).send('OK');
+      }
       
+      if (command === 'admin_add_admin') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await setUserState(userId, 'awaiting_admin_id_to_add');
+        await sendMessage(chatId, 'أرسل الـ ID الخاص بالمستخدم الذي تريد ترقيته لـ "مشرف": (أو /cancel)');
+        return res.status(200).send('OK');
+      }
+      
+      if (command === 'admin_remove_admin') {
+        if (String(user.id) !== process.env.MAIN_ADMIN_ID) return res.status(200).send('OK');
+        await setUserState(userId, 'awaiting_admin_id_to_remove');
+        await sendMessage(chatId, 'أرسل الـ ID الخاص بالمشرف الذي تريد إزالته: (أو /cancel)');
+        return res.status(200).send('OK');
+      }
       // --- [ نهاية المعالجات الجديدة ] ---
       if (command === 'admin_manage_users') {
         await setUserState(userId, null, null);
@@ -1325,105 +1313,49 @@ export default async (req, res) => {
             // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
-           // --- [ (داخل معالج الرسائل النصية، داخل switch حالات الأدمن) ] ---
-        
-          case 'awaiting_admin_id_to_add':
-            // (التحقق من أنه الأدمن الرئيسي)
-            if (String(userId) !== process.env.MAIN_ADMIN_ID) {
-               await sendMessage(chatId, 'غير مصرح لك.');
-               await setUserState(userId, null, null);
-               return res.status(200).send('OK');
-            }
-
-            const idToAdd = text.trim();
-            if (!/^\d+$/.test(idToAdd)) {
+            case 'awaiting_admin_id_to_add':
+            if (!/^\d+$/.test(text.trim())) {
                 await sendMessage(chatId, 'خطأ. أرسل ID رقمي صالح.');
                 return res.status(200).send('OK');
             }
-            if (idToAdd === process.env.MAIN_ADMIN_ID) {
-                await sendMessage(chatId, 'لا يمكن تعديل الأدمن الرئيسي.');
-                return res.status(200).send('OK');
-            }
-
-            // التحقق من وجود المستخدم
-            const { data: userToAdd, error: fetchError } = await supabase
-                .from('users')
-                .select('is_admin')
-                .eq('id', Number(idToAdd))
-                .single();
-            
-            if (fetchError) {
-                await sendMessage(chatId, 'خطأ: هذا المستخدم غير موجود أو لم يبدأ البوت بعد.');
-                return res.status(200).send('OK');
-            }
-            if (userToAdd.is_admin) {
-                await sendMessage(chatId, 'هذا المستخدم هو مشرف بالفعل.');
-                return res.status(200).send('OK');
-            }
-
-            // الترقية
             const { error: addError } = await supabase
                 .from('users')
                 .update({ is_admin: true })
-                .eq('id', Number(idToAdd));
+                .eq('id', Number(text.trim()));
             
             if (addError) {
                 await sendMessage(chatId, `حدث خطأ: ${addError.message}`);
             } else {
-                await sendMessage(chatId, `✅ تم ترقية المستخدم ${idToAdd} إلى مشرف بنجاح.`);
+                await sendMessage(chatId, `✅ تم ترقية المستخدم ${text.trim()} إلى مشرف بنجاح.`);
             }
             await setUserState(userId, null, null);
-            await sendAdminManagementMenu(chatId); // العودة وتحديث القائمة
+            await sendAdminManagementMenu(chatId); // العودة لقائمة إدارة المشرفين
             break;
 
-          // [ ✅✅ تعديل كامل: حالة إزالة مشرف مع التحقق ]
           case 'awaiting_admin_id_to_remove':
-            // (التحقق من أنه الأدمن الرئيسي)
-            if (String(userId) !== process.env.MAIN_ADMIN_ID) {
-               await sendMessage(chatId, 'غير مصرح لك.');
-               await setUserState(userId, null, null);
-               return res.status(200).send('OK');
-            }
-
-            const idToRemove = text.trim();
-            if (!/^\d+$/.test(idToRemove)) {
+            const adminIdToRemove = text.trim();
+            if (!/^\d+$/.test(adminIdToRemove)) {
                 await sendMessage(chatId, 'خطأ. أرسل ID رقمي صالح.');
                 return res.status(200).send('OK');
             }
-            if (idToRemove === process.env.MAIN_ADMIN_ID) {
+            // (حماية إضافية: لا تدع الأدمن الرئيسي يحذف نفسه)
+            if (adminIdToRemove === process.env.MAIN_ADMIN_ID) {
                 await sendMessage(chatId, 'لا يمكنك إزالة الأدمن الرئيسي.');
                 return res.status(200).send('OK');
             }
 
-            // التحقق من وجود المستخدم
-            const { data: userToRemove, error: fetchErrorRemove } = await supabase
-                .from('users')
-                .select('is_admin')
-                .eq('id', Number(idToRemove))
-                .single();
-
-            if (fetchErrorRemove) {
-                await sendMessage(chatId, 'خطأ: هذا المستخدم غير موجود أصلاً.');
-                return res.status(200).send('OK');
-            }
-            if (!userToRemove.is_admin) {
-                await sendMessage(chatId, 'هذا المستخدم ليس مشرفاً.');
-                return res.status(200).send('OK');
-            }
-
-            // الإزالة
             const { error: removeError } = await supabase
                 .from('users')
                 .update({ is_admin: false })
-                .eq('id', Number(idToRemove));
+                .eq('id', Number(adminIdToRemove));
             
             if (removeError) {
                 await sendMessage(chatId, `حدث خطأ: ${removeError.message}`);
             } else {
-                await sendMessage(chatId, `✅ تم إزالة المستخدم ${idToRemove} من قائمة المشرفين.`);
+                await sendMessage(chatId, `✅ تم إزالة المستخدم ${adminIdToRemove} من قائمة المشرفين.`);
             }
             await setUserState(userId, null, null);
-            await sendAdminManagementMenu(chatId); // العودة وتحديث القائمة
+            await sendAdminManagementMenu(chatId); // العودة لقائمة إدارة المشرفين
             break;
           // --- [ نهاية الحالات الجديدة ] ---
         } // نهاية الـ switch
