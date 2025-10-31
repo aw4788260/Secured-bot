@@ -40,45 +40,68 @@ const sendSupervisionMenu = async (chatId, user) => { // <-- [ ✅ تعديل: �
 
 // (قائمة تعديل المشرفين)
 // [ ✅✅ تعديل: عرض المشرفين الحاليين ]
+// [ ✅✅ تعديل: عرض المشرفين + جلب أسمائهم من تليجرام ]
 // (قائمة تعديل المشرفين)
 const sendAdminManagementMenu = async (chatId) => {
     let message = 'إدارة المشرفين:\n\n';
     try {
-        // [ ✅✅ جديد: جلب بيانات المستخدمين ]
-        // (نفترض أنك تحفظ 'user_name' و 'user_username' عند أول /start أو عند الطلب)
+        // 1. جلب IDs المشرفين من قاعدة البيانات
         const { data: admins, error } = await supabase
             .from('users')
-            .select('id, user_name, user_username') // (جلب بيانات إضافية إن وجدت)
+            .select('id') 
             .eq('is_admin', true)
             .order('id');
             
         if (error) throw error;
 
         if (admins && admins.length > 0) {
-            message += '👮‍♂️ المشرفون الحاليون:\n';
-            admins.forEach(admin => {
-                let adminInfo = `- <code>${admin.id}</code>`; // <-- عرض الـ ID
-                
-                // (محاولة بناء اسم المستخدم إن وجد)
-                let name = admin.user_name || '';
-                if (admin.user_username) {
-                    name = name ? `${name} (@${admin.user_username})` : `@${admin.user_username}`;
+            message += '👮‍♂️ المشرفون الحاليون (جاري جلب الأسماء...):\n';
+            
+            // 2. [ ✅✅ جديد ] إنشاء مصفوفة من الوعود (Promises) لجلب بيانات كل مشرف
+            const adminInfoPromises = admins.map(async (admin) => {
+                let adminInfo = `- <code>${admin.id}</code>`; // نبدأ بالـ ID كخطة بديلة
+
+                try {
+                    // [ ✅✅ جديد: جلب بيانات المشرف من تليجرام ]
+                    const response = await axios.post(`${TELEGRAM_API}/getChat`, {
+                        chat_id: admin.id 
+                    });
+                    
+                    const chat = response.data.result;
+                    let name = chat.first_name || '';
+                    if (chat.last_name) name += ` ${chat.last_name}`;
+                    if (chat.username) name += ` (@${chat.username})`;
+
+                    if (name.trim()) {
+                         adminInfo += ` (${name.trim()})`;
+                    }
+
+                } catch (e) {
+                    // (إذا فشل جلب البيانات - مثلاً المستخدم حذف البوت - نعرض الـ ID فقط)
+                    console.warn(`Failed to getChat for admin ${admin.id}:`, e.message);
                 }
 
-                if (name) adminInfo += ` (${name})`;
-                
-                // Check for Main Admin
+                // إضافة علامة "الأدمن الرئيسي"
                 if (String(admin.id) === process.env.MAIN_ADMIN_ID) {
                     adminInfo += ` (👑 الأدمن الرئيسي)`;
                 }
-                message += `${adminInfo}\n`;
+                return adminInfo; // إرجاع السطر الخاص بهذا المشرف
             });
+
+            // 3. [ ✅✅ جديد: انتظار اكتمال جميع الطلبات ]
+            // ننتظر كل طلبات getChat لتكتمل
+            const adminInfoStrings = await Promise.all(adminInfoPromises);
+            
+            // 4. [ ✅✅ جديد: ضم أسماء المشرفين للرسالة ]
+            message = 'إدارة المشرفين:\n\n👮‍♂️ المشرفون الحاليون:\n'; // تحديث الرسالة بعد اكتمال الجلب
+            message += adminInfoStrings.join('\n');
+
         } else {
             message += '(لا يوجد مشرفون حالياً)\n';
         }
 
     } catch (error) {
-        console.error("Error fetching admins list:", error);
+        console.error("Error fetching admins list:", error.message || error);
         message += 'حدث خطأ أثناء جلب قائمة المشرفين.\n';
     }
 
@@ -89,7 +112,8 @@ const sendAdminManagementMenu = async (chatId) => {
       [{ text: '🔙 رجوع (للإشراف)', callback_data: 'admin_supervision' }],
     ],
   };
-  // [ ✅ تعديل: إرسال بـ HTML لطباعة الـ ID ]
+  
+  // إرسال الرسالة النهائية بـ HTML
   await sendMessage(chatId, message, keyboard, 'HTML');
 };
 
