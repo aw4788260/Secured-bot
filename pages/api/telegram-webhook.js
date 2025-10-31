@@ -1239,6 +1239,7 @@ export default async (req, res) => {
 
       // (2. حالات الأدمن - إدخال نصي)
      // (2. حالات الأدمن - إدخال نصي)
+// (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         switch (currentState) {
 
@@ -1375,9 +1376,7 @@ export default async (req, res) => {
             // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
-
-           
-
+            
           // [ ✅✅ تعديل: إضافة التحقق من وجود المستخدم ]
           case 'awaiting_admin_id_to_add':
             if (!/^\d+$/.test(text.trim())) {
@@ -1470,9 +1469,9 @@ export default async (req, res) => {
             break;
           // --- [ نهاية الحالات الجديدة ] ---
         } // نهاية الـ switch
-// ... (باقي الكود)
-          // --- [ نهاية الحالات الجديدة ] ---
-        } // نهاية الـ switch
+
+        // [ ✅ تم حذف القوس المكرر الذي كان هنا ]
+
         return res.status(200).send('OK');
       } // [ ✅ قوس إغلاق لـ 'if (user.is_admin && currentState)' ]
 
