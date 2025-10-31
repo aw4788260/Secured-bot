@@ -263,8 +263,7 @@ const sendAdminMenu = async (chatId, user) => {
 };
   // --- [ نهاية التعديل ] ---
 
-  await sendMessage(chatId, 'Panel Admin:\nاختر القسم:', keyboard);
-};
+
 
 const sendUserMenu = async (chatId) => {
    const keyboard = {
