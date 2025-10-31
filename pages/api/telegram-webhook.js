@@ -730,12 +730,7 @@ export default async (req, res) => {
               return res.status(200).send('OK');
           }
           
-          // (الآن نقوم بمعالجة الأوامر)
-          if (command === 'admin_manage_admins') {
-              await setUserState(userId, null, null);
-              await sendAdminManagementMenu(chatId);
-              return res.status(200).send('OK');
-          }
+          
           if (command === 'admin_add_admin') {
               await setUserState(userId, 'awaiting_admin_id_to_add');
               await sendMessage(chatId, 'أرسل الـ ID الخاص بالمستخدم الذي تريد ترقيته لـ "مشرف": (أو /cancel)');
