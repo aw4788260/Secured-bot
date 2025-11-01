@@ -260,6 +260,12 @@ export default function WatchPage() {
                 </div>
             </div>
 
+{/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
+            <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
+              <p>برمجة وتطوير: A7MeD WaLiD</p>
+              <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+            </footer>
+            {/* --- [ نهاية الإضافة ] --- */}
             {/* (الـ CSS بالكامل مع إصلاح ملء الشاشة) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
