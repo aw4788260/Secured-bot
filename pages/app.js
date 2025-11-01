@@ -138,6 +138,8 @@ export default function App() {
   }, []); // نهاية useEffect
 
   // (الرسائل الأولية)
+  
+// (الرسائل الأولية)
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
@@ -171,6 +173,13 @@ export default function App() {
           )}
         </ul>
         {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+        
+        {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
+        <footer className="developer-info">
+          <p>برمجة وتطوير: A7MeD WaLiD</p>
+          <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+        </footer>
+        {/* --- [ نهاية الإضافة ] --- */}
       </div>
     );
   }
@@ -199,6 +208,13 @@ export default function App() {
           )}
         </ul>
         {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+        
+        {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
+        <footer className="developer-info">
+          <p>برمجة وتطوير: A7MeD WaLiD</p>
+          <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+        </footer>
+        {/* --- [ نهاية الإضافة ] --- */}
       </div>
     );
   }
@@ -223,6 +239,13 @@ export default function App() {
         )}
       </ul>
       {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+      
+      {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
+      <footer className="developer-info">
+        <p>برمجة وتطوير: A7MeD WaLiD</p>
+        <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+      </footer>
+      {/* --- [ نهاية الإضافة ] --- */}
     </div>
   );
-}
+              }
