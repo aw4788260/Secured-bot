@@ -172,7 +172,7 @@ export default function App() {
             <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا المجلد بعد.</p>
           )}
         </ul>
-        {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+        
         
         {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
         <footer className="developer-info">
