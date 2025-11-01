@@ -269,7 +269,7 @@ export default function WatchPage() {
             {/* (الـ CSS بالكامل مع إصلاح ملء الشاشة) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
-                .page-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
+                .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
                 .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 13; background: #111; }
                 
