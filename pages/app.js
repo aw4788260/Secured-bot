@@ -207,7 +207,7 @@ export default function App() {
             <p style={{ color: '#aaa' }}>لا توجد مجلدات في هذا الكورس بعد.</p>
           )}
         </ul>
-        {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+        
         
         {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
         <footer className="developer-info">
@@ -238,7 +238,7 @@ export default function App() {
            <p style={{ color: '#aaa' }}>لم يتم إسناد أي كورسات لك حتى الآن.</p>
         )}
       </ul>
-      {user && <p className="user-greeting">مرحباً, {user.first_name}</p>}
+      
       
       {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
       <footer className="developer-info">
