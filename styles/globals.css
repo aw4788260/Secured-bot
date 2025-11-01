@@ -67,13 +67,7 @@ a {
   border-bottom: 2px solid #38bdf8; /* لون مميز أزرق فاتح */
 }
 
-/* (معدل) رسالة الترحيب */
-.user-greeting {
-  color: #94a3b8; /* لون رمادي-أزرق */
-  font-size: 12px;
-  text-align: center;
-  margin-top: 25px;
-}
+
 
 .item-list {
   list-style: none;
