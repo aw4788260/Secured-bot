@@ -148,3 +148,30 @@ a {
 .back-button:hover {
   color: #7dd3fc; /* لون أفتح عند الـ hover */
 }
+
+/* --- [ إضافة تنسيق معلومات المبرمج ] --- */
+.developer-info {
+  text-align: center;
+  padding: 20px 15px;
+  margin-top: 30px; /* مسافة قبل الفوتر */
+  background-color: #1e293b; /* نفس لون الأزرار */
+  color: #94a3b8; /* نفس لون user-greeting */
+  font-size: 14px;
+  border-top: 1px solid #334155; /* خط فاصل */
+  border-radius: 8px; /* لمسة جمالية */
+}
+
+.developer-info p {
+  margin: 5px 0;
+}
+
+.developer-info a {
+  color: #38bdf8; /* لون الرابط المميز */
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.developer-info a:hover {
+  text-decoration: underline;
+}
+/* --- [ نهاية الإضافة ] --- */
