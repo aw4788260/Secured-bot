@@ -149,24 +149,23 @@ a {
   color: #7dd3fc; /* لون أفتح عند الـ hover */
 }
 
-/* --- [ إضافة تنسيق معلومات المبرمج ] --- */
+/* --- [ ✅ إضافة تنسيق معلومات المبرمج (كنص فقط) ] --- */
 .developer-info {
   text-align: center;
-  padding: 20px 15px;
-  margin-top: 30px; /* مسافة قبل الفوتر */
-  background-color: #1e293b; /* نفس لون الأزرار */
-  color: #94a3b8; /* نفس لون user-greeting */
+  margin-top: 30px; /* (مسافة لفصله عن المحتوى) */
+  padding: 10px 0; /* (مسافة بسيطة فوق وتحت) */
+  color: #94a3b8; /* (لون رمادي-أزرق مثل رسالة الترحيب) */
   font-size: 14px;
-  border-top: 1px solid #334155; /* خط فاصل */
-  border-radius: 8px; /* لمسة جمالية */
+  
+  /* (تم حذف الخلفية والحدود والـ padding الزائد) */
 }
 
 .developer-info p {
-  margin: 5px 0;
+  margin: 5px 0; /* (مسافة بين السطرين) */
 }
 
 .developer-info a {
-  color: #38bdf8; /* لون الرابط المميز */
+  color: #38bdf8; /* (لون الرابط الأزرق المميز) */
   text-decoration: none;
   font-weight: 500;
 }
