@@ -12,110 +12,68 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    try {
-      // 1. قراءة البارامترات
-      const urlParams = new URLSearchParams(window.location.search);
-      const androidUserId = urlParams.get('android_user_id');
-      const androidDeviceId = urlParams.get('android_device_id'); 
-      let tgUser = null;
-      let isAndroidApk = false; // (متغير لتحديد مصدر المستخدم)
+    
+    // (دالة مساعدة لجلب الكورسات بعد نجاح التحقق)
+    const fetchCourses = (userIdString, foundUser) => {
+      fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
+        .then(res => res.json())
+        .then(courseData => {
+          setCourses(courseData); 
+          setUser(foundUser); // (تحديث الاسم بالاسم الحقيقي)
+          setStatus(''); 
+        })
+        .catch(err => {
+          setError('حدث خطأ أثناء جلب الكورسات.');
+          console.error("Error fetching courses:", err);
+        });
+    };
 
-      // --- [ ✅✅ بداية المنطق الجديد ] ---
-
-      // 2. سلسلة التحقق
-      if (androidUserId && androidUserId.trim() !== '') {
-        // [ الحالة 1: مستخدم البرنامج (APK) ]
-        console.log("Running in secure Android WebView wrapper");
-        tgUser = { id: androidUserId, first_name: "Loading..." }; 
-        isAndroidApk = true; // (سماح بالدخول)
-
-      } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-        // [ الحالة 2: مستخدم تليجرام ميني آب ]
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        
-        const platform = window.Telegram.WebApp.platform;
-        console.log("Detected Telegram Platform:", platform);
-
-        if (platform === 'ios') {
-          // [ الحالة 2أ: آيفون (سماح بالدخول) ]
-          tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+    // (دالة مساعدة للتحقق من البصمة وجلب الكورسات)
+    const checkDeviceApi = (userId, deviceFingerprint, foundUser, isAndroidApk) => {
+      fetch('/api/auth/check-device', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
+      })
+      .then(res => res.json())
+      .then(deviceData => {
+        if (!deviceData.success) {
+          setError(deviceData.message);
         } else {
-          // [ الحالة 2ب: أندرويد أو ديسكتوب (منع الدخول) ]
-          setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
-          return;
+          setStatus('جاري جلب الكورسات...');
+          const userIdString = String(userId);
+          
+          if (isAndroidApk) { 
+            // (جلب الاسم الحقيقي لمستخدم البرنامج)
+            fetch(`/api/auth/get-user-name?userId=${userIdString}`)
+              .then(res => res.json())
+              .then(nameData => {
+                const realUser = { id: userId, first_name: nameData.name };
+                fetchCourses(userIdString, realUser); // جلب الكورسات بالاسم الحقيقي
+              })
+              .catch(err => {
+                 const realUser = { id: userId, first_name: `User ${userId}` };
+                 fetchCourses(userIdString, realUser); // جلب الكورسات بالاسم الافتراضي
+              });
+          } else {
+              // (مستخدم تليجرام لديه الاسم بالفعل)
+              fetchCourses(userIdString, foundUser);
+          }
         }
+      })
+      .catch(err => {
+        setError('حدث خطأ أثناء التحقق من الجهاز.');
+        console.error("Error checking device:", err);
+      });
+    };
 
-      } else if (typeof window !== 'undefined') {
-        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
-        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
-        return;
-      }
-      // --- [ ✅✅ نهاية المنطق الجديد ] ---
-
-
-      if (!tgUser || !tgUser.id) { 
-        setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
-        return;
-      }
-      
-      setUser(tgUser); 
+    // (دالة مساعدة للتحقق من الاشتراك ثم الجهاز)
+    const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, deviceId = null) => {
       setStatus('جاري التحقق من الاشتراك...');
-
-      // 3. دالة التحقق من البصمة وجلب الكورسات
-      const checkDeviceApi = (userId, deviceFingerprint) => {
-          fetch('/api/auth/check-device', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
-          })
-          .then(res => res.json())
-          .then(deviceData => {
-            if (!deviceData.success) {
-              setError(deviceData.message);
-            } else {
-              setStatus('جاري جلب الكورسات...');
-              const userIdString = String(userId);
-              
-              // [ ✅ جلب الاسم (للبرنامج فقط) ]
-              if (isAndroidApk) { 
-                fetch(`/api/auth/get-user-name?userId=${userIdString}`)
-                  .then(res => res.json())
-                  .then(nameData => {
-                    setUser({ id: userId, first_name: nameData.name });
-                  })
-                  .catch(err => {
-                     setUser({ id: userId, first_name: `User ${userId}` });
-                  });
-              } else if (tgUser) {
-                  // (مستخدم تليجرام-آيفون لديه الاسم بالفعل)
-                  setUser(tgUser);
-              }
-
-              // (الكود الأصلي لجلب الكورسات بالهيكل الهرمي)
-              fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
-                .then(res => res.json())
-                .then(courseData => {
-                  setCourses(courseData); 
-                  setStatus(''); 
-                })
-                .catch(err => {
-                  setError('حدث خطأ أثناء جلب الكورسات.');
-                  console.error("Error fetching courses:", err);
-                });
-            }
-          })
-          .catch(err => {
-            setError('حدث خطأ أثناء التحقق من الجهاز.');
-            console.error("Error checking device:", err);
-          });
-      }
-
-      // 4. التحقق من الاشتراك
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: tgUser.id }),
+        body: JSON.stringify({ userId: foundUser.id }),
       })
       .then(res => res.json())
       .then(subData => {
@@ -124,15 +82,12 @@ export default function App() {
           return;
         }
 
-        // 5. التحقق من بصمة الجهاز
         setStatus('جاري التحقق من بصمة الجهاز...');
-        
-        // --- [ ✅✅ تعديل منطق البصمة ] ---
         if (isAndroidApk) {
-          // (إذا كان برنامج، استخدم بصمة الأندرويد)
-          checkDeviceApi(tgUser.id, androidDeviceId);
+          // (برنامج APK: استخدام بصمة الجهاز)
+          checkDeviceApi(foundUser.id, deviceId, foundUser, true);
         } else {
-          // (إذا كان تليجرام-آيفون، استخدم بصمة المتصفح)
+          // (تليجرام: استخدام بصمة المتصفح)
           const loadBrowserFingerprint = async () => {
             const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
             const fp = await FingerprintJS.load();
@@ -140,17 +95,75 @@ export default function App() {
             return result.visitorId;
           };
           loadBrowserFingerprint().then(fingerprint => {
-              checkDeviceApi(tgUser.id, fingerprint);
+              checkDeviceApi(foundUser.id, fingerprint, foundUser, false);
           });
         }
-        // --- [ ✅✅ نهاية تعديل البصمة ] ---
-
       })
       .catch(err => {
          setError('حدث خطأ أثناء التحقق من الاشتراك.');
          console.error("Error checking subscription:", err);
       });
+    };
 
+
+    // --- [ ✅✅ بداية المنطق الرئيسي للتحقق ] ---
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const androidUserId = urlParams.get('android_user_id');
+      const androidDeviceId = urlParams.get('android_device_id'); 
+
+      // [ الحالة 1: مستخدم البرنامج (APK) ]
+      if (androidUserId && androidUserId.trim() !== '') {
+        console.log("Running in secure Android WebView wrapper");
+        const apkUser = { id: androidUserId, first_name: "Loading..." }; 
+        checkSubscriptionAndDevice(apkUser, true, androidDeviceId);
+
+      // [ الحالة 2: مستخدم تليجرام ميني آب ]
+      } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        
+        const platform = window.Telegram.WebApp.platform;
+        const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        
+        if (!miniAppUser || !miniAppUser.id) {
+            setError("لا يمكن التعرف على هويتك من تليجرام.");
+            return;
+        }
+        
+        console.log("Detected Telegram Platform:", platform);
+
+        if (platform === 'ios') {
+          // [ الحالة 2أ: آيفون (سماح بالدخول) ]
+          checkSubscriptionAndDevice(miniAppUser, false, null);
+        
+        } else {
+          // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
+          setStatus('جاري التحقق من صلاحيات الأدمن...');
+          
+          fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
+            .then(res => res.json())
+            .then(adminData => {
+                if (adminData.isAdmin) {
+                    // (سماح بالدخول للأدمن)
+                    console.log("Admin detected on non-ios platform. Allowing access.");
+                    checkSubscriptionAndDevice(miniAppUser, false, null);
+                } else {
+                    // (منع الدخول لغير الأدمن)
+                    setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                }
+            })
+            .catch(err => {
+                setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
+            });
+        }
+
+      // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
+      } else if (typeof window !== 'undefined') {
+        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
+        return;
+      }
+      
     } catch (e) { 
       console.error("Fatal error in useEffect:", e);
       setError(`خطأ فادح: ${e.message}`);
@@ -162,7 +175,7 @@ export default function App() {
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
-  if (status || !user || user.first_name === "Loading...") {
+  if (status || !user) { // (ننتظر تحميل الاسم)
     return (
       <div className="app-container loader-container">
         <Head><title>جاري التحميل...</title></Head>
@@ -185,7 +198,6 @@ export default function App() {
           {selectedSection.videos.length > 0 ? (
             selectedSection.videos.map(video => (
               <li key={video.id}>
-                {/* [ ✅ تمرير الاسم والـ ID ] */}
                 <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                   <a className="button-link video-link">
                     {video.title}
@@ -196,9 +208,7 @@ export default function App() {
           ) : (
             <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا المجلد بعد.</p>
           )}
-        </ul>
-        {/* (تم حذف رسالة الترحيب بناء على طلب سابق) */}
-        
+        </ul>        
         <footer className="developer-info">
           <p>برمجة وتطوير: A7MeD WaLiD</p>
           <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
