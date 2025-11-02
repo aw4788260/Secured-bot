@@ -27,24 +27,42 @@ export default function WatchPage() {
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     
-    // Ref للعنصر الحاوي (لإصلاح ملء الشاشة)
     const playerWrapperRef = useRef(null);
 
     useEffect(() => {
-        // (إصلاح التوافق مع الأندرويد)
+        // --- [ ✅✅ بداية المنطق الجديد ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
         let tgUser = null;
+
         if (urlUserId && urlUserId.trim() !== '') {
+            // [ الحالة 1: مستخدم البرنامج (APK) ]
             tgUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
+
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+            // [ الحالة 2: مستخدم تليجرام ميني آب ]
             window.Telegram.WebApp.ready();
-            tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+            const platform = window.Telegram.WebApp.platform;
+
+            if (platform === 'ios') {
+                // [ الحالة 2أ: آيفون (سماح بالدخول) ]
+                tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+            } else {
+                // [ الحالة 2ب: أندرويد أو ديسكتوب (منع الدخول) ]
+                setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                return;
+            }
+        } else {
+            // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
+            setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
+            return;
         }
+        // --- [ ✅✅ نهاية المنطق الجديد ] ---
+
         if (tgUser && tgUser.id) { 
             setUser(tgUser); 
         } else { 
@@ -66,7 +84,6 @@ export default function WatchPage() {
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
         
-        // (متابعة حالة ملء الشاشة)
         const handleFullscreenChange = () => {
             const isFs = !!(document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
             setIsFullscreen(isFs);
@@ -84,7 +101,7 @@ export default function WatchPage() {
             document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
             document.removeEventListener('msfullscreenchange', handleFullscreenChange);
         };
-    }, [videoId, isSeeking]);
+    }, [videoId, isSeeking]); // (يعتمد على videoId و isSeeking)
 
     // (دالة ترجمة الجودات)
     const formatQualityLabel = (quality) => {
@@ -104,7 +121,6 @@ export default function WatchPage() {
     const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
     const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
     
-    // --- [ ✅ إصلاح سماحية ملء الشاشة مدمج هنا ] ---
     const onPlayerReady = useCallback((event) => {
         playerRef.current = event.target;
         setDuration(event.target.getDuration());
@@ -113,8 +129,6 @@ export default function WatchPage() {
             setAvailablePlaybackRates(rates);
             setPlaybackRate(playerRef.current.getPlaybackRate());
         }
-
-        // (هذا هو الكود المضاف لضمان السماحية للـ WebView)
         try {
             const iframe = event.target.getIframe();
             if (iframe) {
@@ -124,7 +138,7 @@ export default function WatchPage() {
         } catch (e) {
             console.error("Failed to set iframe attributes:", e);
         }
-    }, []); // نهاية onPlayerReady
+    }, []); 
 
     const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
     
@@ -138,27 +152,20 @@ export default function WatchPage() {
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
-    // --- [ ✅ إصلاح زر الجودة (لعرض القيمة الحقيقية) ] ---
-    // 1. دالة "طلب" تغيير الجودة
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         if (!playerRef.current) return;
         playerRef.current.setPlaybackQuality(newQuality);
-        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}...`);
     };
-    // 2. دالة "الاستجابة" عند تغيير الجودة الفعلي
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
         if (actualQuality) {
-            console.log(`✅ الجودة تغيرت بالفعل إلى: ${actualQuality}`);
-            setVideoQuality(actualQuality); // تحديث القائمة
+            setVideoQuality(actualQuality); 
         }
     };
-    // --- [ نهاية إصلاح الجودة ] ---
 
-    // --- [ ✅ إصلاح دالة ملء الشاشة (لاستهداف الحاوية) ] ---
     const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; // استهداف العنصر الحاوي
+        const elem = playerWrapperRef.current; 
         if (!elem) return;
         const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
         const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
@@ -174,7 +181,6 @@ export default function WatchPage() {
             }
         }
     };
-    // --- [ نهاية إصلاح ملء الشاشة ] ---
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
@@ -187,7 +193,6 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* (إضافة Ref هنا) */}
             <div className="player-wrapper" ref={playerWrapperRef}>
                 <YouTube
                     videoId={youtubeId}
@@ -198,7 +203,6 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
-                    // (ربط دالة استجابة الجودة)
                     onPlaybackQualityChange={handleActualQualityChange}
                 />
 
@@ -260,20 +264,18 @@ export default function WatchPage() {
                 </div>
             </div>
 
-{/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
               <p>برمجة وتطوير: A7MeD WaLiD</p>
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
-            {/* --- [ نهاية الإضافة ] --- */}
-            {/* (الـ CSS بالكامل مع إصلاح ملء الشاشة) */}
+
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
+                /* [ ✅ تعديل: لضمان ظهور الفوتر أسفل الفيديو ] */
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
                 .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 13; background: #111; }
                 
-                /* (CSS لملء الشاشة) */
                 .player-wrapper:fullscreen,
                 .player-wrapper:-webkit-full-screen,
                 .player-wrapper:-moz-full-screen,
@@ -311,4 +313,5 @@ export default function WatchPage() {
             `}</style>
         </div>
     );
-}
+        }
+        
