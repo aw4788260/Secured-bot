@@ -18,29 +18,48 @@ export default function App() {
       const androidUserId = urlParams.get('android_user_id');
       const androidDeviceId = urlParams.get('android_device_id'); 
       let tgUser = null;
+      let isAndroidApk = false; // (متغير لتحديد مصدر المستخدم)
+
+      // --- [ ✅✅ بداية المنطق الجديد ] ---
 
       // 2. سلسلة التحقق
       if (androidUserId && androidUserId.trim() !== '') {
+        // [ الحالة 1: مستخدم البرنامج (APK) ]
         console.log("Running in secure Android WebView wrapper");
-        // [ ✅✅ تعديل: لا نضع اسم افتراضي هنا ]
-        tgUser = { id: androidUserId, first_name: "Loading..." }; // اسم مؤقت
+        tgUser = { id: androidUserId, first_name: "Loading..." }; 
+        isAndroidApk = true; // (سماح بالدخول)
 
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
-        tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
         
+        const platform = window.Telegram.WebApp.platform;
+        console.log("Detected Telegram Platform:", platform);
+
+        if (platform === 'ios') {
+          // [ الحالة 2أ: آيفون (سماح بالدخول) ]
+          tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        } else {
+          // [ الحالة 2ب: أندرويد أو ديسكتوب (منع الدخول) ]
+          setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+          return;
+        }
+
       } else if (typeof window !== 'undefined') {
-        setError('لا يمكن التعرف على هويتك. الرجاء الفتح من التطبيق المخصص أو من داخل تليجرام.');
+        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
+        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
         return;
       }
+      // --- [ ✅✅ نهاية المنطق الجديد ] ---
+
 
       if (!tgUser || !tgUser.id) { 
         setError('لا يمكن التعرف على هويتك. (خطأ داخلي).');
         return;
       }
       
-      setUser(tgUser); // وضع المستخدم (بالاسم المؤقت أو اسم تليجرام)
+      setUser(tgUser); 
       setStatus('جاري التحقق من الاشتراك...');
 
       // 3. دالة التحقق من البصمة وجلب الكورسات
@@ -58,21 +77,18 @@ export default function App() {
               setStatus('جاري جلب الكورسات...');
               const userIdString = String(userId);
               
-              // [ ✅✅ جديد: جلب الاسم الحقيقي بالتوازي مع الكورسات ]
-              if (androidUserId) { // (فقط إذا كنا داخل الأندرويد)
+              // [ ✅ جلب الاسم (للبرنامج فقط) ]
+              if (isAndroidApk) { 
                 fetch(`/api/auth/get-user-name?userId=${userIdString}`)
                   .then(res => res.json())
                   .then(nameData => {
-                    // تحديث اسم المستخدم بالاسم الحقيقي
                     setUser({ id: userId, first_name: nameData.name });
                   })
                   .catch(err => {
-                    // (إذا فشل، نستخدم اسم افتراضي)
-                    console.error("Error fetching user name:", err);
                      setUser({ id: userId, first_name: `User ${userId}` });
                   });
               } else if (tgUser) {
-                  // (إذا كنا في تليجرام ويب، الاسم موجود لدينا بالفعل)
+                  // (مستخدم تليجرام-آيفون لديه الاسم بالفعل)
                   setUser(tgUser);
               }
 
@@ -110,10 +126,13 @@ export default function App() {
 
         // 5. التحقق من بصمة الجهاز
         setStatus('جاري التحقق من بصمة الجهاز...');
-        if (androidDeviceId) {
+        
+        // --- [ ✅✅ تعديل منطق البصمة ] ---
+        if (isAndroidApk) {
+          // (إذا كان برنامج، استخدم بصمة الأندرويد)
           checkDeviceApi(tgUser.id, androidDeviceId);
         } else {
-          // (الوضع الاحتياطي للمتصفح العادي)
+          // (إذا كان تليجرام-آيفون، استخدم بصمة المتصفح)
           const loadBrowserFingerprint = async () => {
             const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
             const fp = await FingerprintJS.load();
@@ -124,6 +143,8 @@ export default function App() {
               checkDeviceApi(tgUser.id, fingerprint);
           });
         }
+        // --- [ ✅✅ نهاية تعديل البصمة ] ---
+
       })
       .catch(err => {
          setError('حدث خطأ أثناء التحقق من الاشتراك.');
@@ -137,14 +158,18 @@ export default function App() {
 
   }, []); // نهاية useEffect
 
-  // (الرسائل الأولية)
-  
-// (الرسائل الأولية)
+  // (الرسائل الأولية - مع إضافة مؤشر التحميل)
   if (error) {
     return <div className="app-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
-  if (status || !user || user.first_name === "Loading...") { // (ننتظر تحميل الاسم)
-    return <div className="app-container"><Head><title>جاري التحميل</title></Head><h1>{status}</h1></div>;
+  if (status || !user || user.first_name === "Loading...") {
+    return (
+      <div className="app-container loader-container">
+        <Head><title>جاري التحميل...</title></Head>
+        <div className="spinner"></div>
+        <h1>{status || 'جاري التحميل...'}</h1>
+      </div>
+    );
   }
 
   // (المستوى 3: عرض الفيديوهات)
@@ -160,7 +185,7 @@ export default function App() {
           {selectedSection.videos.length > 0 ? (
             selectedSection.videos.map(video => (
               <li key={video.id}>
-                {/* [ ✅ إصلاح: الآن سيتم تمرير الاسم الحقيقي ] */}
+                {/* [ ✅ تمرير الاسم والـ ID ] */}
                 <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                   <a className="button-link video-link">
                     {video.title}
@@ -172,14 +197,12 @@ export default function App() {
             <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا المجلد بعد.</p>
           )}
         </ul>
+        {/* (تم حذف رسالة الترحيب بناء على طلب سابق) */}
         
-        
-        {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
         <footer className="developer-info">
           <p>برمجة وتطوير: A7MeD WaLiD</p>
           <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
         </footer>
-        {/* --- [ نهاية الإضافة ] --- */}
       </div>
     );
   }
@@ -208,13 +231,10 @@ export default function App() {
           )}
         </ul>
         
-        
-        {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
         <footer className="developer-info">
           <p>برمجة وتطوير: A7MeD WaLiD</p>
           <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
         </footer>
-        {/* --- [ نهاية الإضافة ] --- */}
       </div>
     );
   }
@@ -239,13 +259,10 @@ export default function App() {
         )}
       </ul>
       
-      
-      {/* --- [ ✅ إضافة معلومات المبرمج ] --- */}
       <footer className="developer-info">
         <p>برمجة وتطوير: A7MeD WaLiD</p>
         <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
       </footer>
-      {/* --- [ نهاية الإضافة ] --- */}
     </div>
   );
-              }
+}
