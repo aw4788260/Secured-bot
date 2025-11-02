@@ -30,52 +30,75 @@ export default function WatchPage() {
     const playerWrapperRef = useRef(null);
 
     useEffect(() => {
-        // --- [ ✅✅ بداية المنطق الجديد ] ---
+        
+        // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو)
+        const setupUserAndLoadVideo = (foundUser) => {
+            if (foundUser && foundUser.id) { 
+                setUser(foundUser); 
+            } else { 
+                setError("خطأ: لا يمكن التعرف على المستخدم."); 
+                return; 
+            }
+
+            if (videoId) {
+                fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
+                    .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
+                    .then(data => setYoutubeId(data.youtube_video_id))
+                    .catch(err => setError(err.message));
+            }
+        };
+
+        // --- [ ✅✅ بداية المنطق الجديد للتحقق ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
-        let tgUser = null;
 
+        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
-            // [ الحالة 1: مستخدم البرنامج (APK) ]
-            tgUser = { 
+            const apkUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
+            setupUserAndLoadVideo(apkUser); // (سماح بالدخول)
 
+        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-            // [ الحالة 2: مستخدم تليجرام ميني آب ]
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
+            const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+
+            if (!miniAppUser || !miniAppUser.id) {
+                setError("لا يمكن التعرف على هويتك من تليجرام.");
+                return;
+            }
 
             if (platform === 'ios') {
                 // [ الحالة 2أ: آيفون (سماح بالدخول) ]
-                tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+                setupUserAndLoadVideo(miniAppUser);
             } else {
-                // [ الحالة 2ب: أندرويد أو ديسكتوب (منع الدخول) ]
-                setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
-                return;
+                // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
+                fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
+                    .then(res => res.json())
+                    .then(adminData => {
+                        if (adminData.isAdmin) {
+                            // (سماح بالدخول للأدمن)
+                            setupUserAndLoadVideo(miniAppUser);
+                        } else {
+                            // (منع الدخول لغير الأدمن)
+                            setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                        }
+                    })
+                    .catch(err => {
+                        setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
+                    });
             }
+        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
-            // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
-            setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
-            return;
+             setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
+             return;
         }
         // --- [ ✅✅ نهاية المنطق الجديد ] ---
 
-        if (tgUser && tgUser.id) { 
-            setUser(tgUser); 
-        } else { 
-            setError("خطأ: لا يمكن التعرف على المستخدم."); 
-            return; 
-        }
-
-        if (videoId) {
-            fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
-                .then(data => setYoutubeId(data.youtube_video_id))
-                .catch(err => setError(err.message));
-        }
 
         const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
@@ -271,7 +294,6 @@ export default function WatchPage() {
 
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
-                /* [ ✅ تعديل: لضمان ظهور الفوتر أسفل الفيديو ] */
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
                 .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 13; background: #111; }
@@ -313,5 +335,4 @@ export default function WatchPage() {
             `}</style>
         </div>
     );
-        }
-        
+}
