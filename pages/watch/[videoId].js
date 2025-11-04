@@ -29,23 +29,7 @@ export default function WatchPage() {
     
     const playerWrapperRef = useRef(null);
 
-    // --- [ ✅✅ بداية التعديلات: إضافة متغيرات الحيلة ] ---
-    // كائن لربط الجودة بالحجم الوهمي
-    const qualityToWidth = {
-        'hd1080': '1920px',
-        'hd720': '1280px',
-        'large': '854px', 
-        'medium': '640px',
-        'small': '426px', 
-        'tiny': '256px',  
-        'auto': '100%'   
-    };
-    // (متغير لتخزين الجودة التي "نريدها")
-    const targetQualityRef = useRef(null);
-    // (متغير لتخزين حجم الشاشة الأصلي)
-    const originalStyleRef = useRef(null);
-    // --- [ ✅✅ نهاية التعديلات ] ---
-
+    // (تم حذف المتغيرات الخاصة بالحيل المعقدة)
 
     useEffect(() => {
         
@@ -181,99 +165,26 @@ export default function WatchPage() {
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
     
-    // --- [ ✅✅ بداية التعديل: دالة طلب الجودة (الخطوة 1 من الحيلة) ] ---
+    // --- [ ✅✅ بداية التعديل: إرجاع دالة الجودة للوضع البسيط ] ---
+    // (ستعمل هذه الدالة الآن بسبب التعديل في "opts" بالأسفل)
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
-        if (!playerRef.current || !youtubeId || !playerWrapperRef.current) return;
-
-        console.log(`▶️ [HACK]: Initiating quality change to ${newQuality}...`);
-
-        try {
-            const currentTime = playerRef.current.getCurrentTime();
-            const wrapper = playerWrapperRef.current;
-
-            // (الخطوة 1: احفظ الستايل الأصلي *إذا* لم نكن في منتصف حيلة)
-            if (targetQualityRef.current === null) {
-                originalStyleRef.current = { 
-                    width: wrapper.style.width, 
-                    aspectRatio: wrapper.style.aspectRatio, 
-                    visibility: wrapper.style.visibility 
-                };
-            }
-            
-            // (الخطوة 2: حدد الجودة "الهدف")
-            targetQualityRef.current = newQuality;
-
-            // [ إذا اختار المستخدم 'auto' ]
-            if (newQuality === 'auto') {
-                // (لا نحتاج حيلة الحجم، فقط أعد تحميل الفيديو)
-                // (لكننا سنعتمد على دالة onPlaybackQualityChange لإرجاع الستايل)
-                playerRef.current.loadVideoById({
-                    videoId: youtubeId,
-                    startSeconds: currentTime,
-                    suggestedQuality: 'auto'
-                });
-                return; // (اخرج من هنا)
-            }
-
-            // [ إذا اختار المستخدم جودة محددة ]
-            // [الخطوة 3: إخفاء وتغيير الحجم (لإيهام اليوتيوب)]
-            wrapper.style.visibility = 'hidden';
-            const newWidth = qualityToWidth[newQuality] || '100%';
-            wrapper.style.width = newWidth;
-            // (استخدم نسبة 16:9 الوهمية لإجبار الجودة العالية)
-            wrapper.style.aspectRatio = '16 / 9'; 
-
-            // [الخطوة 4: طلب إعادة تحميل الفيديو]
-            playerRef.current.loadVideoById({
-                videoId: youtubeId,
-                startSeconds: currentTime,
-                suggestedQuality: newQuality
-            });
-
-        } catch (err) {
-            console.error("Failed to initiate quality hack:", err);
-            // (إفشال الحيلة وإرجاع كل شيء)
-            if(originalStyleRef.current) {
-                const wrapper = playerWrapperRef.current;
-                wrapper.style.visibility = originalStyleRef.current.visibility || 'visible';
-                wrapper.style.width = originalStyleRef.current.width || '100%';
-                wrapper.style.aspectRatio = originalStyleRef.current.aspectRatio || '16 / 7';
-            }
-            targetQualityRef.current = null;
-            originalStyleRef.current = null;
-        }
+        if (!playerRef.current) return;
+        
+        // (الأمر البسيط المباشر)
+        playerRef.current.setPlaybackQuality(newQuality);
+        
+        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}...`);
     };
     // --- [ ✅✅ نهاية التعديل ] ---
     
     
-    // --- [ ✅✅ بداية التعديل: دالة الاستجابة للجودة (الخطوة 2 من الحيلة) ] ---
+    // --- [ ✅✅ بداية التعديل: إرجاع دالة الاستجابة للوضع البسيط ] ---
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
         if (actualQuality) {
-            console.log(`✅ [HACK]: Player reports quality changed to: ${actualQuality}`);
-            setVideoQuality(actualQuality); // تحديث القائمة المنسدلة
-        }
-
-        // [الخطوة 5: التحقق إذا كانت الحيلة قد اكتملت]
-        // (هل كنا ننتظر تغييراً؟)
-        if (targetQualityRef.current !== null && playerWrapperRef.current) {
-            
-            // (هل تم حفظ الستايل الأصلي؟)
-            if (originalStyleRef.current) {
-                const wrapper = playerWrapperRef.current;
-                const originalStyle = originalStyleRef.current;
-
-                // [الخطوة 6: إرجاع الستايل الأصلي وإظهار المشغل]
-                console.log("✅ [HACK]: Reverting wrapper to original style.");
-                wrapper.style.visibility = originalStyle.visibility || 'visible';
-                wrapper.style.width = originalStyle.width || '100%';
-                wrapper.style.aspectRatio = originalStyle.aspectRatio || '16 / 7';
-            }
-
-            // [الخطوة 7: إنهاء الحيلة (إعادة تعيين المتغيرات)]
-            targetQualityRef.current = null;
-            originalStyleRef.current = null;
+            console.log(`✅ الجودة تغيرت بالفعل إلى: ${actualQuality}`);
+            setVideoQuality(actualQuality); // تحديث القائمة
         }
     };
     // --- [ ✅✅ نهاية التعديل ] ---
@@ -298,7 +209,10 @@ export default function WatchPage() {
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
+    
+    // --- [ ✅✅✅ التعديل الأهم: تفعيل عناصر تحكم اليوتيوب (لإلغاء قفل الجودة) ] ---
+    // (سيتم إخفاؤها بواسطة الـ CSS الخاص بك، فلا تقلق)
+    const opts = { playerVars: { autoplay: 0, controls: 1, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
 
     return (
         <div className="page-container">
@@ -317,7 +231,7 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
-                    onPlaybackQualityChange={handleActualQualityChange} // (هذا السطر هو الذي يشغل الحيلة)
+                    onPlaybackQualityChange={handleActualQualityChange} // (ستعمل الآن)
                 />
 
                 <div className="controls-overlay">
@@ -393,7 +307,6 @@ export default function WatchPage() {
                     max-width: 900px; 
                     aspect-ratio: 16 / 7; /* (النسبة الأصلية) */
                     background: #111; 
-                    /* (إضافة حركة ناعمة عند عودة الستايل) */
                     transition: aspect-ratio 0.2s ease, width 0.2s ease; 
                 }
                 
