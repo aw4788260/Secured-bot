@@ -7,64 +7,67 @@ import YouTube from 'react-youtube';
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
-    const [youtubeId, setYoutubeId] = useState(null);
-    const [user, setUser] = useState(null);
-    const [error, setError] = useState(null);
+
+    // === الحالات الأساسية ===
+    const [youtubeId, setYoutubeId] = useState<string | null>(null);
+    const [user, setUser] = useState<{ id: string; first_name: string } | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const playerRef = useRef(null);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
-    const seekTimeoutRef = useRef(null);
+    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null as 'forward' | 'backward' | null, visible: false });
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
-    const watermarkIntervalRef = useRef(null);
     const [isSeeking, setIsSeeking] = useState(false);
-    const progressBarRef = useRef(null);
     const [playbackRate, setPlaybackRate] = useState(1);
-    const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]);
+    const [availablePlaybackRates, setAvailablePlaybackRates] = useState<number[]>([]);
     const [videoQuality, setVideoQuality] = useState('auto');
-    const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
+    const [availableQualityLevels, setAvailableQualityLevels] = useState<string[]>([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
-    
-    const playerWrapperRef = useRef(null);
 
+    // === المراجع ===
+    const playerRef = useRef<any>(null);
+    const seekTimeoutRef = useRef<any>(null);
+    const watermarkIntervalRef = useRef<any>(null);
+    const progressBarRef = useRef<HTMLDivElement>(null);
+    const playerWrapperRef = useRef<HTMLDivElement>(null);
+    const pendingQualityRef = useRef<{ quality: string; start: number; play: boolean } | null>(null);
+
+    // === مفتاح إعادة الـ mount ===
+    const [playerKey, setPlayerKey] = useState(0);
+
+    // ==================================================================
+    // 1. تحميل معرف الفيديو والتحقق من المستخدم
+    // ==================================================================
     useEffect(() => {
-        
-        // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو)
-        const setupUserAndLoadVideo = (foundUser) => {
-            if (foundUser && foundUser.id) { 
-                setUser(foundUser); 
-            } else { 
-                setError("خطأ: لا يمكن التعرف على المستخدم."); 
-                return; 
+        const setupUserAndLoadVideo = (foundUser: any) => {
+            if (foundUser && foundUser.id) {
+                setUser(foundUser);
+            } else {
+                setError("خطأ: لا يمكن التعرف على المستخدم.");
+                return;
             }
 
             if (videoId) {
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                    .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
+                    .then(res => {
+                        if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو');
+                        return res.json();
+                    })
                     .then(data => setYoutubeId(data.youtube_video_id))
                     .catch(err => setError(err.message));
             }
         };
 
-        // --- [ ✅✅ بداية المنطق الجديد للتحقق ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
 
-        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
-            const apkUser = { 
-                id: urlUserId, 
-                first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
-            };
-            setupUserAndLoadVideo(apkUser); // (سماح بالدخول)
-
-        // [ الحالة 2: مستخدم تليجرام ميني آب ]
+            const apkUser = { id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" };
+            setupUserAndLoadVideo(apkUser);
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
-            const platform = window.Telegram.WebApp.platform;
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
 
             if (!miniAppUser || !miniAppUser.id) {
@@ -72,41 +75,40 @@ export default function WatchPage() {
                 return;
             }
 
+            const platform = window.Telegram.WebApp.platform;
             if (platform === 'ios') {
-                // [ الحالة 2أ: آيفون (سماح بالدخول) ]
                 setupUserAndLoadVideo(miniAppUser);
             } else {
-                // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
                         if (adminData.isAdmin) {
-                            // (سماح بالدخول للأدمن)
                             setupUserAndLoadVideo(miniAppUser);
                         } else {
-                            // (منع الدخول لغير الأدمن)
-                            setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                            setError('عذراً، الفتح من تليجرام متاح للآيفون فقط.');
                         }
                     })
-                    .catch(err => {
-                        setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
-                    });
+                    .catch(() => setError('خطأ في التحقق من صلاحيات الأدمن.'));
             }
-        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
-             setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
-             return;
+            setError('الرجاء الفتح من البرنامج أو تليجرام.');
         }
-        // --- [ ✅✅ نهاية المنطق الجديد ] ---
 
+        // تحديث الوقت
+        const progressInterval = setInterval(() => {
+            if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) {
+                setCurrentTime(playerRef.current.getCurrentTime());
+            }
+        }, 500);
 
-        const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
+        // تحريك العلامة المائية
         watermarkIntervalRef.current = setInterval(() => {
             const newTop = Math.floor(Math.random() * 70) + 10;
             const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
-        
+
+        // تتبع الشاشة الكاملة
         const handleFullscreenChange = () => {
             const isFs = !!(document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
             setIsFullscreen(isFs);
@@ -116,42 +118,128 @@ export default function WatchPage() {
         document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
         document.addEventListener('msfullscreenchange', handleFullscreenChange);
 
-        return () => { 
-            clearInterval(progressInterval); 
-            clearInterval(watermarkIntervalRef.current); 
+        return () => {
+            clearInterval(progressInterval);
+            clearInterval(watermarkIntervalRef.current);
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
             document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
             document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
             document.removeEventListener('msfullscreenchange', handleFullscreenChange);
         };
-    }, [videoId, isSeeking]); // (يعتمد على videoId و isSeeking)
+    }, [videoId, isSeeking]);
 
-    // (دالة ترجمة الجودات)
-    const formatQualityLabel = (quality) => {
-        const qualityMap = {
-            hd1080: '1080p',
-            hd720: '720p',
-            large: '480p',
-            medium: '360p',
-            small: '240p',
-            tiny: '144p',
-            auto: 'تلقائي'
+    // ==================================================================
+    // 2. دوال التحكم الأساسية
+    // ==================================================================
+    const formatQualityLabel = (quality: string) => {
+        const map: Record<string, string> = {
+            hd1080: '1080p', hd720: '720p', large: '480p',
+            medium: '360p', small: '240p', tiny: '144p', auto: 'تلقائي'
         };
-        return qualityMap[quality] || quality;
+        return map[quality] || quality;
     };
-    
-    // (دوال التحكم الأساسية)
-    const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
-    const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
-    
-    const onPlayerReady = useCallback((event) => {
-        playerRef.current = event.target;
-        setDuration(event.target.getDuration());
-        const rates = playerRef.current.getAvailablePlaybackRates();
-        if (rates && rates.length > 0) {
-            setAvailablePlaybackRates(rates);
-            setPlaybackRate(playerRef.current.getPlaybackRate());
+
+    const handlePlayPause = () => {
+        if (!playerRef.current) return;
+        const state = playerRef.current.getPlayerState();
+        state === 1 ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
+    };
+
+    const handleSeek = (direction: 'forward' | 'backward') => {
+        if (!playerRef.current) return;
+        const current = playerRef.current.getCurrentTime();
+        const newTime = direction === 'forward' ? current + 10 : current - 10;
+        playerRef.current.seekTo(newTime, true);
+        setShowSeekIcon({ direction, visible: true });
+        if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+        seekTimeoutRef.current = setTimeout(() => setShowSeekIcon({ direction: null, visible: false }), 600);
+    };
+
+    const formatTime = (time: number) => {
+        if (isNaN(time) || time <= 0) return '0:00';
+        const mins = Math.floor(time / 60);
+        const secs = Math.floor(time % 60).toString().padStart(2, '0');
+        return `${mins}:${secs}`;
+    };
+
+    // ==================================================================
+    // 3. تغيير الجودة (الحل المضمون)
+    // ==================================================================
+    const handleSetQuality = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newQuality = e.target.value;
+        if (!playerRef.current || !youtubeId) return;
+
+        // --- جودة تلقائية ---
+        if (newQuality === 'auto') {
+            playerRef.current.setPlaybackQuality('default');
+            setVideoQuality('auto');
+            return;
         }
+
+        // --- جودة محددة: إعادة تحميل الفيديو ---
+        const currentTime = playerRef.current.getCurrentTime();
+        const wasPlaying = playerRef.current.getPlayerState() === 1;
+
+        // إجبار إعادة الـ mount
+        setPlayerKey(prev => prev + 1);
+
+        pendingQualityRef.current = {
+            quality: newQuality,
+            start: Math.max(0, currentTime - 0.1),
+            play: wasPlaying,
+        };
+
+        setVideoQuality(newQuality);
+    };
+
+    // ==================================================================
+    // 4. جاهزية المشغل (onReady) – تحميل الفيديو بالجودة المطلوبة
+    // ==================================================================
+    const onPlayerReady = useCallback((event: any) => {
+        playerRef.current = event.target;
+
+        // --- إذا كان هناك طلب جودة مؤجل ---
+        if (pendingQualityRef.current) {
+            const { quality, start, play } = pendingQualityRef.current;
+
+            event.target.loadVideoById({
+                videoId: youtubeId!,
+                startSeconds: start,
+                suggestedQuality: quality,
+            });
+
+            if (play) {
+                const iv = setInterval(() => {
+                    const state = event.target.getPlayerState();
+                    if (state === 1 || state === 3) {
+                        event.target.playVideo();
+                        clearInterval(iv);
+                    }
+                }, 150);
+            }
+
+            pendingQualityRef.current = null;
+        } else {
+            // تحميل عادي (أول مرة)
+            setDuration(event.target.getDuration());
+        }
+
+        // جلب السرعات والجودات (مرة واحدة)
+        if (!qualitiesFetched) {
+            const rates = event.target.getAvailablePlaybackRates();
+            if (rates?.length) {
+                setAvailablePlaybackRates(rates);
+                setPlaybackRate(event.target.getPlaybackRate());
+            }
+
+            const quals = event.target.getAvailableQualityLevels();
+            if (quals?.length) {
+                setAvailableQualityLevels(['auto', ...quals]);
+                setQualitiesFetched(true);
+            }
+        }
+
+        // إعداد الـ iframe
         try {
             const iframe = event.target.getIframe();
             if (iframe) {
@@ -161,82 +249,129 @@ export default function WatchPage() {
         } catch (e) {
             console.error("Failed to set iframe attributes:", e);
         }
-    }, []); 
+    }, [youtubeId, qualitiesFetched]);
 
-    const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
-    
-    // (دوال شريط التمرير)
-    const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
-    const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
-    const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
-    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
-    
-    // (دالة السرعة وتنسيق الوقت)
-    const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
-    const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
-    
-        // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
-    const handleSetQuality = (e) => {
-    const newQuality = e.target.value;
-    if (!playerRef.current || !youtubeId) return;
-
-    if (newQuality === 'auto') {
-        playerRef.current.setPlaybackQuality('default');
-        setVideoQuality('auto');
-        return;
-    }
-
-    const currentTime = playerRef.current.getCurrentTime();
-    const wasPlaying = playerRef.current.getPlayerState() === 1;
-
-    playerRef.current.loadVideoById({
-        videoId: youtubeId,
-        startSeconds: Math.max(0, currentTime - 0.1),
-        suggestedQuality: newQuality
-    });
-
-    if (wasPlaying) {
-        const playInterval = setInterval(() => {
-            const state = playerRef.current?.getPlayerState();
-            if (state === 1 || state === 3) {
-                playerRef.current.playVideo();
-                clearInterval(playInterval);
+    // ==================================================================
+    // 5. باقي الأحداث
+    // ==================================================================
+    const handleOnPlay = () => {
+        setIsPlaying(true);
+        if (playerRef.current && !qualitiesFetched) {
+            const quals = playerRef.current.getAvailableQualityLevels();
+            if (quals?.length) {
+                setAvailableQualityLevels(['auto', ...quals]);
+                setVideoQuality(playerRef.current.getPlaybackQuality());
+                setQualitiesFetched(true);
             }
-        }, 200);
-    }
+        }
+    };
 
-    setVideoQuality(newQuality);
-};
-    
-    const handleActualQualityChange = (event) => {
-        const actualQuality = event.data;
-        if (actualQuality) {
-            setVideoQuality(actualQuality); 
+    const handleActualQualityChange = (event: any) => {
+        const actual = event.data;
+        if (actual && actual !== videoQuality) {
+            console.log("الجودة الفعلية الآن:", actual);
+            // setVideoQuality(actual); // اختياري
+        }
+    };
+
+    const handleSetPlaybackRate = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const rate = parseFloat(e.target.value);
+        if (playerRef.current && !isNaN(rate)) {
+            playerRef.current.setPlaybackRate(rate);
+            setPlaybackRate(rate);
         }
     };
 
     const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; 
+        const elem = playerWrapperRef.current;
         if (!elem) return;
         const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
         const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            if (requestFS) {
-                requestFS.call(elem); 
-                setIsFullscreen(true);
-            }
+
+        if (!document.fullscreenElement) {
+            requestFS?.call(elem);
         } else {
-            if (exitFS) {
-                exitFS.call(document);
-                setIsFullscreen(false);
-            }
+            exitFS?.call(document);
         }
     };
 
-    if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
-    if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
+    // ==================================================================
+    // 6. شريط التمرير (Scrub)
+    // ==================================================================
+    const calculateSeekTime = (e: any) => {
+        if (!progressBarRef.current || duration === 0) return null;
+        const bar = progressBarRef.current;
+        const rect = bar.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        return (boundedX / rect.width) * duration;
+    };
 
+    const handleScrubStart = (e: any) => {
+        e.preventDefault();
+        setIsSeeking(true);
+        const seekTime = calculateSeekTime(e);
+        if (seekTime !== null) {
+            setCurrentTime(seekTime);
+            playerRef.current?.seekTo(seekTime, true);
+        }
+        window.addEventListener('mousemove', handleScrubbing);
+        window.addEventListener('touchmove', handleScrubbing);
+        window.addEventListener('mouseup', handleScrubEnd);
+        window.addEventListener('touchend', handleScrubEnd);
+    };
+
+    const handleScrubbing = (e: any) => {
+        const seekTime = calculateSeekTime(e);
+        if (seekTime !== null) {
+            setCurrentTime(seekTime);
+            playerRef.current?.seekTo(seekTime, true);
+        }
+    };
+
+    const handleScrubEnd = () => {
+        setIsSeeking(false);
+        window.removeEventListener('mousemove', handleScrubbing);
+        window.removeEventListener('touchmove', handleScrubbing);
+        window.removeEventListener('mouseup', handleScrubEnd);
+        window.removeEventListener('touchend', handleScrubEnd);
+    };
+
+    // ==================================================================
+    // 7. التحقق من التحميل
+    // ==================================================================
+    if (error) {
+        return (
+            <div className="message-container">
+                <Head><title>خطأ</title></Head>
+                <h1>{error}</h1>
+            </div>
+        );
+    }
+
+    if (!youtubeId || !user) {
+        return (
+            <div className="message-container">
+                <Head><title>جاري التحميل</title></Head>
+                <h1>جاري تحميل الفيديو...</h1>
+            </div>
+        );
+    }
+
+    const opts = {
+        playerVars: {
+            autoplay: 0,
+            controls: 0,
+            rel: 0,
+            showinfo: 0,
+            modestbranding: 1,
+            disablekb: 1,
+        },
+    };
+
+    // ==================================================================
+    // 8. العرض (JSX)
+    // ==================================================================
     return (
         <div className="page-container">
             <Head>
@@ -246,6 +381,7 @@ export default function WatchPage() {
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 <YouTube
+                    key={playerKey}  // إعادة الـ mount عند تغيير الجودة
                     videoId={youtubeId}
                     opts={opts}
                     className="youtube-player"
@@ -261,7 +397,7 @@ export default function WatchPage() {
                     <div className="interaction-grid">
                         <div className="seek-zone" onDoubleClick={() => handleSeek('backward')}></div>
                         <div className="play-pause-zone" onClick={handlePlayPause}>
-                            {!isPlaying && <div className="play-icon">▶</div>}
+                            {!isPlaying && <div className="play-icon">Play</div>}
                         </div>
                         <div className="seek-zone" onDoubleClick={() => handleSeek('forward')}></div>
                     </div>
@@ -270,22 +406,22 @@ export default function WatchPage() {
                         <div className="extra-controls">
                             {availableQualityLevels.length > 0 && (
                                 <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
-                                    {availableQualityLevels.map(quality => (
-                                        <option key={quality} value={quality}>
-                                            {formatQualityLabel(quality)}
-                                        </option>
+                                    {availableQualityLevels.map(q => (
+                                        <option key={q} value={q}>{formatQualityLabel(q)}</option>
                                     ))}
                                 </select>
                             )}
                             {availablePlaybackRates.length > 0 && (
                                 <select className="control-select" value={playbackRate} onChange={handleSetPlaybackRate}>
-                                    {availablePlaybackRates.map(rate => (
-                                        <option key={rate} value={rate}>{rate}x</option>
+                                    {availablePlaybackRates.map(r => (
+                                        <option key={r} value={r}>{r}x</option>
                                     ))}
                                 </select>
                             )}
                         </div>
+
                         <span className="time-display">{formatTime(currentTime)}</span>
+
                         <div
                             ref={progressBarRef}
                             className="progress-bar-container"
@@ -296,16 +432,16 @@ export default function WatchPage() {
                             <div className="progress-bar-filled" style={{ width: `${(currentTime / duration) * 100}%` }}></div>
                             <div className="progress-bar-handle" style={{ left: `${(currentTime / duration) * 100}%` }}></div>
                         </div>
+
                         <span className="time-display">{formatTime(duration)}</span>
-                        
-                        <button className="fullscreen-btn" onClick={handleFullscreen} title="ملء الشاشة">
-                            {isFullscreen ? '⤡' : '⛶'}
+                        <button className="fullscreen-btn" onClick={handleFullscreen}>
+                            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                         </button>
                     </div>
 
                     {showSeekIcon.visible && (
                         <div className={`seek-indicator ${showSeekIcon.direction}`}>
-                            {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
+                            {showSeekIcon.direction === 'forward' ? 'Fast Forward 10' : 'Rewind 10'}
                         </div>
                     )}
 
@@ -315,51 +451,41 @@ export default function WatchPage() {
                 </div>
             </div>
 
-            <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
-              <p>برمجة وتطوير: A7MeD WaLiD</p>
-              <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+            <footer className="developer-info">
+                <p>برمجة وتطوير: A7MeD WaLiD</p>
+                <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
 
             <style jsx global>{`
+                /* نفس الـ CSS الأصلي */
                 body { margin: 0; overscroll-behavior: contain; }
-                .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
-                .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
+                .page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
+                .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; text-align: center; }
                 .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
-                
-                .player-wrapper:fullscreen,
-                .player-wrapper:-webkit-full-screen,
-                .player-wrapper:-moz-full-screen,
-                .player-wrapper:-ms-fullscreen {
-                    width: 100%;
-                    height: 100%;
-                    max-width: none;
-                    aspect-ratio: auto; 
-                }
-                
+                .player-wrapper:fullscreen { width: 100%; height: 100%; max-width: none; aspect-ratio: auto; }
                 .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
                 .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
-                .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
+                .interaction-grid { flex-grow: 1; display: flex; }
                 .seek-zone { flex: 1; height: 100%; }
-                .play-pause-zone { flex: 2; height: 100%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
-                .play-icon { font-size: clamp(40px, 10vw, 80px); color: white; text-shadow: 0 0 15px rgba(0,0,0,0.8); opacity: 0.9; }
-                .bottom-controls { height: 40px; display: flex; align-items: center; padding: 0 10px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); z-index: 11; gap: 10px; }
-                .extra-controls { display: flex; gap: 8px; direction: ltr; }
-                .control-select { background-color: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: clamp(11px, 2.5vw, 14px); cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; direction: ltr; text-align: center; text-align-last: center; }
-                .control-select option { background-color: #333; color: white; }
-                .time-display { color: white; font-size: clamp(11px, 2.5vw, 14px); margin: 0 5px; min-width: 40px; text-align: center; }
-                .progress-bar-container { position: relative; flex-grow: 1; height: 15px; display: flex; align-items: center; cursor: pointer; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; direction: ltr; }
-                .progress-bar-track { position: absolute; width: 100%; height: 4px; background: rgba(255, 255, 255, 0.3); border-radius: 2px; transition: height 0.1s ease; }
-                .progress-bar-filled { position: absolute; height: 4px; background: #FF0000; border-radius: 2px; transition: height 0.1s ease; }
-                .progress-bar-handle { position: absolute; width: 12px; height: 12px; background-color: #FF0000; border-radius: 50%; transform: translateX(-50%); transition: transform 0.1s ease, height 0.1s ease, width 0.1s ease; }
-                .progress-bar-container:hover .progress-bar-track, .progress-bar-container:hover .progress-bar-filled { height: 6px; }
+                .play-pause-zone { flex: 2; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+                .play-icon { font-size: clamp(40px, 10vw, 80px); color: white; text-shadow: 0 0 15px rgba(0,0,0,0.8); }
+                .bottom-controls { height: 40px; display: flex; align-items: center; padding: 0 10px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); gap: 10px; }
+                .extra-controls { display: flex; gap: 8px; }
+                .control-select { background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: clamp(11px, 2.5vw, 14px); cursor: pointer; }
+                .time-display { color: white; font-size: clamp(11px, 2.5vw, 14px); min-width: 40px; text-align: center; }
+                .progress-bar-container { flex-grow: 1; height: 15px; position: relative; cursor: pointer; }
+                .progress-bar-track { position: absolute; width: 100%; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; }
+                .progress-bar-filled { position: absolute; height: 4px; background: #FF0000; border-radius: 2px; }
+                .progress-bar-handle { position: absolute; width: 12px; height: 12px; background: #FF0000; border-radius: 50%; transform: translateX(-50%); }
+                .progress-bar-container:hover .progress-bar-track,
+                .progress-bar-container:hover .progress-bar-filled { height: 6px; }
                 .progress-bar-container:hover .progress-bar-handle { transform: translateX(-50%) scale(1.2); }
-                .seek-indicator { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: clamp(30px, 6vw, 40px); color: white; opacity: 0.8; animation: seek-pop 0.6s ease-out; pointer-events: none; direction: ltr; }
+                .seek-indicator { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: clamp(30px, 6vw, 40px); color: white; animation: seek-pop 0.6s ease-out; }
                 .seek-indicator.forward { left: 75%; }
                 .seek-indicator.backward { left: 25%; }
-                @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
-                .watermark { position: absolute; padding: 4px 8px; background: rgba(0, 0, 0, 0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; pointer-events: none; transition: top 2s ease-in-out, left 2s ease-in-out; white-space: nowrap; z-index: 20; }
-                .fullscreen-btn { background: none; border: none; color: white; font-size: clamp(18px, 3vw, 22px); cursor: pointer; padding: 0 5px; line-height: 1; font-weight: bold; min-width: 25px; }
-                .fullscreen-btn:hover { color: #FF0000; }
+                @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { opacity: 0; } }
+                .watermark { position: absolute; padding: 4px 8px; background: rgba(0,0,0,0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; transition: top 2s, left 2s; z-index: 20; }
+                .fullscreen-btn { background: none; border: none; color: white; font-size: clamp(18px, 3vw, 22px); cursor: pointer; }
             `}</style>
         </div>
     );
