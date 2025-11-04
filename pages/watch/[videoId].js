@@ -25,19 +25,16 @@ export default function WatchPage() {
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
-    // === المراجع ===
-    const playerRef = useRef(null);
+    // === المراجع (Refs) ===
+    const playerRef = useRef(null);         // YouTube Player API
+    const iframeRef = useRef(null);         // <--- مهم جدًا: لتغيير src يدويًا
     const seekTimeoutRef = useRef(null);
     const watermarkIntervalRef = useRef(null);
     const progressBarRef = useRef(null);
     const playerWrapperRef = useRef(null);
-    const pendingQualityRef = useRef(null);
-
-    // === مفتاح إعادة الـ mount ===
-    const [playerKey, setPlayerKey] = useState(0);
 
     // ==================================================================
-    // 1. تحميل معرف الفيديو والتحقق من المستخدم
+    // 1. تحميل الفيديو + التحقق من المستخدم
     // ==================================================================
     useEffect(() => {
         const setupUserAndLoadVideo = (foundUser) => {
@@ -64,7 +61,10 @@ export default function WatchPage() {
         const urlFirstName = urlParams.get('firstName');
 
         if (urlUserId && urlUserId.trim() !== '') {
-            const apkUser = { id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" };
+            const apkUser = { 
+                id: urlUserId, 
+                first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" 
+            };
             setupUserAndLoadVideo(apkUser);
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
@@ -94,7 +94,7 @@ export default function WatchPage() {
             setError('الرجاء الفتح من البرنامج أو تليجرام.');
         }
 
-        // تحديث الوقت
+        // تحديث الوقت كل 500ms
         const progressInterval = setInterval(() => {
             if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) {
                 setCurrentTime(playerRef.current.getCurrentTime());
@@ -113,23 +113,21 @@ export default function WatchPage() {
             const isFs = !!(document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
             setIsFullscreen(isFs);
         };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('msfullscreenchange', handleFullscreenChange);
+        ['fullscreenchange', 'mozfullscreenchange', 'webkitfullscreenchange', 'msfullscreenchange'].forEach(ev =>
+            document.addEventListener(ev, handleFullscreenChange)
+        );
 
         return () => {
             clearInterval(progressInterval);
             clearInterval(watermarkIntervalRef.current);
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+            ['fullscreenchange', 'mozfullscreenchange', 'webkitfullscreenchange', 'msfullscreenchange'].forEach(ev =>
+                document.removeEventListener(ev, handleFullscreenChange)
+            );
         };
     }, [videoId, isSeeking]);
 
     // ==================================================================
-    // 2. دوال التحكم الأساسية
+    // 2. دوال مساعدة
     // ==================================================================
     const formatQualityLabel = (quality) => {
         const map = {
@@ -163,28 +161,62 @@ export default function WatchPage() {
     };
 
     // ==================================================================
-    // 3. تغيير الجودة (الحل المضمون)
+    // 3. تغيير الجودة (الحل النهائي: تغيير src الـ iframe)
     // ==================================================================
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
-        if (!playerRef.current || !youtubeId) return;
+        if (!playerRef.current || !youtubeId || !iframeRef.current) return;
 
+        // --- جودة تلقائية ---
         if (newQuality === 'auto') {
             playerRef.current.setPlaybackQuality('default');
             setVideoQuality('auto');
             return;
         }
 
+        // --- حفظ الوقت والحالة ---
         const currentTime = playerRef.current.getCurrentTime();
         const wasPlaying = playerRef.current.getPlayerState() === 1;
 
-        setPlayerKey(prev => prev + 1);
-
-        pendingQualityRef.current = {
-            quality: newQuality,
-            start: Math.max(0, currentTime - 0.1),
-            play: wasPlaying,
+        // --- خريطة الجودة إلى itag ---
+        const itagMap = {
+            hd1080: '137',  // 1080p
+            hd720:  '136',  // 720p
+            large:  '135',  // 480p
+            medium: '134',  // 360p
+            small:  '133',  // 240p
+            tiny:   '160'   // 144p
         };
+        const itag = itagMap[newQuality];
+        if (!itag) return;
+
+        // --- إنشاء src جديد مع itag + cache-buster ---
+        const base = `https://www.youtube.com/embed/${youtubeId}`;
+        const params = new URLSearchParams({
+            autoplay: '1',
+            controls: '0',
+            rel: '0',
+            modestbranding: '1',
+            disablekb: '1',
+            start: Math.floor(currentTime).toString(),
+            vq: newQuality,
+            itag: itag,
+            t: Date.now().toString() // كسر الـ cache
+        });
+
+        const newSrc = `${base}?${params.toString()}`;
+        iframeRef.current.src = newSrc;
+
+        // --- إعادة التشغيل إذا كان يعمل ---
+        if (wasPlaying) {
+            const playInterval = setInterval(() => {
+                const state = playerRef.current?.getPlayerState();
+                if (state === 1 || state === 3) {
+                    playerRef.current?.playVideo();
+                    clearInterval(playInterval);
+                }
+            }, 200);
+        }
 
         setVideoQuality(newQuality);
     };
@@ -194,31 +226,12 @@ export default function WatchPage() {
     // ==================================================================
     const onPlayerReady = useCallback((event) => {
         playerRef.current = event.target;
+        const iframe = event.target.getIframe();
+        if (iframe) iframeRef.current = iframe;
 
-        if (pendingQualityRef.current) {
-            const { quality, start, play } = pendingQualityRef.current;
+        setDuration(event.target.getDuration());
 
-            event.target.loadVideoById({
-                videoId: youtubeId,
-                startSeconds: start,
-                suggestedQuality: quality,
-            });
-
-            if (play) {
-                const iv = setInterval(() => {
-                    const state = event.target.getPlayerState();
-                    if (state === 1 || state === 3) {
-                        event.target.playVideo();
-                        clearInterval(iv);
-                    }
-                }, 150);
-            }
-
-            pendingQualityRef.current = null;
-        } else {
-            setDuration(event.target.getDuration());
-        }
-
+        // جلب السرعات والجودات (مرة واحدة)
         if (!qualitiesFetched) {
             const rates = event.target.getAvailablePlaybackRates();
             if (rates?.length) {
@@ -233,8 +246,8 @@ export default function WatchPage() {
             }
         }
 
+        // إعداد الـ iframe
         try {
-            const iframe = event.target.getIframe();
             if (iframe) {
                 iframe.setAttribute('allow', 'fullscreen; autoplay; encrypted-media');
                 iframe.setAttribute('allowfullscreen', 'true');
@@ -288,7 +301,7 @@ export default function WatchPage() {
     };
 
     // ==================================================================
-    // 6. شريط التمرير
+    // 6. شريط التمرير (Scrub)
     // ==================================================================
     const calculateSeekTime = (e) => {
         if (!progressBarRef.current || duration === 0) return null;
@@ -373,7 +386,6 @@ export default function WatchPage() {
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 <YouTube
-                    key={playerKey}
                     videoId={youtubeId}
                     opts={opts}
                     className="youtube-player"
@@ -427,7 +439,7 @@ export default function WatchPage() {
 
                         <span className="time-display">{formatTime(duration)}</span>
                         <button className="fullscreen-btn" onClick={handleFullscreen}>
-                            {isFullscreen ? 'Exit' : 'Fullscreen'}
+                            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                         </button>
                     </div>
 
