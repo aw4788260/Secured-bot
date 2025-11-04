@@ -9,29 +9,29 @@ export default function WatchPage() {
     const { videoId } = router.query;
 
     // === الحالات الأساسية ===
-    const [youtubeId, setYoutubeId] = useState<string | null>(null);
-    const [user, setUser] = useState<{ id: string; first_name: string } | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [youtubeId, setYoutubeId] = useState(null);
+    const [user, setUser] = useState(null);
+    const [error, setError] = useState(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null as 'forward' | 'backward' | null, visible: false });
+    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const [isSeeking, setIsSeeking] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1);
-    const [availablePlaybackRates, setAvailablePlaybackRates] = useState<number[]>([]);
+    const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]);
     const [videoQuality, setVideoQuality] = useState('auto');
-    const [availableQualityLevels, setAvailableQualityLevels] = useState<string[]>([]);
+    const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
     const [qualitiesFetched, setQualitiesFetched] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // === المراجع ===
-    const playerRef = useRef<any>(null);
-    const seekTimeoutRef = useRef<any>(null);
-    const watermarkIntervalRef = useRef<any>(null);
-    const progressBarRef = useRef<HTMLDivElement>(null);
-    const playerWrapperRef = useRef<HTMLDivElement>(null);
-    const pendingQualityRef = useRef<{ quality: string; start: number; play: boolean } | null>(null);
+    const playerRef = useRef(null);
+    const seekTimeoutRef = useRef(null);
+    const watermarkIntervalRef = useRef(null);
+    const progressBarRef = useRef(null);
+    const playerWrapperRef = useRef(null);
+    const pendingQualityRef = useRef(null);
 
     // === مفتاح إعادة الـ mount ===
     const [playerKey, setPlayerKey] = useState(0);
@@ -40,7 +40,7 @@ export default function WatchPage() {
     // 1. تحميل معرف الفيديو والتحقق من المستخدم
     // ==================================================================
     useEffect(() => {
-        const setupUserAndLoadVideo = (foundUser: any) => {
+        const setupUserAndLoadVideo = (foundUser) => {
             if (foundUser && foundUser.id) {
                 setUser(foundUser);
             } else {
@@ -131,8 +131,8 @@ export default function WatchPage() {
     // ==================================================================
     // 2. دوال التحكم الأساسية
     // ==================================================================
-    const formatQualityLabel = (quality: string) => {
-        const map: Record<string, string> = {
+    const formatQualityLabel = (quality) => {
+        const map = {
             hd1080: '1080p', hd720: '720p', large: '480p',
             medium: '360p', small: '240p', tiny: '144p', auto: 'تلقائي'
         };
@@ -145,7 +145,7 @@ export default function WatchPage() {
         state === 1 ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
     };
 
-    const handleSeek = (direction: 'forward' | 'backward') => {
+    const handleSeek = (direction) => {
         if (!playerRef.current) return;
         const current = playerRef.current.getCurrentTime();
         const newTime = direction === 'forward' ? current + 10 : current - 10;
@@ -155,7 +155,7 @@ export default function WatchPage() {
         seekTimeoutRef.current = setTimeout(() => setShowSeekIcon({ direction: null, visible: false }), 600);
     };
 
-    const formatTime = (time: number) => {
+    const formatTime = (time) => {
         if (isNaN(time) || time <= 0) return '0:00';
         const mins = Math.floor(time / 60);
         const secs = Math.floor(time % 60).toString().padStart(2, '0');
@@ -165,22 +165,19 @@ export default function WatchPage() {
     // ==================================================================
     // 3. تغيير الجودة (الحل المضمون)
     // ==================================================================
-    const handleSetQuality = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         if (!playerRef.current || !youtubeId) return;
 
-        // --- جودة تلقائية ---
         if (newQuality === 'auto') {
             playerRef.current.setPlaybackQuality('default');
             setVideoQuality('auto');
             return;
         }
 
-        // --- جودة محددة: إعادة تحميل الفيديو ---
         const currentTime = playerRef.current.getCurrentTime();
         const wasPlaying = playerRef.current.getPlayerState() === 1;
 
-        // إجبار إعادة الـ mount
         setPlayerKey(prev => prev + 1);
 
         pendingQualityRef.current = {
@@ -193,17 +190,16 @@ export default function WatchPage() {
     };
 
     // ==================================================================
-    // 4. جاهزية المشغل (onReady) – تحميل الفيديو بالجودة المطلوبة
+    // 4. جاهزية المشغل (onReady)
     // ==================================================================
-    const onPlayerReady = useCallback((event: any) => {
+    const onPlayerReady = useCallback((event) => {
         playerRef.current = event.target;
 
-        // --- إذا كان هناك طلب جودة مؤجل ---
         if (pendingQualityRef.current) {
             const { quality, start, play } = pendingQualityRef.current;
 
             event.target.loadVideoById({
-                videoId: youtubeId!,
+                videoId: youtubeId,
                 startSeconds: start,
                 suggestedQuality: quality,
             });
@@ -220,11 +216,9 @@ export default function WatchPage() {
 
             pendingQualityRef.current = null;
         } else {
-            // تحميل عادي (أول مرة)
             setDuration(event.target.getDuration());
         }
 
-        // جلب السرعات والجودات (مرة واحدة)
         if (!qualitiesFetched) {
             const rates = event.target.getAvailablePlaybackRates();
             if (rates?.length) {
@@ -239,7 +233,6 @@ export default function WatchPage() {
             }
         }
 
-        // إعداد الـ iframe
         try {
             const iframe = event.target.getIframe();
             if (iframe) {
@@ -266,15 +259,14 @@ export default function WatchPage() {
         }
     };
 
-    const handleActualQualityChange = (event: any) => {
+    const handleActualQualityChange = (event) => {
         const actual = event.data;
         if (actual && actual !== videoQuality) {
             console.log("الجودة الفعلية الآن:", actual);
-            // setVideoQuality(actual); // اختياري
         }
     };
 
-    const handleSetPlaybackRate = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleSetPlaybackRate = (e) => {
         const rate = parseFloat(e.target.value);
         if (playerRef.current && !isNaN(rate)) {
             playerRef.current.setPlaybackRate(rate);
@@ -296,9 +288,9 @@ export default function WatchPage() {
     };
 
     // ==================================================================
-    // 6. شريط التمرير (Scrub)
+    // 6. شريط التمرير
     // ==================================================================
-    const calculateSeekTime = (e: any) => {
+    const calculateSeekTime = (e) => {
         if (!progressBarRef.current || duration === 0) return null;
         const bar = progressBarRef.current;
         const rect = bar.getBoundingClientRect();
@@ -307,7 +299,7 @@ export default function WatchPage() {
         return (boundedX / rect.width) * duration;
     };
 
-    const handleScrubStart = (e: any) => {
+    const handleScrubStart = (e) => {
         e.preventDefault();
         setIsSeeking(true);
         const seekTime = calculateSeekTime(e);
@@ -321,7 +313,7 @@ export default function WatchPage() {
         window.addEventListener('touchend', handleScrubEnd);
     };
 
-    const handleScrubbing = (e: any) => {
+    const handleScrubbing = (e) => {
         const seekTime = calculateSeekTime(e);
         if (seekTime !== null) {
             setCurrentTime(seekTime);
@@ -381,7 +373,7 @@ export default function WatchPage() {
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 <YouTube
-                    key={playerKey}  // إعادة الـ mount عند تغيير الجودة
+                    key={playerKey}
                     videoId={youtubeId}
                     opts={opts}
                     className="youtube-player"
@@ -435,7 +427,7 @@ export default function WatchPage() {
 
                         <span className="time-display">{formatTime(duration)}</span>
                         <button className="fullscreen-btn" onClick={handleFullscreen}>
-                            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                            {isFullscreen ? 'Exit' : 'Fullscreen'}
                         </button>
                     </div>
 
@@ -457,7 +449,6 @@ export default function WatchPage() {
             </footer>
 
             <style jsx global>{`
-                /* نفس الـ CSS الأصلي */
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; text-align: center; }
