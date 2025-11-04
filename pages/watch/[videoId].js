@@ -29,6 +29,18 @@ export default function WatchPage() {
     
     const playerWrapperRef = useRef(null);
 
+        // [ ✅✅✅ الإضافة الجديدة: كائن لربط الجودة بالحجم ]
+    const qualityToWidth = {
+        'hd1080': '1920px', // حجم وهمي لـ 1080p
+        'hd720': '1280px', // حجم وهمي لـ 720p
+        'large': '854px',  // (480p)
+        'medium': '640px', // (360p)
+        'small': '426px',  // (240p)
+        'tiny': '256px',   // (144p)
+        'auto': '100%'     // الوضع الافتراضي
+    };
+    // [ نهاية الإضافة ]
+    
     useEffect(() => {
         
         // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو)
@@ -176,34 +188,65 @@ export default function WatchPage() {
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
         // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
-        // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إعادة التحميل)
+    // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إخفاء وتغيير الحجم)
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         
-        // (نحتاج للتأكد من وجود المشغل ومعرف الفيديو)
-        if (!playerRef.current || !youtubeId) return;
+        // (التأكد من وجود كل العناصر المطلوبة)
+        if (!playerRef.current || !youtubeId || !playerWrapperRef.current) return;
 
-        console.log(`▶️ جاري فرض تغيير الجودة إلى ${newQuality}...`);
+        console.log(`▶️ [حيلة الحجم]: محاولة فرض الجودة ${newQuality}...`);
 
         try {
-            // 1. احصل على الوقت الحالي للحفاظ على مكان المستخدم
             const currentTime = playerRef.current.getCurrentTime();
-
-            // 2. [ ✅ الحيلة الجديدة ]
-            // نستخدم 'loadVideoById' لإجبار المشغل
-            // على إعادة تحميل الفيديو بالجودة المطلوبة
-            playerRef.current.loadVideoById({
-                videoId: youtubeId,         // (معرف الفيديو الحالي)
-                startSeconds: currentTime,  // (ابدأ من نفس الثانية)
-                suggestedQuality: newQuality // (الجودة الجديدة المطلوبة)
-            });
+            const wrapper = playerWrapperRef.current;
             
-            // 3. (نقوم بتحديث الحالة لدينا يدوياً)
-             setVideoQuality(newQuality); 
+            // (حفظ الأبعاد الأصلية لإعادتها لاحقاً)
+            const originalStyle = { 
+                width: wrapper.style.width, 
+                aspectRatio: wrapper.style.aspectRatio, 
+                visibility: wrapper.style.visibility 
+            };
+
+            // [الخطوة 1: إخفاء الحاوية (لتجنب الرعشة)]
+            wrapper.style.visibility = 'hidden';
+            
+            // [الخطوة 2: تغيير حجم الحاوية (لإيهام اليوتيوب)]
+            const newWidth = qualityToWidth[newQuality] || '100%';
+            wrapper.style.width = newWidth;
+            
+            // (نقوم بتغيير نسبة الأبعاد مؤقتاً إلى 16:9 القياسية)
+            // (لأن نسبة 16:7 الحالية قد تسبب اختيار جودة أقل)
+            if (newWidth === '100%') {
+                 // (إرجاع النسبة الأصلية إذا اخترنا 'auto')
+                wrapper.style.aspectRatio = originalStyle.aspectRatio || '16 / 7';
+            } else {
+                // (تطبيق نسبة 16:9 الوهمية لإجبار الجودة العالية)
+                wrapper.style.aspectRatio = '16 / 9'; 
+            }
+
+            // [الخطوة 3: طلب إعادة تحميل الفيديو *أثناء* تغير الحجم]
+            playerRef.current.loadVideoById({
+                videoId: youtubeId,
+                startSeconds: currentTime,
+                suggestedQuality: newQuality
+            });
+
+            // (تحديث الحالة لدينا)
+            setVideoQuality(newQuality);
+
+            // [الخطوة 4: إرجاع كل شيء لوضعه الطبيعي]
+            // (نستخدم مؤقت 50ms لضمان أن المتصفح "رأى" التغييرات قبل إرجاعها)
+            setTimeout(() => {
+                wrapper.style.visibility = originalStyle.visibility || 'visible';
+                wrapper.style.width = originalStyle.width || '100%';
+                wrapper.style.aspectRatio = originalStyle.aspectRatio || '16 / 7'; // إرجاع النسبة الأصلية
+                console.log("✅ [حيلة الحجم]: تم إرجاع الحاوية.");
+            }, 50);
 
         } catch (err) {
-            console.error("Failed to force quality change:", err);
-            // (خطة بديلة: في حال فشل الأمر، نعود للطريقة القديمة)
+            console.error("فشلت حيلة تغيير الحجم:", err);
+            // (الخطة البديلة في حال فشل كل شيء)
             playerRef.current.setPlaybackQuality(newQuality);
         }
     };
