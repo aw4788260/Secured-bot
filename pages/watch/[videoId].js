@@ -93,16 +93,15 @@ export default function WatchPage() {
     }, [videoId, isSeeking]);
 
     // ==================================================================
-    // 2. دالة إجبار الجودة (الحل النهائي)
+    // 2. إجبار الجودة
     // ==================================================================
     const forceQuality = useCallback((quality) => {
         if (!playerRef.current || quality === 'auto') return;
 
-        // إيقاف أي محاولة سابقة
         if (qualityForceInterval.current) clearInterval(qualityForceInterval.current);
 
         let attempts = 0;
-        const maxAttempts = 20;
+        const maxAttempts = 25;
 
         qualityForceInterval.current = setInterval(() => {
             const player = playerRef.current;
@@ -114,16 +113,13 @@ export default function WatchPage() {
                 return;
             }
 
-            // محاولة 1: setPlaybackQuality
             try { player.setPlaybackQuality(quality); } catch(e) {}
-
-            // محاولة 2: إعادة تحميل مع suggestedQuality
             const time = player.getCurrentTime();
             player.cueVideoById({ videoId: youtubeId, startSeconds: time, suggestedQuality: quality });
-            setTimeout(() => player.playVideo(), 100);
+            setTimeout(() => player.playVideo(), 150);
 
             attempts++;
-        }, 300);
+        }, 350);
     }, [youtubeId]);
 
     // ==================================================================
@@ -143,7 +139,7 @@ export default function WatchPage() {
     };
 
     // ==================================================================
-    // 4. onReady
+    // 4. جاهزية المشغل
     // ==================================================================
     const onPlayerReady = useCallback((event) => {
         playerRef.current = event.target;
@@ -152,22 +148,43 @@ export default function WatchPage() {
 
         setDuration(event.target.getDuration());
 
-        if (!qualitiesFetched) {
-            const rates = event.target.getAvailablePlaybackRates();
-            if (rates?.length) { setAvailablePlaybackRates(rates); setPlaybackRate(event.target.getPlaybackRate()); }
+        // جلب الجودات أول مرة
+        const quals = event.target.getAvailableQualityLevels();
+        if (quals?.length && !qualitiesFetched) {
+            setAvailableQualityLevels(['auto', ...quals]);
+            setQualitiesFetched(true);
+        }
 
-            const quals = event.target.getAvailableQualityLevels();
-            if (quals?.length) {
-                setAvailableQualityLevels(['auto', ...quals]);
-                setQualitiesFetched(true);
-                // تطبيق الجودة المحددة بعد التحميل
-                if (videoQuality !== 'auto') forceQuality(videoQuality);
-            }
+        const rates = event.target.getAvailablePlaybackRates();
+        if (rates?.length) {
+            setAvailablePlaybackRates(rates);
+            setPlaybackRate(event.target.getPlaybackRate());
+        }
+
+        // تطبيق الجودة المطلوبة
+        if (videoQuality !== 'auto') {
+            setTimeout(() => forceQuality(videoQuality), 500);
         }
     }, [youtubeId, qualitiesFetched, videoQuality, forceQuality]);
 
     // ==================================================================
-    // 5. باقي الدوال
+    // 5. حدث تغيير الجودة الفعلية (يُعيد جلب القوائم)
+    // ==================================================================
+    const handleActualQualityChange = useCallback((event) => {
+        const actual = event.data;
+        console.log("الجودة الفعلية الآن:", actual);
+
+        // إعادة جلب الجودات في كل مرة
+        if (playerRef.current) {
+            const quals = playerRef.current.getAvailableQualityLevels();
+            if (quals?.length && !availableQualityLevels.includes('auto')) {
+                setAvailableQualityLevels(['auto', ...quals]);
+            }
+        }
+    }, [availableQualityLevels]);
+
+    // ==================================================================
+    // 6. باقي الدوال
     // ==================================================================
     const formatQualityLabel = (q) => ({ hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p', auto:'تلقائي' }[q] || q);
     const handlePlayPause = () => { const s = playerRef.current?.getPlayerState(); s === 1 ? playerRef.current?.pauseVideo() : playerRef.current?.playVideo(); };
@@ -189,7 +206,7 @@ export default function WatchPage() {
     };
 
     // ==================================================================
-    // 6. Scrub
+    // 7. Scrub
     // ==================================================================
     const calculateSeekTime = (e) => {
         if (!progressBarRef.current || !duration) return null;
@@ -203,7 +220,7 @@ export default function WatchPage() {
     const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
 
     // ==================================================================
-    // 7. Render
+    // 8. Render
     // ==================================================================
     if (error) return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
     if (!youtubeId || !user) return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>;
@@ -224,6 +241,7 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
+                    onPlaybackQualityChange={handleActualQualityChange}  {/* أعد إضافته */}
                 />
 
                 <div className="controls-overlay">
@@ -276,6 +294,7 @@ export default function WatchPage() {
             </footer>
 
             <style jsx global>{`
+                /* نفس الـ CSS الأصلي */
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; text-align: center; }
