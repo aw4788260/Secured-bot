@@ -177,62 +177,37 @@ export default function WatchPage() {
     
         // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
         // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إعادة التحميل)
-    // 🟢 دالة إجبار يوتيوب على الجودة المطلوبة دائمًا
-const handleSetQuality = (e) => {
-  const newQuality = e.target.value;
-  if (!playerRef.current || !youtubeId) return;
+    const handleSetQuality = (e) => {
+        const newQuality = e.target.value;
+        
+        // (نحتاج للتأكد من وجود المشغل ومعرف الفيديو)
+        if (!playerRef.current || !youtubeId) return;
 
-  console.log(`🎯 فرض الجودة على ${newQuality} في جميع الحالات...`);
-  setVideoQuality(newQuality);
+        console.log(`▶️ جاري فرض تغيير الجودة إلى ${newQuality}...`);
 
-  try {
-    const currentTime = playerRef.current.getCurrentTime();
-    playerRef.current.loadVideoById({
-      videoId: youtubeId,
-      startSeconds: currentTime,
-      suggestedQuality: newQuality
-    });
+        try {
+            // 1. احصل على الوقت الحالي للحفاظ على مكان المستخدم
+            const currentTime = playerRef.current.getCurrentTime();
 
-    // تأكيد إضافي بعد ثانيتين
-    setTimeout(() => {
-      if (playerRef.current) {
-        playerRef.current.setPlaybackQuality(newQuality);
-      }
-    }, 2000);
-  } catch (err) {
-    console.error("❌ فشل فرض الجودة:", err);
-  }
-};
+            // 2. [ ✅ الحيلة الجديدة ]
+            // نستخدم 'loadVideoById' لإجبار المشغل
+            // على إعادة تحميل الفيديو بالجودة المطلوبة
+            playerRef.current.loadVideoById({
+                videoId: youtubeId,         // (معرف الفيديو الحالي)
+                startSeconds: currentTime,  // (ابدأ من نفس الثانية)
+                suggestedQuality: newQuality // (الجودة الجديدة المطلوبة)
+            });
+            
+            // 3. (نقوم بتحديث الحالة لدينا يدوياً)
+             setVideoQuality(newQuality); 
 
-// 🟢 تأكيد الجودة المختارة باستمرار (حتى عند تكبير أو تصغير الشاشة)
-useEffect(() => {
-  if (!playerRef.current) return;
-  const player = playerRef.current;
-
-  const enforceQuality = () => {
-    if (videoQuality && videoQuality !== 'auto') {
-      const currentQ = player.getPlaybackQuality();
-      if (currentQ !== videoQuality) {
-        console.log(`🔁 إعادة فرض الجودة ${videoQuality} (يوتيوب حاول ${currentQ})`);
-        player.setPlaybackQuality(videoQuality);
-      }
-    }
-  };
-
-  // تحقق دوري كل ثانية
-  const interval = setInterval(enforceQuality, 1000);
-
-  // تأكيد الجودة عند دخول أو خروج من ملء الشاشة
-  const handleFsChange = () => enforceQuality();
-  document.addEventListener('fullscreenchange', handleFsChange);
-  document.addEventListener('webkitfullscreenchange', handleFsChange);
-
-  return () => {
-    clearInterval(interval);
-    document.removeEventListener('fullscreenchange', handleFsChange);
-    document.removeEventListener('webkitfullscreenchange', handleFsChange);
-  };
-}, [videoQuality]);
+        } catch (err) {
+            console.error("Failed to force quality change:", err);
+            // (خطة بديلة: في حال فشل الأمر، نعود للطريقة القديمة)
+            playerRef.current.setPlaybackQuality(newQuality);
+        }
+    };
+    
     
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
@@ -274,7 +249,7 @@ useEffect(() => {
                 <YouTube
                     videoId={youtubeId}
                     opts={opts}
-                      className="youtube-player"
+                    className="youtube-player"
                     iframeClassName="youtube-iframe"
                     onReady={onPlayerReady}
                     onPlay={handleOnPlay}
