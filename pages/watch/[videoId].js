@@ -236,7 +236,7 @@ export default function WatchPage() {
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    const opts = { playerVars: { autoplay: 0, controls: 1, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
+    const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
 
     return (
         <div className="page-container">
