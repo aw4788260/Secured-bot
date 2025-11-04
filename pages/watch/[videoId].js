@@ -29,18 +29,24 @@ export default function WatchPage() {
     
     const playerWrapperRef = useRef(null);
 
-        // [ ✅✅✅ الإضافة الجديدة: كائن لربط الجودة بالحجم ]
+    // --- [ ✅✅ بداية التعديلات: إضافة متغيرات الحيلة ] ---
+    // كائن لربط الجودة بالحجم الوهمي
     const qualityToWidth = {
-        'hd1080': '1920px', // حجم وهمي لـ 1080p
-        'hd720': '1280px', // حجم وهمي لـ 720p
-        'large': '854px',  // (480p)
-        'medium': '640px', // (360p)
-        'small': '426px',  // (240p)
-        'tiny': '256px',   // (144p)
-        'auto': '100%'     // الوضع الافتراضي
+        'hd1080': '1920px',
+        'hd720': '1280px',
+        'large': '854px', 
+        'medium': '640px',
+        'small': '426px', 
+        'tiny': '256px',  
+        'auto': '100%'   
     };
-    // [ نهاية الإضافة ]
-    
+    // (متغير لتخزين الجودة التي "نريدها")
+    const targetQualityRef = useRef(null);
+    // (متغير لتخزين حجم الشاشة الأصلي)
+    const originalStyleRef = useRef(null);
+    // --- [ ✅✅ نهاية التعديلات ] ---
+
+
     useEffect(() => {
         
         // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو)
@@ -60,43 +66,33 @@ export default function WatchPage() {
             }
         };
 
-        // --- [ ✅✅ بداية المنطق الجديد للتحقق ] ---
+        // (منطق التحقق من المستخدم كما هو)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
-
-        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
             const apkUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
-            setupUserAndLoadVideo(apkUser); // (سماح بالدخول)
-
-        // [ الحالة 2: مستخدم تليجرام ميني آب ]
+            setupUserAndLoadVideo(apkUser); 
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-
             if (!miniAppUser || !miniAppUser.id) {
                 setError("لا يمكن التعرف على هويتك من تليجرام.");
                 return;
             }
-
             if (platform === 'ios') {
-                // [ الحالة 2أ: آيفون (سماح بالدخول) ]
                 setupUserAndLoadVideo(miniAppUser);
             } else {
-                // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
                         if (adminData.isAdmin) {
-                            // (سماح بالدخول للأدمن)
                             setupUserAndLoadVideo(miniAppUser);
                         } else {
-                            // (منع الدخول لغير الأدمن)
                             setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
                         }
                     })
@@ -104,13 +100,10 @@ export default function WatchPage() {
                         setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
                     });
             }
-        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
              return;
         }
-        // --- [ ✅✅ نهاية المنطق الجديد ] ---
-
 
         const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
@@ -136,7 +129,7 @@ export default function WatchPage() {
             document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
             document.removeEventListener('msfullscreenchange', handleFullscreenChange);
         };
-    }, [videoId, isSeeking]); // (يعتمد على videoId و isSeeking)
+    }, [videoId, isSeeking]); 
 
     // (دالة ترجمة الجودات)
     const formatQualityLabel = (quality) => {
@@ -187,77 +180,103 @@ export default function WatchPage() {
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
-        // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
-    // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إخفاء وتغيير الحجم)
+    
+    // --- [ ✅✅ بداية التعديل: دالة طلب الجودة (الخطوة 1 من الحيلة) ] ---
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
-        
-        // (التأكد من وجود كل العناصر المطلوبة)
         if (!playerRef.current || !youtubeId || !playerWrapperRef.current) return;
 
-        console.log(`▶️ [حيلة الحجم]: محاولة فرض الجودة ${newQuality}...`);
+        console.log(`▶️ [HACK]: Initiating quality change to ${newQuality}...`);
 
         try {
             const currentTime = playerRef.current.getCurrentTime();
             const wrapper = playerWrapperRef.current;
-            
-            // (حفظ الأبعاد الأصلية لإعادتها لاحقاً)
-            const originalStyle = { 
-                width: wrapper.style.width, 
-                aspectRatio: wrapper.style.aspectRatio, 
-                visibility: wrapper.style.visibility 
-            };
 
-            // [الخطوة 1: إخفاء الحاوية (لتجنب الرعشة)]
-            wrapper.style.visibility = 'hidden';
+            // (الخطوة 1: احفظ الستايل الأصلي *إذا* لم نكن في منتصف حيلة)
+            if (targetQualityRef.current === null) {
+                originalStyleRef.current = { 
+                    width: wrapper.style.width, 
+                    aspectRatio: wrapper.style.aspectRatio, 
+                    visibility: wrapper.style.visibility 
+                };
+            }
             
-            // [الخطوة 2: تغيير حجم الحاوية (لإيهام اليوتيوب)]
-            const newWidth = qualityToWidth[newQuality] || '100%';
-            wrapper.style.width = newWidth;
-            
-            // (نقوم بتغيير نسبة الأبعاد مؤقتاً إلى 16:9 القياسية)
-            // (لأن نسبة 16:7 الحالية قد تسبب اختيار جودة أقل)
-            if (newWidth === '100%') {
-                 // (إرجاع النسبة الأصلية إذا اخترنا 'auto')
-                wrapper.style.aspectRatio = originalStyle.aspectRatio || '16 / 7';
-            } else {
-                // (تطبيق نسبة 16:9 الوهمية لإجبار الجودة العالية)
-                wrapper.style.aspectRatio = '16 / 9'; 
+            // (الخطوة 2: حدد الجودة "الهدف")
+            targetQualityRef.current = newQuality;
+
+            // [ إذا اختار المستخدم 'auto' ]
+            if (newQuality === 'auto') {
+                // (لا نحتاج حيلة الحجم، فقط أعد تحميل الفيديو)
+                // (لكننا سنعتمد على دالة onPlaybackQualityChange لإرجاع الستايل)
+                playerRef.current.loadVideoById({
+                    videoId: youtubeId,
+                    startSeconds: currentTime,
+                    suggestedQuality: 'auto'
+                });
+                return; // (اخرج من هنا)
             }
 
-            // [الخطوة 3: طلب إعادة تحميل الفيديو *أثناء* تغير الحجم]
+            // [ إذا اختار المستخدم جودة محددة ]
+            // [الخطوة 3: إخفاء وتغيير الحجم (لإيهام اليوتيوب)]
+            wrapper.style.visibility = 'hidden';
+            const newWidth = qualityToWidth[newQuality] || '100%';
+            wrapper.style.width = newWidth;
+            // (استخدم نسبة 16:9 الوهمية لإجبار الجودة العالية)
+            wrapper.style.aspectRatio = '16 / 9'; 
+
+            // [الخطوة 4: طلب إعادة تحميل الفيديو]
             playerRef.current.loadVideoById({
                 videoId: youtubeId,
                 startSeconds: currentTime,
                 suggestedQuality: newQuality
             });
 
-            // (تحديث الحالة لدينا)
-            setVideoQuality(newQuality);
-
-            // [الخطوة 4: إرجاع كل شيء لوضعه الطبيعي]
-            // (نستخدم مؤقت 50ms لضمان أن المتصفح "رأى" التغييرات قبل إرجاعها)
-            setTimeout(() => {
-                wrapper.style.visibility = originalStyle.visibility || 'visible';
-                wrapper.style.width = originalStyle.width || '100%';
-                wrapper.style.aspectRatio = originalStyle.aspectRatio || '16 / 7'; // إرجاع النسبة الأصلية
-                console.log("✅ [حيلة الحجم]: تم إرجاع الحاوية.");
-            }, 50);
-
         } catch (err) {
-            console.error("فشلت حيلة تغيير الحجم:", err);
-            // (الخطة البديلة في حال فشل كل شيء)
-            playerRef.current.setPlaybackQuality(newQuality);
+            console.error("Failed to initiate quality hack:", err);
+            // (إفشال الحيلة وإرجاع كل شيء)
+            if(originalStyleRef.current) {
+                const wrapper = playerWrapperRef.current;
+                wrapper.style.visibility = originalStyleRef.current.visibility || 'visible';
+                wrapper.style.width = originalStyleRef.current.width || '100%';
+                wrapper.style.aspectRatio = originalStyleRef.current.aspectRatio || '16 / 7';
+            }
+            targetQualityRef.current = null;
+            originalStyleRef.current = null;
         }
     };
+    // --- [ ✅✅ نهاية التعديل ] ---
     
     
+    // --- [ ✅✅ بداية التعديل: دالة الاستجابة للجودة (الخطوة 2 من الحيلة) ] ---
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
         if (actualQuality) {
-            setVideoQuality(actualQuality); 
+            console.log(`✅ [HACK]: Player reports quality changed to: ${actualQuality}`);
+            setVideoQuality(actualQuality); // تحديث القائمة المنسدلة
+        }
+
+        // [الخطوة 5: التحقق إذا كانت الحيلة قد اكتملت]
+        // (هل كنا ننتظر تغييراً؟)
+        if (targetQualityRef.current !== null && playerWrapperRef.current) {
+            
+            // (هل تم حفظ الستايل الأصلي؟)
+            if (originalStyleRef.current) {
+                const wrapper = playerWrapperRef.current;
+                const originalStyle = originalStyleRef.current;
+
+                // [الخطوة 6: إرجاع الستايل الأصلي وإظهار المشغل]
+                console.log("✅ [HACK]: Reverting wrapper to original style.");
+                wrapper.style.visibility = originalStyle.visibility || 'visible';
+                wrapper.style.width = originalStyle.width || '100%';
+                wrapper.style.aspectRatio = originalStyle.aspectRatio || '16 / 7';
+            }
+
+            // [الخطوة 7: إنهاء الحيلة (إعادة تعيين المتغيرات)]
+            targetQualityRef.current = null;
+            originalStyleRef.current = null;
         }
     };
+    // --- [ ✅✅ نهاية التعديل ] ---
 
     const handleFullscreen = () => {
         const elem = playerWrapperRef.current; 
@@ -298,7 +317,7 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
-                    onPlaybackQualityChange={handleActualQualityChange}
+                    onPlaybackQualityChange={handleActualQualityChange} // (هذا السطر هو الذي يشغل الحيلة)
                 />
 
                 <div className="controls-overlay">
@@ -368,7 +387,15 @@ export default function WatchPage() {
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
-                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
+                .player-wrapper { 
+                    position: relative; 
+                    width: 100%; 
+                    max-width: 900px; 
+                    aspect-ratio: 16 / 7; /* (النسبة الأصلية) */
+                    background: #111; 
+                    /* (إضافة حركة ناعمة عند عودة الستايل) */
+                    transition: aspect-ratio 0.2s ease, width 0.2s ease; 
+                }
                 
                 .player-wrapper:fullscreen,
                 .player-wrapper:-webkit-full-screen,
