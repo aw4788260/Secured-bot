@@ -29,8 +29,6 @@ export default function WatchPage() {
     
     const playerWrapperRef = useRef(null);
 
-    // (تم حذف المتغيرات الخاصة بالحيل المعقدة)
-
     useEffect(() => {
         
         // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو)
@@ -50,33 +48,43 @@ export default function WatchPage() {
             }
         };
 
-        // (منطق التحقق من المستخدم كما هو)
+        // --- [ ✅✅ بداية المنطق الجديد للتحقق ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
+
+        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
             const apkUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
-            setupUserAndLoadVideo(apkUser); 
+            setupUserAndLoadVideo(apkUser); // (سماح بالدخول)
+
+        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+
             if (!miniAppUser || !miniAppUser.id) {
                 setError("لا يمكن التعرف على هويتك من تليجرام.");
                 return;
             }
+
             if (platform === 'ios') {
+                // [ الحالة 2أ: آيفون (سماح بالدخول) ]
                 setupUserAndLoadVideo(miniAppUser);
             } else {
+                // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
                         if (adminData.isAdmin) {
+                            // (سماح بالدخول للأدمن)
                             setupUserAndLoadVideo(miniAppUser);
                         } else {
+                            // (منع الدخول لغير الأدمن)
                             setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
                         }
                     })
@@ -84,10 +92,13 @@ export default function WatchPage() {
                         setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
                     });
             }
+        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
              return;
         }
+        // --- [ ✅✅ نهاية المنطق الجديد ] ---
+
 
         const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
         watermarkIntervalRef.current = setInterval(() => {
@@ -113,7 +124,7 @@ export default function WatchPage() {
             document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
             document.removeEventListener('msfullscreenchange', handleFullscreenChange);
         };
-    }, [videoId, isSeeking]); 
+    }, [videoId, isSeeking]); // (يعتمد على videoId و isSeeking)
 
     // (دالة ترجمة الجودات)
     const formatQualityLabel = (quality) => {
@@ -164,30 +175,46 @@ export default function WatchPage() {
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
-    
-    // --- [ ✅✅ بداية التعديل: إرجاع دالة الجودة للوضع البسيط ] ---
-    // (ستعمل هذه الدالة الآن بسبب التعديل في "opts" بالأسفل)
+        // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
+        // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إعادة التحميل)
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
-        if (!playerRef.current) return;
         
-        // (الأمر البسيط المباشر)
-        playerRef.current.setPlaybackQuality(newQuality);
-        
-        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}...`);
+        // (نحتاج للتأكد من وجود المشغل ومعرف الفيديو)
+        if (!playerRef.current || !youtubeId) return;
+
+        console.log(`▶️ جاري فرض تغيير الجودة إلى ${newQuality}...`);
+
+        try {
+            // 1. احصل على الوقت الحالي للحفاظ على مكان المستخدم
+            const currentTime = playerRef.current.getCurrentTime();
+
+            // 2. [ ✅ الحيلة الجديدة ]
+            // نستخدم 'loadVideoById' لإجبار المشغل
+            // على إعادة تحميل الفيديو بالجودة المطلوبة
+            playerRef.current.loadVideoById({
+                videoId: youtubeId,         // (معرف الفيديو الحالي)
+                startSeconds: currentTime,  // (ابدأ من نفس الثانية)
+                suggestedQuality: newQuality // (الجودة الجديدة المطلوبة)
+            });
+            
+            // 3. (نقوم بتحديث الحالة لدينا يدوياً)
+             setVideoQuality(newQuality); 
+
+        } catch (err) {
+            console.error("Failed to force quality change:", err);
+            // (خطة بديلة: في حال فشل الأمر، نعود للطريقة القديمة)
+            playerRef.current.setPlaybackQuality(newQuality);
+        }
     };
-    // --- [ ✅✅ نهاية التعديل ] ---
     
     
-    // --- [ ✅✅ بداية التعديل: إرجاع دالة الاستجابة للوضع البسيط ] ---
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
         if (actualQuality) {
-            console.log(`✅ الجودة تغيرت بالفعل إلى: ${actualQuality}`);
-            setVideoQuality(actualQuality); // تحديث القائمة
+            setVideoQuality(actualQuality); 
         }
     };
-    // --- [ ✅✅ نهاية التعديل ] ---
 
     const handleFullscreen = () => {
         const elem = playerWrapperRef.current; 
@@ -209,9 +236,6 @@ export default function WatchPage() {
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    
-    // --- [ ✅✅✅ التعديل الأهم: تفعيل عناصر تحكم اليوتيوب (لإلغاء قفل الجودة) ] ---
-    // (سيتم إخفاؤها بواسطة الـ CSS الخاص بك، فلا تقلق)
     const opts = { playerVars: { autoplay: 0, controls: 1, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
 
     return (
@@ -231,7 +255,7 @@ export default function WatchPage() {
                     onPlay={handleOnPlay}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
-                    onPlaybackQualityChange={handleActualQualityChange} // (ستعمل الآن)
+                    onPlaybackQualityChange={handleActualQualityChange}
                 />
 
                 <div className="controls-overlay">
@@ -301,14 +325,7 @@ export default function WatchPage() {
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
-                .player-wrapper { 
-                    position: relative; 
-                    width: 100%; 
-                    max-width: 900px; 
-                    aspect-ratio: 16 / 7; /* (النسبة الأصلية) */
-                    background: #111; 
-                    transition: aspect-ratio 0.2s ease, width 0.2s ease; 
-                }
+                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
                 
                 .player-wrapper:fullscreen,
                 .player-wrapper:-webkit-full-screen,
