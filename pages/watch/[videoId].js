@@ -176,24 +176,38 @@ export default function WatchPage() {
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
         // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
+        // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إعادة التحميل)
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
-        if (!playerRef.current) return;
         
-        // 1. اطلب الجودة
-        playerRef.current.setPlaybackQuality(newQuality);
-        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}...`);
+        // (نحتاج للتأكد من وجود المشغل ومعرف الفيديو)
+        if (!playerRef.current || !youtubeId) return;
 
-        // 2. [ ✅ تعديل: التحريك ثانية كاملة لضمان التنفيذ ]
+        console.log(`▶️ جاري فرض تغيير الجودة إلى ${newQuality}...`);
+
         try {
-          // (الحصول على الوقت الحالي)
-          const currentTime = playerRef.current.getCurrentTime();
-          // (التحريك بمقدار ثانية واحدة كما طلبت)
-          playerRef.current.seekTo(currentTime + 1, true); 
+            // 1. احصل على الوقت الحالي للحفاظ على مكان المستخدم
+            const currentTime = playerRef.current.getCurrentTime();
+
+            // 2. [ ✅ الحيلة الجديدة ]
+            // نستخدم 'loadVideoById' لإجبار المشغل
+            // على إعادة تحميل الفيديو بالجودة المطلوبة
+            playerRef.current.loadVideoById({
+                videoId: youtubeId,         // (معرف الفيديو الحالي)
+                startSeconds: currentTime,  // (ابدأ من نفس الثانية)
+                suggestedQuality: newQuality // (الجودة الجديدة المطلوبة)
+            });
+            
+            // 3. (نقوم بتحديث الحالة لدينا يدوياً)
+             setVideoQuality(newQuality); 
+
         } catch (err) {
-          console.error("Seek hack failed", err);
+            console.error("Failed to force quality change:", err);
+            // (خطة بديلة: في حال فشل الأمر، نعود للطريقة القديمة)
+            playerRef.current.setPlaybackQuality(newQuality);
         }
     };
+    
     
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
