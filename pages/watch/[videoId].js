@@ -175,11 +175,26 @@ export default function WatchPage() {
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
+        // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         if (!playerRef.current) return;
+        
+        // 1. اطلب الجودة
         playerRef.current.setPlaybackQuality(newQuality);
+        console.log(`▶️ تم طلب تغيير الجودة إلى ${newQuality}...`);
+
+        // 2. [ ✅ تعديل: التحريك ثانية كاملة لضمان التنفيذ ]
+        try {
+          // (الحصول على الوقت الحالي)
+          const currentTime = playerRef.current.getCurrentTime();
+          // (التحريك بمقدار ثانية واحدة كما طلبت)
+          playerRef.current.seekTo(currentTime + 1, true); 
+        } catch (err) {
+          console.error("Seek hack failed", err);
+        }
     };
+    
     const handleActualQualityChange = (event) => {
         const actualQuality = event.data;
         if (actualQuality) {
