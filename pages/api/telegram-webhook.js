@@ -419,6 +419,8 @@ const sendContentMenu_Subjects = async (chatId, messageId, courseId) => {
 };
 
 // (المستوى 3: الشباتر)
+
+// (المستوى 3: الشباتر)
 const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
   await setUserState(chatId, null, { current_subject_id: subjectId });
   const { data: subject, error } = await supabase.from('subjects').select('title, course_id').eq('id', subjectId).single();
@@ -432,13 +434,14 @@ const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
       { text: '❌ حذف شابتر', callback_data: `content_del_chapter_picker_${subjectId}` }
   ]);
   keyboard.push([{ text: '🔃 ترتيب الشباتر', callback_data: `content_order_start_chapters_${subjectId}` }]);
-  keyboard.push([{ text: '🗑️ حذف المادة كاملة', callback_data: `delete_subject_confirm_${subjectId}_${subject.course_id}` }]);
+  // [ ✅✅ إصلاح 1: إضافة course_id هنا ]
+  keyboard.push([{ text: '🗑️ حذف المادة كاملة', callback_data: `delete_subject_confirm_${subject.course_id}_${subjectId}` }]);
   keyboard.push([{ text: '🔙 رجوع (للمواد)', callback_data: `content_nav_course_${subject.course_id}` }]);
 
   const text = `المادة: ${subject.title}\n\nاختر شابتر:`;
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
-
+// (المستوى 4: الفيديوهات)
 // (المستوى 4: الفيديوهات)
 const sendContentMenu_Videos = async (chatId, messageId, chapterId) => {
   await setUserState(chatId, null, { current_chapter_id: chapterId });
@@ -447,6 +450,7 @@ const sendContentMenu_Videos = async (chatId, messageId, chapterId) => {
   if (error || vError) return await editMessage(chatId, messageId, `خطأ: ${error?.message || vError?.message}`);
   if (!chapter) return await editMessage(chatId, messageId, 'خطأ: الشابتر غير موجود.', { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'admin_manage_content' }]] });
 
+  // (الضغط على الفيديو يحذفه - هذا صحيح: chapterId_videoId)
   const keyboard = buildKeyboard(videos.map(v => ({ id: v.id, text: `▶️ ${v.title}` })), `content_del_video_confirm_${chapterId}_`); 
   
   if (videos.length === 0) keyboard.push([{ text: '(لا توجد فيديوهات)', callback_data: 'noop' }]);
@@ -456,7 +460,8 @@ const sendContentMenu_Videos = async (chatId, messageId, chapterId) => {
       { text: '❌ حذف فيديو (اضغط عليه فوق)', callback_data: 'noop' }
   ]);
   keyboard.push([{ text: '🔃 ترتيب الفيديوهات', callback_data: `content_order_start_videos_${chapterId}` }]);
-  keyboard.push([{ text: '🗑️ حذف الشابتر كاملاً', callback_data: `delete_chapter_confirm_${chapterId}_${chapter.subject_id}` }]);
+  // [ ✅✅ إصلاح 1: إضافة subject_id هنا ]
+  keyboard.push([{ text: '🗑️ حذف الشابتر كاملاً', callback_data: `delete_chapter_confirm_${chapter.subject_id}_${chapterId}` }]);
   keyboard.push([{ text: '🔙 رجوع (للشباتر)', callback_data: `content_nav_subject_${chapter.subject_id}` }]);
 
   const text = `الشابتر: ${chapter.title}\n\nاختر فيديو لحذفه أو أضف جديد:`;
@@ -465,11 +470,15 @@ const sendContentMenu_Videos = async (chatId, messageId, chapterId) => {
 
 // --- [ دوال الحذف والترتيب (الجديدة) ] ---
 
+// --- [ دوال الحذف والترتيب (الجديدة) ] ---
+
+// (دالة عامة لاختيار عنصر لحذفه)
 const sendDeletionPicker = async (chatId, messageId, items, nav_callback, delete_prefix) => {
     if (!items || items.length === 0) {
         await editMessage(chatId, messageId, 'لا توجد عناصر لحذفها.', { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: nav_callback }]] });
         return;
     }
+    // [ ✅✅ إصلاح 1: تمرير delete_prefix كاملاً (الذي يحتوي الآن على parentId) ]
     const keyboard = buildKeyboard(items.map(i => ({ id: i.id, text: `🗑️ ${i.title}` })), delete_prefix);
     keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: nav_callback }]);
     await editMessage(chatId, messageId, 'اختر العنصر الذي تريد حذفه (سيتم حذف كل ما بداخله):', { inline_keyboard: keyboard });
@@ -970,6 +979,9 @@ export default async (req, res) => {
       }
 
       // 5. إدارة المحتوى (الحذف)
+      // 5. إدارة المحتوى (الحذف)
+      
+      // (حذف الكورس - هذا صحيح لا يحتاج تعديل)
       if (command.startsWith('delete_course_confirm_')) {
         const courseId = parseInt(command.split('_')[3], 10);
         await supabase.from('courses').delete().eq('id', courseId);
@@ -977,40 +989,52 @@ export default async (req, res) => {
         await sendContentMenu_Courses(chatId, messageId);
         return res.status(200).send('OK');
       }
+      
+      // (حذف المادة - picker)
       if (command.startsWith('content_del_subject_picker_')) {
         const courseId = parseInt(command.split('_')[4], 10);
         const { data: items } = await supabase.from('subjects').select('id, title').eq('course_id', courseId);
-        await sendDeletionPicker(chatId, messageId, items, `content_nav_course_${courseId}`, `delete_subject_confirm_`);
+        // [ ✅✅ إصلاح 1: تمرير courseId إلى prefix الحذف ]
+        await sendDeletionPicker(chatId, messageId, items, `content_nav_course_${courseId}`, `delete_subject_confirm_${courseId}_`);
         return res.status(200).send('OK');
       }
+      // (حذف المادة - handler)
       if (command.startsWith('delete_subject_confirm_')) {
-        const subjectId = parseInt(command.split('_')[3], 10);
-        const courseId = parseInt(command.split('_')[4], 10);
+        // [ ✅✅ إصلاح 1: قراءة IDs بالترتيب الصحيح ]
+        const courseId = parseInt(command.split('_')[3], 10);
+        const subjectId = parseInt(command.split('_')[4], 10);
         await supabase.from('subjects').delete().eq('id', subjectId);
         await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف المادة وكل شباترها' });
         await sendContentMenu_Subjects(chatId, messageId, courseId);
         return res.status(200).send('OK');
       }
+
+      // (حذف الشابتر - picker)
       if (command.startsWith('content_del_chapter_picker_')) {
         const subjectId = parseInt(command.split('_')[4], 10);
         const { data: items } = await supabase.from('chapters').select('id, title').eq('subject_id', subjectId);
-        await sendDeletionPicker(chatId, messageId, items, `content_nav_subject_${subjectId}`, `delete_chapter_confirm_`);
+        // [ ✅✅ إصلاح 1: تمرير subjectId إلى prefix الحذف ]
+        await sendDeletionPicker(chatId, messageId, items, `content_nav_subject_${subjectId}`, `delete_chapter_confirm_${subjectId}_`);
         return res.status(200).send('OK');
       }
+      // (حذف الشابتر - handler)
       if (command.startsWith('delete_chapter_confirm_')) {
-        const chapterId = parseInt(command.split('_')[3], 10);
-        const subjectId = parseInt(command.split('_')[4], 10);
+        // [ ✅✅ إصلاح 1: قراءة IDs بالترتيب الصحيح ]
+        const subjectId = parseInt(command.split('_')[3], 10);
+        const chapterId = parseInt(command.split('_')[4], 10);
         await supabase.from('chapters').delete().eq('id', chapterId);
         await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الشابتر وكل فيديوهاته' });
         await sendContentMenu_Chapters(chatId, messageId, subjectId);
         return res.status(200).send('OK');
       }
+
+      // (حذف الفيديو - هذا صحيح لا يحتاج تعديل)
       if (command.startsWith('content_del_video_confirm_')) {
         const chapterId = parseInt(command.split('_')[4], 10);
         const videoId = parseInt(command.split('_')[5], 10);
         await supabase.from('videos').delete().eq('id', videoId);
         await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الفيديو' });
-        await sendContentMenu_Videos(chatId, messageId, chapterId);
+        await sendContentMenu_Videos(chatId, messageId, chapterId); // (تحديث القائمة)
         return res.status(200).send('OK');
       }
 
@@ -1543,6 +1567,7 @@ export default async (req, res) => {
             break;
             
           // (حالة الترتيب)
+          // (حالة الترتيب)
           case 'awaiting_sort_order':
              const lines = text.split('\n');
              const updates = [];
@@ -1562,14 +1587,30 @@ export default async (req, res) => {
                  break;
              }
              
-             const { error: updateError } = await supabase
-                .from(stateData.item_type)
-                .upsert(updates, { onConflict: 'id' });
+             // [ ✅✅ إصلاح 2: استبدال "upsert" بـ "update" ]
+             // (هذا يمنع خطأ "violates not-null constraint" إذا أدخل الأدمن ID خاطئ)
+             let updateError = null;
+             let successCount = 0;
+             for (const item of updates) {
+                const { data, error } = await supabase
+                    .from(stateData.item_type)
+                    .update({ sort_order: item.sort_order })
+                    .eq('id', item.id)
+                    .select(); // (اطلب إرجاع البيانات للتأكد من نجاح التحديث)
+                
+                if (error) {
+                    console.error(`Failed to update item ${item.id}:`, error);
+                    updateError = error; // (احفظ آخر خطأ)
+                } else if (data && data.length > 0) {
+                    successCount++; // (تم التحديث بنجاح)
+                }
+             }
+             // [ نهاية الإصلاح ]
 
              if (updateError) {
-                 await sendMessage(chatId, `حدث خطأ: ${updateError.message}`);
+                 await sendMessage(chatId, `حدث خطأ جزئي: ${updateError.message}. تم تحديث ${successCount} عنصر فقط.`);
              } else {
-                 await sendMessage(chatId, `✅ تم تحديث ترتيب ${updates.length} عنصر.`);
+                 await sendMessage(chatId, `✅ تم تحديث ترتيب ${successCount} عنصر بنجاح.`);
              }
              
              // (العودة للقائمة السابقة)
