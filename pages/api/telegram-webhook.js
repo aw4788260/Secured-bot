@@ -1672,6 +1672,7 @@ export default async (req, res) => {
             break;
 
           // [ ✅ جديد: حالة سعر المادة ]
+          // [ ✅ جديد: حالة سعر المادة ]
           case 'awaiting_subject_price':
             const subjectPrice = parseInt(text.trim(), 10);
             if (isNaN(subjectPrice) || subjectPrice < 0) {
@@ -1680,7 +1681,7 @@ export default async (req, res) => {
             }
 
             const { data: newSubject, error } = await supabase.from('subjects').insert({ 
-                title: stateData.title,
+                title: stateData.title, // (الاسم الصحيح من الحالة)
                 price: subjectPrice,
                 course_id: stateData.course_id, 
                 sort_order: 0 
@@ -1698,7 +1699,9 @@ export default async (req, res) => {
                 [{ text: '📖 نعم، نسخ الصلاحيات', callback_data: `copy_perms_start_${newSubjectId}` }],
                 [{ text: '❌ لا، شكراً (تخطي)', callback_data: `copy_perms_skip_${newSubjectId}` }]
             ]};
-            await editMessage(chatId, messageId, `✅ تم إضافة المادة "${text}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
+            
+            // [ ✅✅ الإصلاح هنا: استخدام stateData.title بدلاً من text ]
+            await editMessage(chatId, messageId, `✅ تم إضافة المادة "${stateData.title}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
             break;
             
           // [ ✅ تعديل: إصلاح رسالة إضافة الشابتر ]
