@@ -398,9 +398,10 @@ const sendContentMenu_Courses = async (chatId, messageId = null) => {
 };
 
 // (المستوى 2: المواد)
+// (المستوى 2: المواد - [ ✅ تعديل: إضافة زر "تعديل الكورس" ])
 const sendContentMenu_Subjects = async (chatId, messageId, courseId) => {
   await setUserState(chatId, null, { current_course_id: courseId });
-  const { data: course, error } = await supabase.from('courses').select('title').eq('id', courseId).single();
+  const { data: course, error } = await supabase.from('courses').select('title, price').eq('id', courseId).single();
   const { data: subjects, error: subError } = await supabase.from('subjects').select('id, title, sort_order').eq('course_id', courseId).order('sort_order');
   if (error || subError) return await editMessage(chatId, messageId, `خطأ: ${error?.message || subError?.message}`);
   if (!course) return await editMessage(chatId, messageId, 'خطأ: الكورس غير موجود.', { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'admin_manage_content' }]] });
@@ -411,6 +412,10 @@ const sendContentMenu_Subjects = async (chatId, messageId, courseId) => {
       { text: '❌ حذف مادة', callback_data: `content_del_subject_picker_${courseId}` }
   ]);
   keyboard.push([{ text: '🔃 ترتيب المواد', callback_data: `content_order_start_subjects_${courseId}` }]);
+  
+  // [ ✅ جديد: زر تعديل الكورس (السعر) ]
+  keyboard.push([{ text: `✏️ تعديل سعر الكورس (الحالي: ${course.price || 0} ج)`, callback_data: `content_edit_course_price_${courseId}` }]);
+  
   keyboard.push([{ text: '🗑️ حذف الكورس كاملاً', callback_data: `delete_course_confirm_${courseId}` }]);
   keyboard.push([{ text: '🔙 رجوع (للكورسات)', callback_data: 'admin_manage_content' }]);
 
@@ -418,12 +423,10 @@ const sendContentMenu_Subjects = async (chatId, messageId, courseId) => {
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
 
-// (المستوى 3: الشباتر)
-
-// (المستوى 3: الشباتر)
+// (المستوى 3: الشباتر - [ ✅ تعديل: إضافة زر "تعديل المادة" ])
 const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
   await setUserState(chatId, null, { current_subject_id: subjectId });
-  const { data: subject, error } = await supabase.from('subjects').select('title, course_id').eq('id', subjectId).single();
+  const { data: subject, error } = await supabase.from('subjects').select('title, course_id, price').eq('id', subjectId).single();
   const { data: chapters, error: chError } = await supabase.from('chapters').select('id, title, sort_order').eq('subject_id', subjectId).order('sort_order');
   if (error || chError) return await editMessage(chatId, messageId, `خطأ: ${error?.message || chError?.message}`);
   if (!subject) return await editMessage(chatId, messageId, 'خطأ: المادة غير موجودة.', { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: 'admin_manage_content' }]] });
@@ -434,7 +437,10 @@ const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
       { text: '❌ حذف شابتر', callback_data: `content_del_chapter_picker_${subjectId}` }
   ]);
   keyboard.push([{ text: '🔃 ترتيب الشباتر', callback_data: `content_order_start_chapters_${subjectId}` }]);
-  // [ ✅✅ إصلاح 1: إضافة course_id هنا ]
+
+  // [ ✅ جديد: زر تعديل المادة (السعر) ]
+  keyboard.push([{ text: `✏️ تعديل سعر المادة (الحالي: ${subject.price || 0} ج)`, callback_data: `content_edit_subject_price_${subjectId}` }]);
+
   keyboard.push([{ text: '🗑️ حذف المادة كاملة', callback_data: `delete_subject_confirm_${subject.course_id}_${subjectId}` }]);
   keyboard.push([{ text: '🔙 رجوع (للمواد)', callback_data: `content_nav_course_${subject.course_id}` }]);
 
@@ -953,7 +959,8 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // 4. إدارة المحتوى (الإضافة)
+      
+// 4. إدارة المحتوى (الإضافة - [ ✅ تعديل: للسؤال عن السعر ])
       if (command === 'content_add_course') {
         await setUserState(userId, 'awaiting_course_title', { message_id: messageId });
         await editMessage(chatId, messageId, '📚 أرسل "اسم" الكورس الجديد: (أو /cancel للإلغاء)');
@@ -965,6 +972,7 @@ export default async (req, res) => {
         await editMessage(chatId, messageId, '📖 أرسل "اسم" المادة الجديدة: (أو /cancel للإلغاء)');
         return res.status(200).send('OK');
       }
+      // (باقي أوامر الإضافة "شابتر" و "فيديو" تبقى كما هي لأنها لا تحتاج سعر)
       if (command.startsWith('content_add_chapter_')) {
         const subjectId = parseInt(command.split('_')[3], 10);
         await setUserState(userId, 'awaiting_chapter_title', { message_id: messageId, subject_id: subjectId });
@@ -976,8 +984,7 @@ export default async (req, res) => {
         await setUserState(userId, 'awaiting_video_title', { message_id: messageId, chapter_id: chapterId });
         await editMessage(chatId, messageId, '🚀 أرسل "عنوان" الفيديو: (أو /cancel للإلغاء)');
         return res.status(200).send('OK');
-      }
-
+                                                              }
       // 5. إدارة المحتوى (الحذف)
       // 5. إدارة المحتوى (الحذف)
       
@@ -1506,14 +1513,46 @@ export default async (req, res) => {
 
           // (حالات إدارة المحتوى)
           case 'awaiting_course_title':
-            await supabase.from('courses').insert({ title: text, sort_order: 0 });
-            await sendMessage(chatId, `✅ تم إضافة الكورس "${text}" بنجاح.`); // [✅ إصلاح 1]
+            await setUserState(userId, 'awaiting_course_price', { ...stateData, title: text });
+            await editMessage(chatId, messageId, `👍 الاسم: "${text}"\n\nالآن أرسل "سعر" الكورس (للاشتراك الكامل) (أو 0 للمجاني):`);
+            break;
+
+          // [ ✅ جديد: حالة سعر الكورس ]
+          case 'awaiting_course_price':
+            const coursePrice = parseInt(text.trim(), 10);
+            if (isNaN(coursePrice) || coursePrice < 0) {
+                await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
+                return res.status(200).send('OK');
+            }
+            
+            await supabase.from('courses').insert({ 
+                title: stateData.title, 
+                price: coursePrice,
+                sort_order: 0 
+            });
+            
+            // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
+            // (سنقوم فقط بتحديث القائمة، وهذا هو التأكيد)
             await sendContentMenu_Courses(chatId, messageId);
             break;
             
+          // [ ✅ تعديل: حالة إضافة المادة (خطوتين) ]
           case 'awaiting_subject_title':
+            await setUserState(userId, 'awaiting_subject_price', { ...stateData, title: text });
+            await editMessage(chatId, messageId, `👍 الاسم: "${text}"\n\nالآن أرسل "سعر" المادة (للاشتراك المحدد) (أو 0 للمجاني):`);
+            break;
+
+          // [ ✅ جديد: حالة سعر المادة ]
+          case 'awaiting_subject_price':
+            const subjectPrice = parseInt(text.trim(), 10);
+            if (isNaN(subjectPrice) || subjectPrice < 0) {
+                await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
+                return res.status(200).send('OK');
+            }
+
             const { data: newSubject, error } = await supabase.from('subjects').insert({ 
-                title: text, 
+                title: stateData.title,
+                price: subjectPrice,
                 course_id: stateData.course_id, 
                 sort_order: 0 
             }).select().single();
@@ -1524,21 +1563,23 @@ export default async (req, res) => {
                  break;
             }
             
+            // (الانتقال لسؤال نسخ الصلاحيات)
             const newSubjectId = newSubject.id;
             const kbd = { inline_keyboard: [
                 [{ text: '📖 نعم، نسخ الصلاحيات', callback_data: `copy_perms_start_${newSubjectId}` }],
                 [{ text: '❌ لا، شكراً (تخطي)', callback_data: `copy_perms_skip_${newSubjectId}` }]
             ]};
-            await editMessage(chatId, messageId, `✅ تم إضافة المادة "${text}" بنجاح.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
+            await editMessage(chatId, messageId, `✅ تم إضافة المادة "${text}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
             break;
             
+          // [ ✅ تعديل: إصلاح رسالة إضافة الشابتر ]
           case 'awaiting_chapter_title':
             await supabase.from('chapters').insert({ 
                 title: text, 
                 subject_id: stateData.subject_id, 
                 sort_order: 0 
             });
-            await sendMessage(chatId, `✅ تم إضافة الشابتر "${text}" بنجاح.`); // [✅ إصلاح 1]
+            // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
             await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id);
             break;
             
@@ -1562,7 +1603,7 @@ export default async (req, res) => {
                 chapter_id: stateData.chapter_id,
                 sort_order: 0
             });
-            await sendMessage(chatId, '✅✅✅ تم إضافة الفيديو بنجاح!'); // [✅ إصلاح 1]
+            // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
             await sendContentMenu_Videos(chatId, messageId, stateData.chapter_id);
             break;
             
@@ -1587,35 +1628,27 @@ export default async (req, res) => {
                  break;
              }
              
-             // [ ✅✅ إصلاح 2: استبدال "upsert" بـ "update" ]
-             // (هذا يمنع خطأ "violates not-null constraint" إذا أدخل الأدمن ID خاطئ)
              let updateError = null;
              let successCount = 0;
              for (const item of updates) {
-                const { data, error } = await supabase
+                const { data, error }_ = await supabase
                     .from(stateData.item_type)
                     .update({ sort_order: item.sort_order })
                     .eq('id', item.id)
-                    .select(); // (اطلب إرجاع البيانات للتأكد من نجاح التحديث)
+                    .select(); 
                 
                 if (error) {
                     console.error(`Failed to update item ${item.id}:`, error);
-                    updateError = error; // (احفظ آخر خطأ)
+                    updateError = error;
                 } else if (data && data.length > 0) {
-                    successCount++; // (تم التحديث بنجاح)
+                    successCount++;
                 }
              }
-             // [ نهاية الإصلاح ]
-
-             if (updateError) {
-                 await sendMessage(chatId, `حدث خطأ جزئي: ${updateError.message}. تم تحديث ${successCount} عنصر فقط.`);
-             } else {
-                 await sendMessage(chatId, `✅ تم تحديث ترتيب ${successCount} عنصر بنجاح.`);
-             }
              
-             // (العودة للقائمة السابقة)
+             // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
+             // (سنقوم فقط بتحديث القائمة، والتأكيد سيظهر كـ popup)
              const navCallback = stateData.nav_callback;
-             await setUserState(userId, null, null); // (تنظيف الحالة قبل العودة)
+             await setUserState(userId, null, null); 
              
              if (navCallback === 'admin_manage_content') {
                  await sendContentMenu_Courses(chatId, messageId);
@@ -1629,6 +1662,32 @@ export default async (req, res) => {
                  const chapterId = parseInt(navCallback.split('_')[3], 10);
                  await sendContentMenu_Videos(chatId, messageId, chapterId);
              }
+             
+             // (إظهار التأكيد كـ popup بدلاً من رسالة)
+             await answerCallbackQuery(callback_query.id, { text: `✅ تم تحديث ترتيب ${successCount} عنصر` });
+             break;
+             
+          // [ ✅ جديد: حالات تعديل السعر ]
+          case 'awaiting_course_new_price':
+             const newCoursePrice = parseInt(text.trim(), 10);
+             if (isNaN(newCoursePrice) || newCoursePrice < 0) {
+                 await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
+                 return res.status(200).send('OK');
+             }
+             await supabase.from('courses').update({ price: newCoursePrice }).eq('id', stateData.course_id);
+             await sendContentMenu_Subjects(chatId, messageId, stateData.course_id); // (العودة لقائمة المواد)
+             await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر الكورس' });
+             break;
+
+            case 'awaiting_subject_new_price':
+             const newSubjectPrice = parseInt(text.trim(), 10);
+             if (isNaN(newSubjectPrice) || newSubjectPrice < 0) {
+                 await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
+                 return res.status(200).send('OK');
+             }
+             await supabase.from('subjects').update({ price: newSubjectPrice }).eq('id', stateData.subject_id);
+             await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id); // (العودة لقائمة الشباتر)
+             await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر المادة' });
              break;
 
           // (حالة الرفض)
