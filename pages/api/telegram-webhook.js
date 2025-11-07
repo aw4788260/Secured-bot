@@ -321,49 +321,93 @@ const sendAdminManagementMenu = async (chatId, messageId) => {
   await editMessage(chatId, messageId, message, keyboard, 'HTML');
 };
 
+/**
+ * [ ✅✅ تعديل: دالة جلب وعرض الإحصائيات (بالنظام الجديد) ]
+ */
 const sendStatistics = async (chatId, messageId) => {
     try {
-        await editMessage(chatId, messageId, 'جاري حساب الإحصائيات، يرجى الانتظار...');
+        await editMessage(chatId, messageId, '📊 جاري حساب الإحصائيات الجديدة، يرجى الانتظار...');
 
         // 1. إجمالي المستخدمين
         const { count: totalUsers, error: totalError } = await supabase
             .from('users').select('*', { count: 'exact', head: true });
+        if (totalError) throw new Error(`Total Users Error: ${totalError.message}`);
+
+        // 2. إجمالي المشرفين
+        const { count: totalAdmins, error: adminError } = await supabase
+            .from('users').select('*', { count: 'exact', head: true }).eq('is_admin', true);
+        if (adminError) throw new Error(`Total Admins Error: ${adminError.message}`);
+
+        // --- [ إحصائيات المحتوى ] ---
+        const { count: totalCourses, error: cErr } = await supabase.from('courses').select('*', { count: 'exact', head: true });
+        const { count: totalSubjects, error: sErr } = await supabase.from('subjects').select('*', { count: 'exact', head: true });
+        const { count: totalChapters, error: chErr } = await supabase.from('chapters').select('*', { count: 'exact', head: true });
+        const { count: totalVideos, error: vErr } = await supabase.from('videos').select('*', { count: 'exact', head: true });
+        if (cErr || sErr || chErr || vErr) console.error("Content stats error (non-critical)");
+
+        // --- [ إحصائيات الصلاحيات (الجديدة) ] ---
+
+        // 3. المشتركون (صلاحيات الكورسات الكاملة)
+        const { data: fullCourseSubs, error: fullSubError } = await supabase
+            .from('user_course_access')
+            .select('courses ( title )'); // جلب عنوان الكورس
+        if (fullSubError) throw new Error(`Full Course Subs Error: ${fullSubError.message}`);
         
-        // 2. المشتركون (كورسات كاملة)
-        const { count: fullCourseSubs, error: fullSubError } = await supabase
-            .from('user_course_access').select('*', { count: 'exact', head: true });
-        
-        // 3. المشتركون (مواد محددة)
+        // 4. المشتركون (صلاحيات المواد المحددة)
         const { data: specificSubs, error: specificSubError } = await supabase
             .from('user_subject_access')
             .select('subjects ( title )'); // جلب عنوان المادة
+        if (specificSubError) throw new Error(`Specific Subs Error: ${specificSubError.message}`);
 
-        if (totalError || fullSubError || specificSubError) {
-             throw new Error(totalError?.message || fullSubError?.message || specificSubError?.message);
+        // (معالجة إحصائيات الكورسات الكاملة)
+        const courseCounts = {};
+        let totalFullCoursePerms = 0;
+        if (fullCourseSubs) {
+            totalFullCoursePerms = fullCourseSubs.length;
+            fullCourseSubs.forEach(sub => {
+                const title = sub.courses ? sub.courses.title : 'كورس محذوف';
+                courseCounts[title] = (courseCounts[title] || 0) + 1;
+            });
         }
-
+        
+        // (معالجة إحصائيات المواد المحددة)
         const subjectCounts = {};
-        let totalSpecificSubs = 0;
+        let totalSpecificSubjectPerms = 0;
         if (specificSubs) {
-            totalSpecificSubs = specificSubs.length;
+            totalSpecificSubjectPerms = specificSubs.length;
             specificSubs.forEach(sub => {
                 const title = sub.subjects ? sub.subjects.title : 'مادة محذوفة';
                 subjectCounts[title] = (subjectCounts[title] || 0) + 1;
             });
         }
 
-        let message = `📊 إحصائيات البوت:\n\n`;
-        message += `👤 إجمالي المستخدمين المسجلين: ${totalUsers}\n\n`;
-        message += `--- [ الاشتراكات (بالصلاحيات) ] ---\n`;
-        message += `💎 (صلاحيات الكورسات الكاملة): ${fullCourseSubs} صلاحية\n`;
-        message += `🔒 (صلاحيات المواد المحددة): ${totalSpecificSubs} صلاحية (موزعة كالتالي):\n`;
+        // 5. بناء الرسالة
+        let message = `📊 إحصائيات البوت (النظام الجديد):\n\n`;
+        message += `👤 إجمالي المستخدمين: ${totalUsers}\n`;
+        message += `👮‍♂️ إجمالي المشرفين: ${totalAdmins}\n\n`;
+        message += `--- [ 🗂️ المحتوى ] ---\n`;
+        message += `📚 الكورسات: ${totalCourses || 0}\n`;
+        message += `📖 المواد: ${totalSubjects || 0}\n`;
+        message += `📁 الشباتر: ${totalChapters || 0}\n`;
+        message += `▶️ الفيديوهات: ${totalVideos || 0}\n\n`;
+        
+        message += `--- [ 🔑 الصلاحيات الممنوحة ] ---\n`;
+        message += `💎 (صلاحيات الكورسات الكاملة): ${totalFullCoursePerms} صلاحية\n`;
+        if (Object.keys(courseCounts).length > 0) {
+            for (const [title, count] of Object.entries(courseCounts)) {
+                message += `  - ${title}: ${count} مشترك\n`;
+            }
+        }
 
+        message += `\n🔒 (صلاحيات المواد المحددة): ${totalSpecificSubjectPerms} صلاحية\n`;
         if (Object.keys(subjectCounts).length > 0) {
             for (const [title, count] of Object.entries(subjectCounts)) {
                 message += `  - ${title}: ${count} مشترك\n`;
             }
-        } else {
-            message += `  (لا توجد اشتراكات محددة)\n`;
+        }
+        
+        if (totalFullCoursePerms === 0 && totalSpecificSubjectPerms === 0) {
+             message += `(لا توجد أي صلاحيات ممنوحة حالياً)\n`;
         }
 
         await editMessage(chatId, messageId, message);
@@ -373,7 +417,6 @@ const sendStatistics = async (chatId, messageId) => {
         await editMessage(chatId, messageId, `حدث خطأ أثناء جلب الإحصائيات: ${error.message}`);
     }
 };
-
 
 // --- [ (4) دوال الأدمن: إدارة المحتوى (الهيكل الجديد) ] ---
 
@@ -521,54 +564,77 @@ const sendOrderingMenu = async (chatId, messageId, itemType, items, nav_callback
 };
 
 // --- [ (5) دوال الأدمن: إدارة المستخدمين (الجديدة) ] ---
-
+// [ ✅✅ تعديل: دالة سحب الصلاحيات (الجديدة والمعدلة) ]
+// (هذه الدالة تقوم الآن بفلترة المواد المكررة)
 const sendRevokeMenu = async (adminChatId, targetUserId, messageId) => {
   try {
     await setUserState(adminChatId, null, null); // (تنظيف الحالة)
     
+    // 1. التحقق من وجود المستخدم
     const { data: targetUser, error: userCheck } = await supabase.from('users').select('id').eq('id', targetUserId).single();
     if (userCheck || !targetUser) {
         await editMessage(adminChatId, messageId, `خطأ: المستخدم ${targetUserId} غير موجود. اطلب منه تشغيل البوت أولاً.`);
         return;
     }
     
+    // --- [ ✅ التعديل يبدأ هنا ] ---
+
+    // 2. جلب الكورسات الكاملة وتخزين IDs
     const { data: courseAccess, error: cErr } = await supabase
         .from('user_course_access')
-        .select('courses ( id, title )')
+        .select('courses ( id, title )') // (نحتاج id و title)
         .eq('user_id', targetUserId);
         
+    // 3. جلب المواد المحددة (مع course_id الخاص بها)
     const { data: subjectAccess, error: sErr } = await supabase
         .from('user_subject_access')
-        .select('subjects ( id, title )')
+        .select('subjects ( id, title, course_id )') // (نحتاج course_id للفلترة)
         .eq('user_id', targetUserId);
 
     if (cErr || sErr) throw new Error(cErr?.message || sErr?.message);
 
+    // (مجموعة لتخزين IDs الكورسات الكاملة لسهولة البحث)
+    const fullCourseIds = new Set();
+
     let message = `مراجعة صلاحيات المستخدم: ${targetUserId}\n\n`;
     const keyboard = [];
 
-    if ((!courseAccess || courseAccess.length === 0) && (!subjectAccess || subjectAccess.length === 0)) {
-        message += 'لا يمتلك هذا المستخدم أي صلاحيات حالياً.';
-    }
-
+    // 4. عرض الكورسات الكاملة (وتسجيل IDs)
     if (courseAccess && courseAccess.length > 0) {
         message += "💎 الكورسات الكاملة:\n";
         courseAccess.forEach(access => {
             if (access.courses) {
                 message += `- ${access.courses.title}\n`;
                 keyboard.push([{ text: `❌ سحب [كورس ${access.courses.title}]`, callback_data: `revoke_full_course_${targetUserId}_${access.courses.id}`}]);
+                fullCourseIds.add(access.courses.id); // (تسجيل الـ ID للفلترة)
             }
         });
     }
     
-    if (subjectAccess && subjectAccess.length > 0) {
-        message += "\n🔒 المواد المحددة:\n";
-        subjectAccess.forEach(access => {
-            if (access.subjects) {
-                message += `- ${access.subjects.title}\n`;
-                keyboard.push([{ text: `❌ سحب [مادة ${access.subjects.title}]`, callback_data: `revoke_subject_${targetUserId}_${access.subjects.id}`}]);
-            }
+    // 5. فلترة المواد المحددة (لإزالة التكرار)
+    const filteredSubjectAccess = subjectAccess ? subjectAccess.filter(access => {
+        if (!access.subjects) return false; // (إذا كانت المادة محذوفة)
+        // (الشرط: اعرض المادة فقط إذا كان الكورس التابعة له "غير" موجود في قائمة الكورسات الكاملة)
+        return !fullCourseIds.has(access.subjects.course_id);
+    }) : [];
+    
+    // 6. عرض المواد المحددة (المفلترة)
+    if (filteredSubjectAccess.length > 0) {
+        message += "\n🔒 المواد المحددة (التي ليست ضمن كورس كامل):\n";
+        filteredSubjectAccess.forEach(access => {
+            // (access.subjects موجود 100% بسبب الفلترة)
+            message += `- ${access.subjects.title}\n`;
+            keyboard.push([{ text: `❌ سحب [مادة ${access.subjects.title}]`, callback_data: `revoke_subject_${targetUserId}_${access.subjects.id}`}]);
         });
+    }
+    // --- [ ✅ التعديل ينتهي هنا ] ---
+
+    // 7. رسائل توضيحية
+    if ((!courseAccess || courseAccess.length === 0) && (!subjectAccess || subjectAccess.length === 0)) {
+        message += 'لا يمتلك هذا المستخدم أي صلاحيات حالياً.';
+    } else if (courseAccess.length > 0 && filteredSubjectAccess.length === 0 && subjectAccess && subjectAccess.length > 0) {
+        // (رسالة توضيحية إذا كانت كل المواد المحددة مخفية بسبب التكرار)
+        message += "\n\n(يمتلك صلاحيات مواد محددة ولكنها مُضمّنة في الكورسات الكاملة أعلاه)";
     }
 
     keyboard.push([{ text: '⛔️ سحب "جميع" الصلاحيات', callback_data: `revoke_all_${targetUserId}`}]);
@@ -581,6 +647,7 @@ const sendRevokeMenu = async (adminChatId, targetUserId, messageId) => {
     await editMessage(adminChatId, messageId, `حدث خطأ: ${error.message}`);
   }
 };
+
 
 // (الخطوة 1: اختيار الكورس)
 const sendGrantUser_Step1_SelectCourse = async (chatId, messageId, stateData) => {
