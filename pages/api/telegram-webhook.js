@@ -655,8 +655,11 @@ const sendGrantUser_Step3_SelectSubjects = async (chatId, messageId, stateData) 
 // --- [ (6) دوال المستخدم: طلب الاشتراك (الجديدة) ] ---
 
 // (الخطوة 1: عرض الكورسات)
+
+// (الخطوة 1: عرض الكورسات مع السعر)
 const sendSubscription_Step1_SelectCourse = async (chatId, messageId = null) => {
-    const { data: courses, error } = await supabase.from('courses').select('id, title, sort_order').order('sort_order');
+    // [ ✅ تعديل: جلب السعر ]
+    const { data: courses, error } = await supabase.from('courses').select('id, title, sort_order, price').order('sort_order');
     if (error || !courses || courses.length === 0) {
         const msg = 'عذراً، لا توجد كورسات متاحة للاشتراك بها حالياً.';
         if (messageId) await editMessage(chatId, messageId, msg);
@@ -664,11 +667,18 @@ const sendSubscription_Step1_SelectCourse = async (chatId, messageId = null) => 
         return;
     }
 
-    const keyboard = buildKeyboard(courses.map(c => ({ id: c.id, text: `📚 ${c.title}` })), 'sub_req_course_');
+    const keyboard = buildKeyboard(
+        // [ ✅ تعديل: عرض السعر في الزر ]
+        courses.map(c => ({ 
+            id: c.id, 
+            text: `📚 ${c.title} (${c.price || 0} ج)` 
+        })), 
+        'sub_req_course_'
+    );
     keyboard.push([{ text: '🔙 إلغاء', callback_data: 'sub_req_cancel' }]);
     
     const text = 'الخطوة 1: اختر الكورس الذي ترغب بالاشتراك به:';
-    await setUserState(chatId, 'awaiting_subscription_choice', { step: 1, courses: courses });
+    await setUserState(chatId, 'awaiting_subscription_choice', { step: 1, courses: courses }); // (الكورسات الآن تحتوي على السعر)
 
     if (messageId) {
         await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
@@ -687,21 +697,24 @@ const sendSubscription_Step2_SelectType = async (chatId, messageId, stateData, c
     }
     
     const keyboard = { inline_keyboard: [
-        [{ text: `📦 اشتراك كامل (كل مواد ${course.title})`, callback_data: `sub_req_type_full_${courseId}` }],
+        // [ ✅ تعديل: عرض سعر الكورس الكامل ]
+        [{ text: `📦 اشتراك كامل (${course.price || 0} ج)`, callback_data: `sub_req_type_full_${courseId}` }],
         [{ text: '📖 اختيار مواد معينة', callback_data: `sub_req_type_specific_${courseId}` }],
         [{ text: '🔙 رجوع (لاختيار الكورس)', callback_data: 'user_request_subscription' }],
         [{ text: '❌ إلغاء', callback_data: 'sub_req_cancel' }]
     ]};
     
     const text = `الخطوة 2: اختر نوع الاشتراك في "${course.title}":`;
+    // (stateData.selected_course الآن يحتوي على السعر)
     await setUserState(chatId, 'awaiting_subscription_choice', { ...stateData, step: 2, selected_course: course });
     await editMessage(chatId, messageId, text, keyboard);
 };
 
-// (الخطوة 3: اختيار مواد محددة)
+// (الخطوة 3: اختيار مواد محددة مع السعر)
 const sendSubscription_Step3_SelectSubjects = async (chatId, messageId, stateData) => {
     const courseId = stateData.selected_course.id;
-    const { data: subjects, error } = await supabase.from('subjects').select('id, title, sort_order').eq('course_id', courseId).order('sort_order');
+    // [ ✅ تعديل: جلب السعر ]
+    const { data: subjects, error } = await supabase.from('subjects').select('id, title, sort_order, price').eq('course_id', courseId).order('sort_order');
     
     if (error || !subjects || subjects.length === 0) {
         await editMessage(chatId, messageId, 'عذراً، لا توجد مواد متاحة حالياً في هذا الكورس.');
@@ -712,38 +725,44 @@ const sendSubscription_Step3_SelectSubjects = async (chatId, messageId, stateDat
     const selected_subjects = stateData.selected_subjects || [];
     const selected_subject_ids = selected_subjects.map(s => s.id);
     
+    let total = 0; // (حساب الإجمالي)
+    
     const keyboard = [];
     subjects.forEach(s => {
         const isSelected = selected_subject_ids.includes(s.id);
+        if (isSelected) total += (s.price || 0); // (إضافة للسعر الإجمالي)
+        
         keyboard.push([{ 
-            text: `${isSelected ? '✅' : ''} ${s.title}`, 
-            callback_data: `sub_req_toggle_${s.id}|${s.title}` 
+            // [ ✅ تعديل: عرض السعر وتمريره في الـ callback ]
+            text: `${isSelected ? '✅' : ''} ${s.title} (${s.price || 0} ج)`, 
+            callback_data: `sub_req_toggle_${s.id}|${s.title}|${s.price || 0}` 
         }]);
     });
 
     if (selected_subjects.length > 0) {
-         keyboard.push([{ text: '👍 تأكيد الإختيار والمتابعة', callback_data: 'sub_req_submit_subjects' }]);
+         keyboard.push([{ text: `👍 تأكيد الإختيار (الإجمالي: ${total} ج)`, callback_data: 'sub_req_submit_subjects' }]);
     }
     
     keyboard.push([{ text: '🔙 رجوع (لاختيار النوع)', callback_data: `sub_req_course_${courseId}` }]);
     keyboard.push([{ text: '❌ إلغاء', callback_data: 'sub_req_cancel' }]);
     
-    const text = `الخطوة 3: اختر المواد التي ترغب بها من "${stateData.selected_course.title}":`;
-    await setUserState(chatId, 'awaiting_subscription_choice', { ...stateData, step: 3, subjects: subjects, selected_subjects: selected_subjects });
+    // [ ✅ تعديل: عرض الإجمالي في الرسالة ]
+    const text = `الخطوة 3: اختر المواد التي ترغب بها.\nالإجمالي الحالي: ${total} ج`;
+    await setUserState(chatId, 'awaiting_subscription_choice', { ...stateData, step: 3, subjects: subjects, selected_subjects: selected_subjects, current_total: total });
     await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
-
-
 // --- [ (7) دوال نظام طلبات الاشتراك (المساعدة) ] ---
 
 const notifyAdminsOfNewRequest = async (request) => {
     const { data: admins } = await supabase.from('users').select('id').eq('is_admin', true);
     if (!admins || admins.length === 0) return;
     
+    // [ ✅ تعديل: إظهار السعر ]
     let caption = `<b>🔔 طلب اشتراك جديد</b>\n\n` +
                   `<b>المستخدم:</b> ${request.user_name || 'غير متوفر'}\n` +
                   (request.user_username ? `<b>المعرف:</b> @${request.user_username}\n` : '') +
                   `<b>ID:</b> <code>${request.user_id}</code>\n\n` +
+                  `💰 <b>الإجمالي:</b> ${request.total_price || 0} ج\n` +
                   `<b>الطلب:</b>\n${request.course_title}`;
                   
     const keyboard = {
@@ -772,10 +791,12 @@ const sendPendingRequests = async (chatId, messageId) => {
     
     await sendMessage(chatId, `يوجد ${requests.length} طلب اشتراك معلق:`);
     for (const request of requests) {
+        // [ ✅ تعديل: إظهار السعر ]
         let caption = `<b>🔔 طلب اشتراك معلق</b>\n\n` +
                       `<b>المستخدم:</b> ${request.user_name || 'غير متوفر'}\n` +
                       (request.user_username ? `<b>المعرف:</b> @${request.user_username}\n` : '') +
                       `<b>ID:</b> <code>${request.user_id}</code>\n\n` +
+                      `💰 <b>الإجمالي:</b> ${request.total_price || 0} ج\n` +
                       `<b>الطلب:</b>\n${request.course_title}`;
         
         const keyboard = {
@@ -842,18 +863,20 @@ export default async (req, res) => {
             
             if (command.startsWith('sub_req_type_full_')) {
                 const course = stateData.selected_course;
+                const coursePrice = course.price || 0;
                 const requestTitle = `${course.title} (اشتراك كامل)`;
                 
                 await setUserState(userId, 'awaiting_payment_proof', {
                     request_type: 'course',
-                    items: [{ id: course.id, title: course.title }],
-                    description: requestTitle
+                    items: [{ id: course.id, title: course.title, price: coursePrice }],
+                    description: requestTitle,
+                    total_price: coursePrice // [ ✅ تعديل: حفظ السعر ]
                 });
                 
-                await editMessage(chatId, messageId, `لقد اخترت:\n- ${requestTitle}\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                await editMessage(chatId, messageId, `لقد اخترت:\n- ${requestTitle}\n\n💰 الإجمالي المطلوب: ${coursePrice} ج\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
                 return res.status(200).send('OK');
             }
-
+          
             if (command.startsWith('sub_req_type_specific_')) {
                 await sendSubscription_Step3_SelectSubjects(chatId, messageId, stateData);
                 return res.status(200).send('OK');
@@ -863,35 +886,47 @@ export default async (req, res) => {
                 const parts = command.substring('sub_req_toggle_'.length).split('|');
                 const subjectId = parseInt(parts[0], 10);
                 const subjectTitle = parts[1];
+                const subjectPrice = parseInt(parts[2], 10) || 0; // [ ✅ تعديل: قراءة السعر ]
+                
                 if (!subjectTitle) return res.status(200).send('OK');
                 
                 let selected = stateData.selected_subjects || [];
                 const index = selected.findIndex(c => c.id === subjectId);
                 
-                if (index > -1) selected.splice(index, 1);
-                else selected.push({ id: subjectId, title: subjectTitle });
+                if (index > -1) {
+                    selected.splice(index, 1); // إلغاء الاختيار
+                } else {
+                    selected.push({ id: subjectId, title: subjectTitle, price: subjectPrice }); // [ ✅ تعديل: حفظ السعر ]
+                }
                 
                 const newState = { ...stateData, selected_subjects: selected };
                 await sendSubscription_Step3_SelectSubjects(chatId, messageId, newState);
                 return res.status(200).send('OK');
             }
             
+            // (الخطوة 3: المستخدم يضغط "تأكيد" للمواد)
             if (command === 'sub_req_submit_subjects') {
                 if (!stateData.selected_subjects || stateData.selected_subjects.length === 0) {
                     await answerCallbackQuery(callback_query.id, { text: 'الرجاء اختيار مادة واحدة على الأقل.' });
                     return res.status(200).send('OK');
                 }
                 
-                const titles = stateData.selected_subjects.map(c => c.title).join('\n- ');
+                const titles = stateData.selected_subjects.map(c => ` ${c.title} (${c.price} ج)`).join('\n- ');
                 const requestTitle = stateData.selected_subjects.map(c => c.title).join(', ');
+                const totalPrice = stateData.current_total || 0; // [ ✅ تعديل: جلب الإجمالي ]
                 
                 await setUserState(userId, 'awaiting_payment_proof', {
                     request_type: 'subject',
                     items: stateData.selected_subjects,
-                    description: requestTitle
+                    description: requestTitle,
+                    total_price: totalPrice // [ ✅ تعديل: حفظ السعر الإجمالي ]
                 });
                 
-                await editMessage(chatId, messageId, `لقد اخترت:\n- ${titles}\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`, null);
+                await editMessage(
+                    chatId, messageId,
+                    `لقد اخترت:\n- ${titles}\n\n💰 الإجمالي المطلوب: ${totalPrice} ج\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`,
+                    null 
+                );
                 return res.status(200).send('OK');
             }
         } // (نهاية حالة 'awaiting_subscription_choice')
@@ -984,7 +1019,22 @@ export default async (req, res) => {
         await setUserState(userId, 'awaiting_video_title', { message_id: messageId, chapter_id: chapterId });
         await editMessage(chatId, messageId, '🚀 أرسل "عنوان" الفيديو: (أو /cancel للإلغاء)');
         return res.status(200).send('OK');
-                                                              }
+               
+    }
+
+      // [ ✅ جديد: أوامر تعديل السعر ]
+      if (command.startsWith('content_edit_course_price_')) {
+          const courseId = parseInt(command.split('_')[4], 10);
+          await setUserState(userId, 'awaiting_course_new_price', { message_id: messageId, course_id: courseId });
+          await editMessage(chatId, messageId, '💰 أرسل "السعر الجديد" للكورس: (أو /cancel)');
+          return res.status(200).send('OK');
+      }
+      if (command.startsWith('content_edit_subject_price_')) {
+          const subjectId = parseInt(command.split('_')[4], 10);
+          await setUserState(userId, 'awaiting_subject_new_price', { message_id: messageId, subject_id: subjectId });
+          await editMessage(chatId, messageId, '💰 أرسل "السعر الجديد" للمادة: (أو /cancel)');
+          return res.status(200).send('OK');
+      }
       // 5. إدارة المحتوى (الحذف)
       // 5. إدارة المحتوى (الحذف)
       
@@ -1161,16 +1211,21 @@ export default async (req, res) => {
             return res.status(200).send('OK');
         }
         
+        // (الخطوة 2: اختار "كورس كامل")
         if (command.startsWith('admin_grant_type_full_')) {
             const courseId = parseInt(command.split('_')[4], 10);
             const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
             
             await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
             
-            await editMessage(chatId, messageId, `✅ تم منح صلاحية "الكورس الكامل" لـ ${usersToUpdate.length} مستخدم.`);
+            // [ ✅ إصلاح 1: استخدام answerCallbackQuery ]
+            await answerCallbackQuery(callback_query.id, { text: `✅ تم منح صلاحية "الكورس الكامل" لـ ${usersToUpdate.length} مستخدم.` });
             await setUserState(userId, null, null);
+            await sendUserMenu(chatId, messageId); // (العودة لقائمة المستخدمين)
             return res.status(200).send('OK');
         }
+        
+        
         
         if (command.startsWith('admin_grant_type_specific_')) {
             await sendGrantUser_Step3_SelectSubjects(chatId, messageId, stateData);
@@ -1217,8 +1272,10 @@ export default async (req, res) => {
             
             await supabase.from('user_subject_access').upsert(accessObjects, { onConflict: 'user_id, subject_id' });
             
-            await editMessage(chatId, messageId, `✅ تم منح ${selectedIds.length} مادة محددة لـ ${usersToUpdate.length} مستخدم.`);
+            // [ ✅ إصلاح 1: استخدام answerCallbackQuery ]
+            await answerCallbackQuery(callback_query.id, { text: `✅ تم منح ${selectedIds.length} مادة محددة لـ ${usersToUpdate.length} مستخدم.` });
             await setUserState(userId, null, null);
+            await sendUserMenu(chatId, messageId); // (العودة لقائمة المستخدمين)
             return res.status(200).send('OK');
         }
       } // (نهاية حالة 'awaiting_grant_selection')
@@ -1415,14 +1472,17 @@ export default async (req, res) => {
       messageId = stateData.message_id; // (ID الرسالة التي يجب تعديلها)
 
       // (1. حالات المستخدم العادي - إرسال صورة)
+      // (1. حالات المستخدم العادي - إرسال صورة)
       if (!user.is_admin && currentState === 'awaiting_payment_proof') {
         if (!message.photo) {
             await sendMessage(chatId, 'الرجاء إرسال صورة فقط (Screenshot) كإثبات. أعد المحاولة أو اضغط /cancel', null, null, true);
             return res.status(200).send('OK');
         }
         
-        if (!stateData.request_type || !stateData.items || !stateData.description) {
-            await sendMessage(chatId, 'حدث خطأ. بيانات الطلب مفقودة. ابدأ من جديد بالضغط على /start', null, null, true);
+        const stateData = user.state_data;
+        // [ ✅ تعديل: التحقق من السعر ]
+        if (!stateData.request_type || !stateData.items || !stateData.description || typeof stateData.total_price === 'undefined') {
+            await sendMessage(chatId, 'حدث خطأ. بيانات الطلب (أو السعر) مفقودة. ابدأ من جديد بالضغط على /start', null, null, true);
             await setUserState(userId, null, null);
             return res.status(200).send('OK');
         }
@@ -1432,12 +1492,13 @@ export default async (req, res) => {
         const user_username = from.username || null;
         
         const courseTitleDesc = stateData.description;
+        const totalPrice = stateData.total_price;
         
         let requested_items_data = [];
         if (stateData.request_type === 'course') {
-             requested_items_data = stateData.items.map(item => ({ type: 'course', id: item.id }));
+             requested_items_data = stateData.items.map(item => ({ type: 'course', id: item.id, price: item.price }));
         } else if (stateData.request_type === 'subject') {
-             requested_items_data = stateData.items.map(item => ({ type: 'subject', id: item.id }));
+             requested_items_data = stateData.items.map(item => ({ type: 'subject', id: item.id, price: item.price }));
         }
 
         const { data: newRequest, error: insertError } = await supabase
@@ -1446,7 +1507,9 @@ export default async (req, res) => {
                 user_id: userId, user_name: user_name, user_username: user_username,
                 course_title: courseTitleDesc,
                 requested_data: requested_items_data,
-                payment_file_id: payment_file_id, status: 'pending'
+                payment_file_id: payment_file_id,
+                status: 'pending',
+                total_price: totalPrice // [ ✅ تعديل: حفظ السعر الإجمالي ]
             })
             .select().single();
 
@@ -1460,7 +1523,6 @@ export default async (req, res) => {
         
         return res.status(200).send('OK');
       }
-
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         
