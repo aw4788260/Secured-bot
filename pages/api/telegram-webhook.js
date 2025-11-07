@@ -1734,6 +1734,7 @@ export default async (req, res) => {
              break;
              
           // [ ✅ جديد: حالات تعديل السعر ]
+          // [ ✅ جديد: حالات تعديل السعر ]
           case 'awaiting_course_new_price':
              const newCoursePrice = parseInt(text.trim(), 10);
              if (isNaN(newCoursePrice) || newCoursePrice < 0) {
@@ -1741,19 +1742,27 @@ export default async (req, res) => {
                  return res.status(200).send('OK');
              }
              await supabase.from('courses').update({ price: newCoursePrice }).eq('id', stateData.course_id);
+             
+             // [ ✅✅ الإصلاح: حذف السطر المسبب للخطأ ]
+             // (السطر التالي تم حذفه لأنه يخص الأزرار فقط)
+             // await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر الكورس' });
+             
              await sendContentMenu_Subjects(chatId, messageId, stateData.course_id); // (العودة لقائمة المواد)
-             await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر الكورس' });
              break;
-
-            case 'awaiting_subject_new_price':
+             
+          case 'awaiting_subject_new_price':
              const newSubjectPrice = parseInt(text.trim(), 10);
              if (isNaN(newSubjectPrice) || newSubjectPrice < 0) {
                  await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
                  return res.status(200).send('OK');
              }
              await supabase.from('subjects').update({ price: newSubjectPrice }).eq('id', stateData.subject_id);
+
+             // [ ✅✅ الإصلاح: حذف السطر المسبب للخطأ ]
+             // (السطر التالي تم حذفه لأنه يخص الأزرار فقط)
+             // await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر المادة' });
+             
              await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id); // (العودة لقائمة الشباتر)
-             await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر المادة' });
              break;
 
           // (حالة الرفض)
