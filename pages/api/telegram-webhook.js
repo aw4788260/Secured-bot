@@ -22,44 +22,6 @@ const escapeMarkdownV2 = (text) => {
 /**
  * دالة إرسال الرسائل الرئيسية
  */
-const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null, protect_content = false) => {
-    if (!text || text.trim() === '') {
-        console.warn(`Attempted to send empty message to chat ID: ${chatId}`);
-        return null;
-    }
-    
-    // (استخدام دالة التهيأة إذا كان الوضع MarkdownV2)
-    const processedText = (parse_mode === 'MarkdownV2') ? escapeMarkdownV2(text) : text;
-    
-    const payload = {
-        chat_id: chatId,
-        text: processedText, // (استخدام النص المهيأ)
-        protect_content: protect_content
-    };
-    
-    if (reply_markup) payload.reply_markup = reply_markup;
-    if (parse_mode) payload.parse_mode = parse_mode;
-    
-    try {
-        const response = await axios.post(`${TELEGRAM_API}/sendMessage`, payload);
-        return response; // (نحتاج إرجاع الرد لنحصل على message_id أحياناً)
-    } catch (error) {
-        console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
-        
-        // (خطة بديلة إذا فشل الماركداون)
-        if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
-            console.warn(`Markdown parsing failed for chat ${chatId}. Resending as plain text.`);
-            const retryPayload = { ...payload, text: text }; // (استخدام النص الأصلي)
-            delete retryPayload.parse_mode;
-            try {
-                return await axios.post(`${TELEGRAM_API}/sendMessage`, retryPayload);
-            } catch (retryError) {
-                console.error(`Failed to resend plain text message to chat ${chatId}:`, retryError.response?.data || retryError.message);
-            }
-        }
-        return null;
-    }
-};
 
 /**
  * دالة إرسال الصورة (للأدمن)
@@ -79,6 +41,42 @@ const sendPhotoMessage = async (chatId, photo_file_id, caption, reply_markup = n
     }
 };
 
+const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null, protect_content = false) => {
+    if (!text || text.trim() === '') {
+        console.warn(`Attempted to send empty message to chat ID: ${chatId}`);
+        return null;
+    }
+    
+    const processedText = (parse_mode === 'MarkdownV2') ? escapeMarkdownV2(text) : text;
+    
+    const payload = {
+        chat_id: chatId,
+        text: processedText,
+        protect_content: protect_content // (الافتراضي false)
+    };
+    
+    if (reply_markup) payload.reply_markup = reply_markup;
+    if (parse_mode) payload.parse_mode = parse_mode;
+    
+    try {
+        const response = await axios.post(`${TELEGRAM_API}/sendMessage`, payload);
+        return response;
+    } catch (error) {
+        console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
+        
+        if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
+            console.warn(`Markdown parsing failed for chat ${chatId}. Resending as plain text.`);
+            const retryPayload = { ...payload, text: text };
+            delete retryPayload.parse_mode;
+            try {
+                return await axios.post(`${TELEGRAM_API}/sendMessage`, retryPayload);
+            } catch (retryError) {
+                console.error(`Failed to resend plain text message to chat ${chatId}:`, retryError.response?.data || retryError.message);
+            }
+        }
+        return null;
+    }
+};
 /**
  * دالة الرد على Callback Query
  */
@@ -96,44 +94,7 @@ const answerCallbackQuery = async (callbackQueryId, options = {}) => {
 /**
  * دالة تعديل الرسائل
  */
-const editMessage = async (chatId, messageId, text, reply_markup = null, parse_mode = null) => {
-    if (!text || text.trim() === '') {
-        console.warn(`Attempted to edit to empty message: ${chatId}:${messageId}`);
-        return;
-    }
-    
-    // (استخدام دالة التهيأة إذا كان الوضع MarkdownV2)
-    const processedText = (parse_mode === 'MarkdownV2') ? escapeMarkdownV2(text) : text;
 
-    const payload = {
-        chat_id: chatId,
-        message_id: messageId,
-        text: processedText, // (استخدام النص المهيأ)
-    };
-    
-    if (reply_markup) payload.reply_markup = reply_markup;
-    if (parse_mode) payload.parse_mode = parse_mode;
-    
-    try {
-        await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
-    } catch (error) {
-        if (error.response && error.response.data && error.response.data.description.includes("message is not modified")) {
-            // (لا مشكلة، النص أو الأزرار لم تتغير)
-        } else if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
-             console.error(`Markdown parsing failed for editMessage ${chatId}:${messageId}. Resending as plain text.`);
-             // (خطة بديلة إذا فشل الماركداون)
-             const retryPayload = { ...payload, text: text }; // (استخدام النص الأصلي)
-             delete retryPayload.parse_mode;
-             try {
-                await axios.post(`${TELEGRAM_API}/editMessageText`, retryPayload);
-             } catch (retryError) {
-                 console.error(`Failed to resend plain text editMessage to ${chatId}:${messageId}:`, retryError.response?.data || retryError.message);
-             }
-        } else {
-             console.error(`Failed to edit message ${chatId}:${messageId}:`, error.response?.data || error.message);
-        }
-    }
-};
 
 /**
  * دالة تعديل الأزرار فقط
@@ -150,6 +111,42 @@ const editMarkup = async (chatId, messageId, reply_markup = null) => {
     }
 };
 
+const editMessage = async (chatId, messageId, text, reply_markup = null, parse_mode = null) => {
+    if (!text || text.trim() === '') {
+        console.warn(`Attempted to edit to empty message: ${chatId}:${messageId}`);
+        return;
+    }
+    
+    const processedText = (parse_mode === 'MarkdownV2') ? escapeMarkdownV2(text) : text;
+
+    const payload = {
+        chat_id: chatId,
+        message_id: messageId,
+        text: processedText,
+    };
+    
+    if (reply_markup) payload.reply_markup = reply_markup;
+    if (parse_mode) payload.parse_mode = parse_mode;
+    
+    try {
+        await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
+    } catch (error) {
+        if (error.response && error.response.data && error.response.data.description.includes("message is not modified")) {
+            // (لا مشكلة)
+        } else if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
+             console.error(`Markdown parsing failed for editMessage ${chatId}:${messageId}. Resending as plain text.`);
+             const retryPayload = { ...payload, text: text };
+             delete retryPayload.parse_mode;
+             try {
+                await axios.post(`${TELEGRAM_API}/editMessageText`, retryPayload);
+             } catch (retryError) {
+                 console.error(`Failed to resend plain text editMessage to ${chatId}:${messageId}:`, retryError.response?.data || retryError.message);
+             }
+        } else {
+             console.error(`Failed to edit message ${chatId}:${messageId}:`, error.response?.data || error.message);
+        }
+    }
+};
 /**
  * دالة بناء الأزرار
  */
@@ -478,11 +475,16 @@ const sendDeletionPicker = async (chatId, messageId, items, nav_callback, delete
     await editMessage(chatId, messageId, 'اختر العنصر الذي تريد حذفه (سيتم حذف كل ما بداخله):', { inline_keyboard: keyboard });
 };
 
+
+/**
+ * [ ✅✅ إصلاح: دالة الترتيب المعدلة ]
+ * (دالة عامة للترتيب)
+ */
 const sendOrderingMenu = async (chatId, messageId, itemType, items, nav_callback) => {
     await setUserState(chatId, 'awaiting_sort_order', {
         message_id: messageId,
-        item_type: itemType,
-        items: items,
+        item_type: itemType, // 'courses', 'subjects', 'chapters', 'videos'
+        items: items, // (قائمة العناصر الحالية)
         nav_callback: nav_callback
     });
     
@@ -491,40 +493,17 @@ const sendOrderingMenu = async (chatId, messageId, itemType, items, nav_callback
         text += '(لا توجد عناصر لترتيبها)';
     } else {
         items.forEach((item, index) => {
-            // [ ✅ إصلاح 2: تهيئة العنوان قبل إضافته للنص ]
+            // [ ✅✅ الإصلاح هنا: تهيئة العنوان قبل إضافته للنص ]
+            // (هذا يمنع خطأ "can't parse entities")
             const safeTitle = escapeMarkdownV2(item.title);
             text += `${index + 1}. ${safeTitle} (ID: ${item.id} | الترتيب: ${item.sort_order || 0})\n`;
         });
     }
     text += '\nأرسل الترتيب الجديد في رسالة واحدة، كل عنصر في سطر، بالشكل التالي:\n`ID,رقم_الترتيب`\n\nمثال:\n`12,10`\n`15,20`\n`11,30`\n\n(أو /cancel للإلغاء)';
     
-    // (الدالة الأم editMessage ستقوم بتهيئة النص كاملاً، لكننا نحتاج أن تبقى الـ backticks)
-    // (لذا سنقوم بتهيئة العناوين فقط يدوياً، ونرسل النص)
-    
-    // (للتأكد 100%، سنقوم بتهيئة النص يدوياً هنا ونمرر parse_mode)
-    const payload = {
-        chat_id: chatId,
-        message_id: messageId,
-        text: text, // (النص يحتوي على ` و \n، ويجب تهيئة العناوين)
-        parse_mode: 'MarkdownV2',
-        reply_markup: { inline_keyboard: [[{ text: '🔙 رجوع (إلغاء)', callback_data: nav_callback }]] }
-    };
-    
-    try {
-        await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
-    } catch (e) {
-        console.error("Error in sendOrderingMenu editMessage:", e.response?.data || e.message);
-        // (إذا فشل الماركداون، أرسله كنص عادي)
-        if (e.response && e.response.data && e.response.data.description.includes("can't parse entities")) {
-            payload.text = text.replace(/`/g, ''); // (إزالة الماركداون)
-            delete payload.parse_mode;
-            try {
-                await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
-            } catch (e2) {}
-        }
-    }
+    // (الدالة editMessage نفسها ستقوم بتهيئة النص كاملاً باستخدام الدالة الجديدة)
+    await editMessage(chatId, messageId, text, { inline_keyboard: [[{ text: '🔙 رجوع (إلغاء)', callback_data: nav_callback }]] }, 'MarkdownV2');
 };
-
 
 // --- [ (5) دوال الأدمن: إدارة المستخدمين (الجديدة) ] ---
 
