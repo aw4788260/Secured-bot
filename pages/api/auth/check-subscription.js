@@ -12,31 +12,31 @@ export default async (req, res) => {
   }
 
   try {
-    // الخطوة 1: التحقق من المستخدم نفسه (هل هو مشترك عام؟)
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('is_subscribed')
-      .eq('id', userId)
-      .single();
+    // الخطوة 1: التحقق من صلاحيات الكورسات الكاملة
+    const { data: courseAccess, error: courseError } = await supabase
+      .from('user_course_access') // <-- الجدول الجديد
+      .select('course_id')
+      .eq('user_id', userId)
+      .limit(1);
 
-    if (userError && userError.code !== 'PGRST116') throw userError;
+    if (courseError) throw courseError;
 
-    // إذا كان مشتركاً عاماً (صلاحية كاملة)، اسمح له بالدخول
-    if (user && user.is_subscribed) {
+    // إذا وجدنا أي صلاحية كورس كامل، اسمح له بالدخول
+    if (courseAccess && courseAccess.length > 0) {
       return res.status(200).json({ isSubscribed: true });
     }
 
-    // الخطوة 2: إذا لم يكن مشتركاً عاماً، تحقق من جدول الصلاحيات المحددة
-    const { data: accessData, error: accessError } = await supabase
-      .from('user_course_access')
-      .select('course_id') // فقط نحتاج أن نعرف إذا كان هناك أي صف
+    // الخطوة 2: التحقق من صلاحيات المواد المحددة
+    const { data: subjectAccess, error: subjectError } = await supabase
+      .from('user_subject_access') // <-- الجدول الثاني
+      .select('subject_id')
       .eq('user_id', userId)
-      .limit(1); // نكتفي بأول صلاحية نجدها
+      .limit(1);
 
-    if (accessError) throw accessError;
+    if (subjectError) throw subjectError;
 
-    // إذا وجدنا أي صلاحية (طول المصفوفة أكبر من 0)، اسمح له بالدخول
-    if (accessData && accessData.length > 0) {
+    // إذا وجدنا أي صلاحية مادة محددة، اسمح له بالدخول
+    if (subjectAccess && subjectAccess.length > 0) {
       return res.status(200).json({ isSubscribed: true });
     }
 
