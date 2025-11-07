@@ -1,5 +1,5 @@
 // pages/api/data/get-structured-courses.js
-// (سيعيد هذا ال API "المواد" التي يملكها المستخدم)
+// (سيعيد هذا ال API "المواد" التي يملكها المستخدم مع الإصلاح)
 import { supabase } from '../../../lib/supabaseClient';
 
 // الاستعلام المتداخل لجلب المادة وكل ما تحتها
@@ -34,19 +34,18 @@ export default async (req, res) => {
     if (courseAccess && courseAccess.length > 0) {
       const courseIds = courseAccess.map(c => c.course_id);
       
-      // جلب "كل" المواد التابعة لهذه الكورسات
       const { data: subjectsFromCourses, error: subjectsErr } = await supabase
         .from('subjects')
         .select(subjectQuery)
         .in('course_id', courseIds)
-        .order('sort_order', { ascending: true }) // ترتيب المواد
-        .order('sort_order', { foreignTable: 'chapters', ascending: true }) // ترتيب الشباتر
-        .order('sort_order', { foreignTable: 'chapters.videos', ascending: true }); // ترتيب الفيديوهات
+        .order('sort_order', { ascending: true })
+        .order('sort_order', { foreignTable: 'chapters', ascending: true })
+        .order('sort_order', { foreignTable: 'chapters.videos', ascending: true });
 
       if (subjectsErr) throw subjectsErr;
       
       subjectsFromCourses.forEach(subject => {
-        allowedSubjectIds.add(subject.id); // (لمنع التكرار لاحقاً)
+        allowedSubjectIds.add(subject.id);
         finalSubjectsData.push(subject);
       });
     }
@@ -62,7 +61,7 @@ export default async (req, res) => {
     if (subjectAccess && subjectAccess.length > 0) {
       const specificSubjectIds = subjectAccess
         .map(s => s.subject_id)
-        .filter(id => !allowedSubjectIds.has(id)); // (فلترة المواد التي أخذناها بالفعل من الخطوة 1)
+        .filter(id => !allowedSubjectIds.has(id)); 
 
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
@@ -78,27 +77,30 @@ export default async (req, res) => {
       }
     }
 
-    // --- الخطوة 3: فلترة وتنظيف وترتيب ---
+    // --- الخطوة 3: [ ✅✅ الإصلاح هنا ] ---
     
-    // (إعادة ترتيب القائمة النهائية بناءً على sort_order الخاص بالمواد)
+    // (فقط نقوم بترتيب المواد)
     finalSubjectsData.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-    // (فلترة الشباتر والفيديوهات الفارغة)
-    const filteredData = finalSubjectsData.map(subject => ({
+    // (سنقوم فقط بضمان الترتيب الداخلي، وسيتولى التطبيق (app.js)
+    // عرض رسائل "لا توجد شباتر" أو "لا توجد فيديوهات" إذا كانت القوائم فارغة)
+    
+    const structuredData = finalSubjectsData.map(subject => ({
       ...subject,
+      // (نرتب الشباتر)
       chapters: subject.chapters
-                      .filter(chapter => chapter.videos.length > 0)
-                      // (ترتيب الشباتر)
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       .map(chapter => ({
                           ...chapter,
-                          // (ترتيب الفيديوهات)
+                          // (ونرتب الفيديوهات)
                           videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       }))
-    })).filter(subject => subject.chapters.length > 0); 
+    }));
     
-    console.log(`Successfully assembled data for ${filteredData.length} subjects.`);
-    res.status(200).json(filteredData); // (إرجاع قائمة المواد مباشرة)
+    // (ملاحظة: لقد أزلنا الفلترة (.filter) التي كانت تخفي المواد الفارغة)
+    
+    console.log(`Successfully assembled data for ${structuredData.length} subjects (pre-filtering removed).`);
+    res.status(200).json(structuredData); // (إرجاع البيانات كاملة)
 
   } catch (err) {
     console.error("CRITICAL Error in get-structured-data:", err.message, err.stack);
