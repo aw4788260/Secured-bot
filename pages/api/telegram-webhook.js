@@ -1671,6 +1671,7 @@ export default async (req, res) => {
             
           // (حالة الترتيب)
           // (حالة الترتيب)
+          // (حالة الترتيب)
           case 'awaiting_sort_order':
              const lines = text.split('\n');
              const updates = [];
@@ -1693,24 +1694,30 @@ export default async (req, res) => {
              let updateError = null;
              let successCount = 0;
              for (const item of updates) {
-                const { data, error }_ = await supabase
+                // [ ✅✅ الإصلاح هنا: إزالة الـ "_" الزائدة ]
+                const { data, error } = await supabase
                     .from(stateData.item_type)
                     .update({ sort_order: item.sort_order })
                     .eq('id', item.id)
-                    .select(); 
+                    .select(); // (اطلب إرجاع البيانات للتأكد من نجاح التحديث)
                 
                 if (error) {
                     console.error(`Failed to update item ${item.id}:`, error);
-                    updateError = error;
+                    updateError = error; // (احفظ آخر خطأ)
                 } else if (data && data.length > 0) {
-                    successCount++;
+                    successCount++; // (تم التحديث بنجاح)
                 }
              }
+
+             if (updateError) {
+                 await sendMessage(chatId, `حدث خطأ جزئي: ${updateError.message}. تم تحديث ${successCount} عنصر فقط.`);
+             } else {
+                 await sendMessage(chatId, `✅ تم تحديث ترتيب ${successCount} عنصر بنجاح.`);
+             }
              
-             // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
-             // (سنقوم فقط بتحديث القائمة، والتأكيد سيظهر كـ popup)
+             // (العودة للقائمة السابقة)
              const navCallback = stateData.nav_callback;
-             await setUserState(userId, null, null); 
+             await setUserState(userId, null, null); // (تنظيف الحالة قبل العودة)
              
              if (navCallback === 'admin_manage_content') {
                  await sendContentMenu_Courses(chatId, messageId);
@@ -1724,9 +1731,6 @@ export default async (req, res) => {
                  const chapterId = parseInt(navCallback.split('_')[3], 10);
                  await sendContentMenu_Videos(chatId, messageId, chapterId);
              }
-             
-             // (إظهار التأكيد كـ popup بدلاً من رسالة)
-             await answerCallbackQuery(callback_query.id, { text: `✅ تم تحديث ترتيب ${successCount} عنصر` });
              break;
              
           // [ ✅ جديد: حالات تعديل السعر ]
