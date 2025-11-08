@@ -1758,6 +1758,8 @@ export default async (req, res) => {
 
 
       // (1. حالات المستخدم العادي - إرسال صورة/نص)
+      
+       // (1. حالات المستخدم العادي - إرسال صورة/نص)
       if (!user.is_admin && currentState) {
 
             // [ ✅✅ جديد: حالة انتظار الملاحظة (إرسال نص) ]
@@ -1777,12 +1779,34 @@ export default async (req, res) => {
                     user_note: userNote // (حفظ الملاحظة)
                 });
                 
-                // (تعديل الرسالة التي كانت تسأل عن الملاحظة)
+                // [ ✅✅ تعديل: لضمان الرد على المستخدم ]
+                
+                // 1. (اختياري) حذف رسالة الملاحظة التي أرسلها المستخدم
+                try { 
+                    await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); 
+                } catch(e) { /* تجاهل الفشل */ }
+
+                // 2. تعديل الرسالة السابقة (التي طلبت الملاحظة)
+                const confirmationText = `✅ تم حفظ ملاحظتك: "${userNote}"\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`;
+
                 if (stateData.message_id) { 
-                     await editMessage(chatId, stateData.message_id, `✅ تم حفظ ملاحظتك.\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                     // (نحاول تعديل الرسالة)
+                     try {
+                        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+                            chat_id: chatId,
+                            message_id: stateData.message_id,
+                            text: confirmationText,
+                            reply_markup: null
+                        });
+                     } catch (e) {
+                         // (إذا فشل التعديل، نرسل رسالة جديدة)
+                         await sendMessage(chatId, confirmationText, null, null, true);
+                     }
                 } else {
-                     await sendMessage(chatId, `✅ تم حفظ ملاحظتك.\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                     // (إذا لم نجد ID الرسالة، نرسل رسالة جديدة)
+                     await sendMessage(chatId, confirmationText, null, null, true);
                 }
+                
                 return res.status(200).send('OK');
             }
       
@@ -1839,7 +1863,7 @@ export default async (req, res) => {
                 
                 return res.status(200).send('OK');
             }
-       
+
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         
