@@ -460,7 +460,11 @@ const sendContentMenu_Subjects = async (chatId, messageId, courseId) => {
   keyboard.push([{ text: `✏️ تعديل سعر الكورس (الحالي: ${course.price || 0} ج)`, callback_data: `content_edit_course_price_${courseId}` }]);
   
   keyboard.push([{ text: '🗑️ حذف الكورس كاملاً', callback_data: `delete_course_confirm_${courseId}` }]);
-  keyboard.push([{ text: '🔙 رجوع (للكورسات)', callback_data: 'admin_manage_content' }]);
+  // [ ✅ تعديل: إضافة زر الرئيسية ]
+  keyboard.push([
+      { text: '🔙 رجوع (للكورسات)', callback_data: 'admin_manage_content' },
+      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+  ]);
 
   const text = `الكورس: ${course.title}\n\nاختر مادة:`;
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
@@ -485,8 +489,11 @@ const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
   keyboard.push([{ text: `✏️ تعديل سعر المادة (الحالي: ${subject.price || 0} ج)`, callback_data: `content_edit_subject_price_${subjectId}` }]);
 
   keyboard.push([{ text: '🗑️ حذف المادة كاملة', callback_data: `delete_subject_confirm_${subject.course_id}_${subjectId}` }]);
-  keyboard.push([{ text: '🔙 رجوع (للمواد)', callback_data: `content_nav_course_${subject.course_id}` }]);
-
+  // [ ✅ تعديل: إضافة زر الرئيسية ]
+  keyboard.push([
+      { text: '🔙 رجوع (للمواد)', callback_data: `content_nav_course_${subject.course_id}` },
+      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+  ]);
   const text = `المادة: ${subject.title}\n\nاختر شابتر:`;
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
@@ -511,8 +518,11 @@ const sendContentMenu_Videos = async (chatId, messageId, chapterId) => {
   keyboard.push([{ text: '🔃 ترتيب الفيديوهات', callback_data: `content_order_start_videos_${chapterId}` }]);
   // [ ✅✅ إصلاح 1: إضافة subject_id هنا ]
   keyboard.push([{ text: '🗑️ حذف الشابتر كاملاً', callback_data: `delete_chapter_confirm_${chapter.subject_id}_${chapterId}` }]);
-  keyboard.push([{ text: '🔙 رجوع (للشباتر)', callback_data: `content_nav_subject_${chapter.subject_id}` }]);
-
+  // [ ✅ تعديل: إضافة زر الرئيسية ]
+  keyboard.push([
+      { text: '🔙 رجوع (للشباتر)', callback_data: `content_nav_subject_${chapter.subject_id}` },
+      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+  ]);
   const text = `الشابتر: ${chapter.title}\n\nاختر فيديو لحذفه أو أضف جديد:`;
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
@@ -529,7 +539,11 @@ const sendDeletionPicker = async (chatId, messageId, items, nav_callback, delete
     }
     // [ ✅✅ إصلاح 1: تمرير delete_prefix كاملاً (الذي يحتوي الآن على parentId) ]
     const keyboard = buildKeyboard(items.map(i => ({ id: i.id, text: `🗑️ ${i.title}` })), delete_prefix);
-    keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: nav_callback }]);
+    // [ ✅ تعديل: إضافة زر الرئيسية ]
+  keyboard.push([
+      { text: '🔙 رجوع (إلغاء)', callback_data: nav_callback },
+      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+  ]);
     await editMessage(chatId, messageId, 'اختر العنصر الذي تريد حذفه (سيتم حذف كل ما بداخله):', { inline_keyboard: keyboard });
 };
 
@@ -560,8 +574,15 @@ const sendOrderingMenu = async (chatId, messageId, itemType, items, nav_callback
     text += '\nأرسل الترتيب الجديد في رسالة واحدة، كل عنصر في سطر، بالشكل التالي:\n`ID,رقم_الترتيب`\n\nمثال:\n`12,10`\n`15,20`\n`11,30`\n\n(أو /cancel للإلغاء)';
     
     // (الدالة editMessage نفسها ستقوم بتهيئة النص كاملاً باستخدام الدالة الجديدة)
-    await editMessage(chatId, messageId, text, { inline_keyboard: [[{ text: '🔙 رجوع (إلغاء)', callback_data: nav_callback }]] }, 'MarkdownV2');
-};
+    // [ ✅ تعديل: إضافة زر الرئيسية ]
+    const kbd = { inline_keyboard: [
+        [
+            { text: '🔙 رجوع (إلغاء)', callback_data: nav_callback },
+            { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+        ]
+    ]};
+    await editMessage(chatId, messageId, text, kbd, 'MarkdownV2');
+  );
 
 // --- [ (5) دوال الأدمن: إدارة المستخدمين (الجديدة) ] ---
 // [ ✅✅ تعديل: دالة سحب الصلاحيات (الجديدة والمعدلة) ]
@@ -638,7 +659,11 @@ const sendRevokeMenu = async (adminChatId, targetUserId, messageId) => {
     }
 
     keyboard.push([{ text: '⛔️ سحب "جميع" الصلاحيات', callback_data: `revoke_all_${targetUserId}`}]);
-    keyboard.push([{ text: '🔙 رجوع (إلغاء)', callback_data: 'admin_manage_users' }]);
+    // [ ✅ تعديل: إضافة زر الرئيسية ]
+  keyboard.push([
+      { text: '🔙 رجوع (إلغاء)', callback_data: 'admin_manage_users' },
+      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+  ]);
     
     await editMessage(adminChatId, messageId, message, { inline_keyboard: keyboard });
     
