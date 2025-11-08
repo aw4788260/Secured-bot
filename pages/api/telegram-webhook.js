@@ -1612,17 +1612,23 @@ export default async (req, res) => {
           // [ ✅ تعديل: حذف الأزرار فوراً باستخدام الدالة المخصصة ]
           await editMarkup(chatId, messageId, null);
 
-          // [ 🛑 تم حذف (try...catch) الخاص بـ editMessageCaption من هنا ]
-          // (لم نعد بحاجة لتعديل الكابشن هنا، سنقوم بذلك عند إرسال السبب)
+          // [ ✅✅ تعديل: إرسال رسالة طلب السبب وحفظ الـ ID الخاص بها ]
+          const reasonPromptMsg = await sendMessage(chatId, 'أرسل الآن "سبب الرفض" (سيتم إرسال ملاحظتك للمستخدم، أو اضغط /cancel للإلغاء):');
+          
+          let reasonPromptMessageId = null;
+          if (reasonPromptMsg && reasonPromptMsg.data && reasonPromptMsg.data.result) {
+              reasonPromptMessageId = reasonPromptMsg.data.result.message_id;
+          }
           
           await setUserState(userId, 'awaiting_rejection_reason', { 
               request_id: requestId, 
               target_user_id: request.user_id,
-              admin_message_id: messageId,
-              original_caption: callback_query.message.caption // (الحفاظ على الكابشن الأصلي)
+              admin_message_id: messageId, // (ID رسالة الطلب الأصلية)
+              reason_prompt_message_id: reasonPromptMessageId, // (ID رسالة "أرسل السبب")
+              original_caption: callback_query.message.caption 
           });
           
-          await sendMessage(chatId, 'أرسل الآن "سبب الرفض" (سيتم إرسال ملاحظتك للمستخدم، أو اضغط /cancel للإلغاء):');
+          // [ 🛑 تم حذف (sendMessage) من هنا ونقلها للأعلى ]
           return res.status(200).send('OK');
       }
 
@@ -1676,14 +1682,7 @@ export default async (req, res) => {
           const adminName = from.first_name || 'Admin';
           const newCaption = callback_query.message.caption + `\n\n<b>✅ تمت الموافقة بواسطة:</b> ${adminName}`;
           
-          const confirmationKeyboard = {
-              inline_keyboard: [
-                  [
-                      { text: '📨 عرض الطلبات المعلقة', callback_data: 'admin_view_requests' },
-                      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
-                  ]
-              ]
-          };
+          // [ 🛑 تم حذف (confirmationKeyboard) من هنا ]
 
           try {
               // (1) تعديل الكابشن (الأزرار تم حذفها بالفعل)
@@ -1692,15 +1691,13 @@ export default async (req, res) => {
                     message_id: messageId,
                     caption: newCaption,
                     parse_mode: 'HTML'
-                    // [ 🛑 تم حذف (reply_markup: null) من هنا ]
               });
-              // (2) إرسال رسالة تأكيد جديدة للأدمن (مع الأزرار)
-              await sendMessage(chatId, `✅ تمت الموافقة ومنح الصلاحية للمستخدم ${targetUserId} بنجاح.`, confirmationKeyboard);
+              
+              // [ 🛑 تم حذف (sendMessage) رسالة التأكيد من هنا ]
 
           } catch(e) {
-              // (في حال فشل تعديل الكابشن، نكتفي بإرسال رسالة التأكيد)
-              // (الأزرار الأصلية ستظل محذوفة)
-              await sendMessage(chatId, `✅ تم منح الصلاحية للمستخدم ${targetUserId} بنجاح.`, confirmationKeyboard);
+              // (في حال فشل تعديل الكابشن، لن يتم إرسال أي شيء للأدمن)
+              console.error("Failed to edit caption on approval:", e.message);
           }
           return res.status(200).send('OK');
       }
@@ -2141,6 +2138,7 @@ export default async (req, res) => {
 
           // (حالة الرفض)
           // (حالة الرفض)
+          // (حالة الرفض)
           case 'awaiting_rejection_reason':
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
@@ -2155,18 +2153,9 @@ export default async (req, res) => {
             await sendMessage(stateData.target_user_id, userMessage, null, null, true);
             await supabase.from('subscription_requests').update({ status: 'rejected' }).eq('id', stateData.request_id);
             
-            // [ ✅ تعديل: تعريف أزرار رسالة التأكيد ]
-            const confirmationKeyboard = {
-                inline_keyboard: [
-                    [
-                        { text: '📨 عرض الطلبات المعلقة', callback_data: 'admin_view_requests' },
-                        { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
-                    ]
-                ]
-            };
+            // [ 🛑 تم حذف (confirmationKeyboard) من هنا ]
             
-            // [ ✅ تعديل: إرسال رسالة التأكيد للأدمن مع الأزرار ]
-            await sendMessage(chatId, '✅ تم إرسال الرفض والملاحظة للمستخدم.', confirmationKeyboard);
+            // [ 🛑 تم حذف (sendMessage) رسالة التأكيد من هنا ]
             
             try {
                 // (تحديث الرسالة الأصلية (الطلب) لإظهار الرفض)
@@ -2178,12 +2167,21 @@ export default async (req, res) => {
                       message_id: stateData.admin_message_id,
                       caption: newCaption,
                       parse_mode: 'HTML'
-                      // [ 🛑 تم حذف (reply_markup: null) من هنا ]
                 });
             } catch(e) { /* تجاهل الفشل */ }
+
+            // [ ✅✅ جديد: حذف رسالة "أرسل سبب الرفض" ]
+            if (stateData.reason_prompt_message_id) {
+                try {
+                    await axios.post(`${TELEGRAM_API}/deleteMessage`, {
+                        chat_id: chatId,
+                        message_id: stateData.reason_prompt_message_id
+                    });
+                } catch (e) { /* تجاهل الفشل */ }
+            }
+
             await setUserState(userId, null, null);
             break;
-
           // (حالات إضافة/إزالة المشرفين)
           case 'awaiting_admin_id_to_add':
           case 'awaiting_admin_id_to_remove':
