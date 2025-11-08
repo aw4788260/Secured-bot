@@ -48,7 +48,7 @@ export default function WatchPage() {
             }
         };
 
-        // --- [ ✅✅ بداية المنطق الجديد للتحقق ] ---
+        // --- [ ✅✅ بداية المنطق الجديد للتحقق (المعدل) ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
@@ -72,20 +72,21 @@ export default function WatchPage() {
                 return;
             }
 
-            if (platform === 'ios') {
-                // [ الحالة 2أ: آيفون (سماح بالدخول) ]
+            // [ ✅ تعديل: السماح لـ (iOS, macOS, tdesktop) مباشرة ]
+            if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
+                // (سماح بالدخول للآيفون، الماك، والويندوز/لينكس ديسكتوب)
                 setupUserAndLoadVideo(miniAppUser);
             } else {
-                // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
+                // [ الحالة 2ب: المنصات الأخرى (مثل android, web) يجب التحقق من الأدمن ]
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
                         if (adminData.isAdmin) {
-                            // (سماح بالدخول للأدمن)
+                            // (سماح بالدخول للأدمن على أي منصة)
                             setupUserAndLoadVideo(miniAppUser);
                         } else {
-                            // (منع الدخول لغير الأدمن)
-                            setError('عذراً، الفتح من تليجرام متاح للآيفون فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                            // (منع الدخول لغير الأدمن على هذه المنصات)
+                            setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
                         }
                     })
                     .catch(err => {
@@ -94,7 +95,7 @@ export default function WatchPage() {
             }
         // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
-             setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
+             setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
         }
         // --- [ ✅✅ نهاية المنطق الجديد ] ---
@@ -175,35 +176,28 @@ export default function WatchPage() {
     const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
     const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
     
-        // 1. دالة "طلب" تغيير الجودة (مع محاولة الإجبار)
-        // 1. دالة "طلب" تغيير الجودة (باستخدام حيلة إعادة التحميل)
+    // (دالة "طلب" تغيير الجودة)
     const handleSetQuality = (e) => {
         const newQuality = e.target.value;
         
-        // (نحتاج للتأكد من وجود المشغل ومعرف الفيديو)
         if (!playerRef.current || !youtubeId) return;
 
         console.log(`▶️ جاري فرض تغيير الجودة إلى ${newQuality}...`);
 
         try {
-            // 1. احصل على الوقت الحالي للحفاظ على مكان المستخدم
             const currentTime = playerRef.current.getCurrentTime();
 
-            // 2. [ ✅ الحيلة الجديدة ]
-            // نستخدم 'loadVideoById' لإجبار المشغل
-            // على إعادة تحميل الفيديو بالجودة المطلوبة
+            // (استخدام 'loadVideoById' لإجبار المشغل)
             playerRef.current.loadVideoById({
-                videoId: youtubeId,         // (معرف الفيديو الحالي)
-                startSeconds: currentTime,  // (ابدأ من نفس الثانية)
-                suggestedQuality: newQuality // (الجودة الجديدة المطلوبة)
+                videoId: youtubeId,
+                startSeconds: currentTime,
+                suggestedQuality: newQuality
             });
             
-            // 3. (نقوم بتحديث الحالة لدينا يدوياً)
              setVideoQuality(newQuality); 
 
         } catch (err) {
             console.error("Failed to force quality change:", err);
-            // (خطة بديلة: في حال فشل الأمر، نعود للطريقة القديمة)
             playerRef.current.setPlaybackQuality(newQuality);
         }
     };
