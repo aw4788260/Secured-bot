@@ -1606,11 +1606,19 @@ export default async (req, res) => {
          const oldStateData = user.state_data;
          await setUserState(userId, null, null);
          
-         if (oldState && oldStateData && oldStateData.message_id) {
-             // (محاولة تعديل الرسالة التي كان الأدمن يكتب فيها)
-             await editMessage(chatId, oldStateData.message_id, '👍 تم إلغاء العملية.');
+         // [ ✅ تعديل: تنفيذ طلب المستخدم ]
+         const adminMessageId = (oldState && oldStateData && oldStateData.message_id) ? oldStateData.message_id : null;
+
+         if (adminMessageId) {
+             // 1. تعديل الرسالة الحالية لإظهار الإلغاء (ستظهر للحظة)
+             await editMessage(chatId, adminMessageId, '👍 تم إلغاء العملية. جار عرض القائمة الرئيسية...');
+             // 2. تعديل نفس الرسالة لعرض القائمة الرئيسية
+             await sendAdminMenu(chatId, user, adminMessageId); 
          } else {
+             // 1. إرسال رسالة "تم الإلغاء"
              await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
+             // 2. إرسال القائمة الرئيسية كرسالة جديدة
+             await sendAdminMenu(chatId, user, null);
          }
          return res.status(200).send('OK');
       }
@@ -1932,8 +1940,22 @@ export default async (req, res) => {
             const userMessage = `نأسف، تم رفض طلب اشتراكك.\n\nالسبب: ${text}`;
             await sendMessage(stateData.target_user_id, userMessage, null, null, true);
             await supabase.from('subscription_requests').update({ status: 'rejected' }).eq('id', stateData.request_id);
-            await sendMessage(chatId, '✅ تم إرسال الرفض والملاحظة للمستخدم.');
+            
+            // [ ✅ تعديل: تعريف أزرار رسالة التأكيد ]
+            const confirmationKeyboard = {
+                inline_keyboard: [
+                    [
+                        { text: '📨 عرض الطلبات المعلقة', callback_data: 'admin_view_requests' },
+                        { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+                    ]
+                ]
+            };
+            
+            // [ ✅ تعديل: إرسال رسالة التأكيد للأدمن مع الأزرار ]
+            await sendMessage(chatId, '✅ تم إرسال الرفض والملاحظة للمستخدم.', confirmationKeyboard);
+            
             try {
+                // (تحديث الرسالة الأصلية (الطلب) لإظهار الرفض)
                 const newCaption = stateData.original_caption + 
                                    `\n\n<b>❌ تم الرفض بواسطة:</b> ${from.first_name || 'Admin'}\n<b>السبب:</b> ${text}`;
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
@@ -1941,10 +1963,18 @@ export default async (req, res) => {
                       message_id: stateData.admin_message_id,
                       caption: newCaption,
                       parse_mode: 'HTML',
-                      reply_markup: null
+                      reply_markup: null // (التأكد من إخفاء الأزرار)
                 });
             } catch(e) { /* تجاهل الفشل */ }
             await setUserState(userId, null, null);
+            break;
+
+// [ ... (باقي الحالات) ... ]
+              
+          default:
+            console.warn(`Unhandled state: ${currentState}`);
+            await setUserState(userId, null, null);
+            await sendMessage(chatId, 'حالة غير معروفة، تم الإلغاء.');
             break;
 
           // (حالات إضافة/إزالة المشرفين)
