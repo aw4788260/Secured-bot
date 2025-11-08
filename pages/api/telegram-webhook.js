@@ -2000,7 +2000,7 @@ export default async (req, res) => {
         console.log(`Ignoring non-command text from user ${userId}`);
       }
     } // (نهاية if message && message.from)
-    
+    }
   } catch (e) {
     console.error("Error in webhook:", e.response ? e.response.data : e.message, e.stack);
     if (chatId) {
