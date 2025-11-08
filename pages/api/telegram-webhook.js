@@ -1498,6 +1498,9 @@ export default async (req, res) => {
       
 
     // --- ( 2. معالجة الرسائل النصية والصور) ---
+  // ... (الكود السابق الخاص بـ if (callback_query) ... )
+
+    // --- ( 2. معالجة الرسائل النصية والصور) ---
     if (message && message.from) {
       chatId = message.chat.id;
       userId = String(message.from.id);
@@ -1553,7 +1556,6 @@ export default async (req, res) => {
       }
 
       // أمر /cancel
-      // أمر /cancel
       if (text === '/cancel') {
          await setUserState(userId, null, null); // (تنظيف الحالة دائماً)
          
@@ -1595,15 +1597,12 @@ export default async (req, res) => {
       messageId = stateData.message_id; // (ID الرسالة التي يجب تعديلها)
 
       // (1. حالات المستخدم العادي - إرسال صورة)
-      // (1. حالات المستخدم العادي - إرسال صورة)
       if (!user.is_admin && currentState === 'awaiting_payment_proof') {
         if (!message.photo) {
             await sendMessage(chatId, 'الرجاء إرسال صورة فقط (Screenshot) كإثبات. أعد المحاولة أو اضغط /cancel', null, null, true);
             return res.status(200).send('OK');
         }
         
-        const stateData = user.state_data;
-        // [ ✅ تعديل: التحقق من السعر ]
         if (!stateData.request_type || !stateData.items || !stateData.description || typeof stateData.total_price === 'undefined') {
             await sendMessage(chatId, 'حدث خطأ. بيانات الطلب (أو السعر) مفقودة. ابدأ من جديد بالضغط على /start', null, null, true);
             await setUserState(userId, null, null);
@@ -1632,7 +1631,7 @@ export default async (req, res) => {
                 requested_data: requested_items_data,
                 payment_file_id: payment_file_id,
                 status: 'pending',
-                total_price: totalPrice // [ ✅ تعديل: حفظ السعر الإجمالي ]
+                total_price: totalPrice
             })
             .select().single();
 
@@ -1645,7 +1644,8 @@ export default async (req, res) => {
         await setUserState(userId, null, null);
         
         return res.status(200).send('OK');
-      }
+      } // (نهاية if !user.is_admin)
+
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         
@@ -1702,7 +1702,6 @@ export default async (req, res) => {
             await editMessage(chatId, messageId, `👍 الاسم: "${text}"\n\nالآن أرسل "سعر" الكورس (للاشتراك الكامل) (أو 0 للمجاني):`);
             break;
 
-          // [ ✅ جديد: حالة سعر الكورس ]
           case 'awaiting_course_price':
             const coursePrice = parseInt(text.trim(), 10);
             if (isNaN(coursePrice) || coursePrice < 0) {
@@ -1716,19 +1715,14 @@ export default async (req, res) => {
                 sort_order: 0 
             });
             
-            // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
-            // (سنقوم فقط بتحديث القائمة، وهذا هو التأكيد)
             await sendContentMenu_Courses(chatId, messageId);
             break;
             
-          // [ ✅ تعديل: حالة إضافة المادة (خطوتين) ]
           case 'awaiting_subject_title':
             await setUserState(userId, 'awaiting_subject_price', { ...stateData, title: text });
             await editMessage(chatId, messageId, `👍 الاسم: "${text}"\n\nالآن أرسل "سعر" المادة (للاشتراك المحدد) (أو 0 للمجاني):`);
             break;
 
-          // [ ✅ جديد: حالة سعر المادة ]
-          // [ ✅ جديد: حالة سعر المادة ]
           case 'awaiting_subject_price':
             const subjectPrice = parseInt(text.trim(), 10);
             if (isNaN(subjectPrice) || subjectPrice < 0) {
@@ -1737,7 +1731,7 @@ export default async (req, res) => {
             }
 
             const { data: newSubject, error } = await supabase.from('subjects').insert({ 
-                title: stateData.title, // (الاسم الصحيح من الحالة)
+                title: stateData.title,
                 price: subjectPrice,
                 course_id: stateData.course_id, 
                 sort_order: 0 
@@ -1749,25 +1743,21 @@ export default async (req, res) => {
                  break;
             }
             
-            // (الانتقال لسؤال نسخ الصلاحيات)
             const newSubjectId = newSubject.id;
             const kbd = { inline_keyboard: [
                 [{ text: '📖 نعم، نسخ الصلاحيات', callback_data: `copy_perms_start_${newSubjectId}` }],
                 [{ text: '❌ لا، شكراً (تخطي)', callback_data: `copy_perms_skip_${newSubjectId}` }]
             ]};
             
-            // [ ✅✅ الإصلاح هنا: استخدام stateData.title بدلاً من text ]
             await editMessage(chatId, messageId, `✅ تم إضافة المادة "${stateData.title}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
             break;
             
-          // [ ✅ تعديل: إصلاح رسالة إضافة الشابتر ]
           case 'awaiting_chapter_title':
             await supabase.from('chapters').insert({ 
                 title: text, 
                 subject_id: stateData.subject_id, 
                 sort_order: 0 
             });
-            // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
             await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id);
             break;
             
@@ -1791,13 +1781,9 @@ export default async (req, res) => {
                 chapter_id: stateData.chapter_id,
                 sort_order: 0
             });
-            // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
             await sendContentMenu_Videos(chatId, messageId, stateData.chapter_id);
             break;
             
-          // (حالة الترتيب)
-          // (حالة الترتيب)
-          // (حالة الترتيب)
           case 'awaiting_sort_order':
              const lines = text.split('\n');
              const updates = [];
@@ -1820,18 +1806,17 @@ export default async (req, res) => {
              let updateError = null;
              let successCount = 0;
              for (const item of updates) {
-                // [ ✅✅ الإصلاح هنا: إزالة الـ "_" الزائدة ]
                 const { data, error } = await supabase
                     .from(stateData.item_type)
                     .update({ sort_order: item.sort_order })
                     .eq('id', item.id)
-                    .select(); // (اطلب إرجاع البيانات للتأكد من نجاح التحديث)
+                    .select();
                 
                 if (error) {
                     console.error(`Failed to update item ${item.id}:`, error);
-                    updateError = error; // (احفظ آخر خطأ)
+                    updateError = error;
                 } else if (data && data.length > 0) {
-                    successCount++; // (تم التحديث بنجاح)
+                    successCount++;
                 }
              }
 
@@ -1841,9 +1826,8 @@ export default async (req, res) => {
                  await sendMessage(chatId, `✅ تم تحديث ترتيب ${successCount} عنصر بنجاح.`);
              }
              
-             // (العودة للقائمة السابقة)
              const navCallback = stateData.nav_callback;
-             await setUserState(userId, null, null); // (تنظيف الحالة قبل العودة)
+             await setUserState(userId, null, null);
              
              if (navCallback === 'admin_manage_content') {
                  await sendContentMenu_Courses(chatId, messageId);
@@ -1859,8 +1843,6 @@ export default async (req, res) => {
              }
              break;
              
-          // [ ✅ جديد: حالات تعديل السعر ]
-          // [ ✅ جديد: حالات تعديل السعر ]
           case 'awaiting_course_new_price':
              const newCoursePrice = parseInt(text.trim(), 10);
              if (isNaN(newCoursePrice) || newCoursePrice < 0) {
@@ -1869,11 +1851,7 @@ export default async (req, res) => {
              }
              await supabase.from('courses').update({ price: newCoursePrice }).eq('id', stateData.course_id);
              
-             // [ ✅✅ الإصلاح: حذف السطر المسبب للخطأ ]
-             // (السطر التالي تم حذفه لأنه يخص الأزرار فقط)
-             // await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر الكورس' });
-             
-             await sendContentMenu_Subjects(chatId, messageId, stateData.course_id); // (العودة لقائمة المواد)
+             await sendContentMenu_Subjects(chatId, messageId, stateData.course_id);
              break;
              
           case 'awaiting_subject_new_price':
@@ -1884,15 +1862,9 @@ export default async (req, res) => {
              }
              await supabase.from('subjects').update({ price: newSubjectPrice }).eq('id', stateData.subject_id);
 
-             // [ ✅✅ الإصلاح: حذف السطر المسبب للخطأ ]
-             // (السطر التالي تم حذفه لأنه يخص الأزرار فقط)
-             // await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث سعر المادة' });
-             
-             await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id); // (العودة لقائمة الشباتر)
+             await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id);
              break;
 
-          // (حالة الرفض)
-          // [ ✅✅ تعديل: تغيير منطق الرفض ]
           case 'awaiting_rejection_reason':
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
@@ -1904,29 +1876,25 @@ export default async (req, res) => {
                  return res.status(200).send('OK');
             }
             
-            // 1. إبلاغ المستخدم بالرفض
             const userMessage = `نأسف، تم رفض طلب اشتراكك.\n\nالسبب: ${text}`;
             await sendMessage(stateData.target_user_id, userMessage, null, null, true);
             
-            // 2. تحديث قاعدة البيانات
             await supabase.from('subscription_requests').update({ status: 'rejected' }).eq('id', stateData.request_id);
 
-            // 3. [ ✅ تعديل: إخفاء الأزرار وتعديل الكابشن لرسالة الصورة ]
             try {
                 const newCaption = stateData.original_caption + 
                                    `\n\n<b>❌ تم الرفض بواسطة:</b> ${from.first_name || 'Admin'}\n<b>السبب:</b> ${text}`;
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                       chat_id: chatId,
-                      message_id: stateData.admin_message_id, // (ID رسالة الصورة)
+                      message_id: stateData.admin_message_id,
                       caption: newCaption,
                       parse_mode: 'HTML',
-                      reply_markup: null // (إزالة الأزرار)
+                      reply_markup: null
                 });
             } catch(e) { 
                  console.warn("Could not edit photo caption/markup:", e.message);
             }
 
-            // 4. [ ✅ تعديل: إرسال رسالة تأكيد "جديدة" مع أزرار ]
             const confirmationKeyboard = { inline_keyboard: [
                 [
                     { text: '🔙 رجوع (للطلبات)', callback_data: 'admin_view_requests' },
@@ -1935,11 +1903,9 @@ export default async (req, res) => {
             ]};
             await sendMessage(chatId, '❌ تم إرسال الرفض والملاحظة للمستخدم بنجاح.', confirmationKeyboard);
             
-            // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
 
-          // (حالات إضافة/إزالة المشرفين)
           case 'awaiting_admin_id_to_add':
           case 'awaiting_admin_id_to_remove':
               if (String(user.id) !== MAIN_ADMIN_ID) return res.status(200).send('OK');
@@ -1987,7 +1953,8 @@ export default async (req, res) => {
         console.log(`Ignoring non-command text from user ${userId}`);
       }
     } // (نهاية if message && message.from)
-    
+
+  // [ ✅✅✅ هذا هو القوس الصحيح الذي يغلق "try" ]
   } catch (e) {
     console.error("Error in webhook:", e.response ? e.response.data : e.message, e.stack);
     if (chatId) {
