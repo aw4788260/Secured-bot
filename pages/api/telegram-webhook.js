@@ -324,10 +324,15 @@ const sendAdminManagementMenu = async (chatId, messageId) => {
 /**
  * [ ✅✅ تعديل: دالة جلب وعرض الإحصائيات (بالنظام الجديد) ]
  */
+
+/**
+ * [ ✅✅ تعديل: دالة جلب وعرض الإحصائيات (مع أزرار الرجوع) ]
+ */
 const sendStatistics = async (chatId, messageId) => {
     try {
         await editMessage(chatId, messageId, '📊 جاري حساب الإحصائيات الجديدة، يرجى الانتظار...');
 
+        // ... (كل كود حساب الإحصائيات يبقى كما هو) ...
         // 1. إجمالي المستخدمين
         const { count: totalUsers, error: totalError } = await supabase
             .from('users').select('*', { count: 'exact', head: true });
@@ -346,20 +351,16 @@ const sendStatistics = async (chatId, messageId) => {
         if (cErr || sErr || chErr || vErr) console.error("Content stats error (non-critical)");
 
         // --- [ إحصائيات الصلاحيات (الجديدة) ] ---
-
-        // 3. المشتركون (صلاحيات الكورسات الكاملة)
         const { data: fullCourseSubs, error: fullSubError } = await supabase
             .from('user_course_access')
-            .select('courses ( title )'); // جلب عنوان الكورس
+            .select('courses ( title )');
         if (fullSubError) throw new Error(`Full Course Subs Error: ${fullSubError.message}`);
         
-        // 4. المشتركون (صلاحيات المواد المحددة)
         const { data: specificSubs, error: specificSubError } = await supabase
             .from('user_subject_access')
-            .select('subjects ( title )'); // جلب عنوان المادة
+            .select('subjects ( title )');
         if (specificSubError) throw new Error(`Specific Subs Error: ${specificSubError.message}`);
 
-        // (معالجة إحصائيات الكورسات الكاملة)
         const courseCounts = {};
         let totalFullCoursePerms = 0;
         if (fullCourseSubs) {
@@ -370,7 +371,6 @@ const sendStatistics = async (chatId, messageId) => {
             });
         }
         
-        // (معالجة إحصائيات المواد المحددة)
         const subjectCounts = {};
         let totalSpecificSubjectPerms = 0;
         if (specificSubs) {
@@ -390,7 +390,6 @@ const sendStatistics = async (chatId, messageId) => {
         message += `📖 المواد: ${totalSubjects || 0}\n`;
         message += `📁 الشباتر: ${totalChapters || 0}\n`;
         message += `▶️ الفيديوهات: ${totalVideos || 0}\n\n`;
-        
         message += `--- [ 🔑 الصلاحيات الممنوحة ] ---\n`;
         message += `💎 (صلاحيات الكورسات الكاملة): ${totalFullCoursePerms} صلاحية\n`;
         if (Object.keys(courseCounts).length > 0) {
@@ -398,26 +397,31 @@ const sendStatistics = async (chatId, messageId) => {
                 message += `  - ${title}: ${count} مشترك\n`;
             }
         }
-
         message += `\n🔒 (صلاحيات المواد المحددة): ${totalSpecificSubjectPerms} صلاحية\n`;
         if (Object.keys(subjectCounts).length > 0) {
             for (const [title, count] of Object.entries(subjectCounts)) {
                 message += `  - ${title}: ${count} مشترك\n`;
             }
         }
-        
         if (totalFullCoursePerms === 0 && totalSpecificSubjectPerms === 0) {
              message += `(لا توجد أي صلاحيات ممنوحة حالياً)\n`;
         }
 
-        await editMessage(chatId, messageId, message);
+        // [ ✅✅ تعديل: إضافة أزرار الرجوع هنا ]
+        const kbd = { inline_keyboard: [
+            [
+                { text: '🔙 رجوع (للإشراف)', callback_data: 'admin_supervision' },
+                { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+            ]
+        ]};
+
+        await editMessage(chatId, messageId, message, kbd);
 
     } catch (error) {
         console.error("Error in sendStatistics:", error);
         await editMessage(chatId, messageId, `حدث خطأ أثناء جلب الإحصائيات: ${error.message}`);
     }
 };
-
 // --- [ (4) دوال الأدمن: إدارة المحتوى (الهيكل الجديد) ] ---
 
 // (المستوى 1: الكورسات)
@@ -1425,6 +1429,7 @@ export default async (req, res) => {
           return res.status(200).send('OK');
       }
       
+      // [ ✅✅ تعديل: تغيير منطق الموافقة ]
       if (command.startsWith('approve_sub_')) {
           const requestId = parseInt(command.split('_')[2], 10);
           
@@ -1466,27 +1471,31 @@ export default async (req, res) => {
                          `هذا هو ID الخاص بك، استخدمه لتسجيل الدخول في التطبيق:\n` +
                          `<code>${targetUserId}</code>`;
                          
-          await sendMessage(targetUserId, userMessage, null, 'HTML', true);
+          await sendMessage(targetUserId, userMessage, null, 'HTML', true); // إبلاغ المستخدم
 
-          const adminName = from.first_name || 'Admin';
-          const newCaption = callback_query.message.caption + `\n\n<b>✅ تمت الموافقة بواسطة:</b> ${adminName}`;
+          // [ ✅✅ تعديل: إخفاء الأزرار من رسالة الصورة ]
           try {
-              await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
+              await axios.post(`${TELEGRAM_API}/editMessageReplyMarkup`, {
                     chat_id: chatId,
-                    message_id: messageId,
-                    caption: newCaption,
-                    parse_mode: 'HTML',
-                    reply_markup: null
+                    message_id: messageId, // (ID رسالة الصورة)
+                    reply_markup: null // (إزالة الأزرار)
               });
           } catch(e) {
-              await sendMessage(chatId, `✅ تم منح الصلاحية للمستخدم ${targetUserId} بنجاح.`);
+              console.warn("Could not edit photo reply markup (maybe deleted):", e.message);
           }
+          
+          // [ ✅✅ تعديل: إرسال رسالة تأكيد "جديدة" مع أزرار ]
+          const confirmationKeyboard = { inline_keyboard: [
+              [
+                  { text: '🔙 رجوع (للطلبات)', callback_data: 'admin_view_requests' },
+                  { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+              ]
+          ]};
+          await sendMessage(chatId, `✅ تمت الموافقة بنجاح للمستخدم ${targetUserId}.`, confirmationKeyboard);
+          
           return res.status(200).send('OK');
       }
-
-      console.warn("Unhandled admin callback query:", command);
-      return res.status(200).send('OK');
-    } // (نهاية if user.is_admin)
+      
 
     // --- ( 2. معالجة الرسائل النصية والصور) ---
     if (message && message.from) {
@@ -1544,20 +1553,40 @@ export default async (req, res) => {
       }
 
       // أمر /cancel
+      // أمر /cancel
       if (text === '/cancel') {
-         const oldState = user.admin_state;
-         const oldStateData = user.state_data;
-         await setUserState(userId, null, null);
+         await setUserState(userId, null, null); // (تنظيف الحالة دائماً)
          
-         if (oldState && oldStateData && oldStateData.message_id) {
-             // (محاولة تعديل الرسالة التي كان الأدمن يكتب فيها)
-             await editMessage(chatId, oldStateData.message_id, '👍 تم إلغاء العملية.');
+         if (user.is_admin) {
+            // (للأدمن: أرسل رسالة "تم" ثم قم بتعديلها إلى القائمة الرئيسية)
+            
+            // (أولاً، احذف أمر /cancel الذي أرسله الأدمن)
+            try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
+
+            // 1. إرسال الرسالة المؤقتة
+            const sentMessageResponse = await sendMessage(chatId, '👍 تم إلغاء العملية...');
+            
+            // 2. التحقق من أن الرسالة أُرسلت بنجاح
+            if (sentMessageResponse && sentMessageResponse.data && sentMessageResponse.data.result) {
+                const newMessageId = sentMessageResponse.data.result.message_id;
+                
+                // 3. تعديل الرسالة المؤقتة إلى القائمة الرئيسية
+                // (نعطيها تأخير بسيط جداً 500ms ليلاحظ المستخدم "تم الإلغاء" قبل أن تختفي)
+                await new Promise(resolve => setTimeout(resolve, 500)); 
+                await sendAdminMenu(chatId, user, newMessageId);
+            
+            } else {
+                // (خطة بديلة إذا فشل إرسال الرسالة الأولى)
+                await sendAdminMenu(chatId, user);
+            }
+            
          } else {
-             await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
+            // (للمستخدم العادي: أرسل رسالة "تم" فقط)
+            await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
          }
+         
          return res.status(200).send('OK');
       }
-
       // --- [ معالجة الحالات (State Machine) ] ---
       
       const currentState = user.admin_state; 
@@ -1862,6 +1891,7 @@ export default async (req, res) => {
              break;
 
           // (حالة الرفض)
+          // [ ✅✅ تعديل: تغيير منطق الرفض ]
           case 'awaiting_rejection_reason':
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
@@ -1872,21 +1902,39 @@ export default async (req, res) => {
                  await setUserState(userId, null, null);
                  return res.status(200).send('OK');
             }
+            
+            // 1. إبلاغ المستخدم بالرفض
             const userMessage = `نأسف، تم رفض طلب اشتراكك.\n\nالسبب: ${text}`;
             await sendMessage(stateData.target_user_id, userMessage, null, null, true);
+            
+            // 2. تحديث قاعدة البيانات
             await supabase.from('subscription_requests').update({ status: 'rejected' }).eq('id', stateData.request_id);
-            await sendMessage(chatId, '✅ تم إرسال الرفض والملاحظة للمستخدم.');
+
+            // 3. [ ✅ تعديل: إخفاء الأزرار وتعديل الكابشن لرسالة الصورة ]
             try {
                 const newCaption = stateData.original_caption + 
                                    `\n\n<b>❌ تم الرفض بواسطة:</b> ${from.first_name || 'Admin'}\n<b>السبب:</b> ${text}`;
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                       chat_id: chatId,
-                      message_id: stateData.admin_message_id,
+                      message_id: stateData.admin_message_id, // (ID رسالة الصورة)
                       caption: newCaption,
                       parse_mode: 'HTML',
-                      reply_markup: null
+                      reply_markup: null // (إزالة الأزرار)
                 });
-            } catch(e) { /* تجاهل الفشل */ }
+            } catch(e) { 
+                 console.warn("Could not edit photo caption/markup:", e.message);
+            }
+
+            // 4. [ ✅ تعديل: إرسال رسالة تأكيد "جديدة" مع أزرار ]
+            const confirmationKeyboard = { inline_keyboard: [
+                [
+                    { text: '🔙 رجوع (للطلبات)', callback_data: 'admin_view_requests' },
+                    { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+                ]
+            ]};
+            await sendMessage(chatId, '❌ تم إرسال الرفض والملاحظة للمستخدم بنجاح.', confirmationKeyboard);
+            
+            // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
 
