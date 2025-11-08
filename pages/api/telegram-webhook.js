@@ -1763,51 +1763,64 @@ export default async (req, res) => {
       if (!user.is_admin && currentState) {
 
             // [ ✅✅ جديد: حالة انتظار الملاحظة (إرسال نص) ]
-            if (currentState === 'awaiting_user_note') {
-                if (!message.text || message.text === '/start' || message.text === '/cancel' || message.photo) {
-                    // (تجاهل الأوامر أو الصور، هو يجب أن يرسل نصاً)
-                    await sendMessage(chatId, 'الرجاء إرسال الملاحظة (كنص) أو اضغط "تخطي" في الرسالة السابقة.', null, null, true);
-                    return res.status(200).send('OK');
-                }
-                
-                const userNote = message.text;
-                const stateData = user.state_data;
-                
-                // (نقل المستخدم للحالة التالية مع حفظ الملاحظة)
-                await setUserState(userId, 'awaiting_payment_proof', {
-                    ...stateData,
-                    user_note: userNote // (حفظ الملاحظة)
-                });
-                
-                // [ ✅✅ تعديل: لضمان الرد على المستخدم ]
-                
-                // 1. (اختياري) حذف رسالة الملاحظة التي أرسلها المستخدم
-                try { 
-                    await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); 
-                } catch(e) { /* تجاهل الفشل */ }
-
-                // 2. تعديل الرسالة السابقة (التي طلبت الملاحظة)
-                const confirmationText = `✅ تم حفظ ملاحظتك: "${userNote}"\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`;
-
-                if (stateData.message_id) { 
-                     // (نحاول تعديل الرسالة)
-                     try {
-                        await axios.post(`${TELEGRAM_API}/editMessageText`, {
-                            chat_id: chatId,
-                            message_id: stateData.message_id,
-                            text: confirmationText,
-                            reply_markup: null
-                        });
-                     } catch (e) {
-                         // (إذا فشل التعديل، نرسل رسالة جديدة)
-                         await sendMessage(chatId, confirmationText, null, null, true);
-                     }
-                } else {
-                     // (إذا لم نجد ID الرسالة، نرسل رسالة جديدة)
-                     await sendMessage(chatId, confirmationText, null, null, true);
-                }
-                
+            case 'awaiting_user_note':
+            if (!message.text || message.text === '/start' || message.text === '/cancel' || message.photo) {
+                // (تجاهل الأوامر أو الصور، هو يجب أن يرسل نصاً)
+                await sendMessage(chatId, 'الرجاء إرسال الملاحظة (كنص) أو اضغط "تخطي" في الرسالة السابقة.', null, null, true);
                 return res.status(200).send('OK');
+            }
+            
+            const userNote = message.text;
+            const stateData = user.state_data;
+            
+            // (نقل المستخدم للحالة التالية مع حفظ الملاحظة)
+            await setUserState(userId, 'awaiting_payment_proof', {
+                ...stateData,
+                user_note: userNote // (حفظ الملاحظة)
+            });
+            
+            // 1. (اختياري) حذف رسالة الملاحظة التي أرسلها المستخدم
+            try { 
+                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); 
+            } catch(e) { /* تجاهل الفشل */ }
+
+            // 2. تحضير رسالة التأكيد
+            const confirmationText = `✅ تم حفظ ملاحظتك: "${userNote}"\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`;
+
+            // 3. [ ✅✅ الإصلاح: محاولة التعديل مع التحقق من النجاح ]
+            if (stateData.message_id) {
+                let editSuccess = false;
+                try {
+                    // (استخدام axios raw للتحقق من الرد)
+                    const response = await axios.post(`${TELEGRAM_API}/editMessageText`, {
+                        chat_id: chatId,
+                        message_id: stateData.message_id,
+                        text: confirmationText,
+                        reply_markup: null // (حذف زر "تخطي")
+                    });
+                    
+                    // (التحقق من أن تليجرام رد بـ "ok: true")
+                    if (response && response.data && response.data.ok) {
+                        editSuccess = true;
+                    } else {
+                        // (فشل التعديل بصمت من جهة تليجرام)
+                        console.warn("Edit message failed (Telegram API returned false):", response.data?.description);
+                    }
+                } catch (e) {
+                    // (فشل التعديل بسبب خطأ شبكة أو 404)
+                    console.warn("Edit message failed (Axios error):", e.message);
+                }
+                
+                // (الخطة البديلة: إذا فشل التعديل، أرسل رسالة جديدة)
+                if (!editSuccess) {
+                    await sendMessage(chatId, confirmationText, null, null, true);
+                }
+            } else {
+                 // (إذا لم نجد ID الرسالة، نرسل رسالة جديدة)
+                 await sendMessage(chatId, confirmationText, null, null, true);
+            }
+            
+            return res.status(200).send('OK');
             }
       
             // (حالة انتظار الدفع - إرسال صورة)
