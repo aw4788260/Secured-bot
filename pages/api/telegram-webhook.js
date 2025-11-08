@@ -224,7 +224,51 @@ const setUserState = async (userId, state, data = null) => {
   }
 };
 
+/**
+ * [ ✅✅ جديد: دالة منفصلة لمعالجة /start ]
+ * (لإعادة استخدامها في /cancel)
+ */
+const handleStartCommand = async (chatId, user) => {
+    if (user.is_admin) {
+      await sendAdminMenu(chatId, user);
+    } else {
+      // (التحقق من الصلاحيات الجديدة)
+      const { data: courseAccess } = await supabase.from('user_course_access').select('courses(title)').eq('user_id', user.id);
+      const { data: subjectAccess } = await supabase.from('user_subject_access').select('subjects(title)').eq('user_id', user.id);
 
+      const hasCourseAccess = courseAccess && courseAccess.length > 0;
+      const hasSubjectAccess = subjectAccess && subjectAccess.length > 0;
+      
+      const requestButtonKeyboard = { 
+          inline_keyboard: [[ { text: '📋 طلب اشتراك', callback_data: 'user_request_subscription' } ]] 
+      };
+
+      if (hasCourseAccess || hasSubjectAccess) {
+          let message = `أهلاً بك، أنت مشترك بالفعل.\n\n`;
+          message += `هذا هو ID الخاص بك (استخدمه لتسجيل الدخول في التطبيق):\n<code>${user.id}</code>\n\n`;
+          message += `اشتراكك الحالي:`;
+          
+          if (hasCourseAccess) {
+              message += `\n\n💎 الكورسات الكاملة:`;
+              courseAccess.forEach(access => {
+                  if (access.courses) message += `\n- 📦 ${access.courses.title}`;
+              });
+          }
+          if (hasSubjectAccess) {
+              message += `\n\n🔒 المواد المحددة:`;
+              subjectAccess.forEach(access => {
+                  if (access.subjects) message += `\n- 📖 ${access.subjects.title}`;
+              });
+          }
+          
+          message += `\n\nيمكنك طلب اشتراك إضافي من الزر أدناه.`;
+          await sendMessage(chatId, message, requestButtonKeyboard, 'HTML', true);
+
+      } else {
+        await sendMessage(chatId, 'أنت غير مشترك في الخدمة. يمكنك طلب اشتراك من الزر أدناه.', requestButtonKeyboard, null, true);
+      }
+    }
+};
 // --- [ (3) دوال الأدمن: القوائم الرئيسية والإشراف ] ---
 
 const sendAdminMenu = async (chatId, user, messageId = null) => {
@@ -1664,47 +1708,11 @@ export default async (req, res) => {
       if (!user) return res.status(200).send('OK');
 
       // أمر /start
+      // أمر /start
       if (text === '/start') {
         await setUserState(userId, null, null);
-        if (user.is_admin) {
-          await sendAdminMenu(chatId, user);
-        } else {
-          // (التحقق من الصلاحيات الجديدة)
-          const { data: courseAccess } = await supabase.from('user_course_access').select('courses(title)').eq('user_id', userId);
-          const { data: subjectAccess } = await supabase.from('user_subject_access').select('subjects(title)').eq('user_id', userId);
-
-          const hasCourseAccess = courseAccess && courseAccess.length > 0;
-          const hasSubjectAccess = subjectAccess && subjectAccess.length > 0;
-          
-          const requestButtonKeyboard = { 
-              inline_keyboard: [[ { text: '📋 طلب اشتراك', callback_data: 'user_request_subscription' } ]] 
-          };
-
-          if (hasCourseAccess || hasSubjectAccess) {
-              let message = `أهلاً بك، أنت مشترك بالفعل.\n\n`;
-              message += `هذا هو ID الخاص بك (استخدمه لتسجيل الدخول في التطبيق):\n<code>${userId}</code>\n\n`;
-              message += `اشتراكك الحالي:`;
-              
-              if (hasCourseAccess) {
-                  message += `\n\n💎 الكورسات الكاملة:`;
-                  courseAccess.forEach(access => {
-                      if (access.courses) message += `\n- 📦 ${access.courses.title}`;
-                  });
-              }
-              if (hasSubjectAccess) {
-                  message += `\n\n🔒 المواد المحددة:`;
-                  subjectAccess.forEach(access => {
-                      if (access.subjects) message += `\n- 📖 ${access.subjects.title}`;
-                  });
-              }
-              
-              message += `\n\nيمكنك طلب اشتراك إضافي من الزر أدناه.`;
-              await sendMessage(chatId, message, requestButtonKeyboard, 'HTML', true);
-
-          } else {
-            await sendMessage(chatId, 'أنت غير مشترك في الخدمة. يمكنك طلب اشتراك من الزر أدناه.', requestButtonKeyboard, null, true);
-          }
-        }
+        // [ ✅ تعديل: استدعاء الدالة الجديدة ]
+        await handleStartCommand(chatId, user); 
         return res.status(200).send('OK');
       }
 
@@ -1717,34 +1725,37 @@ export default async (req, res) => {
          const adminMessageId = (oldState && oldStateData && oldStateData.message_id) ? oldStateData.message_id : null;
 
          if (adminMessageId) {
-             // --- [مسار الأدمن وهو في حالة (state)] ---
+             // --- [مسار المستخدم وهو في حالة (state)] ---
              
-             // [ ✅ تعديل: 1. تعديل الرسالة الحالية (مثل "أرسل الـ ID") إلى "تم الإلغاء" ]
+             // 1. تعديل الرسالة الحالية (مثل "أرسل الـ ID") إلى "تم الإلغاء"
              await editMessage(chatId, adminMessageId, '👍 تم إلغاء العملية.');
              
-             // [ ✅ تعديل: 2. تعديل نفس الرسالة مرة أخرى لعرض القائمة الرئيسية ]
-             // (ملاحظة: sendAdminMenu سيقوم بعمل editMessage لأننا مررنا adminMessageId)
-             await sendAdminMenu(chatId, user, adminMessageId); 
+             // 2. [ ✅ تعديل: التحقق إذا كان أدمن أم لا ]
+             if (user.is_admin) {
+                 // (إذا كان أدمن، عدّل الرسالة لعرض القائمة الرئيسية)
+                 await sendAdminMenu(chatId, user, adminMessageId); 
+             } else {
+                 // (إذا كان مستخدم عادي، أرسل له رسالة /start العادية كرسالة جديدة)
+                 await handleStartCommand(chatId, user);
+             }
          
          } else {
-             // --- [مسار المستخدم العادي أو الأدمن وهو "ليس" في حالة (state)] ---
+             // --- [مسار المستخدم وهو "ليس" في حالة (state)] ---
              
-             // [ ✅ تعديل: 1. إرسال رسالة "تم الإلغاء" كرسالة جديدة ]
+             // 1. إرسال رسالة "تم الإلغاء" كرسالة جديدة
              const sentMsgResponse = await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
              
-             // فقط الأدمن لديه "قائمة رئيسية"
              if (user.is_admin) {
-                 // 2. التحقق من أن الرسالة أُرسلت بنجاح
+                 // (منطق الأدمن: تعديل "تم الإلغاء" إلى القائمة الرئيسية)
                  if (sentMsgResponse && sentMsgResponse.data && sentMsgResponse.data.result) {
                      const newMessageId = sentMsgResponse.data.result.message_id;
-                     
-                     // 3. تعديل "نفس الرسالة" التي أُرسلت للتو لعرض القائمة الرئيسية
                      await sendAdminMenu(chatId, user, newMessageId);
-                     
                  } else {
-                     // (إذا فشل إرسال "تم الإلغاء"، نرسل القائمة الرئيسية كرسالة جديدة كخطة بديلة)
                      await sendAdminMenu(chatId, user, null);
                  }
+             } else {
+                 // [ ✅ تعديل: المستخدم العادي يرى رسالة /start ]
+                 await handleStartCommand(chatId, user);
              }
          }
          return res.status(200).send('OK');
@@ -1759,7 +1770,8 @@ export default async (req, res) => {
 
       // (1. حالات المستخدم العادي - إرسال صورة/نص)
                // (1. حالات المستخدم العادي - إرسال صورة/نص)
- // (1. حالات المستخدم العادي - إرسال صورة/نص)
+
+// (1. حالات المستخدم العادي - إرسال صورة/نص)
       if (!user.is_admin && currentState) {
 
             // [ ✅✅ تعديل: حالة انتظار الملاحظة (إرسال نص) ]
@@ -1787,25 +1799,20 @@ export default async (req, res) => {
                 // 2. تحضير رسالة التأكيد
                 const confirmationText = `✅ تم حفظ ملاحظتك: "${userNote}"\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`;
 
-                // 3. [ ✅✅ تعديل: محاولة التعديل "فقط" (بدون خطة بديلة) ]
+                // 3. [ ✅✅ الإصلاح: استخدام دالة editMessage الموجودة بالملف ]
                 if (stateData.message_id) {
-                    try {
-                        // (محاولة تعديل الرسالة الأصلية)
-                        await axios.post(`${TELEGRAM_API}/editMessageText`, {
-                            chat_id: chatId,
-                            message_id: stateData.message_id,
-                            text: confirmationText,
-                            reply_markup: null // (حذف زر "تخطي")
-                        });
-                        // (تمت محاولة التعديل، لا يوجد "else" أو "catch" لإرسال رسالة جديدة)
-                    } catch (e) {
-                        // (فشل التعديل، نتجاهله بناءً على طلب المستخدم)
-                        console.warn("Edit message failed (as requested, no fallback):", e.message);
-                    }
+                    // (استدعاء الدالة editMessage مباشرة، كما هو مستخدم في باقي الكود)
+                    // (هذه الدالة بداخلها try...catch خاص بها وستقوم بتسجيل الخطأ 400)
+                    await editMessage(
+                        chatId,
+                        stateData.message_id,
+                        confirmationText,
+                        null // (لحذف زر "تخطي")
+                    );
                 } else {
-                    // (ID الرسالة غير موجود، لا يمكن التعديل)
-                    // (بناءً على طلب المستخدم، لن نرسل رسالة جديدة كخطة بديلة)
-                    console.warn("stateData.message_id missing, cannot edit (as requested, no fallback).");
+                    // (ID الرسالة غير موجود، لا يمكن التعديل، يجب إرسال رسالة جديدة)
+                    console.warn("stateData.message_id missing, cannot edit. Sending new message.");
+                    await sendMessage(chatId, confirmationText, null, null, true);
                 }
                 
                 return res.status(200).send('OK');
@@ -1865,7 +1872,7 @@ export default async (req, res) => {
                 return res.status(200).send('OK');
             }
       } // (نهاية if !user.is_admin && currentState)
-                                                  
+      
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         
