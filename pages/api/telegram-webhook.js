@@ -1759,9 +1759,10 @@ export default async (req, res) => {
 
       // (1. حالات المستخدم العادي - إرسال صورة/نص)
                // (1. حالات المستخدم العادي - إرسال صورة/نص)
+ // (1. حالات المستخدم العادي - إرسال صورة/نص)
       if (!user.is_admin && currentState) {
 
-            // [ ✅✅ جديد: حالة انتظار الملاحظة (إرسال نص) ]
+            // [ ✅✅ تعديل: حالة انتظار الملاحظة (إرسال نص) ]
             if (currentState === 'awaiting_user_note') {
                 if (!message.text || message.text === '/start' || message.text === '/cancel' || message.photo) {
                     // (تجاهل الأوامر أو الصور، هو يجب أن يرسل نصاً)
@@ -1786,37 +1787,25 @@ export default async (req, res) => {
                 // 2. تحضير رسالة التأكيد
                 const confirmationText = `✅ تم حفظ ملاحظتك: "${userNote}"\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`;
 
-                // 3. [ ✅✅ الإصلاح: محاولة التعديل مع التحقق من النجاح ]
+                // 3. [ ✅✅ تعديل: محاولة التعديل "فقط" (بدون خطة بديلة) ]
                 if (stateData.message_id) {
-                    let editSuccess = false;
                     try {
-                        // (استخدام axios raw للتحقق من الرد)
-                        const response = await axios.post(`${TELEGRAM_API}/editMessageText`, {
+                        // (محاولة تعديل الرسالة الأصلية)
+                        await axios.post(`${TELEGRAM_API}/editMessageText`, {
                             chat_id: chatId,
                             message_id: stateData.message_id,
                             text: confirmationText,
                             reply_markup: null // (حذف زر "تخطي")
                         });
-                        
-                        // (التحقق من أن تليجرام رد بـ "ok: true")
-                        if (response && response.data && response.data.ok) {
-                            editSuccess = true;
-                        } else {
-                            // (فشل التعديل بصمت من جهة تليجرام)
-                            console.warn("Edit message failed (Telegram API returned false):", response.data?.description);
-                        }
+                        // (تمت محاولة التعديل، لا يوجد "else" أو "catch" لإرسال رسالة جديدة)
                     } catch (e) {
-                        // (فشل التعديل بسبب خطأ شبكة أو 404)
-                        console.warn("Edit message failed (Axios error):", e.message);
-                    }
-                    
-                    // (الخطة البديلة: إذا فشل التعديل، أرسل رسالة جديدة)
-                    if (!editSuccess) {
-                        await sendMessage(chatId, confirmationText, null, null, true);
+                        // (فشل التعديل، نتجاهله بناءً على طلب المستخدم)
+                        console.warn("Edit message failed (as requested, no fallback):", e.message);
                     }
                 } else {
-                     // (إذا لم نجد ID الرسالة، نرسل رسالة جديدة)
-                     await sendMessage(chatId, confirmationText, null, null, true);
+                    // (ID الرسالة غير موجود، لا يمكن التعديل)
+                    // (بناءً على طلب المستخدم، لن نرسل رسالة جديدة كخطة بديلة)
+                    console.warn("stateData.message_id missing, cannot edit (as requested, no fallback).");
                 }
                 
                 return res.status(200).send('OK');
@@ -1876,7 +1865,6 @@ export default async (req, res) => {
                 return res.status(200).send('OK');
             }
       } // (نهاية if !user.is_admin && currentState)
-      
                                                   
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
