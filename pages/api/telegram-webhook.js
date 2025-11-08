@@ -1587,6 +1587,7 @@ export default async (req, res) => {
          
          return res.status(200).send('OK');
       }
+      
       // --- [ معالجة الحالات (State Machine) ] ---
       
       const currentState = user.admin_state; 
@@ -1986,7 +1987,7 @@ export default async (req, res) => {
         console.log(`Ignoring non-command text from user ${userId}`);
       }
     } // (نهاية if message && message.from)
-    }
+    
   } catch (e) {
     console.error("Error in webhook:", e.response ? e.response.data : e.message, e.stack);
     if (chatId) {
