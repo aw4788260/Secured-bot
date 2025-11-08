@@ -771,21 +771,47 @@ const sendGrantUser_Step3_SelectSubjects = async (chatId, messageId, stateData) 
 // --- [ (6) دوال المستخدم: طلب الاشتراك (الجديدة) ] ---
 
 // (الخطوة 1: عرض الكورسات)
-
 // (الخطوة 1: عرض الكورسات مع السعر)
-const sendSubscription_Step1_SelectCourse = async (chatId, messageId = null) => {
-    // [ ✅ تعديل: جلب السعر ]
-    const { data: courses, error } = await supabase.from('courses').select('id, title, sort_order, price').order('sort_order');
-    if (error || !courses || courses.length === 0) {
-        const msg = 'عذراً، لا توجد كورسات متاحة للاشتراك بها حالياً.';
+const sendSubscription_Step1_SelectCourse = async (chatId, messageId = null, userId) => {
+    // 1. جلب كل الكورسات
+    const { data: allCourses, error } = await supabase.from('courses').select('id, title, sort_order, price').order('sort_order');
+    
+    if (error) {
+        const msg = `خطأ في جلب الكورسات: ${error.message}`;
         if (messageId) await editMessage(chatId, messageId, msg);
         else await sendMessage(chatId, msg, null, null, true);
         return;
     }
+    
+    // 2. [ ✅ تعديل: جلب الكورسات الكاملة التي يمتلكها المستخدم ]
+    const { data: userCourses, error: userError } = await supabase
+        .from('user_course_access')
+        .select('course_id')
+        .eq('user_id', userId);
 
+    if (userError) {
+        const msg = `خطأ في جلب اشتراكاتك: ${userError.message}`;
+        if (messageId) await editMessage(chatId, messageId, msg);
+        else await sendMessage(chatId, msg, null, null, true);
+        return;
+    }
+    
+    const userCourseIds = userCourses ? userCourses.map(c => c.course_id) : [];
+
+    // 3. [ ✅ تعديل: فلترة الكورسات (إظهار التي لا يمتلكها فقط) ]
+    const availableCourses = allCourses.filter(course => !userCourseIds.includes(course.id));
+
+    // 4. التحقق إذا كان يمتلك كل شيء
+    if (!availableCourses || availableCourses.length === 0) {
+        const msg = 'أنت مشترك بالفعل في كل الكورسات الكاملة المتاحة حالياً، أو لا توجد كورسات جديدة.';
+        if (messageId) await editMessage(chatId, messageId, msg, { inline_keyboard: [[{ text: '🔙 إلغاء', callback_data: 'sub_req_cancel' }]] });
+        else await sendMessage(chatId, msg, { inline_keyboard: [[{ text: '🔙 إلغاء', callback_data: 'sub_req_cancel' }]] }, null, true);
+        return;
+    }
+
+    // 5. بناء الأزرار من الكورسات المتاحة
     const keyboard = buildKeyboard(
-        // [ ✅ تعديل: عرض السعر في الزر ]
-        courses.map(c => ({ 
+        availableCourses.map(c => ({ 
             id: c.id, 
             text: `📚 ${c.title} (${c.price || 0} ج)` 
         })), 
@@ -793,8 +819,13 @@ const sendSubscription_Step1_SelectCourse = async (chatId, messageId = null) => 
     );
     keyboard.push([{ text: '🔙 إلغاء', callback_data: 'sub_req_cancel' }]);
     
-    const text = 'الخطوة 1: اختر الكورس الذي ترغب بالاشتراك به:';
-    await setUserState(chatId, 'awaiting_subscription_choice', { step: 1, courses: courses }); // (الكورسات الآن تحتوي على السعر)
+    const text = 'الخطوة 1: اختر الكورس (تظهر فقط الكورسات التي لا تملكها كاشتراك كامل):';
+    
+    // 6. حفظ الحالة (نحفظ allCourses ليتم استخدامها في الخطوة 2)
+    await setUserState(userId, 'awaiting_subscription_choice', { 
+        step: 1, 
+        courses: allCourses // (نحفظ كل الكورسات هنا لسهولة البحث في الخطوة التالية)
+    }); 
 
     if (messageId) {
         await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
@@ -802,6 +833,8 @@ const sendSubscription_Step1_SelectCourse = async (chatId, messageId = null) => 
         await sendMessage(chatId, text, { inline_keyboard: keyboard }, null, true);
     }
 };
+// (الخطوة 1: عرض الكورسات مع السعر)
+
 
 // (الخطوة 2: اختيار نوع الاشتراك "كامل" أم "محدد")
 const sendSubscription_Step2_SelectType = async (chatId, messageId, stateData, courseId) => {
@@ -827,24 +860,50 @@ const sendSubscription_Step2_SelectType = async (chatId, messageId, stateData, c
 };
 
 // (الخطوة 3: اختيار مواد محددة مع السعر)
-const sendSubscription_Step3_SelectSubjects = async (chatId, messageId, stateData) => {
+// (الخطوة 3: اختيار مواد محددة مع السعر)
+const sendSubscription_Step3_SelectSubjects = async (chatId, messageId, stateData, userId) => {
     const courseId = stateData.selected_course.id;
-    // [ ✅ تعديل: جلب السعر ]
-    const { data: subjects, error } = await supabase.from('subjects').select('id, title, sort_order, price').eq('course_id', courseId).order('sort_order');
     
-    if (error || !subjects || subjects.length === 0) {
+    // 1. [ ✅ تعديل: جلب كل المواد في هذا الكورس ]
+    const { data: allSubjects, error } = await supabase.from('subjects').select('id, title, sort_order, price').eq('course_id', courseId).order('sort_order');
+    
+    if (error || !allSubjects || allSubjects.length === 0) {
         await editMessage(chatId, messageId, 'عذراً، لا توجد مواد متاحة حالياً في هذا الكورس.');
-        await setUserState(chatId, 'awaiting_subscription_choice', { ...stateData, step: 2 });
+        await setUserState(userId, 'awaiting_subscription_choice', { ...stateData, step: 2 });
         return;
     }
+
+    // 2. [ ✅ تعديل: جلب المواد المحددة التي يمتلكها المستخدم ]
+    const { data: userSubjects, error: userError } = await supabase
+        .from('user_subject_access')
+        .select('subject_id')
+        .eq('user_id', userId);
+
+    if (userError) {
+         await editMessage(chatId, messageId, `خطأ في جلب اشتراكاتك: ${userError.message}`);
+         return;
+    }
     
+    const userSubjectIds = userSubjects ? userSubjects.map(s => s.subject_id) : [];
+
+    // 3. [ ✅ تعديل: فلترة المواد (إظهار التي لا يمتلكها فقط) ]
+    const availableSubjects = allSubjects.filter(subject => !userSubjectIds.includes(subject.id));
+
+    // 4. التحقق إذا كان يمتلك كل شيء
+    if (!availableSubjects || availableSubjects.length === 0) {
+        await editMessage(chatId, messageId, 'أنت مشترك بالفعل في كل المواد المتاحة بهذا الكورس.');
+        await setUserState(userId, 'awaiting_subscription_choice', { ...stateData, step: 2 });
+        return;
+    }
+
+    // 5. بناء الأزرار من المواد المتاحة
     const selected_subjects = stateData.selected_subjects || [];
     const selected_subject_ids = selected_subjects.map(s => s.id);
     
     let total = 0; // (حساب الإجمالي)
     
     const keyboard = [];
-    subjects.forEach(s => {
+    availableSubjects.forEach(s => {
         const isSelected = selected_subject_ids.includes(s.id);
         if (isSelected) total += (s.price || 0); // (إضافة للسعر الإجمالي)
         
@@ -863,8 +922,17 @@ const sendSubscription_Step3_SelectSubjects = async (chatId, messageId, stateDat
     keyboard.push([{ text: '❌ إلغاء', callback_data: 'sub_req_cancel' }]);
     
     // [ ✅ تعديل: عرض الإجمالي في الرسالة ]
-    const text = `الخطوة 3: اختر المواد التي ترغب بها.\nالإجمالي الحالي: ${total} ج`;
-    await setUserState(chatId, 'awaiting_subscription_choice', { ...stateData, step: 3, subjects: subjects, selected_subjects: selected_subjects, current_total: total });
+    const text = `الخطوة 3: اختر المواد (تظهر فقط المواد التي لا تملكها).\nالإجمالي الحالي: ${total} ج`;
+    
+    // 6. [ ✅ تعديل: حفظ المواد المتاحة فقط في الحالة ]
+    await setUserState(userId, 'awaiting_subscription_choice', { 
+        ...stateData, 
+        step: 3, 
+        subjects: availableSubjects, // (مهم جداً: نحفظ فقط المواد التي يمكنه اختيارها)
+        selected_subjects: selected_subjects, 
+        current_total: total 
+    });
+    
     await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
 // --- [ (7) دوال نظام طلبات الاشتراك (المساعدة) ] ---
@@ -956,7 +1024,7 @@ export default async (req, res) => {
       if (!user.is_admin) {
         
         if (command === 'user_request_subscription') {
-            await sendSubscription_Step1_SelectCourse(chatId, messageId);
+            await sendSubscription_Step1_SelectCourse(chatId, messageId, userId);
             return res.status(200).send('OK');
         }
 
@@ -994,7 +1062,8 @@ export default async (req, res) => {
             }
           
             if (command.startsWith('sub_req_type_specific_')) {
-                await sendSubscription_Step3_SelectSubjects(chatId, messageId, stateData);
+                // [ ✅ تعديل: تمرير userId ]
+                await sendSubscription_Step3_SelectSubjects(chatId, messageId, stateData, userId);
                 return res.status(200).send('OK');
             }
 
@@ -1002,9 +1071,17 @@ export default async (req, res) => {
                 const parts = command.substring('sub_req_toggle_'.length).split('|');
                 const subjectId = parseInt(parts[0], 10);
                 const subjectTitle = parts[1];
-                const subjectPrice = parseInt(parts[2], 10) || 0; // [ ✅ تعديل: قراءة السعر ]
+                const subjectPrice = parseInt(parts[2], 10) || 0; 
                 
                 if (!subjectTitle) return res.status(200).send('OK');
+                
+                // [ ✅ تعديل: التأكد أن المادة المحددة مسموحة (موجودة في الحالة) ]
+                const allowedSubjectIds = (stateData.subjects || []).map(s => s.id);
+                if (!allowedSubjectIds.includes(subjectId)) {
+                    // (المستخدم يحاول الضغط على زر قديم أو شيء ما)
+                    await answerCallbackQuery(callback_query.id, { text: 'خطأ: المادة غير متاحة.' });
+                    return res.status(200).send('OK');
+                }
                 
                 let selected = stateData.selected_subjects || [];
                 const index = selected.findIndex(c => c.id === subjectId);
@@ -1012,11 +1089,13 @@ export default async (req, res) => {
                 if (index > -1) {
                     selected.splice(index, 1); // إلغاء الاختيار
                 } else {
-                    selected.push({ id: subjectId, title: subjectTitle, price: subjectPrice }); // [ ✅ تعديل: حفظ السعر ]
+                    selected.push({ id: subjectId, title: subjectTitle, price: subjectPrice }); 
                 }
                 
                 const newState = { ...stateData, selected_subjects: selected };
-                await sendSubscription_Step3_SelectSubjects(chatId, messageId, newState);
+                
+                // [ ✅ تعديل: تمرير userId ]
+                await sendSubscription_Step3_SelectSubjects(chatId, messageId, newState, userId);
                 return res.status(200).send('OK');
             }
             
