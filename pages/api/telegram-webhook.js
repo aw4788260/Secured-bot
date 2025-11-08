@@ -317,6 +317,25 @@ const handleStartCommand = async (chatId, user, messageId = null) => {
     }
 };
 
+const sendAdminMenu = async (chatId, user, messageId = null) => {
+  await setUserState(user.id, null, null);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '👑 الإشراف', callback_data: 'admin_supervision' }],
+      [{ text: '📨 طلبات الاشتراك', callback_data: 'admin_view_requests' }],
+      [{ text: '👤 إدارة المستخدمين', callback_data: 'admin_manage_users' }],
+      [{ text: '🗂️ إدارة المحتوى', callback_data: 'admin_manage_content' }],
+    ],
+  };
+  
+  const text = 'Panel Admin:\nاختر القسم:';
+  if (messageId) {
+      await editMessage(chatId, messageId, text, keyboard);
+  } else {
+      await sendMessage(chatId, text, keyboard);
+  }
+};
+
 const sendUserMenu = async (chatId, messageId) => {
   await setUserState(chatId, null, null);
   const keyboard = {
