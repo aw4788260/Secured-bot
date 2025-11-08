@@ -1969,14 +1969,6 @@ export default async (req, res) => {
             await setUserState(userId, null, null);
             break;
 
-// [ ... (باقي الحالات) ... ]
-              
-          default:
-            console.warn(`Unhandled state: ${currentState}`);
-            await setUserState(userId, null, null);
-            await sendMessage(chatId, 'حالة غير معروفة، تم الإلغاء.');
-            break;
-
           // (حالات إضافة/إزالة المشرفين)
           case 'awaiting_admin_id_to_add':
           case 'awaiting_admin_id_to_remove':
