@@ -1051,18 +1051,20 @@ const notifyAdminsOfNewRequest = async (request) => {
     }
 };
 
-const sendPendingRequests = async (chatId, messageId) => {
+const sendPendingRequests = async (chatId) => {
+    // [ ✅ تعديل: تم حذف messageId من هنا ]
+    
     const { data: requests, error } = await supabase.from('subscription_requests').select('*').eq('status', 'pending').order('created_at', { ascending: true });
     
-    if (messageId) {
-        await editMessage(chatId, messageId, 'جاري جلب الطلبات المعلقة...');
-    }
+    // [ 🛑 تم حذف كتلة (if (messageId)) من هنا ]
     
     if (error || !requests || requests.length === 0) {
+        // (سيتم إرسال هذه كرسالة جديدة، وهو المطلوب)
         await sendMessage(chatId, 'لا توجد طلبات اشتراك معلقة حالياً.');
         return;
     }
     
+    // (سيتم إرسال هذه كرسالة جديدة، وهو المطلوب)
     await sendMessage(chatId, `يوجد ${requests.length} طلب اشتراك معلق:`);
     for (const request of requests) {
         // [ ✅ تعديل: إظهار السعر ]
@@ -1627,7 +1629,7 @@ export default async (req, res) => {
 
       // 11. نظام طلبات الاشتراك
       if (command === 'admin_view_requests') {
-          await sendPendingRequests(chatId, messageId);
+          await sendPendingRequests(chatId);
           return res.status(200).send('OK');
       }
 
