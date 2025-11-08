@@ -1606,19 +1606,38 @@ export default async (req, res) => {
          const oldStateData = user.state_data;
          await setUserState(userId, null, null);
          
-         // [ ✅ تعديل: تنفيذ طلب المستخدم ]
          const adminMessageId = (oldState && oldStateData && oldStateData.message_id) ? oldStateData.message_id : null;
 
          if (adminMessageId) {
-             // 1. تعديل الرسالة الحالية لإظهار الإلغاء (ستظهر للحظة)
-             await editMessage(chatId, adminMessageId, '👍 تم إلغاء العملية. جار عرض القائمة الرئيسية...');
-             // 2. تعديل نفس الرسالة لعرض القائمة الرئيسية
+             // --- [مسار الأدمن وهو في حالة (state)] ---
+             
+             // [ ✅ تعديل: 1. تعديل الرسالة الحالية (مثل "أرسل الـ ID") إلى "تم الإلغاء" ]
+             await editMessage(chatId, adminMessageId, '👍 تم إلغاء العملية.');
+             
+             // [ ✅ تعديل: 2. تعديل نفس الرسالة مرة أخرى لعرض القائمة الرئيسية ]
+             // (ملاحظة: sendAdminMenu سيقوم بعمل editMessage لأننا مررنا adminMessageId)
              await sendAdminMenu(chatId, user, adminMessageId); 
+         
          } else {
-             // 1. إرسال رسالة "تم الإلغاء"
-             await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
-             // 2. إرسال القائمة الرئيسية كرسالة جديدة
-             await sendAdminMenu(chatId, user, null);
+             // --- [مسار المستخدم العادي أو الأدمن وهو "ليس" في حالة (state)] ---
+             
+             // [ ✅ تعديل: 1. إرسال رسالة "تم الإلغاء" كرسالة جديدة ]
+             const sentMsgResponse = await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
+             
+             // فقط الأدمن لديه "قائمة رئيسية"
+             if (user.is_admin) {
+                 // 2. التحقق من أن الرسالة أُرسلت بنجاح
+                 if (sentMsgResponse && sentMsgResponse.data && sentMsgResponse.data.result) {
+                     const newMessageId = sentMsgResponse.data.result.message_id;
+                     
+                     // 3. تعديل "نفس الرسالة" التي أُرسلت للتو لعرض القائمة الرئيسية
+                     await sendAdminMenu(chatId, user, newMessageId);
+                     
+                 } else {
+                     // (إذا فشل إرسال "تم الإلغاء"، نرسل القائمة الرئيسية كرسالة جديدة كخطة بديلة)
+                     await sendAdminMenu(chatId, user, null);
+                 }
+             }
          }
          return res.status(200).send('OK');
       }
