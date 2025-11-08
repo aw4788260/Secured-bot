@@ -324,6 +324,9 @@ const sendAdminManagementMenu = async (chatId, messageId) => {
 /**
  * [ ✅✅ تعديل: دالة جلب وعرض الإحصائيات (بالنظام الجديد) ]
  */
+/**
+ * [ ✅✅ تعديل: دالة جلب وعرض الإحصائيات (بالنظام الجديد) ]
+ */
 const sendStatistics = async (chatId, messageId) => {
     try {
         await editMessage(chatId, messageId, '📊 جاري حساب الإحصائيات الجديدة، يرجى الانتظار...');
@@ -410,11 +413,31 @@ const sendStatistics = async (chatId, messageId) => {
              message += `(لا توجد أي صلاحيات ممنوحة حالياً)\n`;
         }
 
-        await editMessage(chatId, messageId, message);
+        // [ ✅ تعديل: إضافة أزرار الرجوع ]
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔙 رجوع (للإشراف)', callback_data: 'admin_supervision' },
+                    { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+                ]
+            ]
+        };
+
+        await editMessage(chatId, messageId, message, keyboard); // (تمت إضافة الكيبورد هنا)
 
     } catch (error) {
         console.error("Error in sendStatistics:", error);
-        await editMessage(chatId, messageId, `حدث خطأ أثناء جلب الإحصائيات: ${error.message}`);
+        
+        // [ ✅ تعديل: إضافة أزرار الرجوع عند الخطأ أيضاً ]
+        const errorKeyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔙 رجوع (للإشراف)', callback_data: 'admin_supervision' },
+                    { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+                ]
+            ]
+        };
+        await editMessage(chatId, messageId, `حدث خطأ أثناء جلب الإحصائيات: ${error.message}`, errorKeyboard);
     }
 };
 
@@ -1399,6 +1422,8 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
+
+
       // 11. نظام طلبات الاشتراك
       if (command === 'admin_view_requests') {
           await sendPendingRequests(chatId, messageId);
@@ -1414,11 +1439,24 @@ export default async (req, res) => {
                return await answerCallbackQuery(callback_query.id, { text: 'تم التعامل مع هذا الطلب مسبقاً.' });
           }
 
+          // [ ✅ تعديل: إخفاء الأزرار فوراً عند الضغط على "رفض" ]
+          const adminName = from.first_name || 'Admin';
+          const newCaption = callback_query.message.caption + `\n\n<b>⏳ جاري الرفض بواسطة:</b> ${adminName}...`;
+          try {
+              await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    caption: newCaption,
+                    parse_mode: 'HTML',
+                    reply_markup: null // <-- إخفاء الأزرار
+              });
+          } catch(e) { /* تجاهل الفشل */ }
+          
           await setUserState(userId, 'awaiting_rejection_reason', { 
               request_id: requestId, 
               target_user_id: request.user_id,
               admin_message_id: messageId,
-              original_caption: callback_query.message.caption
+              original_caption: callback_query.message.caption // (الحفاظ على الكابشن الأصلي)
           });
           
           await sendMessage(chatId, 'أرسل الآن "سبب الرفض" (سيتم إرسال ملاحظتك للمستخدم، أو اضغط /cancel للإلغاء):');
@@ -1470,19 +1508,38 @@ export default async (req, res) => {
 
           const adminName = from.first_name || 'Admin';
           const newCaption = callback_query.message.caption + `\n\n<b>✅ تمت الموافقة بواسطة:</b> ${adminName}`;
+          
+          // [ ✅ تعديل: تعريف أزرار رسالة التأكيد ]
+          const confirmationKeyboard = {
+              inline_keyboard: [
+                  [
+                      { text: '📨 عرض الطلبات المعلقة', callback_data: 'admin_view_requests' },
+                      { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
+                  ]
+              ]
+          };
+
           try {
+              // (1) إخفاء الأزرار من الرسالة الأصلية (رسالة الطلب)
               await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                     chat_id: chatId,
                     message_id: messageId,
                     caption: newCaption,
                     parse_mode: 'HTML',
-                    reply_markup: null
+                    reply_markup: null // <-- إخفاء الأزرار
               });
+              // (2) إرسال رسالة تأكيد جديدة للأدمن (مع الأزرار)
+              await sendMessage(chatId, `✅ تمت الموافقة ومنح الصلاحية للمستخدم ${targetUserId} بنجاح.`, confirmationKeyboard);
+
           } catch(e) {
-              await sendMessage(chatId, `✅ تم منح الصلاحية للمستخدم ${targetUserId} بنجاح.`);
+              // (في حال فشل تعديل الكابشن، نكتفي بإرسال رسالة التأكيد)
+              await sendMessage(chatId, `✅ تم منح الصلاحية للمستخدم ${targetUserId} بنجاح.`, confirmationKeyboard);
           }
           return res.status(200).send('OK');
       }
+
+// [ ... (باقي الأوامر) ... ]
+    // (نهاية if callback_query)
 
       console.warn("Unhandled admin callback query:", command);
       return res.status(200).send('OK');
