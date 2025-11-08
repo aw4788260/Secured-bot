@@ -1439,18 +1439,11 @@ export default async (req, res) => {
                return await answerCallbackQuery(callback_query.id, { text: 'تم التعامل مع هذا الطلب مسبقاً.' });
           }
 
-          // [ ✅ تعديل: إخفاء الأزرار فوراً عند الضغط على "رفض" ]
-          const adminName = from.first_name || 'Admin';
-          const newCaption = callback_query.message.caption + `\n\n<b>⏳ جاري الرفض بواسطة:</b> ${adminName}...`;
-          try {
-              await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    caption: newCaption,
-                    parse_mode: 'HTML',
-                    reply_markup: null // <-- إخفاء الأزرار
-              });
-          } catch(e) { /* تجاهل الفشل */ }
+          // [ ✅ تعديل: حذف الأزرار فوراً باستخدام الدالة المخصصة ]
+          await editMarkup(chatId, messageId, null);
+
+          // [ 🛑 تم حذف (try...catch) الخاص بـ editMessageCaption من هنا ]
+          // (لم نعد بحاجة لتعديل الكابشن هنا، سنقوم بذلك عند إرسال السبب)
           
           await setUserState(userId, 'awaiting_rejection_reason', { 
               request_id: requestId, 
@@ -1462,10 +1455,13 @@ export default async (req, res) => {
           await sendMessage(chatId, 'أرسل الآن "سبب الرفض" (سيتم إرسال ملاحظتك للمستخدم، أو اضغط /cancel للإلغاء):');
           return res.status(200).send('OK');
       }
-      
+
       if (command.startsWith('approve_sub_')) {
           const requestId = parseInt(command.split('_')[2], 10);
           
+          // [ ✅ تعديل: حذف الأزرار فوراً باستخدام الدالة المخصصة ]
+          await editMarkup(chatId, messageId, null);
+
           const { data: request, error: reqError } = await supabase
               .from('subscription_requests')
               .select('*, requested_data')
@@ -1476,6 +1472,7 @@ export default async (req, res) => {
               return await answerCallbackQuery(callback_query.id, { text: 'خطأ: لم يتم العثور على هذا الطلب.' });
           }
           if (request.status === 'approved') {
+              // (الأزرار تم حذفها بالفعل، نكتفي بالرد)
               return await answerCallbackQuery(callback_query.id, { text: 'تمت الموافقة على هذا الطلب مسبقاً.' });
           }
 
@@ -1509,7 +1506,6 @@ export default async (req, res) => {
           const adminName = from.first_name || 'Admin';
           const newCaption = callback_query.message.caption + `\n\n<b>✅ تمت الموافقة بواسطة:</b> ${adminName}`;
           
-          // [ ✅ تعديل: تعريف أزرار رسالة التأكيد ]
           const confirmationKeyboard = {
               inline_keyboard: [
                   [
@@ -1520,19 +1516,20 @@ export default async (req, res) => {
           };
 
           try {
-              // (1) إخفاء الأزرار من الرسالة الأصلية (رسالة الطلب)
+              // (1) تعديل الكابشن (الأزرار تم حذفها بالفعل)
               await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                     chat_id: chatId,
                     message_id: messageId,
                     caption: newCaption,
-                    parse_mode: 'HTML',
-                    reply_markup: null // <-- إخفاء الأزرار
+                    parse_mode: 'HTML'
+                    // [ 🛑 تم حذف (reply_markup: null) من هنا ]
               });
               // (2) إرسال رسالة تأكيد جديدة للأدمن (مع الأزرار)
               await sendMessage(chatId, `✅ تمت الموافقة ومنح الصلاحية للمستخدم ${targetUserId} بنجاح.`, confirmationKeyboard);
 
           } catch(e) {
               // (في حال فشل تعديل الكابشن، نكتفي بإرسال رسالة التأكيد)
+              // (الأزرار الأصلية ستظل محذوفة)
               await sendMessage(chatId, `✅ تم منح الصلاحية للمستخدم ${targetUserId} بنجاح.`, confirmationKeyboard);
           }
           return res.status(200).send('OK');
@@ -1946,6 +1943,7 @@ export default async (req, res) => {
              break;
 
           // (حالة الرفض)
+          // (حالة الرفض)
           case 'awaiting_rejection_reason':
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
@@ -1975,14 +1973,15 @@ export default async (req, res) => {
             
             try {
                 // (تحديث الرسالة الأصلية (الطلب) لإظهار الرفض)
+                // (الأزرار تم حذفها مسبقاً)
                 const newCaption = stateData.original_caption + 
                                    `\n\n<b>❌ تم الرفض بواسطة:</b> ${from.first_name || 'Admin'}\n<b>السبب:</b> ${text}`;
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                       chat_id: chatId,
                       message_id: stateData.admin_message_id,
                       caption: newCaption,
-                      parse_mode: 'HTML',
-                      reply_markup: null // (التأكد من إخفاء الأزرار)
+                      parse_mode: 'HTML'
+                      // [ 🛑 تم حذف (reply_markup: null) من هنا ]
                 });
             } catch(e) { /* تجاهل الفشل */ }
             await setUserState(userId, null, null);
