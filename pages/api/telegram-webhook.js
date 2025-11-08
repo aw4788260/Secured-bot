@@ -1826,9 +1826,6 @@ export default async (req, res) => {
       messageId = stateData.message_id; // (ID الرسالة التي يجب تعديلها)
 
 
-      // (1. حالات المستخدم العادي - إرسال صورة/نص)
-               // (1. حالات المستخدم العادي - إرسال صورة/نص)
-
 // (1. حالات المستخدم العادي - إرسال صورة/نص)
       if (!user.is_admin && currentState) {
 
@@ -1878,10 +1875,28 @@ export default async (req, res) => {
       
             // (حالة انتظار الدفع - إرسال صورة)
             if (currentState === 'awaiting_payment_proof') {
-                if (!message.photo) {
+                
+                // [ ✅✅✅ بداية التعديل الخاص بالآيفون ]
+                let payment_file_id = null;
+
+                if (message.photo) {
+                    // (الحالة الحالية: أندرويد/ديسكتوب)
+                    payment_file_id = message.photo[message.photo.length - 1].file_id;
+                } else if (message.document) {
+                    // ( [!!] حالة الآيفون المحتملة )
+                    // (نتحقق أن الملف المُرسل هو صورة)
+                    if (message.document.mime_type && message.document.mime_type.startsWith('image/')) {
+                        payment_file_id = message.document.file_id;
+                    }
+                }
+
+                // (إذا لم نجد صورة لا هنا ولا هنا، نرفض)
+                if (!payment_file_id) {
                     await sendMessage(chatId, 'الرجاء إرسال صورة فقط (Screenshot) كإثبات. أعد المحاولة أو اضغط /cancel', null, null, true);
                     return res.status(200).send('OK');
                 }
+                // [ ✅✅✅ نهاية التعديل الخاص بالآيفون ]
+
                 
                 const stateData = user.state_data;
                 // [ ✅ تعديل: التحقق من السعر + الملاحظة ]
@@ -1891,7 +1906,7 @@ export default async (req, res) => {
                     return res.status(200).send('OK');
                 }
                 
-                const payment_file_id = message.photo[message.photo.length - 1].file_id;
+                // (payment_file_id جاهز الآن سواء من آيفون أو أندرويد)
                 const user_name = `${from.first_name || ''} ${from.last_name || ''}`.trim();
                 const user_username = from.username || null;
                 
@@ -1913,7 +1928,7 @@ export default async (req, res) => {
                         user_id: userId, user_name: user_name, user_username: user_username,
                         course_title: courseTitleDesc, // <-- الملاحظة مُضمّنة هنا
                         requested_data: requested_items_data,
-                        payment_file_id: payment_file_id,
+                        payment_file_id: payment_file_id, // <-- استخدام المتغير الجديد
                         status: 'pending',
                         total_price: totalPrice 
                     })
@@ -1930,6 +1945,8 @@ export default async (req, res) => {
                 return res.status(200).send('OK');
             }
       } // (نهاية if !user.is_admin && currentState)
+
+
       
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
