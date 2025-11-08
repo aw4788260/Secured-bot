@@ -1612,17 +1612,10 @@ export default async (req, res) => {
           return res.status(200).send('OK');
       }
 
-    if (command.startsWith('reject_sub_')) {
+      if (command.startsWith('reject_sub_')) {
           const requestId = parseInt(command.split('_')[2], 10);
-          
-          // [ ✅ تعديل: جلب بيانات إضافية من الطلب ]
-          const { data: request, error } = await supabase
-              .from('subscription_requests')
-              .select('user_id, course_title') // <-- جلبنا course_title
-              .eq('id', requestId)
-              .single();
-          
-          if (error || !request) return await answerCallbackQuery(callback_query.id, { text: 'الطلب غير موجود' });
+          const { data: request } = await supabase.from('subscription_requests').select('user_id').eq('id', requestId).single();
+          if (!request) return await answerCallbackQuery(callback_query.id, { text: 'الطلب غير موجود' });
           
           if (callback_query.message.reply_markup && (!callback_query.message.reply_markup.inline_keyboard || callback_query.message.reply_markup.inline_keyboard.length === 0)) {
                return await answerCallbackQuery(callback_query.id, { text: 'تم التعامل مع هذا الطلب مسبقاً.' });
@@ -1642,12 +1635,12 @@ export default async (req, res) => {
           await setUserState(userId, 'awaiting_rejection_reason', { 
               request_id: requestId, 
               target_user_id: request.user_id,
-              rejected_subscription_details: request.course_title, // <-- [ ✅✅ إضافة: حفظ تفاصيل الطلب ]
               admin_message_id: messageId, // (ID رسالة الطلب الأصلية)
               reason_prompt_message_id: reasonPromptMessageId, // (ID رسالة "أرسل السبب")
               original_caption: callback_query.message.caption 
           });
           
+          // [ 🛑 تم حذف (sendMessage) من هنا ونقلها للأعلى ]
           return res.status(200).send('OK');
       }
 
@@ -2156,6 +2149,8 @@ export default async (req, res) => {
              break;
 
           // (حالة الرفض)
+          // (حالة الرفض)
+          // (حالة الرفض)
           case 'awaiting_rejection_reason':
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
@@ -2166,23 +2161,17 @@ export default async (req, res) => {
                  await setUserState(userId, null, null);
                  return res.status(200).send('OK');
             }
-
-            // [ ✅✅ تعديل: بناء رسالة الرفض بالتفاصيل ]
-            const subscriptionDetails = stateData.rejected_subscription_details || '(تفاصيل الاشتراك غير متوفرة)';
-            
-            const userMessage = `نأسف، تم رفض طلب اشتراكك الخاص بـ:\n\n` +
-                                `--------------------\n` +
-                                `${subscriptionDetails}\n` +
-                                `--------------------\n\n` +
-                                `السبب: ${text}`;
-            
+            const userMessage = `نأسف، تم رفض طلب اشتراكك.\n\nالسبب: ${text}`;
             await sendMessage(stateData.target_user_id, userMessage, null, null, true);
             await supabase.from('subscription_requests').update({ status: 'rejected' }).eq('id', stateData.request_id);
             
-            // (الكود التالي خاص بتنظيف واجهة الأدمن)
+            // [ 🛑 تم حذف (confirmationKeyboard) من هنا ]
+            
+            // [ 🛑 تم حذف (sendMessage) رسالة التأكيد من هنا ]
             
             try {
                 // (تحديث الرسالة الأصلية (الطلب) لإظهار الرفض)
+                // (الأزرار تم حذفها مسبقاً)
                 const newCaption = stateData.original_caption + 
                                    `\n\n<b>❌ تم الرفض بواسطة:</b> ${from.first_name || 'Admin'}\n<b>السبب:</b> ${text}`;
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
