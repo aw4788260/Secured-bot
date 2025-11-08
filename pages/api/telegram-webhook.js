@@ -1651,10 +1651,11 @@ export default async (req, res) => {
         
         // (حذف الرسالة النصية للأدمن لتبقى الواجهة نظيفة)
         try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
+// (استبدل الكود من السطر 1353 إلى 1684 بهذا الكود)
 
         switch (currentState) {
             
-          case 'awaiting_user_ids':
+          case 'awaiting_user_ids': { // <-- ✅ إصلاح
             const ids = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (ids.length === 0) {
               await editMessage(chatId, messageId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
@@ -1672,8 +1673,9 @@ export default async (req, res) => {
             await editMessage(chatId, messageId, `تم تحديد ${ids.length} مستخدم. جار تحميل الكورسات...`);
             await sendGrantUser_Step1_SelectCourse(chatId, messageId, initialState);
             break;
+          } // <-- ✅ إصلاح
             
-          case 'awaiting_device_reset_id':
+          case 'awaiting_device_reset_id': { // <-- ✅ إصلاح
             const resetIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (resetIds.length === 0) {
                 await editMessage(chatId, messageId, 'خطأ. أرسل IDs صالحة. حاول مجدداً أو اضغط /cancel');
@@ -1684,8 +1686,9 @@ export default async (req, res) => {
             else { await editMessage(chatId, messageId, `✅ تم حذف البصمات لـ ${resetIds.length} مستخدم.`); }
             await setUserState(userId, null, null);
             break;
+          } // <-- ✅ إصلاح
             
-          case 'awaiting_user_id_for_revoke':
+          case 'awaiting_user_id_for_revoke': { // <-- ✅ إصلاح
             const revokeIds = text.split(/\s+/).filter(id => /^\d+$/.test(id));
             if (revokeIds.length !== 1) {
                  await editMessage(chatId, messageId, 'خطأ. هذه الميزة تعمل لمستخدم واحد فقط. أرسل ID واحد.');
@@ -1695,6 +1698,7 @@ export default async (req, res) => {
             await editMessage(chatId, messageId, `جاري جلب صلاحيات ${targetUserId}...`);
             await sendRevokeMenu(chatId, targetUserId, messageId);
             break;
+          } // <-- ✅ إصلاح
 
           // (حالات إدارة المحتوى)
           case 'awaiting_course_title':
@@ -1703,7 +1707,7 @@ export default async (req, res) => {
             break;
 
           // [ ✅ جديد: حالة سعر الكورس ]
-          case 'awaiting_course_price':
+          case 'awaiting_course_price': { // <-- ✅ إصلاح
             const coursePrice = parseInt(text.trim(), 10);
             if (isNaN(coursePrice) || coursePrice < 0) {
                 await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
@@ -1720,6 +1724,7 @@ export default async (req, res) => {
             // (سنقوم فقط بتحديث القائمة، وهذا هو التأكيد)
             await sendContentMenu_Courses(chatId, messageId);
             break;
+          } // <-- ✅ إصلاح
             
           // [ ✅ تعديل: حالة إضافة المادة (خطوتين) ]
           case 'awaiting_subject_title':
@@ -1729,7 +1734,7 @@ export default async (req, res) => {
 
           // [ ✅ جديد: حالة سعر المادة ]
           // [ ✅ جديد: حالة سعر المادة ]
-          case 'awaiting_subject_price':
+          case 'awaiting_subject_price': { // <-- ✅ إصلاح
             const subjectPrice = parseInt(text.trim(), 10);
             if (isNaN(subjectPrice) || subjectPrice < 0) {
                 await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
@@ -1759,6 +1764,7 @@ export default async (req, res) => {
             // [ ✅✅ الإصلاح هنا: استخدام stateData.title بدلاً من text ]
             await editMessage(chatId, messageId, `✅ تم إضافة المادة "${stateData.title}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
             break;
+          } // <-- ✅ إصلاح
             
           // [ ✅ تعديل: إصلاح رسالة إضافة الشابتر ]
           case 'awaiting_chapter_title':
@@ -1779,7 +1785,7 @@ export default async (req, res) => {
             await editMessage(chatId, messageId, `👍 العنوان: "${text}"\n\nالآن أرسل "رابط يوتيوب" الخاص بالفيديو:`);
             break;
             
-          case 'awaiting_youtube_id':
+          case 'awaiting_youtube_id': { // <-- ✅ إصلاح
             const videoId = getYouTubeID(text);
             if (!videoId) {
                 await editMessage(chatId, messageId, 'خطأ: الرابط غير صالح. أرسل رابط يوتيوب صحيح أو /cancel');
@@ -1794,11 +1800,12 @@ export default async (req, res) => {
             // [ ✅ إصلاح 1: عدم إرسال رسالة جديدة ]
             await sendContentMenu_Videos(chatId, messageId, stateData.chapter_id);
             break;
+          } // <-- ✅ إصلاح
             
           // (حالة الترتيب)
           // (حالة الترتيب)
           // (حالة الترتيب)
-          case 'awaiting_sort_order':
+          case 'awaiting_sort_order': { // <-- ✅ إصلاح
              const lines = text.split('\n');
              const updates = [];
              for (const line of lines) {
@@ -1858,10 +1865,11 @@ export default async (req, res) => {
                  await sendContentMenu_Videos(chatId, messageId, chapterId);
              }
              break;
+          } // <-- ✅ إصلاح
              
           // [ ✅ جديد: حالات تعديل السعر ]
           // [ ✅ جديد: حالات تعديل السعر ]
-          case 'awaiting_course_new_price':
+          case 'awaiting_course_new_price': { // <-- ✅ إصلاح
              const newCoursePrice = parseInt(text.trim(), 10);
              if (isNaN(newCoursePrice) || newCoursePrice < 0) {
                  await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
@@ -1875,8 +1883,9 @@ export default async (req, res) => {
              
              await sendContentMenu_Subjects(chatId, messageId, stateData.course_id); // (العودة لقائمة المواد)
              break;
+          } // <-- ✅ إصلاح
              
-          case 'awaiting_subject_new_price':
+          case 'awaiting_subject_new_price': { // <-- ✅ إصلاح
              const newSubjectPrice = parseInt(text.trim(), 10);
              if (isNaN(newSubjectPrice) || newSubjectPrice < 0) {
                  await editMessage(chatId, messageId, 'خطأ: السعر يجب أن يكون رقماً (0 أو أكبر). أرسل السعر (أو /cancel):');
@@ -1890,10 +1899,11 @@ export default async (req, res) => {
              
              await sendContentMenu_Chapters(chatId, messageId, stateData.subject_id); // (العودة لقائمة الشباتر)
              break;
+          } // <-- ✅ إصلاح
 
           // (حالة الرفض)
           // [ ✅✅ تعديل: تغيير منطق الرفض ]
-          case 'awaiting_rejection_reason':
+          case 'awaiting_rejection_reason': { // <-- ✅ إصلاح
             if (!text || text.trim().length === 0) {
                 await sendMessage(chatId, 'الرجاء إرسال سبب واضح (نص).');
                 return res.status(200).send('OK');
@@ -1938,10 +1948,11 @@ export default async (req, res) => {
             // 5. تنظيف الحالة
             await setUserState(userId, null, null);
             break;
+          } // <-- ✅ إصلاح
 
           // (حالات إضافة/إزالة المشرفين)
           case 'awaiting_admin_id_to_add':
-          case 'awaiting_admin_id_to_remove':
+          case 'awaiting_admin_id_to_remove': { // <-- ✅ إصلاح
               if (String(user.id) !== MAIN_ADMIN_ID) return res.status(200).send('OK');
               const idToModify = text.trim();
               if (!/^\d+$/.test(idToModify)) {
@@ -1971,6 +1982,7 @@ export default async (req, res) => {
               await editMessage(chatId, messageId, `✅ تم ${isAdding ? 'ترقية' : 'إزالة'} المستخدم ${idToModify} ${isAdding ? 'إلى مشرف' : 'من المشرفين'}.`);
               await sendAdminManagementMenu(chatId, messageId);
               break;
+          } // <-- ✅ إصلاح
               
           default:
             console.warn(`Unhandled state: ${currentState}`);
@@ -1979,6 +1991,7 @@ export default async (req, res) => {
             break;
         } // نهاية الـ switch
 
+// (نهاية الكود المراد استبداله)
         return res.status(200).send('OK');
       } // (نهاية if user.is_admin && currentState)
 
