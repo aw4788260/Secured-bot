@@ -225,12 +225,8 @@ const setUserState = async (userId, state, data = null) => {
 };
 
 /**
- * [ ✅✅ جديد: دالة منفصلة لمعالجة /start ]
- * (لإعادة استخدامها في /cancel)
- */
-/**
  * [ ✅✅ تعديل: دالة منفصلة لمعالجة /start ]
- * (لإعادة استخدامها في /cancel وتقبل التعديل)
+ * (تنفذ الآن "الفلترة الذكية" للاشتراكات)
  */
 const handleStartCommand = async (chatId, user, messageId = null) => {
     if (user.is_admin) {
@@ -239,70 +235,86 @@ const handleStartCommand = async (chatId, user, messageId = null) => {
       return;
     }
 
-    // (منطق المستخدم العادي)
-    const { data: courseAccess } = await supabase.from('user_course_access').select('courses(title)').eq('user_id', user.id);
-    const { data: subjectAccess } = await supabase.from('user_subject_access').select('subjects(title)').eq('user_id', user.id);
+    // --- [ ✅✅ بداية المنطق الذكي الجديد ] ---
+    
+    // 1. جلب الكورسات الكاملة (نحتاج ID و Title)
+    const { data: courseAccess, error: courseErr } = await supabase
+        .from('user_course_access')
+        .select('courses ( id, title )') // <-- طلبنا (id, title)
+        .eq('user_id', user.id);
+
+    // 2. جلب المواد المحددة (نحتاج id, title, course_id)
+    const { data: subjectAccess, error: subjectErr } = await supabase
+        .from('user_subject_access')
+        .select('subjects ( id, title, course_id )') // <-- طلبنا (id, title, course_id)
+        .eq('user_id', user.id);
+        
+    if (courseErr || subjectErr) {
+        const errorMsg = "حدث خطأ أثناء جلب اشتراكاتك.";
+        if (messageId) await editMessage(chatId, messageId, errorMsg);
+        else await sendMessage(chatId, errorMsg, null, null, true);
+        return;
+    }
 
     const hasCourseAccess = courseAccess && courseAccess.length > 0;
     const hasSubjectAccess = subjectAccess && subjectAccess.length > 0;
-    
+
     const requestButtonKeyboard = { 
         inline_keyboard: [[ { text: '📋 طلب اشتراك', callback_data: 'user_request_subscription' } ]] 
     };
-
+    
     let messageText = '';
     let keyboard = requestButtonKeyboard;
 
-    if (hasCourseAccess || hasSubjectAccess) {
+    // 3. التحقق إذا كان مشتركاً أصلاً
+    if (!hasCourseAccess && !hasSubjectAccess) {
+        messageText = 'أنت غير مشترك في الخدمة. يمكنك طلب اشتراك من الزر أدناه.';
+    } else {
+        // (نعم، هو مشترك. نبدأ بناء الرسالة)
         messageText = `أهلاً بك، أنت مشترك بالفعل.\n\n`;
         messageText += `هذا هو ID الخاص بك (استخدمه لتسجيل الدخول في التطبيق):\n<code>${user.id}</code>\n\n`;
         messageText += `اشتراكك الحالي:`;
         
+        const fullCourseIds = new Set(); // (لتخزين IDs الكورسات الكاملة)
+
+        // 4. معالجة الكورسات الكاملة
         if (hasCourseAccess) {
             messageText += `\n\n💎 الكورسات الكاملة:`;
             courseAccess.forEach(access => {
-                if (access.courses) messageText += `\n- 📦 ${access.courses.title}`;
+                if (access.courses) {
+                    messageText += `\n- 📦 ${access.courses.title}`;
+                    fullCourseIds.add(access.courses.id); // <-- تسجيل الـ ID
+                }
             });
         }
-        if (hasSubjectAccess) {
-            messageText += `\n\n🔒 المواد المحددة:`;
-            subjectAccess.forEach(access => {
-                if (access.subjects) messageText += `\n- 📖 ${access.subjects.title}`;
+
+        // 5. [ ✅✅ الفلترة الذكية ]
+        // فلترة المواد المحددة: أظهر فقط المواد التي "لا" تنتمي لكورس كامل يمتلكه
+        const filteredSubjectAccess = hasSubjectAccess ? subjectAccess.filter(access => {
+            if (!access.subjects) return false; // (مادة محذوفة)
+            // (الشرط: هل ID الكورس الخاص بالمادة "غير موجود" في قائمة الكورسات الكاملة؟)
+            return !fullCourseIds.has(access.subjects.course_id);
+        }) : [];
+
+        // 6. عرض المواد المحددة (المفلترة) فقط
+        if (filteredSubjectAccess.length > 0) {
+            messageText += `\n\n🔒 المواد المحددة (التي ليست ضمن كورس كامل):`;
+            filteredSubjectAccess.forEach(access => {
+                // (access.subjects موجود 100% بسبب الفلترة)
+                messageText += `\n- 📖 ${access.subjects.title}`;
             });
         }
         
         messageText += `\n\nيمكنك طلب اشتراك إضافي من الزر أدناه.`;
-    } else {
-      messageText = 'أنت غير مشترك في الخدمة. يمكنك طلب اشتراك من الزر أدناه.';
     }
+    // --- [ ✅✅ نهاية المنطق الذكي الجديد ] ---
 
-    // [ ✅ تعديل: التحقق من messageId للتعديل أو الإرسال ]
+    // (منطق الإرسال/التعديل - يبقى كما هو من المرة السابقة)
     if (messageId) {
-        // (استخدام HTML لأن رسالة البداية تحتوي على كود <code>)
         await editMessage(chatId, messageId, messageText, keyboard, 'HTML');
     } else {
         await sendMessage(chatId, messageText, keyboard, 'HTML', true);
     }
-};
-// --- [ (3) دوال الأدمن: القوائم الرئيسية والإشراف ] ---
-
-const sendAdminMenu = async (chatId, user, messageId = null) => {
-  await setUserState(user.id, null, null);
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: '👑 الإشراف', callback_data: 'admin_supervision' }],
-      [{ text: '📨 طلبات الاشتراك', callback_data: 'admin_view_requests' }],
-      [{ text: '👤 إدارة المستخدمين', callback_data: 'admin_manage_users' }],
-      [{ text: '🗂️ إدارة المحتوى', callback_data: 'admin_manage_content' }],
-    ],
-  };
-  
-  const text = 'Panel Admin:\nاختر القسم:';
-  if (messageId) {
-      await editMessage(chatId, messageId, text, keyboard);
-  } else {
-      await sendMessage(chatId, text, keyboard);
-  }
 };
 
 const sendUserMenu = async (chatId, messageId) => {
