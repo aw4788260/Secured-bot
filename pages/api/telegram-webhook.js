@@ -1023,7 +1023,10 @@ export default async (req, res) => {
       // --- [ (مسار المستخدم العادي - ضغط الأزرار) ] ---
       if (!user.is_admin) {
         
+        // [ ... (داخل if (callback_query) -> if (!user.is_admin)) ... ]
+
         if (command === 'user_request_subscription') {
+            // [ ✅ تعديل: تمرير userId ]
             await sendSubscription_Step1_SelectCourse(chatId, messageId, userId);
             return res.status(200).send('OK');
         }
@@ -1050,14 +1053,20 @@ export default async (req, res) => {
                 const coursePrice = course.price || 0;
                 const requestTitle = `${course.title} (اشتراك كامل)`;
                 
-                await setUserState(userId, 'awaiting_payment_proof', {
+                // [ ✅ تعديل: الانتقال لحالة الملاحظة ]
+                await setUserState(userId, 'awaiting_user_note', { // <-- تغيير الحالة
                     request_type: 'course',
                     items: [{ id: course.id, title: course.title, price: coursePrice }],
                     description: requestTitle,
-                    total_price: coursePrice // [ ✅ تعديل: حفظ السعر ]
+                    total_price: coursePrice,
+                    message_id: messageId // (حفظ ID الرسالة لتعديلها)
                 });
                 
-                await editMessage(chatId, messageId, `لقد اخترت:\n- ${requestTitle}\n\n💰 الإجمالي المطلوب: ${coursePrice} ج\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                // [ ✅ تعديل: طلب الملاحظة ]
+                const skipNoteKeyboard = {
+                    inline_keyboard: [[{ text: '⏩ تخطي (بدون ملاحظة)', callback_data: 'sub_req_skip_note' }]]
+                };
+                await editMessage(chatId, messageId, `لقد اخترت:\n- ${requestTitle} (الإجمالي: ${coursePrice} ج)\n\nهل لديك أي ملاحظة (اختياري)؟\nأرسل ملاحظتك الآن (كنص)، أو اضغط "تخطي".`, skipNoteKeyboard);
                 return res.status(200).send('OK');
             }
           
@@ -1108,23 +1117,46 @@ export default async (req, res) => {
                 
                 const titles = stateData.selected_subjects.map(c => ` ${c.title} (${c.price} ج)`).join('\n- ');
                 const requestTitle = stateData.selected_subjects.map(c => c.title).join(', ');
-                const totalPrice = stateData.current_total || 0; // [ ✅ تعديل: جلب الإجمالي ]
+                const totalPrice = stateData.current_total || 0; 
                 
-                await setUserState(userId, 'awaiting_payment_proof', {
+                // [ ✅ تعديل: الانتقال لحالة الملاحظة ]
+                await setUserState(userId, 'awaiting_user_note', { // <-- تغيير الحالة
                     request_type: 'subject',
                     items: stateData.selected_subjects,
                     description: requestTitle,
-                    total_price: totalPrice // [ ✅ تعديل: حفظ السعر الإجمالي ]
+                    total_price: totalPrice,
+                    message_id: messageId // (حفظ ID الرسالة لتعديلها)
                 });
                 
+                // [ ✅ تعديل: طلب الملاحظة ]
+                const skipNoteKeyboard = {
+                    inline_keyboard: [[{ text: '⏩ تخطي (بدون ملاحظة)', callback_data: 'sub_req_skip_note' }]]
+                };
                 await editMessage(
                     chatId, messageId,
-                    `لقد اخترت:\n- ${titles}\n\n💰 الإجمالي المطلوب: ${totalPrice} ج\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`,
-                    null 
+                    `لقد اخترت:\n- ${titles}\n\n💰 الإجمالي المطلوب: ${totalPrice} ج\n\nهل لديك أي ملاحظة (اختياري)؟\nأرسل ملاحظتك الآن (كنص)، أو اضغط "تخطي".`,
+                    skipNoteKeyboard 
                 );
                 return res.status(200).send('OK');
             }
         } // (نهاية حالة 'awaiting_subscription_choice')
+
+        // [ ✅✅ جديد: معالجة حالة انتظار الملاحظة (الضغط على زر) ]
+        if (currentState === 'awaiting_user_note') {
+            if (command === 'sub_req_skip_note') {
+                // (المستخدم تخطى الملاحظة)
+                const stateData = user.state_data;
+                
+                // (نقل المستخدم للحالة التالية مع حفظ "لا يوجد" كملاحظة)
+                await setUserState(userId, 'awaiting_payment_proof', {
+                    ...stateData,
+                    user_note: 'لا يوجد' // (تسجيل أنه تخطى)
+                });
+
+                await editMessage(chatId, messageId, `تم تخطي الملاحظة.\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                return res.status(200).send('OK');
+            }
+        } // (نهاية حالة 'awaiting_user_note')
 
         await sendMessage(chatId, 'أنت لست أدمن.', null, null, true);
         return res.status(200).send('OK');
