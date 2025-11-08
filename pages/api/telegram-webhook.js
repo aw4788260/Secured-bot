@@ -1756,58 +1756,90 @@ export default async (req, res) => {
       const stateData = user.state_data || {};
       messageId = stateData.message_id; // (ID الرسالة التي يجب تعديلها)
 
-      // (1. حالات المستخدم العادي - إرسال صورة)
-      // (1. حالات المستخدم العادي - إرسال صورة)
-      if (!user.is_admin && currentState === 'awaiting_payment_proof') {
-        if (!message.photo) {
-            await sendMessage(chatId, 'الرجاء إرسال صورة فقط (Screenshot) كإثبات. أعد المحاولة أو اضغط /cancel', null, null, true);
-            return res.status(200).send('OK');
-        }
-        
-        const stateData = user.state_data;
-        // [ ✅ تعديل: التحقق من السعر ]
-        if (!stateData.request_type || !stateData.items || !stateData.description || typeof stateData.total_price === 'undefined') {
-            await sendMessage(chatId, 'حدث خطأ. بيانات الطلب (أو السعر) مفقودة. ابدأ من جديد بالضغط على /start', null, null, true);
-            await setUserState(userId, null, null);
-            return res.status(200).send('OK');
-        }
-        
-        const payment_file_id = message.photo[message.photo.length - 1].file_id;
-        const user_name = `${from.first_name || ''} ${from.last_name || ''}`.trim();
-        const user_username = from.username || null;
-        
-        const courseTitleDesc = stateData.description;
-        const totalPrice = stateData.total_price;
-        
-        let requested_items_data = [];
-        if (stateData.request_type === 'course') {
-             requested_items_data = stateData.items.map(item => ({ type: 'course', id: item.id, price: item.price }));
-        } else if (stateData.request_type === 'subject') {
-             requested_items_data = stateData.items.map(item => ({ type: 'subject', id: item.id, price: item.price }));
-        }
 
-        const { data: newRequest, error: insertError } = await supabase
-            .from('subscription_requests')
-            .insert({
-                user_id: userId, user_name: user_name, user_username: user_username,
-                course_title: courseTitleDesc,
-                requested_data: requested_items_data,
-                payment_file_id: payment_file_id,
-                status: 'pending',
-                total_price: totalPrice // [ ✅ تعديل: حفظ السعر الإجمالي ]
-            })
-            .select().single();
+      // (1. حالات المستخدم العادي - إرسال صورة/نص)
+      if (!user.is_admin && currentState) {
 
-        if (insertError) {
-            await sendMessage(chatId, `حدث خطأ أثناء حفظ طلبك: ${insertError.message}`, null, null, true);
-            return res.status(200).send('OK');
-        }
-        await sendMessage(chatId, '✅ تم استلام طلبك بنجاح. سيقوم الأدمن بمراجعته والرد عليك قريباً.', null, null, true);
-        await notifyAdminsOfNewRequest(newRequest);
-        await setUserState(userId, null, null);
-        
-        return res.status(200).send('OK');
-      }
+            // [ ✅✅ جديد: حالة انتظار الملاحظة (إرسال نص) ]
+            if (currentState === 'awaiting_user_note') {
+                if (!message.text || message.text === '/start' || message.text === '/cancel' || message.photo) {
+                    // (تجاهل الأوامر أو الصور، هو يجب أن يرسل نصاً)
+                    await sendMessage(chatId, 'الرجاء إرسال الملاحظة (كنص) أو اضغط "تخطي" في الرسالة السابقة.', null, null, true);
+                    return res.status(200).send('OK');
+                }
+                
+                const userNote = message.text;
+                const stateData = user.state_data;
+                
+                // (نقل المستخدم للحالة التالية مع حفظ الملاحظة)
+                await setUserState(userId, 'awaiting_payment_proof', {
+                    ...stateData,
+                    user_note: userNote // (حفظ الملاحظة)
+                });
+                
+                // (تعديل الرسالة التي كانت تسأل عن الملاحظة)
+                if (stateData.message_id) { 
+                     await editMessage(chatId, stateData.message_id, `✅ تم حفظ ملاحظتك.\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                } else {
+                     await sendMessage(chatId, `✅ تم حفظ ملاحظتك.\n\nالرجاء الآن إرسال صورة واحدة (Screenshot) تثبت عملية الدفع.`);
+                }
+                return res.status(200).send('OK');
+            }
+      
+            // (حالة انتظار الدفع - إرسال صورة)
+            if (currentState === 'awaiting_payment_proof') {
+                if (!message.photo) {
+                    await sendMessage(chatId, 'الرجاء إرسال صورة فقط (Screenshot) كإثبات. أعد المحاولة أو اضغط /cancel', null, null, true);
+                    return res.status(200).send('OK');
+                }
+                
+                const stateData = user.state_data;
+                // [ ✅ تعديل: التحقق من السعر + الملاحظة ]
+                if (!stateData.request_type || !stateData.items || !stateData.description || typeof stateData.total_price === 'undefined' || !stateData.user_note) {
+                    await sendMessage(chatId, 'حدث خطأ. بيانات الطلب (أو الملاحظة) مفقودة. ابدأ من جديد بالضغط على /start', null, null, true);
+                    await setUserState(userId, null, null);
+                    return res.status(200).send('OK');
+                }
+                
+                const payment_file_id = message.photo[message.photo.length - 1].file_id;
+                const user_name = `${from.first_name || ''} ${from.last_name || ''}`.trim();
+                const user_username = from.username || null;
+                
+                // [ ✅ تعديل: إضافة الملاحظة إلى الوصف ]
+                const courseTitleDesc = `${stateData.description}\n\n📝 ملاحظة المستخدم: ${stateData.user_note}`;
+                
+                const totalPrice = stateData.total_price;
+                
+                let requested_items_data = [];
+                if (stateData.request_type === 'course') {
+                     requested_items_data = stateData.items.map(item => ({ type: 'course', id: item.id, price: item.price }));
+                } else if (stateData.request_type === 'subject') {
+                     requested_items_data = stateData.items.map(item => ({ type: 'subject', id: item.id, price: item.price }));
+                }
+
+                const { data: newRequest, error: insertError } = await supabase
+                    .from('subscription_requests')
+                    .insert({
+                        user_id: userId, user_name: user_name, user_username: user_username,
+                        course_title: courseTitleDesc, // <-- الملاحظة مُضمّنة هنا
+                        requested_data: requested_items_data,
+                        payment_file_id: payment_file_id,
+                        status: 'pending',
+                        total_price: totalPrice 
+                    })
+                    .select().single();
+
+                if (insertError) {
+                    await sendMessage(chatId, `حدث خطأ أثناء حفظ طلبك: ${insertError.message}`, null, null, true);
+                    return res.status(200).send('OK');
+                }
+                await sendMessage(chatId, '✅ تم استلام طلبك بنجاح. سيقوم الأدمن بمراجعته والرد عليك قريباً.', null, null, true);
+                await notifyAdminsOfNewRequest(newRequest);
+                await setUserState(userId, null, null);
+                
+                return res.status(200).send('OK');
+            }
+       
       // (2. حالات الأدمن - إدخال نصي)
       if (user.is_admin && currentState) {
         
