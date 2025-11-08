@@ -4,43 +4,31 @@ import Head from 'next/head';
 import Link from 'next/link';
 
 export default function App() {
-  const [status, setStatus] = useState('جاري التحقق من هويتك...');
+  // [ ✅ تعديل: استخدام رسالة واحدة ثابتة ]
+  const [status, setStatus] = useState('جار فحص معلومات المستخدم...');
   const [error, setError] = useState(null);
-  
-  // --- [ ✅ تغيير المسميات ] ---
-  const [subjects, setSubjects] = useState([]); // (سابقاً courses)
-  const [selectedSubject, setSelectedSubject] = useState(null); // (سابقاً selectedCourse)
-  const [selectedChapter, setSelectedChapter] = useState(null); // (سابقاً selectedSection)
-  // --- [ نهاية تغيير المسميات ] ---
-
+  const [subjects, setSubjects] = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState(null);
+  const [selectedChapter, setSelectedChapter] = useState(null);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
     
-    // (دالة مساعدة لجلب المواد بعد نجاح التحقق)
     const fetchSubjects = (userIdString, foundUser) => {
-      // (نستخدم الـ API المعدل الذي يرجع المواد)
-      fetch(`/api/data/get-structured-courses?userId=${userIdString}`)
-        .then(res => {
-          if (!res.ok) throw new Error(`Server error: ${res.status}`);
-          return res.json();
-        })
-        .then(subjectsData => { // (البيانات الآن هي مواد)
-          if (!Array.isArray(subjectsData)) {
-            // (معالجة الأخطاء التي قد يرجعها ال API كـ JSON)
-            throw new Error(subjectsData.message || 'Failed to load data structure');
-          }
-          setSubjects(subjectsData); // (نخزن المواد)
-          setUser(foundUser); 
-          setStatus(''); 
+      fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
+        .then(res => res.json())
+        .then(subjectsData => {
+          if (!Array.isArray(subjectsData)) throw new Error(subjectsData.message || 'Failed to load data');
+          setSubjects(subjectsData); 
+          setUser(foundUser);
+          setStatus(null); // (إلغاء رسالة التحميل)
         })
         .catch(err => {
-          setError(`حدث خطأ أثناء جلب المواد: ${err.message}`);
+          setError('حدث خطأ أثناء جلب المواد.');
           console.error("Error fetching subjects:", err);
         });
     };
 
-    // (دالة مساعدة للتحقق من البصمة وجلب المواد)
     const checkDeviceApi = (userId, deviceFingerprint, foundUser, isAndroidApk) => {
       fetch('/api/auth/check-device', { 
         method: 'POST',
@@ -52,7 +40,7 @@ export default function App() {
         if (!deviceData.success) {
           setError(deviceData.message);
         } else {
-          setStatus('جاري جلب المواد...');
+          // [ 🛑 حذف: setStatus ]
           const userIdString = String(userId);
           
           if (isAndroidApk) { 
@@ -60,14 +48,14 @@ export default function App() {
               .then(res => res.json())
               .then(nameData => {
                 const realUser = { id: userId, first_name: nameData.name };
-                fetchSubjects(userIdString, realUser); // جلب المواد
+                fetchSubjects(userIdString, realUser);
               })
               .catch(err => {
                  const realUser = { id: userId, first_name: `User ${userId}` };
-                 fetchSubjects(userIdString, realUser); // جلب المواد
+                 fetchSubjects(userIdString, realUser);
               });
           } else {
-              fetchSubjects(userIdString, foundUser); // جلب المواد
+              fetchSubjects(userIdString, foundUser);
           }
         }
       })
@@ -77,10 +65,9 @@ export default function App() {
       });
     };
 
-    // (دالة التحقق من الاشتراك - تستخدم ال API المعدل)
     const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, deviceId = null) => {
-      setStatus('جاري التحقق من الاشتراك...');
-      fetch('/api/auth/check-subscription', { // (يستخدم ال API المعدل)
+      // [ 🛑 حذف: setStatus ]
+      fetch('/api/auth/check-subscription', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: foundUser.id }),
@@ -92,11 +79,10 @@ export default function App() {
           return;
         }
 
-        setStatus('جاري التحقق من بصمة الجهاز...');
+        // [ 🛑 حذف: setStatus ]
         if (isAndroidApk) {
           checkDeviceApi(foundUser.id, deviceId, foundUser, true);
         } else {
-          // (تليجرام: استخدام بصمة المتصفح)
           const loadBrowserFingerprint = async () => {
             try {
               const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
@@ -104,9 +90,8 @@ export default function App() {
               const result = await fp.get();
               return result.visitorId;
             } catch (fpError) {
-              console.error("FingerprintJS error:", fpError);
-              // (خطة بديلة بسيطة إذا فشل FingerprintJS)
-              return `fallback_${navigator.userAgent.substring(0, 50)}`;
+               console.error("FingerprintJS error:", fpError);
+               return `fallback_${navigator.userAgent.substring(0, 50)}`;
             }
           };
           loadBrowserFingerprint().then(fingerprint => {
@@ -121,8 +106,7 @@ export default function App() {
     };
 
 
-    // --- [ ✅ بداية المنطق الرئيسي للتحقق ] ---
-    // (هذا الكود مأخوذ من ملفك الأصلي ويعمل كما هو)
+    // --- [ ✅✅ بداية المنطق الرئيسي للتحقق (المعدل) ] ---
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const androidUserId = urlParams.get('android_user_id');
@@ -139,7 +123,7 @@ export default function App() {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
         
-        const platform = window.Telegram.WebApp.platform;
+        const platform = window.Telegram.WebApp.platform; // (e.g., 'ios', 'android', 'macos', 'tdesktop')
         const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
         
         if (!miniAppUser || !miniAppUser.id) {
@@ -149,24 +133,25 @@ export default function App() {
         
         console.log("Detected Telegram Platform:", platform);
 
-        if (platform === 'ios' || platform === 'macos') { // (السماح للآيفون والماك)
-          // [ الحالة 2أ: آيفون/ماك (سماح بالدخول) ]
+        // [ ✅ تعديل: السماح لـ (iOS, macOS, tdesktop) مباشرة ]
+        if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
+          // (سماح بالدخول للآيفون، الماك، والويندوز/لينكس ديسكتوب)
           checkSubscriptionAndDevice(miniAppUser, false, null);
         
         } else {
-          // [ الحالة 2ب: أندرويد أو ديسكتوب (يجب التحقق من الأدمن) ]
-          setStatus('جاري التحقق من صلاحيات الأدمن...');
+          // [ الحالة 2ب: المنصات الأخرى (مثل android, web) يجب التحقق من الأدمن ]
+          // [ 🛑 حذف: setStatus ]
           
           fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
             .then(res => res.json())
             .then(adminData => {
                 if (adminData.isAdmin) {
-                    // (سماح بالدخول للأدمن)
-                    console.log("Admin detected on non-ios platform. Allowing access.");
+                    // (سماح بالدخول للأدمن على أي منصة)
+                    console.log("Admin detected on non-allowed platform. Allowing access.");
                     checkSubscriptionAndDevice(miniAppUser, false, null);
                 } else {
-                    // (منع الدخول لغير الأدمن)
-                    setError('عذراً، الفتح من تليجرام متاح للآيفون والماك فقط. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                    // (منع الدخول لغير الأدمن على هذه المنصات)
+                    setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
                 }
             })
             .catch(err => {
@@ -176,7 +161,7 @@ export default function App() {
 
       // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
       } else if (typeof window !== 'undefined') {
-        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام (للآيفون).');
+        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
         return;
       }
       
@@ -187,40 +172,21 @@ export default function App() {
 
   }, []); // نهاية useEffect
 
-  // (الرسائل الأولية - مع إضافة مؤشر التحميل)
-  // (هذا مأخوذ من ملف globals.css الخاص بك)
-  const renderLoader = () => (
-      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <Head><title>جاري التحميل...</title></Head>
-        <style jsx>{`
-          .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.2);
-            border-left-color: #38bdf8;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-          }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
-        <div className="spinner"></div>
-        <h1>{status || 'جاري التحميل...'}</h1>
-      </div>
-  );
-
+  // [ ✅ تعديل: شاشة التحميل الجديدة ]
   if (error) {
     return <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
   if (status || !user) {
-    return renderLoader();
+    return (
+      <div className="app-container loader-container">
+        <Head><title>جاري التحميل...</title></Head>
+        <h1>{status}</h1>
+        <div className="loading-bar"></div>
+      </div>
+    );
   }
 
-  // --- [ ✅ تغيير منطق العرض ] ---
-
-  // (المستوى 3: عرض الفيديوهات - يتغير ليعتمد على selectedChapter)
+  // (المستوى 3: عرض الفيديوهات)
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
@@ -233,7 +199,6 @@ export default function App() {
           {selectedChapter.videos.length > 0 ? (
             selectedChapter.videos.map(video => (
               <li key={video.id}>
-                {/* (رابط صفحة المشاهدة لا يتغير) */}
                 <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
                   <a className="button-link video-link">
                     {video.title}
@@ -253,7 +218,7 @@ export default function App() {
     );
   }
 
-  // (المستوى 2: عرض الشباتر/المجلدات - يتغير ليعتمد على selectedSubject)
+  // (المستوى 2: عرض الشباتر/المجلدات)
   if (selectedSubject) {
     return (
       <div className="app-container">
@@ -285,7 +250,7 @@ export default function App() {
     );
   }
 
-  // (المستوى 1: عرض المواد - هذا هو المستوى الأول الجديد)
+  // (المستوى 1: عرض المواد)
   return (
     <div className="app-container">
       <Head><title>المواد المتاحة</title></Head>
