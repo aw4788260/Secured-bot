@@ -1768,7 +1768,83 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
+        
+
+      // --- [ ✅ بداية: معالجات أزرار محرر الأسئلة ] ---
+      
+      if (user.admin_state === 'awaiting_question_edit') {
+         const stateData = user.state_data;
+         
+         // (التنقل)
+         if (command === 'exam_edit_q_next') {
+            const newIndex = stateData.current_index + 1;
+            await setUserState(userId, 'awaiting_question_edit', { ...stateData, current_index: newIndex });
+            await displayQuestionForEdit(chatId, messageId, { ...stateData, current_index: newIndex });
+            return res.status(200).send('OK');
+         }
+         if (command === 'exam_edit_q_prev') {
+            const newIndex = stateData.current_index - 1;
+            await setUserState(userId, 'awaiting_question_edit', { ...stateData, current_index: newIndex });
+            await displayQuestionForEdit(chatId, messageId, { ...stateData, current_index: newIndex });
+            return res.status(200).send('OK');
+         }
+
+         // (الانتهاء)
+         if (command === 'exam_edit_q_finish') {
+            await editMessage(chatId, messageId, 'تم حفظ التعديلات.');
+            const subject_id = stateData.subject_id; // (جلبناه عند بدء الجلسة)
+            await setUserState(userId, null, null);
+            await sendContentMenu_Exams_For_Subject(chatId, messageId, subject_id); // (العودة لقائمة الامتحانات)
+            return res.status(200).send('OK');
+         }
+         
+         // (حذف السؤال)
+         if (command.startsWith('exam_edit_q_delete_')) {
+            const questionId = parseInt(command.split('_')[4], 10);
+            await editMessage(chatId, messageId, 'جاري حذف السؤال...');
+            // (سيتم حذف الاختيارات تلقائياً بسبب on delete cascade)
+            await supabase.from('questions').delete().eq('id', questionId);
+            await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
+            // (إعادة تحميل الجلسة)
+            await loadQuestionsForEditSession(chatId, messageId, stateData);
+            return res.status(200).send('OK');
+         }
+
+         // (بدء عملية الاستبدال)
+         if (command.startsWith('exam_edit_q_replace_')) {
+            const questionId = parseInt(command.split('_')[4], 10);
+            await setUserState(userId, 'awaiting_replacement_question', {
+                ...stateData,
+                question_id_to_replace: questionId
+            });
+            await editMessage(chatId, messageId, 'أرسل الـ (Poll) الجديد ليحل محل هذا السؤال: (أو /cancel)');
+            return res.status(200).send('OK');
+         }
+         
+         // (بدء عملية الإضافة "بعد")
+         if (command.startsWith('exam_edit_q_add_after_')) {
+            const questionId = parseInt(command.split('_')[5], 10);
+            const currentQuestion = stateData.questions[stateData.current_index];
+            await setUserState(userId, 'awaiting_new_question_after', {
+                ...stateData,
+                after_sort_order: currentQuestion.sort_order // (سنضيف بعد هذا الترتيب)
+            });
+            await editMessage(chatId, messageId, `أرسل الـ (Poll) الجديد ليتم إضافته "بعد" هذا السؤال: (أو /cancel)`);
+            return res.status(200).send('OK');
+         }
+         
+         // (بدء عملية الإضافة "للنهاية")
+         if (command === 'exam_edit_q_add_end') {
+             await setUserState(userId, 'awaiting_new_question_end', stateData);
+             await editMessage(chatId, messageId, `أرسل الـ (Poll) الجديد ليتم إضافته "في نهاية" الامتحان: (أو /cancel)`);
+             return res.status(200).send('OK');
+         }
+      } // (نهاية if state === awaiting_question_edit)
+      
+      // --- [ ✅ نهاية: معالجات أزرار محرر الأسئلة ] ---
+        
       // --- [ نهاية: قسم إدارة الامتحانات ] ---
+      
         // (الخطوة 2: اختار "كورس كامل")
         if (command.startsWith('admin_grant_type_full_')) {
             const courseId = parseInt(command.split('_')[4], 10);
@@ -2376,7 +2452,103 @@ export default async (req, res) => {
             // (العودة لقائمة التعديل)
             await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
             break;
+
+  // (داخل ... switch (currentState))
+
+          // --- [ ✅ بداية: حالات تعديل/إضافة الأسئلة ] ---
+          
+          case 'awaiting_replacement_question':
+          case 'awaiting_new_question_after':
+          case 'awaiting_new_question_end':
             
+            if (!message.poll || message.poll.type !== 'quiz') {
+                await sendMessage(chatId, '❌ خطأ: يجب إرسال (Poll) من نوع (Quiz). حاول مجدداً أو /cancel');
+                return res.status(200).send('OK');
+            }
+            
+            try {
+                await editMessage(chatId, stateData.message_id, '⚙️ جاري معالجة السؤال الجديد...');
+                const poll = message.poll;
+                const examId = stateData.exam_id;
+                
+                // (البيانات المشتركة للسؤال الجديد)
+                const newQuestionData = {
+                    exam_id: examId,
+                    question_text: poll.question
+                };
+                const newOptionsData = poll.options.map((opt, index) => ({
+                    option_text: opt.text,
+                    is_correct: (index === poll.correct_option_id),
+                    sort_order: index
+                }));
+
+                if (currentState === 'awaiting_replacement_question') {
+                    const qid_to_replace = stateData.question_id_to_replace;
+                    // (استبدال: حذف القديم ثم إضافة الجديد بنفس الترتيب)
+                    const { data: oldQ } = await supabase.from('questions').select('sort_order').eq('id', qid_to_replace).single();
+                    await supabase.from('questions').delete().eq('id', qid_to_replace); // (سيحذف الاختيارات القديمة)
+                    
+                    const { data: newQ } = await supabase.from('questions').insert({
+                        ...newQuestionData,
+                        sort_order: oldQ ? oldQ.sort_order : 0
+                    }).select().single();
+                    
+                    await supabase.from('options').insert(newOptionsData.map(opt => ({ ...opt, question_id: newQ.id })));
+                
+                } else if (currentState === 'awaiting_new_question_after') {
+                    const after_sort_order = stateData.after_sort_order;
+                    // (إضافة "بعد": إزاحة + إضافة)
+                    
+                    // 1. إزاحة كل الأسئلة التي ترتيبها أكبر (نستدعي الدالة)
+                    await supabase.rpc('increment_sort_order', { 
+                        table_name: 'questions',
+                        parent_id_column: 'exam_id',
+                        parent_id_value: examId,
+                        from_sort_order: after_sort_order + 1
+                    });
+                    
+                    // 2. إضافة السؤال الجديد في المساحة الفارغة
+                    const { data: newQ } = await supabase.from('questions').insert({
+                        ...newQuestionData,
+                        sort_order: after_sort_order + 1
+                    }).select().single();
+                    
+                    await supabase.from('options').insert(newOptionsData.map(opt => ({ ...opt, question_id: newQ.id })));
+
+                } else if (currentState === 'awaiting_new_question_end') {
+                    // (إضافة "للنهاية": جلب أعلى ترتيب + إضافة)
+                    
+                    // 1. جلب أعلى ترتيب
+                    const { data: maxSort, error: maxErr } = await supabase
+                        .from('questions')
+                        .select('sort_order')
+                        .eq('exam_id', examId)
+                        .order('sort_order', { ascending: false })
+                        .limit(1)
+                        .single();
+                    
+                    const newSortOrder = (maxSort ? maxSort.sort_order : 0) + 1;
+                    
+                    // 2. إضافة السؤال الجديد
+                    const { data: newQ } = await supabase.from('questions').insert({
+                        ...newQuestionData,
+                        sort_order: newSortOrder
+                    }).select().single();
+                    
+                    await supabase.from('options').insert(newOptionsData.map(opt => ({ ...opt, question_id: newQ.id })));
+                }
+
+                await sendMessage(chatId, '✅ تم حفظ السؤال بنجاح.');
+                // (إعادة تحميل جلسة التعديل)
+                await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
+
+            } catch (err) {
+                await editMessage(chatId, stateData.message_id, `حدث خطأ فادح: ${err.message}`);
+                await setUserState(userId, null, null);
+            }
+            break;
+            
+          // --- [ ✅ نهاية: حالات تعديل/إضافة الأسئلة ] ---
           // --- [ ✅ نهاية: حالات إضافة امتحان ] ---
             
           // [ ✅ جديد: حالة سعر الكورس ]
