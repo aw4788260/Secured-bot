@@ -1,0 +1,119 @@
+// pages/results/[attemptId].js
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import Head from 'next/head';
+
+export default function ResultsPage() {
+    const router = useRouter();
+    const { attemptId } = router.query;
+    const [results, setResults] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    // (يجب إضافة نفس كود التحقق من المستخدم من [examId].js هنا أيضاً للأمان)
+
+    useEffect(() => {
+        if (!attemptId) return;
+        
+        // (هذا الـ API يجب إنشاؤه في الخطوة 5)
+        fetch(`/api/exams/get-results?attemptId=${attemptId}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.error) throw new Error(data.error);
+                setResults(data);
+                setIsLoading(false);
+            })
+            .catch(err => {
+                 setError(err.message);
+                 setIsLoading(false);
+            });
+    }, [attemptId]);
+
+    if (isLoading) {
+         return (
+            <div className="app-container loader-container">
+                <Head><title>جاري تحميل النتيجة...</title></Head>
+                <h1>جاري تحميل النتيجة...</h1>
+                <div className="loading-bar"></div>
+            </div>
+         );
+    }
+
+    if (error || !results) {
+        return (
+            <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+                <Head><title>خطأ</title></Head>
+                <h1>خطأ: {error || "لا يمكن العثور على النتائج."}</h1>
+                <button className="back-button" onClick={() => router.push('/app')}>
+                    &larr; العودة للرئيسية
+                </button>
+            </div>
+        );
+    }
+
+
+    // (عرض النتيجة والتصحيح)
+    return (
+        <div className="app-container">
+            <Head><title>النتيجة النهائية: {results.exam_title}</title></Head>
+            
+            <h1>النتيجة النهائية لامتحان: {results.exam_title}</h1>
+            <div className="score-badge">
+                {results.score_details.percentage}%
+            </div>
+            <p style={{textAlign: 'center', fontSize: '1.2em', fontWeight: 'bold'}}>
+                ({results.score_details.correct} إجابة صحيحة من {results.score_details.total} سؤال)
+            </p>
+
+            <hr style={{width: '100%', borderColor: '#334155', margin: '20px 0'}} />
+            
+            <h2>التصحيح التفصيلي:</h2>
+            
+            {results.corrected_questions.map((q, index) => {
+                const userAnswerId = q.user_answer ? q.user_answer.selected_option_id : null;
+                const correctOptionId = q.correct_option_id;
+                
+                return (
+                    <div key={q.id} className="question-box-result">
+                        <h4>{index + 1}. {q.question_text}</h4>
+                        <div className="options-list">
+                            
+                            {q.options.map(opt => {
+                                let className = 'option-result';
+                                const isCorrect = opt.id === correctOptionId;
+                                const isUserChoice = opt.id === userAnswerId;
+
+                                if (isCorrect) {
+                                    // (تلوين الإجابة الصحيحة بالأخضر)
+                                    className += ' correct-answer'; 
+                                } else if (isUserChoice && !isCorrect) {
+                                    // (تلوين اختيار الطالب الخطأ بالأحمر)
+                                    className += ' wrong-answer'; 
+                                }
+
+                                return (
+                                    <div key={opt.id} className={className}>
+                                        {opt.option_text}
+                                        {isCorrect && " (الإجابة الصحيحة ✅)"}
+                                        {isUserChoice && !isCorrect && " (اختيارك ❌)"}
+                                    </div>
+                                );
+                            })}
+                            
+                            {!userAnswerId && (
+                                <div className="option-result wrong-answer">
+                                    (لم يتم الإجابة على هذا السؤال)
+                                </div>
+                            )}
+
+                        </div>
+                    </div>
+                );
+            })}
+            
+            <button className="button-link" style={{marginTop: '20px'}} onClick={() => router.push('/app')}>
+                العودة لقائمة المواد
+            </button>
+        </div>
+    );
+}
