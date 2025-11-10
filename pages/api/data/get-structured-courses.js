@@ -1,8 +1,7 @@
 // pages/api/data/get-structured-courses.js
-// (سيعيد هذا ال API "المواد" التي يملكها المستخدم مع الإصلاح)
 import { supabase } from '../../../lib/supabaseClient';
 
-// الاستعلام المتداخل لجلب المادة وكل ما تحتها
+// ✅ 1. تحديث الاستعلام ليشمل الامتحانات
 const subjectQuery = `
   id, 
   title,
@@ -12,6 +11,14 @@ const subjectQuery = `
     title,
     sort_order,
     videos ( id, title, sort_order )
+  ),
+  exams ( 
+    id, 
+    title, 
+    duration_minutes, 
+    sort_order,
+    allowed_attempts,
+    requires_student_name
   )
 `;
 
@@ -36,7 +43,7 @@ export default async (req, res) => {
       
       const { data: subjectsFromCourses, error: subjectsErr } = await supabase
         .from('subjects')
-        .select(subjectQuery)
+        .select(subjectQuery) // <-- استخدام الاستعلام المحدث
         .in('course_id', courseIds)
         .order('sort_order', { ascending: true })
         .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -66,7 +73,7 @@ export default async (req, res) => {
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
           .from('subjects')
-          .select(subjectQuery)
+          .select(subjectQuery) // <-- استخدام الاستعلام المحدث
           .in('id', specificSubjectIds)
           .order('sort_order', { ascending: true })
           .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -77,14 +84,30 @@ export default async (req, res) => {
       }
     }
 
-    // --- الخطوة 3: [ ✅✅ الإصلاح هنا ] ---
+    // --- ✅ الخطوة 3: جلب محاولات الطالب (لتحديد علامة ✅) ---
+    const { data: userAttempts, error: attemptError } = await supabase
+        .from('user_attempts')
+        .select('id, exam_id')
+        .eq('user_id', userId)
+        .order('started_at', { ascending: false }); // (نريد الأحدث)
+
+    if (attemptError) throw attemptError;
+
+    // (إنشاء خريطة (Map) لتخزين آخر محاولة لكل امتحان)
+    const lastAttemptMap = new Map();
+    if (userAttempts) {
+        for (const attempt of userAttempts) {
+            if (!lastAttemptMap.has(attempt.exam_id)) {
+                lastAttemptMap.set(attempt.exam_id, attempt.id);
+            }
+        }
+    }
+
+    // --- الخطوة 4: [ ✅✅ الإصلاح هنا ] ---
     
-    // (فقط نقوم بترتيب المواد)
+    // (ترتيب المواد)
     finalSubjectsData.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-    // (سنقوم فقط بضمان الترتيب الداخلي، وسيتولى التطبيق (app.js)
-    // عرض رسائل "لا توجد شباتر" أو "لا توجد فيديوهات" إذا كانت القوائم فارغة)
-    
     const structuredData = finalSubjectsData.map(subject => ({
       ...subject,
       // (نرتب الشباتر)
@@ -94,13 +117,19 @@ export default async (req, res) => {
                           ...chapter,
                           // (ونرتب الفيديوهات)
                           videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                      })),
+      
+      // (✅ نرتب الامتحانات ونضيف بيانات المحاولة)
+      exams: subject.exams
+                      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                      .map(exam => ({
+                          ...exam,
+                          last_attempt_id: lastAttemptMap.get(exam.id) || null,
+                          is_completed: lastAttemptMap.has(exam.id)
                       }))
     }));
     
-    // (ملاحظة: لقد أزلنا الفلترة (.filter) التي كانت تخفي المواد الفارغة)
-    
-    console.log(`Successfully assembled data for ${structuredData.length} subjects (pre-filtering removed).`);
-    res.status(200).json(structuredData); // (إرجاع البيانات كاملة)
+    res.status(200).json(structuredData); 
 
   } catch (err) {
     console.error("CRITICAL Error in get-structured-data:", err.message, err.stack);
