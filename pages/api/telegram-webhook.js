@@ -532,6 +532,62 @@ const sendStatistics = async (chatId, messageId) => {
 };
 
 // --- [ (4) دوال الأدمن: إدارة المحتوى (الهيكل الجديد) ] ---
+/**
+ * (جديد) دالة عرض قائمة الامتحانات الخاصة بمادة
+ */
+const sendContentMenu_Exams_For_Subject = async (chatId, messageId, subjectId) => {
+  await setUserState(chatId, null, { current_subject_id: subjectId });
+
+  // جلب الامتحانات المرتبطة بهذه المادة
+  const { data: exams, error } = await supabase.from('exams')
+                                      .select('id, title')
+                                      .eq('subject_id', subjectId)
+                                      .order('sort_order');
+                                      
+  if (error) return await editMessage(chatId, messageId, `خطأ: ${error.message}`);
+
+  // (الضغط على الامتحان سيفتح قائمة التعديل)
+  const keyboard = buildKeyboard(exams.map(e => ({ id: e.id, text: `✏️ ${e.title}` })), `content_view_exam_`);
+
+  if (exams.length === 0) {
+      keyboard.push([{ text: '(لا توجد امتحانات)', callback_data: 'noop' }]);
+  }
+  
+  // (الأزرار التي طلبتها)
+  keyboard.push([
+    { text: '➕ إضافة امتحان', callback_data: `content_add_exam_for_subject_${subjectId}` },
+    { text: '❌ حذف امتحان', callback_data: `content_del_exam_picker_for_subject_${subjectId}` }
+  ]);
+  
+  keyboard.push([{ text: '🔙 رجوع (للمادة)', callback_data: `content_nav_subject_${subjectId}` }]);
+  
+  const text = 'إدارة الامتحانات (التابعة للمادة):\n\nاختر امتحاناً للتعديل أو أضف جديد:';
+  await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
+};
+
+/**
+ * (جديد) دالة عرض قائمة تعديل امتحان معين
+ */
+const sendExamEditMenu = async (chatId, messageId, examId, subjectId) => {
+    const { data: exam, error } = await supabase.from('exams').select('title, subject_id').eq('id', examId).single();
+    if (error || !exam) return await editMessage(chatId, messageId, 'خطأ: الامتحان غير موجود.');
+
+    // (تخزين ID الامتحان والحالة الحالية)
+    await setUserState(chatId, null, { current_exam_id: examId, current_subject_id: exam.subject_id }); 
+
+    const keyboard = {
+    inline_keyboard: [
+        [{ text: '✏️ تعديل العنوان', callback_data: `exam_edit_title_${examId}` }],
+        [{ text: '⏱️ تعديل الوقت', callback_data: `exam_edit_duration_${examId}` }],
+        [{ text: '❓ تعديل الأسئلة', callback_data: `exam_edit_questions_${examId}` }],
+        [{ text: '📊 الإحصائيات', callback_data: `exam_view_stats_${examId}` }],
+        [{ text: '🔙 رجوع (لقائمة الامتحانات)', callback_data: `content_nav_exams_for_subject_${exam.subject_id}` }]
+    ]
+    };
+    
+    await editMessage(chatId, messageId, `تعديل الامتحان: ${exam.title}`, keyboard);
+};
+
 
 // (المستوى 1: الكورسات)
 const sendContentMenu_Courses = async (chatId, messageId = null) => {
@@ -583,7 +639,7 @@ const sendContentMenu_Subjects = async (chatId, messageId, courseId) => {
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
 
-// (المستوى 3: الشباتر - [ ✅ تعديل: إضافة زر "تعديل المادة" ])
+// (المستوى 3: الشباتر - [ ✅ تعديل: إضافة زر "إدارة الامتحانات" ])
 const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
   await setUserState(chatId, null, { current_subject_id: subjectId });
   const { data: subject, error } = await supabase.from('subjects').select('title, course_id, price').eq('id', subjectId).single();
@@ -598,18 +654,23 @@ const sendContentMenu_Chapters = async (chatId, messageId, subjectId) => {
   ]);
   keyboard.push([{ text: '🔃 ترتيب الشباتر', callback_data: `content_order_start_chapters_${subjectId}` }]);
 
-  // [ ✅ جديد: زر تعديل المادة (السعر) ]
+  // --- [ ✅✅ هذا هو الزر الجديد الذي طلبته ] ---
+  keyboard.push([{ text: '✏️ إدارة الامتحانات (لهذه المادة)', callback_data: `content_nav_exams_for_subject_${subjectId}` }]);
+  // --- [ نهاية الإضافة ] ---
+
   keyboard.push([{ text: `✏️ تعديل سعر المادة (الحالي: ${subject.price || 0} ج)`, callback_data: `content_edit_subject_price_${subjectId}` }]);
 
   keyboard.push([{ text: '🗑️ حذف المادة كاملة', callback_data: `delete_subject_confirm_${subject.course_id}_${subjectId}` }]);
-  // [ ✅ تعديل: إضافة زر الرئيسية ]
   keyboard.push([
       { text: '🔙 رجوع (للمواد)', callback_data: `content_nav_course_${subject.course_id}` },
       { text: '🏠 الرئيسية', callback_data: 'admin_main_menu' }
   ]);
-  const text = `المادة: ${subject.title}\n\nاختر شابتر:`;
+  
+  // (تعديل النص ليعكس الخيارات المتاحة)
+  const text = `المادة: ${subject.title}\n\nاختر شابتر (للشرح) أو قم بإدارة الامتحانات:`;
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
+
 // (المستوى 4: الفيديوهات)
 // (المستوى 4: الفيديوهات)
 const sendContentMenu_Videos = async (chatId, messageId, chapterId) => {
@@ -1529,7 +1590,185 @@ export default async (req, res) => {
             await sendGrantUser_Step2_SelectType(chatId, messageId, stateData, courseId);
             return res.status(200).send('OK');
         }
+
         
+
+      // --- [ ✅ بداية: قسم إدارة الامتحانات ] ---
+      
+      // (1. الزر الرئيسي للانتقال لقائمة الامتحانات)
+      if (command.startsWith('content_nav_exams_for_subject_')) {
+        const subjectId = parseInt(command.split('_')[5], 10);
+        await sendContentMenu_Exams_For_Subject(chatId, messageId, subjectId); 
+        return res.status(200).send('OK');
+      }
+
+      // (2. الزر الذي يفتح قائمة تعديل امتحان معين)
+      if (command.startsWith('content_view_exam_')) {
+        const examId = parseInt(command.split('_')[3], 10);
+        await sendExamEditMenu(chatId, messageId, examId);
+        return res.status(200).send('OK');
+      }
+
+      // (3. زر "إضافة امتحان" - يبدأ الـ State Machine)
+      if (command.startsWith('content_add_exam_for_subject_')) {
+        const subjectId = parseInt(command.split('_')[6], 10);
+        // (نبدأ الحالة الأولى: طلب العنوان)
+        await setUserState(userId, 'awaiting_exam_title', { 
+            message_id: messageId, 
+            subject_id: subjectId 
+        });
+        await editMessage(chatId, messageId, '📝 أرسل "عنوان" الامتحان: (أو /cancel للإلغاء)');
+        return res.status(200).send('OK');
+      }
+
+      // (4. أزرار خطوة "حقل الاسم")
+      if (command === 'add_exam_name_yes' || command === 'add_exam_name_no') {
+        if (user.admin_state !== 'awaiting_exam_name_field') return res.status(200).send('OK');
+        
+        const stateData = user.state_data;
+        const requires_name = (command === 'add_exam_name_yes');
+        
+        // (ننتقل للحالة التالية: طلب المحاولات)
+        await setUserState(userId, 'awaiting_exam_attempts', { 
+            ...stateData,
+            requires_student_name: requires_name
+        });
+        
+        const kbd = { inline_keyboard: [
+            [{ text: '♾️ غير محدود', callback_data: 'exam_set_attempts_null' }],
+            [{ text: '1️⃣ محاولة واحدة', callback_data: 'exam_set_attempts_1' }],
+            [{ text: '3️⃣ ثلاث محاولات', callback_data: 'exam_set_attempts_3' }],
+            [{ text: '🔢 إرسال رقم مخصص', callback_data: 'exam_set_attempts_custom' }]
+        ]};
+        await editMessage(chatId, messageId, `✅ الاسم: ${requires_name ? 'نعم' : 'لا'}\n\n🔢 حدد "عدد المحاولات" المسموحة للطالب:`, kbd);
+        return res.status(200).send('OK');
+      }
+      
+      // (5. أزرار خطوة "عدد المحاولات")
+      if (command.startsWith('exam_set_attempts_')) {
+         if (user.admin_state !== 'awaiting_exam_attempts') return res.status(200).send('OK');
+         
+         const stateData = user.state_data;
+         let attempts = null; // (الافتراضي "غير محدود")
+         
+         if (command === 'exam_set_attempts_1') attempts = 1;
+         if (command === 'exam_set_attempts_3') attempts = 3;
+
+         if (command === 'exam_set_attempts_custom') {
+            // (نطلب من الأدمن إرسال رقم)
+            await setUserState(userId, 'awaiting_exam_attempts_custom', stateData);
+            await editMessage(chatId, messageId, '🔢 أرسل الآن "الرقم" المخصص لعدد المحاولات: (أو /cancel)');
+            return res.status(200).send('OK');
+         }
+         
+         // (ننتقل للحالة التالية: طلب عشوائية الأسئلة)
+         await setUserState(userId, 'awaiting_exam_rand_q', { 
+            ...stateData,
+            allowed_attempts: attempts
+         });
+         
+         const kbd = { inline_keyboard: [
+            [{ text: 'نعم (موصى به)', callback_data: 'exam_set_rand_q_yes' }],
+            [{ text: 'لا (ترتيب ثابت)', callback_data: 'exam_set_rand_q_no' }]
+         ]};
+         await editMessage(chatId, messageId, `✅ المحاولات: ${attempts || 'غير محدود'}\n\n🔄 هل تريد "ترتيب الأسئلة عشوائياً"؟`, kbd);
+         return res.status(200).send('OK');
+      }
+      
+      // (6. أزرار خطوة "عشوائية الأسئلة")
+      if (command.startsWith('exam_set_rand_q_')) {
+         if (user.admin_state !== 'awaiting_exam_rand_q') return res.status(200).send('OK');
+         
+         const stateData = user.state_data;
+         const rand_q = (command === 'exam_set_rand_q_yes');
+
+         // (ننتقل للحالة التالية: عشوائية الاختيارات)
+         await setUserState(userId, 'awaiting_exam_rand_o', { 
+            ...stateData,
+            randomize_questions: rand_q
+         });
+         
+         const kbd = { inline_keyboard: [
+            [{ text: 'نعم (موصى به)', callback_data: 'exam_set_rand_o_yes' }],
+            [{ text: 'لا (ترتيب ثابت)', callback_data: 'exam_set_rand_o_no' }]
+         ]};
+         await editMessage(chatId, messageId, `✅ عشوائية الأسئلة: ${rand_q ? 'نعم' : 'لا'}\n\n🔄 هل تريد "ترتيب الاختيارات عشوائياً"؟`, kbd);
+         return res.status(200).send('OK');
+      }
+
+      // (7. أزرار خطوة "عشوائية الاختيارات" - الخطوة الأخيرة قبل الأسئلة)
+      if (command.startsWith('exam_set_rand_o_')) {
+         if (user.admin_state !== 'awaiting_exam_rand_o') return res.status(200).send('OK');
+         
+         const stateData = user.state_data;
+         const rand_o = (command === 'exam_set_rand_o_yes');
+
+         // (الآن، نقوم بحفظ الامتحان في قاعدة البيانات بكل البيانات)
+         await editMessage(chatId, messageId, '⚙️ جاري حفظ إعدادات الامتحان...');
+         
+         const { data: newExam, error: insertError } = await supabase.from('exams').insert({
+            subject_id: stateData.subject_id,
+            title: stateData.title,
+            duration_minutes: stateData.duration,
+            requires_student_name: stateData.requires_student_name,
+            allowed_attempts: stateData.allowed_attempts,
+            randomize_questions: stateData.randomize_questions,
+            randomize_options: rand_o,
+            sort_order: 0
+         }).select().single();
+         
+         if (insertError) {
+             await editMessage(chatId, messageId, `خطأ فادح: ${insertError.message}`);
+             await setUserState(userId, null, null);
+             return res.status(200).send('OK');
+         }
+
+         // (ننتقل للحالة الأخيرة: إضافة الأسئلة)
+         await setUserState(userId, 'awaiting_exam_questions', { 
+            message_id: stateData.message_id,
+            subject_id: stateData.subject_id,
+            current_exam_id: newExam.id, // (مهم جداً)
+            current_question_sort_order: 0 // (لترتيب الأسئلة)
+         });
+         
+         await editMessage(chatId, messageId, `✅ تم حفظ الامتحان بنجاح.\n\nالآن، أرسل الأسئلة (Polls) واحداً تلو الآخر.\n\nيمكنك إرسال (Poll) جاهز من نوع (Quiz).\nأو أرسل /done للانتهاء والعودة.`);
+         return res.status(200).send('OK');
+      }
+      
+      // (أضف هذا مع باقي الأزرار مثل تعديل السعر...)
+      // (هذه الأزرار خاصة بالتعديل، سنضيفها هنا كنقطة دخول)
+      if (command.startsWith('exam_edit_title_')) {
+         const examId = parseInt(command.split('_')[3], 10);
+         await setUserState(userId, 'awaiting_exam_new_title', { message_id: messageId, exam_id: examId });
+         await editMessage(chatId, messageId, '✏️ أرسل "العنوان الجديد" للامتحان: (أو /cancel)');
+         return res.status(200).send('OK');
+      }
+      if (command.startsWith('exam_edit_duration_')) {
+         const examId = parseInt(command.split('_')[3], 10);
+         await setUserState(userId, 'awaiting_exam_new_duration', { message_id: messageId, exam_id: examId });
+         await editMessage(chatId, messageId, '⏱️ أرسل "الوقت الجديد" للامتحان (بالدقائق): (أو /cancel)');
+         return res.status(200).send('OK');
+      }
+      
+      // (هذه الأزرار سيتم برمجتها لاحقاً بالتفصيل)
+      if (command.startsWith('exam_edit_questions_')) {
+         await editMessage(chatId, messageId, '
+جاري تحميل محرر الأسئلة... (سيتم برمجته لاحقاً)');
+         // (هنا سنستدعي دالة `displayQuestionForEdit` التي وصفناها)
+         return res.status(200).send('OK');
+      }
+      if (command.startsWith('exam_view_stats_')) {
+         await editMessage(chatId, messageId, '📊 جاري حساب الإحصائيات... (سيتم برمجته لاحقاً)');
+         // (هنا سنستدعي دالة `sendExamStatistics` التي وصفناها)
+         return res.status(200).send('OK');
+      }
+      if (command.startsWith('content_del_exam_picker_for_subject_')) {
+         await editMessage(chatId, messageId, 'جاري عرض قائمة الحذف... (سيتم برمجته لاحقاً)');
+         // (هنا سنستدعي دالة `sendDeletionPicker` للامتحانات)
+         return res.status(200).send('OK');
+      }
+
+      // --- [ نهاية: قسم إدارة الامتحانات ] ---
         // (الخطوة 2: اختار "كورس كامل")
         if (command.startsWith('admin_grant_type_full_')) {
             const courseId = parseInt(command.split('_')[4], 10);
@@ -2004,6 +2243,142 @@ export default async (req, res) => {
             await editMessage(chatId, messageId, `👍 الاسم: "${text}"\n\nالآن أرسل "سعر" الكورس (للاشتراك الكامل) (أو 0 للمجاني):`);
             break;
 
+          // --- [ ✅ بداية: حالات إضافة امتحان ] ---
+          
+          case 'awaiting_exam_title':
+            const title = text.trim();
+            if (title.length < 3) {
+                 await editMessage(chatId, messageId, 'خطأ: العنوان قصير جداً. أرسل عنواناً صالحاً:');
+                 return res.status(200).send('OK');
+            }
+            
+            // (ننتقل للحالة التالية: طلب المدة)
+            await setUserState(userId, 'awaiting_exam_duration', { ...stateData, title: title });
+            await editMessage(chatId, messageId, `✅ العنوان: "${title}"\n\n⏱️ أرسل الآن "مدة الامتحان" (بالدقائق كرقم):`);
+            break;
+
+          case 'awaiting_exam_duration':
+            const duration = parseInt(text.trim(), 10);
+            if (isNaN(duration) || duration <= 0) {
+                await editMessage(chatId, messageId, 'خطأ: المدة يجب أن تكون رقماً (بالدقائق). أرسل رقماً صحيحاً:');
+                return res.status(200).send('OK');
+            }
+            
+            // (ننتقل للحالة التالية: طلب حقل الاسم)
+            await setUserState(userId, 'awaiting_exam_name_field', { ...stateData, duration: duration });
+            const kbd = { inline_keyboard: [
+                [{ text: 'نعم، أضف حقل الاسم', callback_data: 'add_exam_name_yes' }],
+                [{ text: 'لا، تخطي', callback_data: 'add_exam_name_no' }]
+            ]};
+            await editMessage(chatId, messageId, `✅ المدة: ${duration} دقيقة\n\n👤 هل هذا الامتحان يتطلب "إدخال اسم الطالب"؟`, kbd);
+            break;
+            
+          case 'awaiting_exam_attempts_custom':
+            const attempts_custom = parseInt(text.trim(), 10);
+            if (isNaN(attempts_custom) || attempts_custom <= 0) {
+                await editMessage(chatId, messageId, 'خطأ: يجب إرسال رقم صحيح (مثل 1, 2, 5). أرسل رقماً صحيحاً:');
+                return res.status(200).send('OK');
+            }
+            
+            // (ننتقل للحالة التالية: عشوائية الأسئلة)
+            await setUserState(userId, 'awaiting_exam_rand_q', { 
+                ...stateData,
+                allowed_attempts: attempts_custom
+            });
+            
+            const kbd_rand_q = { inline_keyboard: [
+                [{ text: 'نعم (موصى به)', callback_data: 'exam_set_rand_q_yes' }],
+                [{ text: 'لا (ترتيب ثابت)', callback_data: 'exam_set_rand_q_no' }]
+            ]};
+            await editMessage(chatId, messageId, `✅ المحاولات: ${attempts_custom}\n\n🔄 هل تريد "ترتيب الأسئلة عشوائياً"؟`, kbd_rand_q);
+            break;
+
+          // (الحالة الأهم: استقبال الأسئلة)
+          case 'awaiting_exam_questions':
+            const currentExamId = stateData.current_exam_id;
+            let currentSortOrder = stateData.current_question_sort_order;
+            
+            if (message.poll) {
+                const poll = message.poll;
+                
+                if (poll.type !== 'quiz') {
+                    await sendMessage(chatId, '❌ خطأ: يجب أن يكون الـ Poll من نوع "Quiz" (اختبار). هذا Poll عادي.');
+                    return res.status(200).send('OK');
+                }
+                
+                const questionText = poll.question;
+                const correctOptionIndex = poll.correct_option_id; 
+                
+                // 1. حفظ السؤال
+                const { data: newQuestion, error: qError } = await supabase.from('questions').insert({
+                    exam_id: currentExamId,
+                    question_text: questionText,
+                    sort_order: currentSortOrder
+                }).select().single();
+                
+                if (qError) {
+                    await sendMessage(chatId, `❌ خطأ بحفظ السؤال: ${qError.message}`);
+                    return res.status(200).send('OK');
+                }
+
+                // 2. حفظ الاختيارات
+                const optionsPayload = poll.options.map((opt, index) => ({
+                    question_id: newQuestion.id,
+                    option_text: opt.text,
+                    is_correct: (index === correctOptionIndex),
+                    sort_order: index
+                }));
+                
+                await supabase.from('options').insert(optionsPayload);
+                
+                // (تحديث الحالة بالترتيب الجديد)
+                await setUserState(userId, 'awaiting_exam_questions', { ...stateData, current_question_sort_order: currentSortOrder + 1 });
+                
+                await sendMessage(chatId, `✅ تم حفظ السؤال (رقم ${currentSortOrder + 1}).\nأرسل السؤال التالي (Poll)، أو /done للانتهاء.`);
+            
+            } else if (text === '/done') {
+                // (الانتهاء)
+                await editMessage(chatId, messageId, '👍 تم الانتهاء من إضافة الأسئلة.');
+                await setUserState(userId, null, null);
+                // (العودة لقائمة الامتحانات)
+                await sendContentMenu_Exams_For_Subject(chatId, stateData.message_id, stateData.subject_id);
+            
+            } else if (text) {
+                // (دعم الصيغة اليدوية)
+                await sendMessage(chatId, '(الصيغة اليدوية لم تتم برمجتها بعد، الرجاء إرسال Poll أو /done)');
+            }
+            break;
+
+          // --- [ حالات تعديل امتحان موجود ] ---
+          
+          case 'awaiting_exam_new_title':
+            const newTitle = text.trim();
+            if (newTitle.length < 3) {
+                 await editMessage(chatId, messageId, 'خطأ: العنوان قصير جداً. أرسل عنواناً صالحاً:');
+                 return res.status(200).send('OK');
+            }
+            await supabase.from('exams').update({ title: newTitle }).eq('id', stateData.exam_id);
+            await editMessage(chatId, messageId, '✅ تم تحديث العنوان.');
+            await setUserState(userId, null, null);
+            // (العودة لقائمة التعديل)
+            await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
+            break;
+
+          case 'awaiting_exam_new_duration':
+            const newDuration = parseInt(text.trim(), 10);
+            if (isNaN(newDuration) || newDuration <= 0) {
+                await editMessage(chatId, messageId, 'خطأ: المدة يجب أن تكون رقماً (بالدقائق). أرسل رقماً صحيحاً:');
+                return res.status(200).send('OK');
+            }
+            await supabase.from('exams').update({ duration_minutes: newDuration }).eq('id', stateData.exam_id);
+            await editMessage(chatId, messageId, '✅ تم تحديث المدة.');
+            await setUserState(userId, null, null);
+            // (العودة لقائمة التعديل)
+            await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
+            break;
+            
+          // --- [ ✅ نهاية: حالات إضافة امتحان ] ---
+            
           // [ ✅ جديد: حالة سعر الكورس ]
           case 'awaiting_course_price':
             const coursePrice = parseInt(text.trim(), 10);
