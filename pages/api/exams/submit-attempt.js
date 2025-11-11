@@ -28,20 +28,15 @@ export default async (req, res) => {
     }
 
     // 2. جلب الإجابات الصحيحة للامتحان
-    
-    // --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] ---
-    // (نحول مفاتيح الأسئلة من نصوص إلى أرقام أولاً)
     const questionIdsAsNumbers = Object.keys(answers).map(id => parseInt(id, 10));
 
     const { data: correctOptions, error: optionsError } = await supabase
       .from('options')
       .select('id, question_id')
       .eq('is_correct', true)
-      .in('question_id', questionIdsAsNumbers); // (استخدام الأرقام المصححة هنا)
+      .in('question_id', questionIdsAsNumbers);
     
     if (optionsError) throw optionsError;
-    // --- [ نهاية الإصلاح ] ---
-
 
     // (تحويل الإجابات الصحيحة إلى خريطة لسهولة المقارنة)
     const correctAnswersMap = new Map();
@@ -55,14 +50,20 @@ export default async (req, res) => {
     const totalQuestions = Object.keys(answers).length;
     const userAnswersPayload = []; // (لتخزينها في جدول user_answers)
 
+    
+    // --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] ---
     for (const [questionId, selectedOptionId] of Object.entries(answers)) {
-      const correctOptionId = correctAnswersMap.get(questionId);
+      
+      const correctOptionId = correctAnswersMap.get(questionId); // (نص)
+      const selectedOptionId_String = selectedOptionId.toString(); // (تحويل رقم إلى نص)
+
       // (هنا نقارن نص بنص - وهو صحيح)
-      const is_correct = (selectedOptionId === correctOptionId);
+      const is_correct = (selectedOptionId_String === correctOptionId);
 
       if (is_correct) {
         score++;
       }
+      // --- [ نهاية الإصلاح ] ---
 
       userAnswersPayload.push({
         attempt_id: attemptId,
@@ -80,7 +81,6 @@ export default async (req, res) => {
     if (saveAnswersError) throw saveAnswersError;
 
     // 5. حساب النتيجة النهائية وتحديث المحاولة
-    // (تأكد أن totalQuestions ليس صفراً لتجنب قسمة صفر على صفر)
     const percentage = (totalQuestions > 0) ? Math.round((score / totalQuestions) * 100) : 0;
 
     const { error: updateAttemptError } = await supabase
