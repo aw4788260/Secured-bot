@@ -28,17 +28,25 @@ export default async (req, res) => {
     }
 
     // 2. جلب الإجابات الصحيحة للامتحان
+    
+    // --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] ---
+    // (نحول مفاتيح الأسئلة من نصوص إلى أرقام أولاً)
+    const questionIdsAsNumbers = Object.keys(answers).map(id => parseInt(id, 10));
+
     const { data: correctOptions, error: optionsError } = await supabase
       .from('options')
       .select('id, question_id')
       .eq('is_correct', true)
-      .in('question_id', Object.keys(answers));
+      .in('question_id', questionIdsAsNumbers); // (استخدام الأرقام المصححة هنا)
     
     if (optionsError) throw optionsError;
+    // --- [ نهاية الإصلاح ] ---
+
 
     // (تحويل الإجابات الصحيحة إلى خريطة لسهولة المقارنة)
     const correctAnswersMap = new Map();
     correctOptions.forEach(opt => {
+      // (نحولها إلى نصوص لضمان المقارنة الصحيحة في الخطوة 3)
       correctAnswersMap.set(opt.question_id.toString(), opt.id.toString());
     });
 
@@ -49,6 +57,7 @@ export default async (req, res) => {
 
     for (const [questionId, selectedOptionId] of Object.entries(answers)) {
       const correctOptionId = correctAnswersMap.get(questionId);
+      // (هنا نقارن نص بنص - وهو صحيح)
       const is_correct = (selectedOptionId === correctOptionId);
 
       if (is_correct) {
@@ -71,7 +80,8 @@ export default async (req, res) => {
     if (saveAnswersError) throw saveAnswersError;
 
     // 5. حساب النتيجة النهائية وتحديث المحاولة
-    const percentage = Math.round((score / totalQuestions) * 100);
+    // (تأكد أن totalQuestions ليس صفراً لتجنب قسمة صفر على صفر)
+    const percentage = (totalQuestions > 0) ? Math.round((score / totalQuestions) * 100) : 0;
 
     const { error: updateAttemptError } = await supabase
       .from('user_attempts')
