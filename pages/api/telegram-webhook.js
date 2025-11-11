@@ -1678,7 +1678,7 @@ export default async (req, res) => {
 
       // (3. زر "إضافة امتحان" - يبدأ الـ State Machine)
       if (command.startsWith('content_add_exam_for_subject_')) {
-        const subjectId = parseInt(command.split('_')[6], 10);
+        const subjectId = parseInt(command.split('_')[5], 10);
         // (نبدأ الحالة الأولى: طلب العنوان)
         await setUserState(userId, 'awaiting_exam_title', { 
             message_id: messageId, 
