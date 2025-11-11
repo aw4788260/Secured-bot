@@ -1591,9 +1591,76 @@ export default async (req, res) => {
             return res.status(200).send('OK');
         }
 
+        // (الخطوة 2: اختار "كورس كامل")
+        if (command.startsWith('admin_grant_type_full_')) {
+            const courseId = parseInt(command.split('_')[4], 10);
+            const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
+            
+            await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
+            
+            // [ ✅ إصلاح 1: استخدام answerCallbackQuery ]
+            await answerCallbackQuery(callback_query.id, { text: `✅ تم منح صلاحية "الكورس الكامل" لـ ${usersToUpdate.length} مستخدم.` });
+            await setUserState(userId, null, null);
+            await sendUserMenu(chatId, messageId); // (العودة لقائمة المستخدمين)
+            return res.status(200).send('OK');
+        }
         
+        
+        
+        if (command.startsWith('admin_grant_type_specific_')) {
+            await sendGrantUser_Step3_SelectSubjects(chatId, messageId, stateData);
+            return res.status(200).send('OK');
+        }
 
-      // --- [ ✅ بداية: قسم إدارة الامتحانات ] ---
+        if (command.startsWith('admin_grant_toggle_')) {
+            const parts = command.substring('admin_grant_toggle_'.length).split('|');
+            const subjectId = parseInt(parts[0], 10);
+            const subjectTitle = parts[1];
+            
+            let selected = stateData.selected_subjects || [];
+            const index = selected.findIndex(s => s.id === subjectId);
+            
+            if (index > -1) selected.splice(index, 1);
+            else selected.push({ id: subjectId, title: subjectTitle });
+            
+            const newState = { ...stateData, selected_subjects: selected };
+            await sendGrantUser_Step3_SelectSubjects(chatId, messageId, newState);
+            return res.status(200).send('OK');
+        }
+        
+        if (command === 'admin_grant_all_subjects_in_course') {
+            const allSubjects = stateData.subjects.map(s => ({ id: s.id, title: s.title }));
+            const newState = { ...stateData, selected_subjects: allSubjects };
+            await sendGrantUser_Step3_SelectSubjects(chatId, messageId, newState);
+            await answerCallbackQuery(callback_query.id, { text: 'تم تحديد الكل' });
+            return res.status(200).send('OK');
+        }
+
+        if (command === 'admin_grant_finish_specific') {
+            const selectedIds = (stateData.selected_subjects || []).map(s => s.id);
+            if (selectedIds.length === 0) {
+                 await answerCallbackQuery(callback_query.id, { text: 'لم تختر أي مواد.' });
+                 return res.status(200).send('OK');
+            }
+            
+            const accessObjects = [];
+            usersToUpdate.forEach(uid => {
+                selectedIds.forEach(sid => {
+                    accessObjects.push({ user_id: uid, subject_id: sid });
+                });
+            });
+            
+            await supabase.from('user_subject_access').upsert(accessObjects, { onConflict: 'user_id, subject_id' });
+            
+            // [ ✅ إصلاح 1: استخدام answerCallbackQuery ]
+            await answerCallbackQuery(callback_query.id, { text: `✅ تم منح ${selectedIds.length} مادة محددة لـ ${usersToUpdate.length} مستخدم.` });
+            await setUserState(userId, null, null);
+            await sendUserMenu(chatId, messageId); // (العودة لقائمة المستخدمين)
+            return res.status(200).send('OK');
+        }
+      } // (نهاية حالة 'awaiting_grant_selection')
+
+        // --- [ ✅ بداية: قسم إدارة الامتحانات ] ---
       
       // (1. الزر الرئيسي للانتقال لقائمة الامتحانات)
       if (command.startsWith('content_nav_exams_for_subject_')) {
@@ -1877,75 +1944,6 @@ export default async (req, res) => {
      
       // --- [ نهاية: قسم إدارة الامتحانات ] ---
       
-        // (الخطوة 2: اختار "كورس كامل")
-        if (command.startsWith('admin_grant_type_full_')) {
-            const courseId = parseInt(command.split('_')[4], 10);
-            const accessObjects = usersToUpdate.map(uid => ({ user_id: uid, course_id: courseId }));
-            
-            await supabase.from('user_course_access').upsert(accessObjects, { onConflict: 'user_id, course_id' });
-            
-            // [ ✅ إصلاح 1: استخدام answerCallbackQuery ]
-            await answerCallbackQuery(callback_query.id, { text: `✅ تم منح صلاحية "الكورس الكامل" لـ ${usersToUpdate.length} مستخدم.` });
-            await setUserState(userId, null, null);
-            await sendUserMenu(chatId, messageId); // (العودة لقائمة المستخدمين)
-            return res.status(200).send('OK');
-        }
-        
-        
-        
-        if (command.startsWith('admin_grant_type_specific_')) {
-            await sendGrantUser_Step3_SelectSubjects(chatId, messageId, stateData);
-            return res.status(200).send('OK');
-        }
-
-        if (command.startsWith('admin_grant_toggle_')) {
-            const parts = command.substring('admin_grant_toggle_'.length).split('|');
-            const subjectId = parseInt(parts[0], 10);
-            const subjectTitle = parts[1];
-            
-            let selected = stateData.selected_subjects || [];
-            const index = selected.findIndex(s => s.id === subjectId);
-            
-            if (index > -1) selected.splice(index, 1);
-            else selected.push({ id: subjectId, title: subjectTitle });
-            
-            const newState = { ...stateData, selected_subjects: selected };
-            await sendGrantUser_Step3_SelectSubjects(chatId, messageId, newState);
-            return res.status(200).send('OK');
-        }
-        
-        if (command === 'admin_grant_all_subjects_in_course') {
-            const allSubjects = stateData.subjects.map(s => ({ id: s.id, title: s.title }));
-            const newState = { ...stateData, selected_subjects: allSubjects };
-            await sendGrantUser_Step3_SelectSubjects(chatId, messageId, newState);
-            await answerCallbackQuery(callback_query.id, { text: 'تم تحديد الكل' });
-            return res.status(200).send('OK');
-        }
-
-        if (command === 'admin_grant_finish_specific') {
-            const selectedIds = (stateData.selected_subjects || []).map(s => s.id);
-            if (selectedIds.length === 0) {
-                 await answerCallbackQuery(callback_query.id, { text: 'لم تختر أي مواد.' });
-                 return res.status(200).send('OK');
-            }
-            
-            const accessObjects = [];
-            usersToUpdate.forEach(uid => {
-                selectedIds.forEach(sid => {
-                    accessObjects.push({ user_id: uid, subject_id: sid });
-                });
-            });
-            
-            await supabase.from('user_subject_access').upsert(accessObjects, { onConflict: 'user_id, subject_id' });
-            
-            // [ ✅ إصلاح 1: استخدام answerCallbackQuery ]
-            await answerCallbackQuery(callback_query.id, { text: `✅ تم منح ${selectedIds.length} مادة محددة لـ ${usersToUpdate.length} مستخدم.` });
-            await setUserState(userId, null, null);
-            await sendUserMenu(chatId, messageId); // (العودة لقائمة المستخدمين)
-            return res.status(200).send('OK');
-        }
-      } // (نهاية حالة 'awaiting_grant_selection')
-
       // 10. إدارة المستخدمين (سحب الصلاحيات)
       if (command.startsWith('revoke_all_')) {
         const targetUserId = command.split('_')[2];
