@@ -566,19 +566,26 @@ const sendContentMenu_Exams_For_Subject = async (chatId, messageId, subjectId) =
 };
 
 /**
- * (جديد) دالة عرض قائمة تعديل امتحان معين
+ * (معدل) دالة عرض قائمة تعديل امتحان معين
  */
 const sendExamEditMenu = async (chatId, messageId, examId, subjectId) => {
-    const { data: exam, error } = await supabase.from('exams').select('title, subject_id').eq('id', examId).single();
+    // ✅ 1. تم إضافة allowed_attempts إلى الاستعلام
+    const { data: exam, error } = await supabase.from('exams').select('title, subject_id, allowed_attempts').eq('id', examId).single();
     if (error || !exam) return await editMessage(chatId, messageId, 'خطأ: الامتحان غير موجود.');
 
     // (تخزين ID الامتحان والحالة الحالية)
     await setUserState(chatId, null, { current_exam_id: examId, current_subject_id: exam.subject_id }); 
 
+    // ✅ 2. تنسيق العدد الحالي (للعرض)
+    const currentAttempts = exam.allowed_attempts === null ? '♾️ غير محدود' : exam.allowed_attempts;
+
     const keyboard = {
     inline_keyboard: [
         [{ text: '✏️ تعديل العنوان', callback_data: `exam_edit_title_${examId}` }],
         [{ text: '⏱️ تعديل الوقت', callback_data: `exam_edit_duration_${examId}` }],
+        // --- [ ✅✅ هذا هو الزر الجديد ] ---
+        [{ text: `🔄 تعديل المحاولات (الحالي: ${currentAttempts})`, callback_data: `exam_edit_attempts_${examId}` }],
+        // --- [ نهاية الإضافة ] ---
         [{ text: '❓ تعديل الأسئلة', callback_data: `exam_edit_questions_${examId}` }],
         [{ text: '📊 الإحصائيات', callback_data: `exam_view_stats_${examId}` }],
         [{ text: '🔙 رجوع (لقائمة الامتحانات)', callback_data: `content_nav_exams_for_subject_${exam.subject_id}` }]
@@ -586,6 +593,20 @@ const sendExamEditMenu = async (chatId, messageId, examId, subjectId) => {
     };
     
     await editMessage(chatId, messageId, `تعديل الامتحان: ${exam.title}`, keyboard);
+};
+
+/**
+ * (جديد) دالة عرض قائمة خيارات تعديل عدد المحاولات
+ */
+const sendNewAttemptsMenu = async (chatId, messageId) => {
+    const kbd = { inline_keyboard: [
+        [{ text: '♾️ غير محدود', callback_data: 'exam_set_new_attempts_null' }],
+        [{ text: '1️⃣ محاولة واحدة', callback_data: 'exam_set_new_attempts_1' }],
+        [{ text: '3️⃣ ثلاث محاولات', callback_data: 'exam_set_new_attempts_3' }],
+        [{ text: '🔢 إرسال رقم مخصص', callback_data: 'exam_set_new_attempts_custom' }],
+        [{ text: '🔙 إلغاء التعديل', callback_data: 'exam_edit_cancel' }] // (زر للرجوع)
+    ]};
+    await editMessage(chatId, messageId, `🔢 اختر العدد "الجديد" للمحاولات:`, kbd);
 };
 
 /**
@@ -1905,6 +1926,59 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
+
+      // --- [ ✅✅ بداية الكود الجديد ] ---
+
+      // (8. زر تعديل عدد المحاولات)
+      if (command.startsWith('exam_edit_attempts_')) {
+         const examId = parseInt(command.split('_')[3], 10);
+         // (ندخل في حالة انتظار تغيير المحاولات)
+         await setUserState(userId, 'awaiting_exam_new_attempts', { 
+             message_id: messageId, 
+             exam_id: examId 
+         });
+         await sendNewAttemptsMenu(chatId, messageId);
+         return res.status(200).send('OK');
+      }
+
+      // (9. زر إلغاء تعديل المحاولات)
+      if (command === 'exam_edit_cancel') {
+         if (user.admin_state !== 'awaiting_exam_new_attempts') return res.status(200).send('OK');
+         
+         const stateData = user.state_data;
+         await editMessage(chatId, messageId, 'تم إلغاء التعديل.');
+         await setUserState(userId, null, null);
+         // (العودة لقائمة التعديل)
+         await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
+         return res.status(200).send('OK');
+      }
+
+      // (10. معالجة أزرار اختيار المحاولات الجديدة)
+      if (user.admin_state === 'awaiting_exam_new_attempts') {
+         const stateData = user.state_data;
+         let newAttempts = null;
+         
+         if (command === 'exam_set_new_attempts_1') newAttempts = 1;
+         if (command === 'exam_set_new_attempts_3') newAttempts = 3;
+         // (null هو "غير محدود")
+
+         if (command === 'exam_set_new_attempts_custom') {
+            // (نطلب من الأدمن إرسال رقم)
+            await setUserState(userId, 'awaiting_exam_new_attempts_custom', stateData);
+            await editMessage(chatId, messageId, '🔢 أرسل الآن "الرقم" المخصص لعدد المحاولات: (أو /cancel)');
+            return res.status(200).send('OK');
+         }
+         
+         // (إذا اختار "غير محدود" أو "1" أو "3")
+         await supabase.from('exams').update({ allowed_attempts: newAttempts }).eq('id', stateData.exam_id);
+         
+         await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث عدد المحاولات' });
+         await setUserState(userId, null, null);
+         // (العودة لقائمة التعديل)
+         await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
+         return res.status(200).send('OK');
+      }
+      
       // (4. تفعيل زر تعديل الأسئلة)
       if (command.startsWith('exam_edit_questions_')) {
          const examId = parseInt(command.split('_')[3], 10);
@@ -2667,6 +2741,21 @@ export default async (req, res) => {
             await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
             break;
 
+            case 'awaiting_exam_new_attempts_custom':
+            const newAttemptsCustom = parseInt(text.trim(), 10);
+            if (isNaN(newAttemptsCustom) || newAttemptsCustom <= 0) {
+                await editMessage(chatId, messageId, 'خطأ: يجب إرسال رقم صحيح (مثل 1, 2, 5). أرسل رقماً صحيحاً:');
+                return res.status(200).send('OK');
+            }
+            
+            await supabase.from('exams').update({ allowed_attempts: newAttemptsCustom }).eq('id', stateData.exam_id);
+            
+            await editMessage(chatId, messageId, `✅ تم تحديث عدد المحاولات إلى ${newAttemptsCustom}.`);
+            await setUserState(userId, null, null);
+            // (العودة لقائمة التعديل)
+            await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
+            break;
+            
           // --- [ ✅ بداية: حالات تعديل/إضافة الأسئلة ] ---
           
           case 'awaiting_replacement_question':
