@@ -2617,16 +2617,17 @@ if (command.startsWith('content_del_exam_picker_for_subject_')) {
                  await sendContentMenu_Subjects(chatId, messageId, stateData.course_id);
                  break;
             }
-            
+            // (الكود الصحيح)
             // (الانتقال لسؤال نسخ الصلاحيات)
             const newSubjectId = newSubject.id;
-            const kbd = { inline_keyboard: [
+            // ✅ تم تغيير اسم المتغير هنا
+            const kbd_copy_perms = { inline_keyboard: [
                 [{ text: '📖 نعم، نسخ الصلاحيات', callback_data: `copy_perms_start_${newSubjectId}` }],
                 [{ text: '❌ لا، شكراً (تخطي)', callback_data: `copy_perms_skip_${newSubjectId}` }]
             ]};
             
             // [ ✅✅ الإصلاح هنا: استخدام stateData.title بدلاً من text ]
-            await editMessage(chatId, messageId, `✅ تم إضافة المادة "${stateData.title}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd);
+            await editMessage(chatId, messageId, `✅ تم إضافة المادة "${stateData.title}" بسعر ${subjectPrice}.\n\nهل تريد نسخ صلاحيات المستخدمين إليها من مادة أخرى موجودة؟`, kbd_copy_perms); // ✅ تم التغيير هنا أيضاً
             break;
             
           // [ ✅ تعديل: إصلاح رسالة إضافة الشابتر ]
