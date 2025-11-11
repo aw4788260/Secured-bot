@@ -2352,6 +2352,9 @@ export default async (req, res) => {
             break;
 
           // --- [ ✅ بداية: حالات إضافة امتحان ] ---
+          // (داخل ... switch (currentState))
+
+          // --- [ ✅ بداية: حالات إضافة امتحان ] ---
           
           case 'awaiting_exam_title':
             const title = text.trim();
@@ -2485,8 +2488,6 @@ export default async (req, res) => {
             await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
             break;
 
-  // (داخل ... switch (currentState))
-
           // --- [ ✅ بداية: حالات تعديل/إضافة الأسئلة ] ---
           
           case 'awaiting_replacement_question':
@@ -2580,6 +2581,9 @@ export default async (req, res) => {
             }
             break;
             
+          // --- [ ✅ نهاية: حالات تعديل/إضافة الأسئلة ] ---
+          // --- [ ✅ نهاية: حالات إضافة امتحان ] ---
+                    
           // --- [ ✅ نهاية: حالات تعديل/إضافة الأسئلة ] ---
           // --- [ ✅ نهاية: حالات إضافة امتحان ] ---
             
