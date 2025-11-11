@@ -1750,8 +1750,7 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
       
-      // (هذه الأزرار سيتم برمجتها لاحقاً بالتفصيل)
-      if (command.startsWith('exam_edit_questions_')) {
+
       // (4. تفعيل زر تعديل الأسئلة)
 if (command.startsWith('exam_edit_questions_')) {
    const examId = parseInt(command.split('_')[3], 10);
