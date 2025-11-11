@@ -9,10 +9,10 @@ export default async (req, res) => {
   }
 
   try {
-    // 1. جلب تفاصيل الامتحان
+    // 1. جلب تفاصيل الامتحان (لم نعد بحاجة لـ allowed_attempts)
     const { data: exam, error: examError } = await supabase
       .from('exams')
-      .select('id, title, duration_minutes, allowed_attempts, requires_student_name')
+      .select('id, title, duration_minutes, requires_student_name')
       .eq('id', examId)
       .single();
 
@@ -20,29 +20,24 @@ export default async (req, res) => {
       return res.status(404).json({ error: 'Exam not found' });
     }
 
-    // 2. إذا كان عدد المحاولات "غير محدود" (null)، أعد التفاصيل مباشرة
-    if (exam.allowed_attempts === null) {
-      return res.status(200).json({ exam });
-    }
-
-    // 3. إذا كان العدد محدوداً، قم بعد المحاولات السابقة (المكتملة)
+    // 2. [✅ تعديل] التحقق إذا أكمل الطالب الامتحان "مرة واحدة"
     const { count, error: countError } = await supabase
       .from('user_attempts')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('exam_id', examId)
-      .eq('status', 'completed'); // (نحسب فقط المحاولات المكتملة)
+      .eq('status', 'completed'); 
 
     if (countError) {
       throw countError;
     }
 
-    // 4. المقارنة
-    if (count >= exam.allowed_attempts) {
-      return res.status(403).json({ error: 'لقد استنفدت جميع محاولاتك المسموحة لهذا الامتحان.' });
+    // 3. [✅ تعديل] إذا كان قد امتحن (count > 0)، امنعه
+    if (count > 0) {
+      return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل. (محاولة واحدة فقط مسموحة)' });
     }
 
-    // 5. إذا كان مسموحاً
+    // 4. إذا لم يمتحن (count = 0)
     return res.status(200).json({ exam });
 
   } catch (err) {
