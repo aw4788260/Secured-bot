@@ -583,8 +583,7 @@ const sendExamEditMenu = async (chatId, messageId, examId, subjectId) => {
     inline_keyboard: [
         [{ text: '✏️ تعديل العنوان', callback_data: `exam_edit_title_${examId}` }],
         [{ text: '⏱️ تعديل الوقت', callback_data: `exam_edit_duration_${examId}` }],
-        // --- [ ✅✅ هذا هو الزر الجديد ] ---
-        [{ text: `🔄 تعديل المحاولات (الحالي: ${currentAttempts})`, callback_data: `exam_edit_attempts_${examId}` }],
+        // --- [ ✅✅ هذا هو الزر الجديد ] --
         // --- [ نهاية الإضافة ] ---
         [{ text: '❓ تعديل الأسئلة', callback_data: `exam_edit_questions_${examId}` }],
         [{ text: '📊 الإحصائيات', callback_data: `exam_view_stats_${examId}` }],
@@ -1926,59 +1925,6 @@ export default async (req, res) => {
          return res.status(200).send('OK');
       }
 
-
-      // --- [ ✅✅ بداية الكود الجديد ] ---
-
-      // (8. زر تعديل عدد المحاولات)
-      if (command.startsWith('exam_edit_attempts_')) {
-         const examId = parseInt(command.split('_')[3], 10);
-         // (ندخل في حالة انتظار تغيير المحاولات)
-         await setUserState(userId, 'awaiting_exam_new_attempts', { 
-             message_id: messageId, 
-             exam_id: examId 
-         });
-         await sendNewAttemptsMenu(chatId, messageId);
-         return res.status(200).send('OK');
-      }
-
-      // (9. زر إلغاء تعديل المحاولات)
-      if (command === 'exam_edit_cancel') {
-         if (user.admin_state !== 'awaiting_exam_new_attempts') return res.status(200).send('OK');
-         
-         const stateData = user.state_data;
-         await editMessage(chatId, messageId, 'تم إلغاء التعديل.');
-         await setUserState(userId, null, null);
-         // (العودة لقائمة التعديل)
-         await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
-         return res.status(200).send('OK');
-      }
-
-      // (10. معالجة أزرار اختيار المحاولات الجديدة)
-      if (user.admin_state === 'awaiting_exam_new_attempts') {
-         const stateData = user.state_data;
-         let newAttempts = null;
-         
-         if (command === 'exam_set_new_attempts_1') newAttempts = 1;
-         if (command === 'exam_set_new_attempts_3') newAttempts = 3;
-         // (null هو "غير محدود")
-
-         if (command === 'exam_set_new_attempts_custom') {
-            // (نطلب من الأدمن إرسال رقم)
-            await setUserState(userId, 'awaiting_exam_new_attempts_custom', stateData);
-            await editMessage(chatId, messageId, '🔢 أرسل الآن "الرقم" المخصص لعدد المحاولات: (أو /cancel)');
-            return res.status(200).send('OK');
-         }
-         
-         // (إذا اختار "غير محدود" أو "1" أو "3")
-         await supabase.from('exams').update({ allowed_attempts: newAttempts }).eq('id', stateData.exam_id);
-         
-         await answerCallbackQuery(callback_query.id, { text: '✅ تم تحديث عدد المحاولات' });
-         await setUserState(userId, null, null);
-         // (العودة لقائمة التعديل)
-         await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
-         return res.status(200).send('OK');
-      }
-      
       // (4. تفعيل زر تعديل الأسئلة)
       if (command.startsWith('exam_edit_questions_')) {
          const examId = parseInt(command.split('_')[3], 10);
@@ -1995,58 +1941,31 @@ export default async (req, res) => {
       }
 
       // (4. أزرار خطوة "حقل الاسم")
-      if (command === 'add_exam_name_yes' || command === 'add_exam_name_no') {
-        if (user.admin_state !== 'awaiting_exam_name_field') return res.status(200).send('OK');
-        
-        const stateData = user.state_data;
-        const requires_name = (command === 'add_exam_name_yes');
-        
-        // (ننتقل للحالة التالية: طلب المحاولات)
-        await setUserState(userId, 'awaiting_exam_attempts', { 
-            ...stateData,
-            requires_student_name: requires_name
-        });
-        
-        const kbd = { inline_keyboard: [
-            [{ text: '♾️ غير محدود', callback_data: 'exam_set_attempts_null' }],
-            [{ text: '1️⃣ محاولة واحدة', callback_data: 'exam_set_attempts_1' }],
-            [{ text: '3️⃣ ثلاث محاولات', callback_data: 'exam_set_attempts_3' }],
-            [{ text: '🔢 إرسال رقم مخصص', callback_data: 'exam_set_attempts_custom' }]
-        ]};
-        await editMessage(chatId, messageId, `✅ الاسم: ${requires_name ? 'نعم' : 'لا'}\n\n🔢 حدد "عدد المحاولات" المسموحة للطالب:`, kbd);
-        return res.status(200).send('OK');
-      }
+      // (الكود الجديد - للاستبدال)
+  // (4. أزرار خطوة "حقل الاسم" - [✅ معدل ليتخطى المحاولات])
+  if (command === 'add_exam_name_yes' || command === 'add_exam_name_no') {
+    if (user.admin_state !== 'awaiting_exam_name_field') return res.status(200).send('OK');
+
+    const stateData = user.state_data;
+    const requires_name = (command === 'add_exam_name_yes');
+
+    // (✅ ننتقل "مباشرة" إلى حالة عشوائية الأسئلة)
+    await setUserState(userId, 'awaiting_exam_rand_q', { 
+        ...stateData,
+        requires_student_name: requires_name,
+        allowed_attempts: 1 // (✅ تثبيت المحاولات على 1 بشكل دائم)
+    });
+
+     const kbd_rand_q = { inline_keyboard: [
+        [{ text: 'نعم (موصى به)', callback_data: 'exam_set_rand_q_yes' }],
+        [{ text: 'لا (ترتيب ثابت)', callback_data: 'exam_set_rand_q_no' }]
+     ]};
+     await editMessage(chatId, messageId, `✅ الاسم: ${requires_name ? 'نعم' : 'لا'}\n\n🔄 هل تريد "ترتيب الأسئلة عشوائياً"؟`, kbd_rand_q);
+    return res.status(200).send('OK');
+  }
       
       // (5. أزرار خطوة "عدد المحاولات")
-      if (command.startsWith('exam_set_attempts_')) {
-         if (user.admin_state !== 'awaiting_exam_attempts') return res.status(200).send('OK');
-         
-         const stateData = user.state_data;
-         let attempts = null; // (الافتراضي "غير محدود")
-         
-         if (command === 'exam_set_attempts_1') attempts = 1;
-         if (command === 'exam_set_attempts_3') attempts = 3;
-
-         if (command === 'exam_set_attempts_custom') {
-            // (نطلب من الأدمن إرسال رقم)
-            await setUserState(userId, 'awaiting_exam_attempts_custom', stateData);
-            await editMessage(chatId, messageId, '🔢 أرسل الآن "الرقم" المخصص لعدد المحاولات: (أو /cancel)');
-            return res.status(200).send('OK');
-         }
-         
-         // (ننتقل للحالة التالية: طلب عشوائية الأسئلة)
-         await setUserState(userId, 'awaiting_exam_rand_q', { 
-            ...stateData,
-            allowed_attempts: attempts
-         });
-         
-         const kbd = { inline_keyboard: [
-            [{ text: 'نعم (موصى به)', callback_data: 'exam_set_rand_q_yes' }],
-            [{ text: 'لا (ترتيب ثابت)', callback_data: 'exam_set_rand_q_no' }]
-         ]};
-         await editMessage(chatId, messageId, `✅ المحاولات: ${attempts || 'غير محدود'}\n\n🔄 هل تريد "ترتيب الأسئلة عشوائياً"؟`, kbd);
-         return res.status(200).send('OK');
-      }
+      
       
       // (6. أزرار خطوة "عشوائية الأسئلة")
       if (command.startsWith('exam_set_rand_q_')) {
@@ -2637,25 +2556,6 @@ export default async (req, res) => {
             await editMessage(chatId, messageId, `✅ المدة: ${duration} دقيقة\n\n👤 هل هذا الامتحان يتطلب "إدخال اسم الطالب"؟`, kbd);
             break;
             
-          case 'awaiting_exam_attempts_custom':
-            const attempts_custom = parseInt(text.trim(), 10);
-            if (isNaN(attempts_custom) || attempts_custom <= 0) {
-                await editMessage(chatId, messageId, 'خطأ: يجب إرسال رقم صحيح (مثل 1, 2, 5). أرسل رقماً صحيحاً:');
-                return res.status(200).send('OK');
-            }
-            
-            // (ننتقل للحالة التالية: عشوائية الأسئلة)
-            await setUserState(userId, 'awaiting_exam_rand_q', { 
-                ...stateData,
-                allowed_attempts: attempts_custom
-            });
-            
-            const kbd_rand_q = { inline_keyboard: [
-                [{ text: 'نعم (موصى به)', callback_data: 'exam_set_rand_q_yes' }],
-                [{ text: 'لا (ترتيب ثابت)', callback_data: 'exam_set_rand_q_no' }]
-            ]};
-            await editMessage(chatId, messageId, `✅ المحاولات: ${attempts_custom}\n\n🔄 هل تريد "ترتيب الأسئلة عشوائياً"؟`, kbd_rand_q);
-            break;
 
           // (الحالة الأهم: استقبال الأسئلة)
           case 'awaiting_exam_questions':
@@ -2741,20 +2641,7 @@ export default async (req, res) => {
             await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
             break;
 
-            case 'awaiting_exam_new_attempts_custom':
-            const newAttemptsCustom = parseInt(text.trim(), 10);
-            if (isNaN(newAttemptsCustom) || newAttemptsCustom <= 0) {
-                await editMessage(chatId, messageId, 'خطأ: يجب إرسال رقم صحيح (مثل 1, 2, 5). أرسل رقماً صحيحاً:');
-                return res.status(200).send('OK');
-            }
             
-            await supabase.from('exams').update({ allowed_attempts: newAttemptsCustom }).eq('id', stateData.exam_id);
-            
-            await editMessage(chatId, messageId, `✅ تم تحديث عدد المحاولات إلى ${newAttemptsCustom}.`);
-            await setUserState(userId, null, null);
-            // (العودة لقائمة التعديل)
-            await sendExamEditMenu(chatId, stateData.message_id, stateData.exam_id);
-            break;
             
           // --- [ ✅ بداية: حالات تعديل/إضافة الأسئلة ] ---
           
