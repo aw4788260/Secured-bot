@@ -22,27 +22,33 @@ export default async (req, res) => {
   }
 
   try {
-    // 1. (تحقق مرة أخرى من عدد المحاولات للأمان)
+    // 1. (تحقق مرة أخرى للأمان)
     const { data: exam, error: examError } = await supabase
       .from('exams')
-      .select('id, allowed_attempts, randomize_questions, randomize_options')
+      .select('id, randomize_questions, randomize_options') // (لم نعد بحاجة لـ allowed_attempts)
       .eq('id', examId)
       .single();
 
     if (examError || !exam) return res.status(404).json({ error: 'Exam not found' });
 
-    if (exam.allowed_attempts !== null) {
-      const { count } = await supabase
-        .from('user_attempts')
-        .select('id', { count: 'exact', head: true })
+    // [✅ تعديل] التحقق إذا أكمل الطالب الامتحان "مرة واحدة"
+    const { count } = await supabase
+      .from('user_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('exam_id', examId)
+      .eq('status', 'completed');
+
+    if (count > 0) {
+      return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل.' });
+    }
+
+    // (يمكننا حذف المحاولات السابقة "غير المكتملة" إذا أردنا ضمان محاولة واحدة نظيفة)
+    await supabase.from('user_attempts')
+        .delete()
         .eq('user_id', userId)
         .eq('exam_id', examId)
-        .eq('status', 'completed');
-      
-      if (count >= exam.allowed_attempts) {
-        return res.status(403).json({ error: 'لقد استنفدت جميع محاولاتك.' });
-      }
-    }
+        .eq('status', 'started');
 
     // 2. إنشاء محاولة جديدة (Attempt)
     const { data: newAttempt, error: attemptError } = await supabase
@@ -75,19 +81,24 @@ export default async (req, res) => {
 
     // 4. تطبيق العشوائية (إذا طلب الأدمن)
     let processedQuestions = questions;
-
-    // (تطبيق عشوائية الأسئلة)
     if (exam.randomize_questions) {
       processedQuestions = shuffleArray(processedQuestions);
     }
-
-    // (تطبيق عشوائية الاختيارات)
     if (exam.randomize_options) {
       processedQuestions = processedQuestions.map(q => ({
         ...q,
         options: shuffleArray(q.options)
       }));
     }
+
+    // 5. حفظ الترتيب الذي سيراه الطالب
+    const questionOrder = processedQuestions.map(q => q.id);
+    const { error: updateOrderError } = await supabase
+      .from('user_attempts')
+      .update({ question_order: questionOrder }) 
+      .eq('id', newAttempt.id);
+
+    if (updateOrderError) throw updateOrderError;
 
     return res.status(200).json({
       attemptId: newAttempt.id,
