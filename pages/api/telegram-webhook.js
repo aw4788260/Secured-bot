@@ -1752,21 +1752,42 @@ export default async (req, res) => {
       
       // (هذه الأزرار سيتم برمجتها لاحقاً بالتفصيل)
       if (command.startsWith('exam_edit_questions_')) {
-         await editMessage(chatId, messageId, '
-جاري تحميل محرر الأسئلة... (سيتم برمجته لاحقاً)');
-         // (هنا سنستدعي دالة `displayQuestionForEdit` التي وصفناها)
-         return res.status(200).send('OK');
-      }
-      if (command.startsWith('exam_view_stats_')) {
-         await editMessage(chatId, messageId, '📊 جاري حساب الإحصائيات... (سيتم برمجته لاحقاً)');
-         // (هنا سنستدعي دالة `sendExamStatistics` التي وصفناها)
-         return res.status(200).send('OK');
-      }
-      if (command.startsWith('content_del_exam_picker_for_subject_')) {
-         await editMessage(chatId, messageId, 'جاري عرض قائمة الحذف... (سيتم برمجته لاحقاً)');
-         // (هنا سنستدعي دالة `sendDeletionPicker` للامتحانات)
-         return res.status(200).send('OK');
-      }
+      // (4. تفعيل زر تعديل الأسئلة)
+if (command.startsWith('exam_edit_questions_')) {
+   const examId = parseInt(command.split('_')[3], 10);
+   const stateData = user.state_data || {};
+   await editMessage(chatId, messageId, 'جاري تحميل محرر الأسئلة...');
+   // (بدء جلسة التعديل)
+   await loadQuestionsForEditSession(chatId, messageId, { 
+       ...stateData,
+       message_id: messageId, 
+       exam_id: examId,
+       subject_id: stateData.current_subject_id // (لضمان العودة الصحيحة)
+   });
+   return res.status(200).send('OK');
+}
+        // (3. تفعيل زر الإحصائيات)
+if (command.startsWith('exam_view_stats_')) {
+   const examId = parseInt(command.split('_')[3], 10);
+   await sendExamStatistics(chatId, messageId, examId);
+   return res.status(200).send('OK');
+}
+
+        // (1. تفعيل زر حذف امتحان)
+if (command.startsWith('content_del_exam_picker_for_subject_')) {
+  const subjectId = parseInt(command.split('_')[6], 10);
+  const { data: items } = await supabase.from('exams').select('id, title').eq('subject_id', subjectId);
+
+  // (استدعاء دالة الحذف العامة - تأكد من وجود دالة sendDeletionPicker)
+  await sendDeletionPicker(
+      chatId, 
+      messageId, 
+      items, 
+      `content_nav_exams_for_subject_${subjectId}`, // (الرجوع لقائمة الامتحانات)
+      `content_del_exam_confirm_${subjectId}_`     // (prefix الحذف)
+  );
+  return res.status(200).send('OK');
+}
 
         
 
