@@ -1,7 +1,7 @@
 // pages/api/data/get-structured-courses.js
 import { supabase } from '../../../lib/supabaseClient';
 
-// ✅ 1. تحديث الاستعلام ليشمل الامتحانات
+// (الاستعلام لم نعد بحاجة لـ allowed_attempts)
 const subjectQuery = `
   id, 
   title,
@@ -17,7 +17,6 @@ const subjectQuery = `
     title, 
     duration_minutes, 
     sort_order,
-    allowed_attempts,
     requires_student_name
   )
 `;
@@ -30,105 +29,97 @@ export default async (req, res) => {
     let allowedSubjectIds = new Set();
     let finalSubjectsData = [];
 
-    // --- الخطوة 1: جلب المواد من "الكورسات الكاملة" ---
+    // --- (الخطوة 1 و 2: جلب المواد بنفس الطريقة) ---
+    // (جلب الكورسات الكاملة)
     const { data: courseAccess, error: courseErr } = await supabase
       .from('user_course_access')
       .select('course_id')
       .eq('user_id', userId);
-    
     if (courseErr) throw courseErr;
-
     if (courseAccess && courseAccess.length > 0) {
       const courseIds = courseAccess.map(c => c.course_id);
-      
       const { data: subjectsFromCourses, error: subjectsErr } = await supabase
         .from('subjects')
-        .select(subjectQuery) // <-- استخدام الاستعلام المحدث
+        .select(subjectQuery) 
         .in('course_id', courseIds)
         .order('sort_order', { ascending: true })
         .order('sort_order', { foreignTable: 'chapters', ascending: true })
         .order('sort_order', { foreignTable: 'chapters.videos', ascending: true });
-
       if (subjectsErr) throw subjectsErr;
-      
       subjectsFromCourses.forEach(subject => {
         allowedSubjectIds.add(subject.id);
         finalSubjectsData.push(subject);
       });
     }
-
-    // --- الخطوة 2: جلب "المواد المحددة" ---
+    // (جلب المواد المحددة)
     const { data: subjectAccess, error: subjectErr } = await supabase
       .from('user_subject_access')
       .select('subject_id')
       .eq('user_id', userId);
-
     if (subjectErr) throw subjectErr;
-
     if (subjectAccess && subjectAccess.length > 0) {
       const specificSubjectIds = subjectAccess
         .map(s => s.subject_id)
         .filter(id => !allowedSubjectIds.has(id)); 
-
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
           .from('subjects')
-          .select(subjectQuery) // <-- استخدام الاستعلام المحدث
+          .select(subjectQuery) 
           .in('id', specificSubjectIds)
           .order('sort_order', { ascending: true })
           .order('sort_order', { foreignTable: 'chapters', ascending: true })
           .order('sort_order', { foreignTable: 'chapters.videos', ascending: true });
-
         if (specificErr) throw specificErr;
         finalSubjectsData.push(...specificSubjects);
       }
     }
 
-    // --- ✅ الخطوة 3: جلب محاولات الطالب (لتحديد علامة ✅) ---
+    // --- [ ✅✅ تعديل: جلب "المحاولة الأولى" فقط ] ---
     const { data: userAttempts, error: attemptError } = await supabase
         .from('user_attempts')
         .select('id, exam_id')
         .eq('user_id', userId)
-        .order('started_at', { ascending: false }); // (نريد الأحدث)
+        .eq('status', 'completed') 
+        .order('started_at', { ascending: true }); // (الأقدم أولاً)
 
     if (attemptError) throw attemptError;
 
-    // (إنشاء خريطة (Map) لتخزين آخر محاولة لكل امتحان)
-    const lastAttemptMap = new Map();
+    // (وخريطة لتخزين "أول" محاولة)
+    const firstAttemptMap = new Map();
     if (userAttempts) {
         for (const attempt of userAttempts) {
-            if (!lastAttemptMap.has(attempt.exam_id)) {
-                lastAttemptMap.set(attempt.exam_id, attempt.id);
+            if (!firstAttemptMap.has(attempt.exam_id)) {
+                firstAttemptMap.set(attempt.exam_id, attempt.id);
             }
         }
     }
+    // --- [ نهاية التعديل ] ---
 
-    // --- الخطوة 4: [ ✅✅ الإصلاح هنا ] ---
-    
-    // (ترتيب المواد)
+    // --- الخطوة 4: [ ✅✅ تعديل بناء البيانات ] ---
     finalSubjectsData.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
     const structuredData = finalSubjectsData.map(subject => ({
       ...subject,
-      // (نرتب الشباتر)
       chapters: subject.chapters
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       .map(chapter => ({
                           ...chapter,
-                          // (ونرتب الفيديوهات)
                           videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       })),
-      
-      // (✅ نرتب الامتحانات ونضيف بيانات المحاولة)
+
+      // (تعديل منطق الامتحانات)
       exams: subject.exams
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-                      .map(exam => ({
-                          ...exam,
-                          last_attempt_id: lastAttemptMap.get(exam.id) || null,
-                          is_completed: lastAttemptMap.has(exam.id)
-                      }))
+                      .map(exam => {
+                          const firstAttemptId = firstAttemptMap.get(exam.id) || null;
+                          return {
+                              ...exam,
+                              first_attempt_id: firstAttemptId,
+                              is_completed: !!firstAttemptId, // (هل أكمله؟ نعم/لا)
+                          };
+                      })
     }));
-    
+
     res.status(200).json(structuredData); 
 
   } catch (err) {
