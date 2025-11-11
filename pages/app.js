@@ -10,12 +10,10 @@ export default function App() {
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [user, setUser] = useState(null);
-
-  // ✅ 1. إضافة متغير الحالة الجديد
-  const [mode, setMode] = useState(null); // (null, 'lectures', 'exams')
+  const [mode, setMode] = useState(null); 
 
   useEffect(() => {
-    
+
     const fetchSubjects = (userIdString, foundUser) => {
       fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
         .then(res => res.json())
@@ -32,9 +30,6 @@ export default function App() {
     };
 
     // (باقي كود useEffect كما هو ... من checkDeviceApi إلى نهاية منطق التحقق)
-    // ...
-    // (الكود من سطر 44 إلى 144 في ملفك الأصلي يبقى كما هو)
-    // ...
     const checkDeviceApi = (userId, deviceFingerprint, foundUser, isAndroidApk) => {
       fetch('/api/auth/check-device', { 
         method: 'POST',
@@ -47,7 +42,7 @@ export default function App() {
           setError(deviceData.message);
         } else {
           const userIdString = String(userId);
-          
+
           if (isAndroidApk) { 
             fetch(`/api/auth/get-user-name?userId=${userIdString}`)
               .then(res => res.json())
@@ -69,7 +64,6 @@ export default function App() {
         console.error("Error checking device:", err);
       });
     };
-
     const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, deviceId = null) => {
       fetch('/api/auth/check-subscription', { 
         method: 'POST',
@@ -82,7 +76,6 @@ export default function App() {
           setError('أنت غير مشترك أو ليس لديك صلاحية لأي مادة.');
           return;
         }
-
         if (isAndroidApk) {
           checkDeviceApi(foundUser.id, deviceId, foundUser, true);
         } else {
@@ -107,35 +100,26 @@ export default function App() {
          console.error("Error checking subscription:", err);
       });
     };
-
-
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const androidUserId = urlParams.get('android_user_id');
       const androidDeviceId = urlParams.get('android_device_id'); 
-
       if (androidUserId && androidUserId.trim() !== '') {
         console.log("Running in secure Android WebView wrapper");
         const apkUser = { id: androidUserId, first_name: "Loading..." }; 
         checkSubscriptionAndDevice(apkUser, true, androidDeviceId);
-
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
-        
         const platform = window.Telegram.WebApp.platform; 
         const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-        
         if (!miniAppUser || !miniAppUser.id) {
             setError("لا يمكن التعرف على هويتك من تليجرام.");
             return;
         }
-        
         console.log("Detected Telegram Platform:", platform);
-
         if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
           checkSubscriptionAndDevice(miniAppUser, false, null);
-        
         } else {
           fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
             .then(res => res.json())
@@ -151,17 +135,14 @@ export default function App() {
                 setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
             });
         }
-
       } else if (typeof window !== 'undefined') {
         setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
         return;
       }
-      
     } catch (e) { 
       console.error("Fatal error in useEffect:", e);
       setError(`خطأ فادح: ${e.message}`);
     }
-
   }, []); // نهاية useEffect
 
   // (شاشة التحميل والخطأ - تبقى كما هي)
@@ -210,13 +191,12 @@ export default function App() {
     );
   }
 
-  // ✅ 2. التعديل الجوهري (المستوى 2: اختيار الوضع أو عرض المحتوى)
+  // (المستوى 2: اختيار الوضع أو عرض المحتوى)
   if (selectedSubject) {
-    
+
     // --- [ الحالة 2أ: المستخدم لم يختر الوضع بعد ] ---
     if (mode === null) {
       const exams = selectedSubject.exams || []; 
-      
       return (
         <div className="app-container">
           <Head><title>{selectedSubject.title}</title></Head>
@@ -246,7 +226,7 @@ export default function App() {
         </div>
       );
     }
-    
+
     // --- [ الحالة 2ب: المستخدم اختار "الشرح" (lectures) ] ---
     if (mode === 'lectures') {
       return (
@@ -291,13 +271,18 @@ export default function App() {
           <ul className="item-list">
             {exams.length > 0 ? (
               exams.map(exam => {
-                
-                // (هذا هو المنطق الذي طلبته لربط الزر)
+
+                // --- [ ✅✅ هذا هو الكود الجديد المبسط ] ---
+
+                // (1. هل أكمله من قبل؟)
                 const href = exam.is_completed
-                  ? `/results/${exam.last_attempt_id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}` // (اذهب للنتائج)
-                  : `/exam/${exam.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`; // (اذهب للامتحان)
-                  
+                  // (نعم، اذهب لنتائج "المحاولة الأولى")
+                  ? `/results/${exam.first_attempt_id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}` 
+                  // (لا، اذهب للامتحان)
+                  : `/exam/${exam.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`; 
+
                 const examTitle = `✏️ ${exam.title} ${exam.is_completed ? '✅' : ''}`;
+                // --- [ نهاية الكود الجديد ] ---
 
                 return (
                   <li key={exam.id}>
@@ -322,7 +307,6 @@ export default function App() {
     }
   }
 
-
   // (المستوى 1: عرض المواد - يبقى كما هو)
   return (
     <div className="app-container">
@@ -332,7 +316,10 @@ export default function App() {
         {subjects.length > 0 ? (
            subjects.map(subject => (
             <li key={subject.id}>
-              <button className="button-link" onClick={() => setSelectedSubject(subject)}>
+              <button className="button-link" onClick={() => {
+                  setSelectedSubject(subject);
+                  setMode(null); // (إعادة تعيين الوضع عند اختيار مادة جديدة)
+              }}>
                 📚 {subject.title} 
                 <span>({subject.chapters.length} شابتر)</span>
               </button>
@@ -342,7 +329,7 @@ export default function App() {
            <p style={{ color: '#aaa' }}>لم يتم إسناد أي مواد لك حتى الآن.</p>
         )}
       </ul>
-      
+
       <footer className="developer-info">
          <p>برمجة وتطوير: A7MeD WaLiD</p>
          <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
