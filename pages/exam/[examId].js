@@ -12,72 +12,71 @@ export default function ExamPage() {
     const [examDetails, setExamDetails] = useState(null); // تفاصيل الامتحان (قبل البدء)
     const [questions, setQuestions] = useState(null); // الأسئلة (بعد البدء)
     const [answers, setAnswers] = useState({}); // إجابات الطالب
-    const [timer, setTimer] = useState(null);
+    const [timer, setTimer] = useState(null); // (سيتم تعيينه عند جلب التفاصيل)
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [studentName, setStudentName] = useState(decodeURIComponent(firstName || "")); // (الاسم من الرابط كقيمة أولية)
+    const [studentName, setStudentName] = useState(decodeURIComponent(firstName || ""));
 
     // (حالات تقنية)
     const attemptIdRef = useRef(null); // لتخزين ID المحاولة
-    const timerIntervalRef = useRef(null); // للتحكم بالعداد
-
-    // (التحقق من المستخدم - نفس الكود الموجود في watch/[videoId].js)
+    
+    // (التحقق من المستخدم)
     useEffect(() => {
+        // (يتم تشغيله مرة واحدة عند تحميل الصفحة)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
+        let effectiveUserId = null;
 
         if (urlUserId && urlUserId.trim() !== '') {
-            // (مستخدم APK أو رابط عادي، مسموح له)
-            // (جلب تفاصيل الامتحان)
-            if (!examId) return;
-            fetch(`/api/exams/get-details?examId=${examId}&userId=${urlUserId}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.error) throw new Error(data.error);
-                    setExamDetails(data.exam);
-                    setTimer(data.exam.duration_minutes * 60);
-                    setIsLoading(false);
-                })
-                .catch(err => {
-                    setError(err.message);
-                    setIsLoading(false);
-                });
+            effectiveUserId = urlUserId;
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-            
-            if (!miniAppUser || !miniAppUser.id) {
-                setError("لا يمكن التعرف على هويتك من تليجرام.");
-                setIsLoading(false);
-                return;
+            if (miniAppUser && miniAppUser.id) {
+                effectiveUserId = miniAppUser.id.toString();
             }
-            
-            // (جلب تفاصيل الامتحان لمستخدم تليجرام)
-            if (!examId) return;
-            fetch(`/api/exams/get-details?examId=${examId}&userId=${miniAppUser.id}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.error) throw new Error(data.error);
-                    setExamDetails(data.exam);
-                    setTimer(data.exam.duration_minutes * 60);
-                    setIsLoading(false);
-                })
-                .catch(err => {
-                    setError(err.message);
-                    setIsLoading(false);
-                });
-        } else {
-            setError("وصول غير مصرح به. الرجاء الفتح من التطبيق أو تليجرام.");
-            setIsLoading(false);
         }
 
-        // (إيقاف العداد عند مغادرة الصفحة)
-        return () => {
-            if (timerIntervalRef.current) {
-                clearInterval(timerIntervalRef.current);
-            }
-        };
+        if (!effectiveUserId || !examId) {
+             setError("لا يمكن التعرف على هويتك أو على الامتحان.");
+             setIsLoading(false);
+             return;
+        }
+        
+        // (جلب تفاصيل الامتحان)
+        fetch(`/api/exams/get-details?examId=${examId}&userId=${effectiveUserId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                setExamDetails(data.exam);
+                setTimer(data.exam.duration_minutes * 60); // (تعيين العداد هنا)
+                setIsLoading(false);
+            })
+            .catch(err => {
+                setError(err.message);
+                setIsLoading(false);
+            });
     }, [examId, userId]); // (يعتمد على examId و userId)
+
+
+    // --- [ ✅✅ هذا هو الكود الجديد لحل مشكلة العداد ] ---
+    useEffect(() => {
+        // (لا تبدأ العد التنازلي إلا إذا بدأ الامتحان (أي الأسئلة موجودة) والوقت لم ينفد)
+        if (questions && timer > 0) {
+            const timerId = setTimeout(() => {
+                setTimer(timer - 1);
+            }, 1000);
+
+            // (دالة التنظيف: إيقاف الـ timeout إذا غادر المستخدم الصفحة)
+            return () => clearTimeout(timerId);
+        } 
+        // (إذا وصل المؤقت إلى 0، قم بالإرسال التلقائي)
+        else if (questions && timer === 0) {
+            console.log("Time's up! Auto-submitting...");
+            handleSubmit(true); // (استدعاء دالة الإرسال)
+        }
+    }, [timer, questions]); // (هذا هو المفتاح: [timer, questions] سيعمل هذا الكود كل ثانية)
+    // --- [ نهاية الكود الجديد ] ---
 
 
     // (دالة بدء الامتحان)
@@ -93,7 +92,6 @@ export default function ExamPage() {
         }
 
         try {
-            // (هذا الـ API يجب إنشاؤه في الخطوة 5)
             const res = await fetch(`/api/exams/start-attempt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -107,20 +105,9 @@ export default function ExamPage() {
             }
 
             attemptIdRef.current = data.attemptId;
-            setQuestions(data.questions); // (الأسئلة (العشوائية) القادمة من السيرفر)
+            setQuestions(data.questions); // (فقط قم بتعيين الأسئلة، الـ useEffect سيبدأ العداد)
             setIsLoading(false);
-
-            // (بدء العداد)
-            timerIntervalRef.current = setInterval(() => {
-                setTimer(prev => {
-                    if (prev <= 1) {
-                        clearInterval(timerIntervalRef.current);
-                        handleSubmit(true); // (إرسال تلقائي)
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
+            // (تم حذف setInterval من هنا)
 
         } catch (err) {
             setError(err.message);
@@ -128,20 +115,20 @@ export default function ExamPage() {
         }
     };
 
-    // (دالة إرسال الإجابات)
+    // (دالة إرسال الإجابات - تبقى كما هي لكنها ستُستدعى الآن بشكل صحيح)
     const handleSubmit = async (isAutoSubmit = false) => {
-        if (!isAutoSubmit && !allAnswered) {
-             alert("يجب الإجابة على جميع الأسئلة أولاً.");
-             return;
+        if (!isAutoSubmit) {
+            const allAnswered = questions ? Object.keys(answers).length === questions.length : false;
+            if (!allAnswered) {
+                alert("يجب الإجابة على جميع الأسئلة أولاً.");
+                return;
+            }
         }
         
         setIsLoading(true);
-        if (timerIntervalRef.current) {
-            clearInterval(timerIntervalRef.current);
-        }
+        setTimer(null); // (إيقاف العداد)
 
         try {
-            // (هذا الـ API يجب إنشاؤه في الخطوة 5)
             await fetch(`/api/exams/submit-attempt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
