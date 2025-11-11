@@ -27,7 +27,22 @@ export default async (req, res) => {
       return res.status(400).json({ error: 'This attempt has already been submitted.' });
     }
 
-    // 2. جلب الإجابات الصحيحة للامتحان
+    // --- [ ✅✅ هذا هو الكود الجديد ] ---
+    // 1b. جلب العدد "الإجمالي" للأسئلة في هذا الامتحان من قاعدة البيانات
+    const { count: totalQuestions, error: countError } = await supabase
+        .from('questions')
+        .select('id', { count: 'exact', head: true })
+        .eq('exam_id', attempt.exam_id);
+
+    if (countError) throw countError;
+    if (totalQuestions === 0) {
+        // (لا يمكن حساب النسبة إذا لم يكن هناك أسئلة)
+        return res.status(400).json({ error: 'This exam has no questions.' });
+    }
+    // --- [ نهاية الكود الجديد ] ---
+
+
+    // 2. جلب الإجابات الصحيحة للامتحان (الكود سليم من المرة السابقة)
     const questionIdsAsNumbers = Object.keys(answers).map(id => parseInt(id, 10));
 
     const { data: correctOptions, error: optionsError } = await supabase
@@ -38,32 +53,27 @@ export default async (req, res) => {
     
     if (optionsError) throw optionsError;
 
-    // (تحويل الإجابات الصحيحة إلى خريطة لسهولة المقارنة)
+    // (تحويل الإجابات الصحيحة إلى خريطة)
     const correctAnswersMap = new Map();
     correctOptions.forEach(opt => {
-      // (نحولها إلى نصوص لضمان المقارنة الصحيحة في الخطوة 3)
       correctAnswersMap.set(opt.question_id.toString(), opt.id.toString());
     });
 
     // 3. تصحيح الإجابات
     let score = 0;
-    const totalQuestions = Object.keys(answers).length;
-    const userAnswersPayload = []; // (لتخزينها في جدول user_answers)
+    // const totalQuestions = Object.keys(answers).length; // <--- 🛑🛑 تم حذف هذا السطر الخاطئ
+    const userAnswersPayload = []; 
 
-    
-    // --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] ---
     for (const [questionId, selectedOptionId] of Object.entries(answers)) {
       
-      const correctOptionId = correctAnswersMap.get(questionId); // (نص)
-      const selectedOptionId_String = selectedOptionId.toString(); // (تحويل رقم إلى نص)
+      const correctOptionId = correctAnswersMap.get(questionId); 
+      const selectedOptionId_String = selectedOptionId.toString(); 
 
-      // (هنا نقارن نص بنص - وهو صحيح)
       const is_correct = (selectedOptionId_String === correctOptionId);
 
       if (is_correct) {
         score++;
       }
-      // --- [ نهاية الإصلاح ] ---
 
       userAnswersPayload.push({
         attempt_id: attemptId,
@@ -81,6 +91,7 @@ export default async (req, res) => {
     if (saveAnswersError) throw saveAnswersError;
 
     // 5. حساب النتيجة النهائية وتحديث المحاولة
+    // (الآن "totalQuestions" صحيح (2) و "score" صحيح (1))
     const percentage = (totalQuestions > 0) ? Math.round((score / totalQuestions) * 100) : 0;
 
     const { error: updateAttemptError } = await supabase
