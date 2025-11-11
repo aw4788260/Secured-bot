@@ -1953,7 +1953,6 @@ export default async (req, res) => {
     await setUserState(userId, 'awaiting_exam_rand_q', { 
         ...stateData,
         requires_student_name: requires_name,
-        allowed_attempts: 1 // (✅ تثبيت المحاولات على 1 بشكل دائم)
     });
 
      const kbd_rand_q = { inline_keyboard: [
@@ -2003,7 +2002,6 @@ export default async (req, res) => {
             title: stateData.title,
             duration_minutes: stateData.duration,
             requires_student_name: stateData.requires_student_name,
-            allowed_attempts: stateData.allowed_attempts,
             randomize_questions: stateData.randomize_questions,
             randomize_options: rand_o,
             sort_order: 0
