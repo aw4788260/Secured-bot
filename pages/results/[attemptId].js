@@ -11,11 +11,32 @@ export default function ResultsPage() {
     const [error, setError] = useState(null);
 
     // (يجب إضافة نفس كود التحقق من المستخدم من [examId].js هنا أيضاً للأمان)
-
+    // (سنضيفه للضمان)
     useEffect(() => {
         if (!attemptId) return;
+
+        // (التحقق من هوية المستخدم)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlUserId = urlParams.get('userId');
+        let effectiveUserId = null;
+
+        if (urlUserId && urlUserId.trim() !== '') {
+            effectiveUserId = urlUserId;
+        } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+            if (miniAppUser && miniAppUser.id) {
+                effectiveUserId = miniAppUser.id;
+            }
+        }
+
+        if (!effectiveUserId) {
+             setError("لا يمكن التعرف على هويتك.");
+             setIsLoading(false);
+             return;
+        }
         
-        // (هذا الـ API يجب إنشاؤه في الخطوة 5)
+        // (جلب النتائج)
         fetch(`/api/exams/get-results?attemptId=${attemptId}`)
             .then(res => res.json())
             .then(data => {
@@ -44,8 +65,9 @@ export default function ResultsPage() {
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
                 <Head><title>خطأ</title></Head>
                 <h1>خطأ: {error || "لا يمكن العثور على النتائج."}</h1>
-                <button className="back-button" onClick={() => router.push('/app')}>
-                    &larr; العودة للرئيسية
+                {/* (زر العودة هنا أيضاً) */}
+                <button className="back-button" onClick={() => router.back()}>
+                    &larr; العودة
                 </button>
             </div>
         );
@@ -111,9 +133,12 @@ export default function ResultsPage() {
                 );
             })}
             
-            <button className="button-link" style={{marginTop: '20px'}} onClick={() => router.push('/app')}>
+            {/* --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] --- */}
+            <button className="button-link" style={{marginTop: '20px'}} onClick={() => router.back()}>
                 العودة لقائمة المواد
             </button>
+            {/* --- [ نهاية الإصلاح ] --- */}
+
         </div>
     );
 }
