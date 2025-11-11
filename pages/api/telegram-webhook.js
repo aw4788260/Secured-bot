@@ -588,6 +588,187 @@ const sendExamEditMenu = async (chatId, messageId, examId, subjectId) => {
     await editMessage(chatId, messageId, `تعديل الامتحان: ${exam.title}`, keyboard);
 };
 
+/**
+ * (جديد) دالة جلب الأسئلة وبدء جلسة تعديل
+ */
+const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
+    const { exam_id } = stateData;
+    
+    // جلب كل الأسئلة والاختيارات مرتبة
+    const { data: questions, error } = await supabase
+        .from('questions')
+        .select(`
+            id,
+            question_text,
+            sort_order,
+            options ( id, option_text, is_correct, sort_order )
+        `)
+        .eq('exam_id', exam_id)
+        .order('sort_order', { ascending: true })
+        .order('sort_order', { foreignTable: 'options', ascending: true });
+
+    if (error) {
+        return await editMessage(chatId, messageId, `خطأ في جلب الأسئلة: ${error.message}`);
+    }
+
+    if (questions.length === 0) {
+        // (سنعرض أزرار إضافة فقط)
+        const kbd = { inline_keyboard: [
+             [{ text: '➕ إضافة سؤال (للنهاية)', callback_data: 'exam_edit_q_add_end' }],
+             [{ text: '✅ إنهاء والعودة', callback_data: 'exam_edit_q_finish' }]
+        ]};
+        await setUserState(chatId, 'awaiting_question_edit', { ...stateData, questions: [], current_index: 0 });
+        await editMessage(chatId, messageId, 'لا توجد أسئلة في هذا الامتحان بعد.\nيمكنك إضافة أسئلة من الأزرار أدناه.', kbd);
+        return;
+    }
+
+    // تحديث الحالة
+    const newStateData = { ...stateData, questions: questions, current_index: 0 };
+    await setUserState(chatId, 'awaiting_question_edit', newStateData);
+    
+    // عرض السؤال الأول
+    await displayQuestionForEdit(chatId, messageId, newStateData);
+};
+
+
+/**
+ * (جديد) دالة عرض السؤال الحالي في وضع التعديل
+ */
+const displayQuestionForEdit = async (chatId, messageId, stateData) => {
+    const { questions, current_index } = stateData;
+    const total = questions.length;
+    
+    // (في حال تم حذف كل الأسئلة)
+    if (total === 0) {
+         await loadQuestionsForEditSession(chatId, messageId, stateData); // (سيعرض رسالة "لا توجد أسئلة")
+         return;
+    }
+    
+    // (ضمان أن المؤشر ضمن الحدود)
+    const safe_index = Math.max(0, Math.min(current_index, total - 1));
+    const question = questions[safe_index];
+    
+    // بناء نص السؤال
+    let text = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
+    text += `الترتيب: ${question.sort_order}\n\n`;
+    text += `*${escapeMarkdownV2(question.question_text)}*\n\n`;
+    
+    question.options.forEach(opt => {
+        text += `• ${escapeMarkdownV2(opt.option_text)} ${opt.is_correct ? '✅' : ''}\n`;
+    });
+
+    // بناء الأزرار
+    const kbd = [];
+    
+    // صف التنقل
+    const navRow = [];
+    if (safe_index > 0) navRow.push({ text: '<< السابق', callback_data: 'exam_edit_q_prev' });
+    navRow.push({ text: `(${safe_index + 1}/${total})`, callback_data: 'noop' });
+    if (safe_index < total - 1) navRow.push({ text: 'التالي >>', callback_data: 'exam_edit_q_next' });
+    kbd.push(navRow);
+    
+    // أزرار التعديل (التي طلبتها)
+    kbd.push([
+        { text: '🔄 استبدال السؤال', callback_data: `exam_edit_q_replace_${question.id}` },
+        { text: '🗑️ حذف السؤال', callback_data: `exam_edit_q_delete_${question.id}` }
+    ]);
+    kbd.push([
+        { text: '➕ إضافة سؤال (بعد هذا)', callback_data: `exam_edit_q_add_after_${question.id}` }
+    ]);
+    
+    // الأزرار العامة
+    kbd.push([{ text: '➕ إضافة سؤال (للنهاية)', callback_data: 'exam_edit_q_add_end' }]);
+    kbd.push([{ text: '✅ إنهاء التعديل', callback_data: 'exam_edit_q_finish' }]);
+
+    await editMessage(chatId, messageId, text, { inline_keyboard: kbd }, 'MarkdownV2');
+};
+
+
+/**
+ * (جديد) دالة عرض إحصائيات الامتحان
+ */
+const sendExamStatistics = async (chatId, messageId, examId) => {
+    await editMessage(chatId, messageId, '📊 جاري حساب الإحصائيات، يرجى الانتظار...');
+
+    try {
+        // 1. الإحصائيات العامة
+        const { data: attemptsData, error: attemptsError } = await supabase
+            .from('user_attempts')
+            .select('id, score, student_name_input')
+            .eq('exam_id', examId)
+            .eq('status', 'completed');
+        
+        if (attemptsError) throw attemptsError;
+
+        const totalAttempts = attemptsData.length;
+        if (totalAttempts === 0) {
+            const kbd = { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: `content_view_exam_${examId}` }]] };
+            await editMessage(chatId, messageId, 'لم يقم أي طالب بإنهاء هذا الامتحان بعد.', kbd);
+            return;
+        }
+
+        const averageScore = attemptsData.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalAttempts;
+        
+        let message = `📊 إحصائيات الامتحان:\n\n`;
+        message += `👥 إجمالي عدد المحاولات: ${totalAttempts}\n`;
+        message += `📈 متوسط الدرجات: ${averageScore.toFixed(2)}%\n\n`;
+
+        // 2. لوحة الأوائل (Leaderboard) (بناءً على الاسم المدخل)
+        message += `🏆 لوحة الأوائل (أعلى 10):\n`;
+        const leaderboard = attemptsData
+            .filter(a => a.student_name_input && a.student_name_input.trim() !== "") // (فلترة من أدخل اسمه فقط)
+            .sort((a, b) => b.score - a.score) // (ترتيب تنازلي)
+            .slice(0, 10); // (أعلى 10)
+            
+        if (leaderboard.length > 0) {
+            leaderboard.forEach((a, index) => {
+                message += `${index + 1}. ${a.student_name_input}: ${a.score}%\n`;
+            });
+        } else {
+            message += '(لا توجد بيانات أسماء لعرضها)\n';
+        }
+
+        // 3. تحليل الأسئلة (الأصعب فالأسهل)
+        message += `\n🔬 تحليل الأسئلة (نسبة الإجابة الصحيحة):\n`;
+        const { data: questionStats, error: statsError } = await supabase
+            .from('questions')
+            .select(`
+                id,
+                question_text,
+                user_answers!inner ( is_correct )
+            `)
+            .eq('exam_id', examId);
+
+        if (statsError) throw statsError;
+
+        const analysis = questionStats.map(q => {
+            const totalAnswers = q.user_answers.length;
+            if (totalAnswers === 0) {
+                return { text: q.question_text, perc: null };
+            }
+            const correctAnswers = q.user_answers.filter(a => a.is_correct).length;
+            const percentage = (correctAnswers * 100.0) / totalAnswers;
+            return { text: q.question_text, perc: percentage };
+        });
+
+        // (ترتيب حسب الأصعب)
+        analysis.sort((a, b) => (a.perc === null ? 1 : a.perc) - (b.perc === null ? 1 : b.perc));
+
+        analysis.forEach(a => {
+            if (a.perc === null) {
+                message += `• (0%) ${a.text.substring(0, 30)}... (لم تتم الإجابة عليه)\n`;
+            } else {
+                message += `• (${a.perc.toFixed(0)}%) ${a.text.substring(0, 30)}...\n`;
+            }
+        });
+
+        const kbd = { inline_keyboard: [[{ text: '🔙 رجوع', callback_data: `content_view_exam_${examId}` }]] };
+        await editMessage(chatId, messageId, message, kbd);
+
+    } catch (error) {
+        await editMessage(chatId, messageId, `حدث خطأ أثناء جلب الإحصائيات: ${error.message}`);
+    }
+};
 
 // (المستوى 1: الكورسات)
 const sendContentMenu_Courses = async (chatId, messageId = null) => {
