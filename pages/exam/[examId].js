@@ -15,14 +15,18 @@ export default function ExamPage() {
     const [timer, setTimer] = useState(null); // (سيتم تعيينه عند جلب التفاصيل)
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [studentName, setStudentName] = useState(decodeURIComponent(firstName || ""));
+    
+    // --- [ ✅✅ هذا هو الإصلاح رقم 3 ] ---
+    // (جعل حقل الاسم فارغاً دائماً في البداية)
+    const [studentName, setStudentName] = useState(""); 
+    // --- [ نهاية الإصلاح ] ---
 
     // (حالات تقنية)
     const attemptIdRef = useRef(null); // لتخزين ID المحاولة
-    
+    const timerIntervalRef = useRef(null); // للتحكم بالعداد
+
     // (التحقق من المستخدم)
     useEffect(() => {
-        // (يتم تشغيله مرة واحدة عند تحميل الصفحة)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         let effectiveUserId = null;
@@ -59,24 +63,19 @@ export default function ExamPage() {
     }, [examId, userId]); // (يعتمد على examId و userId)
 
 
-    // --- [ ✅✅ هذا هو الكود الجديد لحل مشكلة العداد ] ---
+    // (العداد التنازلي - سليم من المرة السابقة)
     useEffect(() => {
-        // (لا تبدأ العد التنازلي إلا إذا بدأ الامتحان (أي الأسئلة موجودة) والوقت لم ينفد)
         if (questions && timer > 0) {
             const timerId = setTimeout(() => {
                 setTimer(timer - 1);
             }, 1000);
-
-            // (دالة التنظيف: إيقاف الـ timeout إذا غادر المستخدم الصفحة)
             return () => clearTimeout(timerId);
         } 
-        // (إذا وصل المؤقت إلى 0، قم بالإرسال التلقائي)
         else if (questions && timer === 0) {
             console.log("Time's up! Auto-submitting...");
-            handleSubmit(true); // (استدعاء دالة الإرسال)
+            handleSubmit(true); 
         }
-    }, [timer, questions]); // (هذا هو المفتاح: [timer, questions] سيعمل هذا الكود كل ثانية)
-    // --- [ نهاية الكود الجديد ] ---
+    }, [timer, questions]); 
 
 
     // (دالة بدء الامتحان)
@@ -84,30 +83,33 @@ export default function ExamPage() {
         setIsLoading(true);
         setError(null);
 
-        // (التحقق من حقل الاسم إذا كان مطلوباً)
         if (examDetails.requires_student_name && (!studentName || studentName.trim() === '')) {
             setError("يجب إدخال اسمك أولاً.");
             setIsLoading(false);
             return;
         }
 
+        // ( userId و firstName من router.query قد تكونان غير جاهزتين في البداية)
+        // (لذا سنستخدم المتغيرات التي تأكدنا منها في useEffect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentUserId = urlParams.get('userId') || window.Telegram.WebApp.initDataUnsafe?.user?.id.toString();
+
         try {
             const res = await fetch(`/api/exams/start-attempt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ examId, userId, studentName: studentName.trim() })
+                body: JSON.stringify({ examId, userId: currentUserId, studentName: studentName.trim() })
             });
 
             const data = await res.json();
             
             if (data.error) {
-                throw new Error(data.error); // (مثل: "لقد استنفدت محاولاتك")
+                throw new Error(data.error);
             }
 
             attemptIdRef.current = data.attemptId;
-            setQuestions(data.questions); // (فقط قم بتعيين الأسئلة، الـ useEffect سيبدأ العداد)
+            setQuestions(data.questions); 
             setIsLoading(false);
-            // (تم حذف setInterval من هنا)
 
         } catch (err) {
             setError(err.message);
@@ -115,7 +117,7 @@ export default function ExamPage() {
         }
     };
 
-    // (دالة إرسال الإجابات - تبقى كما هي لكنها ستُستدعى الآن بشكل صحيح)
+    // (دالة إرسال الإجابات)
     const handleSubmit = async (isAutoSubmit = false) => {
         if (!isAutoSubmit) {
             const allAnswered = questions ? Object.keys(answers).length === questions.length : false;
@@ -181,8 +183,11 @@ export default function ExamPage() {
                 <div className="exam-details-box">
                     <h1>{examDetails.title}</h1>
                     <p>المدة: {examDetails.duration_minutes} دقيقة</p>
-                    <p>المحاولات المسموحة: {examDetails.allowed_attempts || 'غير محدود'}</p>
                     
+                    {/* --- [ ✅✅ هذا هو الإصلاح رقم 2 ] --- */}
+                    <p>المحاولات المسموحة: محاولة واحدة فقط</p>
+                    {/* --- [ نهاية الإصلاح ] --- */}
+
                     {examDetails.requires_student_name && (
                         <input 
                             type="text" 
@@ -207,12 +212,10 @@ export default function ExamPage() {
         <div className="app-container">
             <Head><title>جاري الامتحان...</title></Head>
             
-            {/* 1. العداد */}
             <div className="timer-bar">
                 الوقت المتبقي: {Math.floor(timer / 60)}:{('0' + (timer % 60)).slice(-2)}
             </div>
             
-            {/* 2. الأسئلة (كل سؤال في مربع) */}
             {questions.map((q, index) => (
                 <div key={q.id} className="question-box">
                     <h4>{index + 1}. {q.question_text}</h4>
@@ -233,7 +236,6 @@ export default function ExamPage() {
                 </div>
             ))}
 
-            {/* 3. زر الإنهاء (يتم تفعيله فقط بعد إجابة الكل) */}
             <button 
                 className="button-link" 
                 onClick={() => handleSubmit(false)}
