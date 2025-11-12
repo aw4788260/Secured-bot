@@ -2044,10 +2044,37 @@ export default async (req, res) => {
       }
 
       // (4. تفعيل زر تعديل الأسئلة)
+      // (الكود الجديد - للاستبدال)
+      // (4. تفعيل زر تعديل الأسئلة - [✅ معدل بمنطق الإغلاق])
       if (command.startsWith('exam_edit_questions_')) {
          const examId = parseInt(command.split('_')[3], 10);
+
+         // --- [ ✅✅ هذا هو الكود الجديد ] ---
+         // (التحقق أولاً هل قام أي طالب بإنهاء هذا الامتحان)
+         const { count, error } = await supabase
+              .from('user_attempts')
+              .select('id', { count: 'exact', head: true })
+              .eq('exam_id', examId)
+              .eq('status', 'completed');
+         
+         if (error) {
+              await editMessage(chatId, messageId, `خطأ في التحقق من المحاولات: ${error.message}`);
+              return res.status(200).send('OK');
+         }
+
+         // (إذا كان العدد أكبر من 0، امنع التعديل)
+         if (count > 0) {
+              await answerCallbackQuery(callback_query.id, { 
+                  text: '❌ لا يمكن تعديل الأسئلة!\nهذا الامتحان تم حله من قبل طالب واحد على الأقل.',
+                  show_alert: true // (إظهار كتنبيه قوي)
+              });
+              return res.status(200).send('OK');
+         }
+         // --- [ نهاية الكود الجديد ] ---
+
+         // (إذا كان العدد 0، اسمح بالتعديل كالمعتاد)
          const stateData = user.state_data || {};
-         await editMessage(chatId, messageId, 'جاري تحميل محرر الأسئلة...');
+         await editMessage(chatId, messageId, 'جاري تحميل محرر الأسئلة... (الامتحان آمن للتعديل)');
          // (بدء جلسة التعديل)
          await loadQuestionsForEditSession(chatId, messageId, { 
              ...stateData,
@@ -2057,7 +2084,6 @@ export default async (req, res) => {
          });
          return res.status(200).send('OK');
       }
-
       // (4. أزرار خطوة "حقل الاسم")
       // (الكود الجديد - للاستبدال)
   // (4. أزرار خطوة "حقل الاسم" - [✅ معدل ليتخطى المحاولات])
