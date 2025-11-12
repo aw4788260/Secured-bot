@@ -790,50 +790,64 @@ const sendExamStatistics = async (chatId, messageId, examId) => {
     }
 };
 
+// (الكود الجديد - للاستبدال)
+
 /**
- * (جديد) دالة لتحليل تنسيق الأسئلة النصي
+ * (✅ معدل) دالة ذكية لتحليل تنسيق الأسئلة النصي (تفصل بـ ---)
  * @param {string} text - النص الكامل الذي أرسله الأدمن
  * @returns {Array} - مصفوفة من كائنات الأسئلة
  */
 const parseMcqText = (text) => {
     const questions = [];
-    // (تقسيم النص إلى كتل أسئلة، كل سؤال يبدأ برقم ونقطة)
-    const questionBlocks = text.split(/(?=\d+\))/);
+    // 1. الفصل بين الأسئلة باستخدام "---"
+    const questionBlocks = text.split(/\n---\n|\n---\r\n|---/);
 
     for (const block of questionBlocks) {
-        if (block.trim().length < 5) continue; // (تجاهل الفراغات)
-
         const lines = block.trim().split('\n');
-        
-        // (استخراج السؤال)
-        const questionText = lines[0].replace(/^\d+\)\s*/, '').trim(); // (إزالة "1) ")
-        if (!questionText) continue;
-        
-        const options = [];
-        let correctLetter = null;
+        if (lines.length < 3) continue; // (غير صالح: قصير جداً)
 
-        // (تحليل الاختيارات والإجابة)
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            
-            // (التقاط الإجابة)
-            if (line.toLowerCase().startsWith('answer:')) {
-                const match = line.match(/[A-Za-z]\)/); // (التقاط الحرف)
+        let questionTextLines = [];
+        let options = [];
+        let correctLetter = null;
+        let foundOptions = false; // (لتحديد متى بدأ قسم الاختيارات)
+
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.length === 0) continue; // (تجاهل الأسطر الفارغة)
+
+            // 2. البحث عن الإجابة أولاً
+            if (trimmedLine.toLowerCase().startsWith('answer:')) {
+                const match = trimmedLine.match(/[A-Za-z]\)/); // (التقاط "C)")
                 if (match) {
                     correctLetter = match[0].replace(')', '').toUpperCase();
                 }
-            } 
-            // (التقاط الاختيارات)
-            else {
-                const match = line.match(/^([A-Za-z]\))\s*(.*)/);
-                if (match) {
-                    const letter = match[1].replace(')', '').toUpperCase();
-                    const optionText = match[2].trim();
-                    options.push({ text: optionText, letter: letter });
-                }
+                break; // (التوقف عند الوصول لسطر الإجابة)
             }
+
+            // 3. البحث عن الاختيارات
+            const optionMatch = trimmedLine.match(/^([A-Za-z]\))\s*(.*)/);
+            if (optionMatch) {
+                foundOptions = true; // (لقد بدأنا قسم الاختيارات)
+                const letter = optionMatch[1].replace(')', '').toUpperCase();
+                const optionText = optionMatch[2].trim();
+                options.push({ text: optionText, letter: letter });
+            } 
+            // 4. إذا لم يكن إجابة أو اختيار، فهو جزء من السؤال
+            else if (!foundOptions) {
+                // (طالما لم نجد اختيارات، فهذا السطر تابع للسؤال)
+                questionTextLines.push(trimmedLine);
+            }
+            // (أي أسطر فارغة بين الاختيارات والإجابة سيتم تجاهلها)
         }
 
+        // 5. تجميع السؤال
+        if (questionTextLines.length > 0) {
+            // (تنظيف الترقيم "1)" من السطر الأول فقط)
+            questionTextLines[0] = questionTextLines[0].replace(/^\d+\)\s*/, '').trim(); 
+        }
+        const questionText = questionTextLines.join('\n').trim(); // (دعم الأسئلة متعددة الأسطر)
+
+        // 6. الحفظ إذا كان مكتملاً
         if (questionText && options.length > 0 && correctLetter) {
             questions.push({
                 question_text: questionText,
@@ -846,7 +860,6 @@ const parseMcqText = (text) => {
     }
     return questions;
 };
-
 // (الكود الجديد - للاستبدال)
 /**
  * (✅ معدل) دالة مساعدة لحفظ الأسئلة (من Poll أو نص)
