@@ -5,13 +5,13 @@ import Head from 'next/head';
 
 export default function ResultsPage() {
     const router = useRouter();
-    const { attemptId } = router.query;
+    // (جلب المتغيرات من الرابط)
+    const { attemptId, userId, firstName, subjectId } = router.query;
+    
     const [results, setResults] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // (يجب إضافة نفس كود التحقق من المستخدم من [examId].js هنا أيضاً للأمان)
-    // (سنضيفه للضمان)
     useEffect(() => {
         if (!attemptId) return;
 
@@ -26,7 +26,7 @@ export default function ResultsPage() {
             window.Telegram.WebApp.ready();
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
             if (miniAppUser && miniAppUser.id) {
-                effectiveUserId = miniAppUser.id;
+                effectiveUserId = miniAppUser.id.toString();
             }
         }
 
@@ -106,10 +106,8 @@ export default function ResultsPage() {
                                 const isUserChoice = opt.id === userAnswerId;
 
                                 if (isCorrect) {
-                                    // (تلوين الإجابة الصحيحة بالأخضر)
                                     className += ' correct-answer'; 
                                 } else if (isUserChoice && !isCorrect) {
-                                    // (تلوين اختيار الطالب الخطأ بالأحمر)
                                     className += ' wrong-answer'; 
                                 }
 
@@ -134,6 +132,7 @@ export default function ResultsPage() {
             })}
             
             {/* --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] --- */}
+            {/* (الضغط هنا سيعيدنا إلى app.js بدون تحديد مادة أو وضع) */}
             <button 
                 className="button-link" 
                 style={{marginTop: '20px'}} 
