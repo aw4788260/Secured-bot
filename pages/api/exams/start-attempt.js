@@ -25,13 +25,13 @@ export default async (req, res) => {
     // 1. (تحقق مرة أخرى للأمان)
     const { data: exam, error: examError } = await supabase
       .from('exams')
-      .select('id, randomize_questions, randomize_options') // (لم نعد بحاجة لـ allowed_attempts)
+      .select('id, randomize_questions, randomize_options')
       .eq('id', examId)
       .single();
 
     if (examError || !exam) return res.status(404).json({ error: 'Exam not found' });
 
-    // [✅ تعديل] التحقق إذا أكمل الطالب الامتحان "مرة واحدة"
+    // (التحقق إذا أكمل الطالب الامتحان "مرة واحدة")
     const { count } = await supabase
       .from('user_attempts')
       .select('id', { count: 'exact', head: true })
@@ -91,14 +91,19 @@ export default async (req, res) => {
       }));
     }
     
+    // --- [ ✅✅ هذا هو الكود الجديد لحل المشكلة ] ---
     // 5. حفظ الترتيب الذي سيراه الطالب
     const questionOrder = processedQuestions.map(q => q.id);
+    
+    // (استخدام await هنا لضمان إكمال الحفظ قبل المتابعة)
     const { error: updateOrderError } = await supabase
       .from('user_attempts')
       .update({ question_order: questionOrder }) 
       .eq('id', newAttempt.id);
       
+    // (إذا فشل الحفظ، أبلغ بالخطأ)
     if (updateOrderError) throw updateOrderError;
+    // --- [ نهاية الكود الجديد ] ---
 
     return res.status(200).json({
       attemptId: newAttempt.id,
