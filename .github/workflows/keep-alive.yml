@@ -2,8 +2,9 @@ name: Supabase Keep-Alive
 
 on:
   schedule:
-    # يعمل كل يوم الساعة 1:00 صباحاً
     - cron: "0 1 * * *"
+  # هذا السطر يسمح لك بتشغيله يدوياً
+  workflow_dispatch: {}
 
 jobs:
   keep-alive:
