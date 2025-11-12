@@ -1,0 +1,17 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # يعمل كل يوم الساعة 1:00 صباحاً
+    - cron: "0 1 * * *"
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send API Request to Supabase
+        run: |
+          curl -X GET \
+          'https://{YOUR_PROJECT_REF}.supabase.co/rest/v1/{YOUR_TABLE_NAME}?select=id&limit=1' \
+          -H 'apikey: ${{ secrets.SUPABASE_ANON_KEY }}' \
+          -H 'Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}'
