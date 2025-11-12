@@ -565,26 +565,26 @@ const sendContentMenu_Exams_For_Subject = async (chatId, messageId, subjectId) =
   await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
 };
 
+// (الكود الصحيح - للاستبدال)
+
 /**
- * (معدل) دالة عرض قائمة تعديل امتحان معين
+ * (✅ معدل) دالة عرض قائمة تعديل امتحان معين (تم حذف المحاولات)
  */
 const sendExamEditMenu = async (chatId, messageId, examId, subjectId) => {
-    // ✅ 1. تم إضافة allowed_attempts إلى الاستعلام
-    const { data: exam, error } = await supabase.from('exams').select('title, subject_id, allowed_attempts').eq('id', examId).single();
+    // ✅ 1. تم حذف allowed_attempts من الاستعلام
+    const { data: exam, error } = await supabase.from('exams').select('title, subject_id').eq('id', examId).single();
     if (error || !exam) return await editMessage(chatId, messageId, 'خطأ: الامتحان غير موجود.');
 
     // (تخزين ID الامتحان والحالة الحالية)
     await setUserState(chatId, null, { current_exam_id: examId, current_subject_id: exam.subject_id }); 
 
-    // ✅ 2. تنسيق العدد الحالي (للعرض)
-    const currentAttempts = exam.allowed_attempts === null ? '♾️ غير محدود' : exam.allowed_attempts;
+    // ✅ 2. تم حذف السطر الذي يقرأ العدد الحالي
 
     const keyboard = {
     inline_keyboard: [
         [{ text: '✏️ تعديل العنوان', callback_data: `exam_edit_title_${examId}` }],
         [{ text: '⏱️ تعديل الوقت', callback_data: `exam_edit_duration_${examId}` }],
-        // --- [ ✅✅ هذا هو الزر الجديد ] --
-        // --- [ نهاية الإضافة ] ---
+        // --- [ 🛑 تم حذف زر تعديل المحاولات ] ---
         [{ text: '❓ تعديل الأسئلة', callback_data: `exam_edit_questions_${examId}` }],
         [{ text: '📊 الإحصائيات', callback_data: `exam_view_stats_${examId}` }],
         [{ text: '🔙 رجوع (لقائمة الامتحانات)', callback_data: `content_nav_exams_for_subject_${exam.subject_id}` }]
