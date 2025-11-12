@@ -2803,72 +2803,7 @@ export default async (req, res) => {
             
           // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
 
-                if (currentState === 'awaiting_replacement_question') {
-                    const qid_to_replace = stateData.question_id_to_replace;
-                    // (استبدال: حذف القديم ثم إضافة الجديد بنفس الترتيب)
-                    const { data: oldQ } = await supabase.from('questions').select('sort_order').eq('id', qid_to_replace).single();
-                    await supabase.from('questions').delete().eq('id', qid_to_replace); // (سيحذف الاختيارات القديمة)
-                    
-                    const { data: newQ } = await supabase.from('questions').insert({
-                        ...newQuestionData,
-                        sort_order: oldQ ? oldQ.sort_order : 0
-                    }).select().single();
-                    
-                    await supabase.from('options').insert(newOptionsData.map(opt => ({ ...opt, question_id: newQ.id })));
                 
-                } else if (currentState === 'awaiting_new_question_after') {
-                    const after_sort_order = stateData.after_sort_order;
-                    // (إضافة "بعد": إزاحة + إضافة)
-                    
-                    // 1. إزاحة كل الأسئلة التي ترتيبها أكبر (نستدعي الدالة)
-                    await supabase.rpc('increment_sort_order', { 
-                        table_name: 'questions',
-                        parent_id_column: 'exam_id',
-                        parent_id_value: examId,
-                        from_sort_order: after_sort_order + 1
-                    });
-                    
-                    // 2. إضافة السؤال الجديد في المساحة الفارغة
-                    const { data: newQ } = await supabase.from('questions').insert({
-                        ...newQuestionData,
-                        sort_order: after_sort_order + 1
-                    }).select().single();
-                    
-                    await supabase.from('options').insert(newOptionsData.map(opt => ({ ...opt, question_id: newQ.id })));
-
-                } else if (currentState === 'awaiting_new_question_end') {
-                    // (إضافة "للنهاية": جلب أعلى ترتيب + إضافة)
-                    
-                    // 1. جلب أعلى ترتيب
-                    const { data: maxSort, error: maxErr } = await supabase
-                        .from('questions')
-                        .select('sort_order')
-                        .eq('exam_id', examId)
-                        .order('sort_order', { ascending: false })
-                        .limit(1)
-                        .single();
-                    
-                    const newSortOrder = (maxSort ? maxSort.sort_order : 0) + 1;
-                    
-                    // 2. إضافة السؤال الجديد
-                    const { data: newQ } = await supabase.from('questions').insert({
-                        ...newQuestionData,
-                        sort_order: newSortOrder
-                    }).select().single();
-                    
-                    await supabase.from('options').insert(newOptionsData.map(opt => ({ ...opt, question_id: newQ.id })));
-                }
-
-                await sendMessage(chatId, '✅ تم حفظ السؤال بنجاح.');
-                // (إعادة تحميل جلسة التعديل)
-                await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
-
-            } catch (err) {
-                await editMessage(chatId, stateData.message_id, `حدث خطأ فادح: ${err.message}`);
-                await setUserState(userId, null, null);
-            }
-            break;
-            
           // --- [ ✅ نهاية: حالات تعديل/إضافة الأسئلة ] ---
           // --- [ ✅ نهاية: حالات إضافة امتحان ] ---
                     
