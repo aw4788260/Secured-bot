@@ -790,6 +790,104 @@ const sendExamStatistics = async (chatId, messageId, examId) => {
     }
 };
 
+/**
+ * (جديد) دالة لتحليل تنسيق الأسئلة النصي
+ * @param {string} text - النص الكامل الذي أرسله الأدمن
+ * @returns {Array} - مصفوفة من كائنات الأسئلة
+ */
+const parseMcqText = (text) => {
+    const questions = [];
+    // (تقسيم النص إلى كتل أسئلة، كل سؤال يبدأ برقم ونقطة)
+    const questionBlocks = text.split(/(?=\d+\))/);
+
+    for (const block of questionBlocks) {
+        if (block.trim().length < 5) continue; // (تجاهل الفراغات)
+
+        const lines = block.trim().split('\n');
+        
+        // (استخراج السؤال)
+        const questionText = lines[0].replace(/^\d+\)\s*/, '').trim(); // (إزالة "1) ")
+        if (!questionText) continue;
+        
+        const options = [];
+        let correctLetter = null;
+
+        // (تحليل الاختيارات والإجابة)
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // (التقاط الإجابة)
+            if (line.toLowerCase().startsWith('answer:')) {
+                const match = line.match(/[A-Za-z]\)/); // (التقاط الحرف)
+                if (match) {
+                    correctLetter = match[0].replace(')', '').toUpperCase();
+                }
+            } 
+            // (التقاط الاختيارات)
+            else {
+                const match = line.match(/^([A-Za-z]\))\s*(.*)/);
+                if (match) {
+                    const letter = match[1].replace(')', '').toUpperCase();
+                    const optionText = match[2].trim();
+                    options.push({ text: optionText, letter: letter });
+                }
+            }
+        }
+
+        if (questionText && options.length > 0 && correctLetter) {
+            questions.push({
+                question_text: questionText,
+                options: options.map(opt => ({
+                    text: opt.text,
+                    is_correct: opt.letter === correctLetter
+                }))
+            });
+        }
+    }
+    return questions;
+};
+
+/**
+ * (جديد) دالة مساعدة لحفظ الأسئلة (من Poll أو نص)
+ * @param {Array} parsedQuestions - مصفوفة الأسئلة المجهزة
+ * @param {object} stateData - بيانات الحالة
+ * @param {string} chatId - ID الأدمن
+ */
+const saveParsedQuestions = async (parsedQuestions, stateData, chatId) => {
+    const examId = stateData.current_exam_id || stateData.exam_id;
+    let currentSortOrder = stateData.current_question_sort_order || 0;
+
+    for (const q of parsedQuestions) {
+        // 1. حفظ السؤال
+        const { data: newQuestion, error: qError } = await supabase.from('questions').insert({
+            exam_id: examId,
+            question_text: q.question_text,
+            sort_order: currentSortOrder
+        }).select().single();
+
+        if (qError) {
+            await sendMessage(chatId, `❌ خطأ بحفظ السؤال: ${qError.message}`);
+            continue; // (الانتقال للسؤال التالي)
+        }
+
+        // 2. حفظ الاختيارات
+        const optionsPayload = q.options.map((opt, index) => ({
+            question_id: newQuestion.id,
+            option_text: opt.text,
+            is_correct: opt.is_correct,
+            sort_order: index
+        }));
+        
+        await supabase.from('options').insert(optionsPayload);
+        
+        currentSortOrder++;
+    }
+    
+    // (تحديث الحالة بالترتيب الجديد)
+    await setUserState(chatId, stateData.current_state, { ...stateData, current_question_sort_order: currentSortOrder });
+    
+    return currentSortOrder; // (إرجاع العدد الإجمالي)
+};
 // (المستوى 1: الكورسات)
 const sendContentMenu_Courses = async (chatId, messageId = null) => {
   await setUserState(chatId, null, null);
@@ -2556,60 +2654,7 @@ export default async (req, res) => {
             
 
           // (الحالة الأهم: استقبال الأسئلة)
-          case 'awaiting_exam_questions':
-            const currentExamId = stateData.current_exam_id;
-            let currentSortOrder = stateData.current_question_sort_order;
-            
-            if (message.poll) {
-                const poll = message.poll;
-                
-                if (poll.type !== 'quiz') {
-                    await sendMessage(chatId, '❌ خطأ: يجب أن يكون الـ Poll من نوع "Quiz" (اختبار). هذا Poll عادي.');
-                    return res.status(200).send('OK');
-                }
-                
-                const questionText = poll.question;
-                const correctOptionIndex = poll.correct_option_id; 
-                
-                // 1. حفظ السؤال
-                const { data: newQuestion, error: qError } = await supabase.from('questions').insert({
-                    exam_id: currentExamId,
-                    question_text: questionText,
-                    sort_order: currentSortOrder
-                }).select().single();
-                
-                if (qError) {
-                    await sendMessage(chatId, `❌ خطأ بحفظ السؤال: ${qError.message}`);
-                    return res.status(200).send('OK');
-                }
-
-                // 2. حفظ الاختيارات
-                const optionsPayload = poll.options.map((opt, index) => ({
-                    question_id: newQuestion.id,
-                    option_text: opt.text,
-                    is_correct: (index === correctOptionIndex),
-                    sort_order: index
-                }));
-                
-                await supabase.from('options').insert(optionsPayload);
-                
-                // (تحديث الحالة بالترتيب الجديد)
-                await setUserState(userId, 'awaiting_exam_questions', { ...stateData, current_question_sort_order: currentSortOrder + 1 });
-                
-                await sendMessage(chatId, `✅ تم حفظ السؤال (رقم ${currentSortOrder + 1}).\nأرسل السؤال التالي (Poll)، أو /done للانتهاء.`);
-            
-            } else if (text === '/done') {
-                // (الانتهاء)
-                await editMessage(chatId, messageId, '👍 تم الانتهاء من إضافة الأسئلة.');
-                await setUserState(userId, null, null);
-                // (العودة لقائمة الامتحانات)
-                await sendContentMenu_Exams_For_Subject(chatId, stateData.message_id, stateData.subject_id);
-            
-            } else if (text) {
-                // (دعم الصيغة اليدوية)
-                await sendMessage(chatId, '(الصيغة اليدوية لم تتم برمجتها بعد، الرجاء إرسال Poll أو /done)');
-            }
-            break;
+          
 
           // --- [ حالات تعديل امتحان موجود ] ---
           
@@ -2643,30 +2688,120 @@ export default async (req, res) => {
             
           // --- [ ✅ بداية: حالات تعديل/إضافة الأسئلة ] ---
           
+          // (الكود الجديد - للاستبدال)
+
+          // --- [ ✅✅ بداية: حالات استقبال الأسئلة (المعدلة) ] ---
+          
+          case 'awaiting_exam_questions': // (الحالة الأساسية عند الإنشاء)
           case 'awaiting_replacement_question':
           case 'awaiting_new_question_after':
           case 'awaiting_new_question_end':
             
-            if (!message.poll || message.poll.type !== 'quiz') {
-                await sendMessage(chatId, '❌ خطأ: يجب إرسال (Poll) من نوع (Quiz). حاول مجدداً أو /cancel');
-                return res.status(200).send('OK');
-            }
+            // (تحديث: نحفظ اسم الحالة الحالية للعودة إليها)
+            stateData.current_state = currentState; 
             
-            try {
-                await editMessage(chatId, stateData.message_id, '⚙️ جاري معالجة السؤال الجديد...');
+            // --- 1. التعامل مع الـ Poll (الاستفتاء) ---
+            if (message.poll) {
                 const poll = message.poll;
-                const examId = stateData.exam_id;
                 
-                // (البيانات المشتركة للسؤال الجديد)
-                const newQuestionData = {
-                    exam_id: examId,
-                    question_text: poll.question
-                };
-                const newOptionsData = poll.options.map((opt, index) => ({
-                    option_text: opt.text,
-                    is_correct: (index === poll.correct_option_id),
-                    sort_order: index
-                }));
+                // --- [ ✅✅ هذا هو الإصلاح المطلوب رقم 1 ] ---
+                // (التحقق أن الـ Poll هو Quiz وتم تحديد إجابة)
+                if (poll.type !== 'quiz' || poll.correct_option_id === null || typeof poll.correct_option_id === 'undefined') {
+                    await sendMessage(chatId, '❌ خطأ: الـ Poll الذي تم إرساله ليس "Quiz" أو لم يتم "حلّه" (تحديد إجابة صحيحة).\n\nالرجاء التأكد من أنك ترسل Poll من نوع Quiz مع تحديد الإجابة الصحيحة قبل إعادة التوجيه.');
+                    return res.status(200).send('OK');
+                }
+                // --- [ نهاية الإصلاح ] ---
+
+                // (تجهيز بيانات الـ Poll للحفظ)
+                const parsedPoll = [{
+                    question_text: poll.question,
+                    options: poll.options.map((opt, index) => ({
+                        text: opt.text,
+                        is_correct: (index === poll.correct_option_id)
+                    }))
+                }];
+
+                try {
+                    // (التعامل مع الحالات المختلفة)
+                    if (currentState === 'awaiting_replacement_question') {
+                        await editMessage(chatId, stateData.message_id, '⚙️ جاري استبدال السؤال...');
+                        const qid_to_replace = stateData.question_id_to_replace;
+                        const { data: oldQ } = await supabase.from('questions').select('sort_order').eq('id', qid_to_replace).single();
+                        await supabase.from('questions').delete().eq('id', qid_to_replace); // (سيحذف الاختيارات)
+                        
+                        // (إعادة استخدام stateData لحفظ السؤال الجديد بنفس الترتيب القديم)
+                        await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: stateData.exam_id, current_question_sort_order: (oldQ ? oldQ.sort_order : 0) }, chatId);
+                    
+                    } else if (currentState === 'awaiting_new_question_after') {
+                        await editMessage(chatId, stateData.message_id, '⚙️ جاري إضافة السؤال...');
+                        const after_sort_order = stateData.after_sort_order;
+                        await supabase.rpc('increment_sort_order', { table_name: 'questions', parent_id_column: 'exam_id', parent_id_value: stateData.exam_id, from_sort_order: after_sort_order + 1 });
+                        
+                        await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: stateData.exam_id, current_question_sort_order: after_sort_order + 1 }, chatId);
+                    
+                    } else if (currentState === 'awaiting_new_question_end') {
+                        await editMessage(chatId, stateData.message_id, '⚙️ جاري إضافة السؤال...');
+                        const { data: maxSort } = await supabase.from('questions').select('sort_order').eq('exam_id', stateData.exam_id).order('sort_order', { ascending: false }).limit(1).single();
+                        const newSortOrder = (maxSort ? maxSort.sort_order : 0) + 1;
+
+                        await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: stateData.exam_id, current_question_sort_order: newSortOrder }, chatId);
+                   
+                    } else { // (awaiting_exam_questions)
+                         await saveParsedQuestions(parsedPoll, stateData, chatId);
+                    }
+                    
+                    // (إعادة تحميل جلسة التعديل أو إرسال رسالة تأكيد)
+                    if (currentState !== 'awaiting_exam_questions') {
+                        await sendMessage(chatId, '✅ تم حفظ السؤال بنجاح.');
+                        await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
+                    } else {
+                        await sendMessage(chatId, `✅ تم حفظ السؤال (رقم ${stateData.current_question_sort_order + 1}).\nأرسل السؤال التالي (Poll أو نص)، أو /done للانتهاء.`);
+                    }
+
+                } catch (err) {
+                    await editMessage(chatId, stateData.message_id, `حدث خطأ فادح: ${err.message}`);
+                    await setUserState(userId, null, null);
+                }
+
+            
+            // --- 2. التعامل مع النص (التنسيق الجديد) ---
+            } else if (text && text !== '/done') {
+                
+                try {
+                    const parsedQuestions = parseMcqText(text); // (استدعاء الدالة الجديدة)
+                    
+                    if (parsedQuestions.length === 0) {
+                        await sendMessage(chatId, '❌ خطأ: لم أتمكن من فهم التنسيق النصي. الرجاء مراجعة التنسيق وإرسال (Poll) أو /done.');
+                        return res.status(200).send('OK');
+                    }
+
+                    // (هنا نفترض أن النص سيُستخدم "فقط" في حالة الإنشاء الأولية)
+                    if (currentState === 'awaiting_exam_questions') {
+                        await editMessage(chatId, messageId, `⚙️ تم العثور على ${parsedQuestions.length} سؤال نصي، جاري حفظهم...`);
+                        const totalSaved = await saveParsedQuestions(parsedQuestions, stateData, chatId);
+                        await sendMessage(chatId, `✅ تم حفظ ${parsedQuestions.length} سؤال بنجاح (الإجمالي: ${totalSaved}).\nأرسل المزيد، أو /done.`);
+                    
+                    } else {
+                        // (لا ندعم إرسال نص في وضع التعديل حالياً للتبسيط)
+                        await sendMessage(chatId, 'لتعديل الأسئلة (الاستبدال أو الإضافة)، الرجاء إرسال (Poll) واحد فقط، أو /cancel.');
+                    }
+
+                } catch (err) {
+                    await editMessage(chatId, stateData.message_id, `حدث خطأ أثناء تحليل النص: ${err.message}`);
+                }
+
+            
+            // --- 3. التعامل مع /done (الانتهاء) ---
+            } else if (text === '/done') {
+                // (الانتهاء)
+                await editMessage(chatId, messageId, '👍 تم الانتهاء من إضافة الأسئلة.');
+                await setUserState(userId, null, null);
+                // (العودة لقائمة الامتحانات)
+                await sendContentMenu_Exams_For_Subject(chatId, stateData.message_id, stateData.subject_id);
+            }
+            break;
+            
+          // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
 
                 if (currentState === 'awaiting_replacement_question') {
                     const qid_to_replace = stateData.question_id_to_replace;
