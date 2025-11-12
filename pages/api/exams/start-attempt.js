@@ -38,12 +38,12 @@ export default async (req, res) => {
       .eq('user_id', userId)
       .eq('exam_id', examId)
       .eq('status', 'completed');
-
+    
     if (count > 0) {
       return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل.' });
     }
-
-    // (يمكننا حذف المحاولات السابقة "غير المكتملة" إذا أردنا ضمان محاولة واحدة نظيفة)
+    
+    // (حذف المحاولات السابقة "غير المكتملة" لضمان محاولة واحدة نظيفة)
     await supabase.from('user_attempts')
         .delete()
         .eq('user_id', userId)
@@ -90,14 +90,14 @@ export default async (req, res) => {
         options: shuffleArray(q.options)
       }));
     }
-
+    
     // 5. حفظ الترتيب الذي سيراه الطالب
     const questionOrder = processedQuestions.map(q => q.id);
     const { error: updateOrderError } = await supabase
       .from('user_attempts')
       .update({ question_order: questionOrder }) 
       .eq('id', newAttempt.id);
-
+      
     if (updateOrderError) throw updateOrderError;
 
     return res.status(200).json({
