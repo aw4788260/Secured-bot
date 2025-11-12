@@ -2694,7 +2694,6 @@ export default async (req, res) => {
             
             
           // --- [ ✅ بداية: حالات تعديل/إضافة الأسئلة ] ---
-          
           // (الكود الجديد - للاستبدال)
 
           // --- [ ✅✅ بداية: حالات استقبال الأسئلة (المعدلة) ] ---
@@ -2716,12 +2715,14 @@ export default async (req, res) => {
             if (message.poll) {
                 const poll = message.poll;
                 
+                // --- [ ✅✅ هذا هو الإصلاح المطلوب رقم 1 ] ---
                 // (التحقق أن الـ Poll هو Quiz وتم تحديد إجابة)
                 if (poll.type !== 'quiz' || poll.correct_option_id === null || typeof poll.correct_option_id === 'undefined') {
                     // (تنبيه الأدمن في الرسالة الرئيسية)
-                    await editMessage(chatId, stateData.message_id, `❌ خطأ: الـ Poll ليس Quiz أو لم يتم "حلّه".\n\nالرجاء التأكد من أنك ترسل Poll من نوع Quiz مع تحديد الإجابة الصحيحة.\n\n💡 نصيحة: لإخفاء اسمك، اضغط مطولاً على زر الإرسال (Forward) واختر "إخفاء اسم المرسل" (Hide Sender\'s Name).\n\n(جاري انتظار السؤال التالي أو /done)`);
+                    await editMessage(chatId, stateData.message_id, `❌ خطأ: الـ Poll ليس Quiz أو لم يتم "حلّه".\n\nالرجاء التأكد من أنك ترسل Poll من نوع Quiz مع تحديد الإجابة الصحيحة.\n\n💡 نصيحة: لإخفاء اسمك، اضغط مطولاً على زر الإرسال (Forward) واختر "إخفاء اسم المرسل" (Hide Sender's Name).\n\n(جاري انتظار السؤال التالي أو /done)`);
                     return res.status(200).send('OK');
                 }
+                // --- [ نهاية الإصلاح ] ---
 
                 // (تجهيز بيانات الـ Poll للحفظ)
                 const parsedPoll = [{
@@ -2732,8 +2733,10 @@ export default async (req, res) => {
                     }))
                 }];
 
+                // --- [ ✅✅ هذا هو الإصلاح رقم 2 (إضافة Try/Catch) ] ---
                 try {
                     let savedTitle = "سؤال"; // (افتراضي)
+                    const examId = stateData.current_exam_id || stateData.exam_id;
 
                     // (التعامل مع الحالات المختلفة)
                     if (currentState === 'awaiting_replacement_question') {
@@ -2742,40 +2745,42 @@ export default async (req, res) => {
                         const { data: oldQ } = await supabase.from('questions').select('sort_order').eq('id', qid_to_replace).single();
                         await supabase.from('questions').delete().eq('id', qid_to_replace); // (سيحذف الاختيارات)
                         
-                        const { savedTitles } = await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: stateData.exam_id }, chatId, (oldQ ? oldQ.sort_order : 0));
+                        const { savedTitles } = await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: examId }, chatId, (oldQ ? oldQ.sort_order : 0));
                         savedTitle = savedTitles[0];
                     
                     } else if (currentState === 'awaiting_new_question_after') {
                         await editMessage(chatId, stateData.message_id, '⚙️ جاري إضافة السؤال...');
                         const after_sort_order = stateData.after_sort_order;
-                        await supabase.rpc('increment_sort_order', { table_name: 'questions', parent_id_column: 'exam_id', parent_id_value: stateData.exam_id, from_sort_order: after_sort_order + 1 });
+                        await supabase.rpc('increment_sort_order', { table_name: 'questions', parent_id_column: 'exam_id', parent_id_value: examId, from_sort_order: after_sort_order + 1 });
                         
-                        const { savedTitles } = await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: stateData.exam_id }, chatId, after_sort_order + 1);
+                        const { savedTitles } = await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: examId }, chatId, after_sort_order + 1);
                         savedTitle = savedTitles[0];
 
                     } else if (currentState === 'awaiting_new_question_end') {
                         await editMessage(chatId, stateData.message_id, '⚙️ جاري إضافة السؤال...');
-                        const { data: maxSort } = await supabase.from('questions').select('sort_order').eq('exam_id', stateData.exam_id).order('sort_order', { ascending: false }).limit(1).single();
+                        const { data: maxSort } = await supabase.from('questions').select('sort_order').eq('exam_id', examId).order('sort_order', { ascending: false }).limit(1).single();
                         const newSortOrder = (maxSort ? maxSort.sort_order : 0) + 1;
 
-                        const { savedTitles } = await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: stateData.exam_id }, chatId, newSortOrder);
+                        const { savedTitles } = await saveParsedQuestions(parsedPoll, { ...stateData, current_exam_id: examId }, chatId, newSortOrder);
                         savedTitle = savedTitles[0];
                    
                     } else { // (awaiting_exam_questions)
                          const { newSortOrder, savedTitles } = await saveParsedQuestions(parsedPoll, stateData, chatId, stateData.current_question_sort_order);
-                         // --- [ ✅✅ 2. تعديل الرسالة الرئيسية بدلاً من إرسال جديدة ] ---
+                         // (تعديل الرسالة الرئيسية بدلاً من إرسال جديدة)
                          await editMessage(chatId, stateData.message_id, `✅ تم حفظ ${newSortOrder} سؤال.\n(آخر سؤال: ${savedTitles[0]}...)\n\nأرسل السؤال التالي (Poll أو نص)، أو /done للانتهاء.`);
                          return res.status(200).send('OK'); // (الخروج هنا لهذه الحالة)
                     }
                     
                     // (إعادة تحميل جلسة التعديل للحالات الأخرى)
-                    await answerCallbackQuery(callback_query.id, { text: `✅ تم حفظ: ${savedTitle}...` });
+                    // (هنا نستخدم callback_query.id لأنه غير متوفر في "message")
+                    await answerCallbackQuery(callback_query ? callback_query.id : '', { text: `✅ تم حفظ: ${savedTitle}...` });
                     await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
 
                 } catch (err) {
                     await editMessage(chatId, stateData.message_id, `حدث خطأ فادح: ${err.message}`);
                     await setUserState(userId, null, null);
                 }
+                // --- [ نهاية الإصلاح رقم 2 ] ---
 
             
             // --- 3. التعامل مع النص (التنسيق الجديد) ---
@@ -2794,7 +2799,7 @@ export default async (req, res) => {
                         await editMessage(chatId, messageId, `⚙️ تم العثور على ${parsedQuestions.length} سؤال نصي، جاري حفظهم...`);
                         const { newSortOrder } = await saveParsedQuestions(parsedQuestions, stateData, chatId, stateData.current_question_sort_order);
                         
-                        // --- [ ✅✅ 3. تعديل الرسالة الرئيسية بدلاً من إرسال جديدة ] ---
+                        // (تعديل الرسالة الرئيسية بدلاً من إرسال جديدة)
                         await editMessage(chatId, stateData.message_id, `✅ تم حفظ ${newSortOrder} سؤال.\n(آخر دفعة: ${parsedQuestions.length} سؤال نصي)\n\nأرسل المزيد (Poll أو نص)، أو /done.`);
                     
                     } else {
@@ -2816,6 +2821,9 @@ export default async (req, res) => {
                 await sendContentMenu_Exams_For_Subject(chatId, stateData.message_id, stateData.subject_id);
             }
             break;
+            
+          // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
+          
             
           // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
 
