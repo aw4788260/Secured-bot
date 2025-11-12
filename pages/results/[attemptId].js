@@ -134,8 +134,12 @@ export default function ResultsPage() {
             })}
             
             {/* --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] --- */}
-            <button className="button-link" style={{marginTop: '20px'}} onClick={() => router.back()}>
-                العودة لقائمة المواد
+            <button 
+                className="button-link" 
+                style={{marginTop: '20px'}} 
+                onClick={() => router.push(`/app?userId=${userId || ''}&firstName=${firstName || ''}`)}
+            >
+                العودة للقائمة الرئيسية
             </button>
             {/* --- [ نهاية الإصلاح ] --- */}
 
