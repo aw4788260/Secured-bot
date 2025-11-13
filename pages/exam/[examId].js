@@ -21,15 +21,14 @@ export default function ExamPage() {
     const attemptIdRef = useRef(null); // لتخزين ID المحاولة
     const timerIntervalRef = useRef(null); // للتحكم بالعداد
 
-    // --- [ ✅✅ جديد: Refs لحفظ الإجابات ومنع الإرسال المزدوج ] ---
-    const answersRef = useRef(answers); // (Ref لتخزين آخر نسخة من الإجابات)
-    const isSubmittingRef = useRef(false); // (Flag لمنع الإرسال مرتين)
+    // (Refs لحفظ الإجابات ومنع الإرسال المزدوج)
+    const answersRef = useRef(answers); 
+    const isSubmittingRef = useRef(false); 
     
     // (دالة لتحديث Ref الإجابات كلما تغيرت الحالة)
     useEffect(() => {
         answersRef.current = answers;
     }, [answers]);
-    // --- [ نهاية الإضافة ] ---
 
 
     // (التحقق من المستخدم)
@@ -116,32 +115,45 @@ export default function ExamPage() {
         }
     };
     
-    // --- [ ✅✅ جديد: دالة الإرسال عند الخروج (باستخدام sendBeacon) ] ---
+    // (دالة الإرسال عند الخروج - باستخدام sendBeacon)
     const handleExitSubmit = useCallback(() => {
-        // (1. منع الإرسال المزدوج)
         if (isSubmittingRef.current) return;
-        
-        // (2. التأكد أن الامتحان بدأ فعلاً)
         if (!attemptIdRef.current) return;
 
         console.log("Exit detected. Force submitting answers via sendBeacon...");
         isSubmittingRef.current = true;
         
-        // (3. تجهيز البيانات للإرسال)
         const data = {
             attemptId: attemptIdRef.current,
-            answers: answersRef.current // (استخدام Ref للحصول على آخر إجابات)
+            answers: answersRef.current 
         };
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         
-        // (4. استخدام sendBeacon لضمان الإرسال حتى لو أغلقت الصفحة)
         navigator.sendBeacon('/api/exams/submit-attempt', blob);
         
     }, []); // (هذه الدالة لا تعتمد على أي شيء متغير، فهي تقرأ من Refs)
+
+    
+    // --- [ ✅✅ جديد: دالة تأكيد الخروج (لزر الرجوع) ] ---
+    const handleBackButtonConfirm = useCallback(() => {
+        // (اعرض نافذة التأكيد)
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.showConfirm(
+                "هل أنت متأكد من الخروج؟ سيتم تسليم إجاباتك الحالية وإنهاء الامتحان.", 
+                (isConfirmed) => {
+                    if (isConfirmed) {
+                        // (إذا ضغط "نعم"، قم بالتسليم)
+                        handleExitSubmit();
+                    }
+                    // (إذا ضغط "لا"، لا تفعل شيئاً)
+                }
+            );
+        }
+    }, [handleExitSubmit]); // (تعتمد على دالة الإرسال)
     // --- [ نهاية الإضافة ] ---
 
 
-    // --- [ ✅✅ جديد: Effect لتفعيل رصد الخروج (عند بدء الامتحان) ] ---
+    // --- [ ✅✅ معدل: Effect لتفعيل رصد الخروج (عند بدء الامتحان) ] ---
     useEffect(() => {
         // (يعمل فقط بعد تحميل الأسئلة وبدء العداد)
         if (questions && timer > 0) {
@@ -150,28 +162,32 @@ export default function ExamPage() {
             if (window.Telegram && window.Telegram.WebApp) {
                 const twaBackButton = window.Telegram.WebApp.BackButton;
                 twaBackButton.show();
-                twaBackButton.onClick(handleExitSubmit); // (تعيين دالة الخروج)
+                // [ ✅ تعديل: استدعاء دالة التأكيد بدلاً من الإرسال المباشر ]
+                twaBackButton.onClick(handleBackButtonConfirm); 
             }
             
             // --- 2. رصد إغلاق الصفحة أو التحديث (للمتصفح) ---
+            // (هذه ستستمر في الإرسال المباشر لأننا لا نستطيع إيقافها)
             window.addEventListener('beforeunload', handleExitSubmit);
 
             // --- 3. رصد الرجوع (داخل المتصفح - Next.js) ---
+            // (هذه أيضاً ستستمر في الإرسال المباشر)
             router.events.on('routeChangeStart', handleExitSubmit);
 
             // --- [ دالة التنظيف (مهمة جداً) ] ---
-            // (هذه الدالة تعمل عند انتهاء الامتحان بشكل طبيعي)
             return () => {
                 if (window.Telegram && window.Telegram.WebApp) {
-                    window.Telegram.WebApp.BackButton.offClick(handleExitSubmit);
+                    // [ ✅ تعديل: إزالة المستمع الصحيح ]
+                    window.Telegram.WebApp.BackButton.offClick(handleBackButtonConfirm);
                     window.Telegram.WebApp.BackButton.hide();
                 }
                 window.removeEventListener('beforeunload', handleExitSubmit);
                 router.events.off('routeChangeStart', handleExitSubmit);
             };
         }
-    }, [questions, timer, router.events, handleExitSubmit]); // (يعتمد على هذه المتغيرات)
-    // --- [ نهاية الإضافة ] ---
+    // [ ✅ تعديل: إضافة handleBackButtonConfirm للمصفوفة ]
+    }, [questions, timer, router.events, handleExitSubmit, handleBackButtonConfirm]); 
+    // --- [ نهاية التعديل ] ---
 
 
     // (دالة إرسال الإجابات)
@@ -193,13 +209,13 @@ export default function ExamPage() {
         
         // (2. إزالة كل المستمعين (Listeners) يدوياً وفوراً)
         if (window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.BackButton.offClick(handleExitSubmit);
+            // [ ✅ تعديل: إزالة المستمع الصحيح ]
+            window.Telegram.WebApp.BackButton.offClick(handleBackButtonConfirm);
             window.Telegram.WebApp.BackButton.hide();
         }
         window.removeEventListener('beforeunload', handleExitSubmit);
         router.events.off('routeChangeStart', handleExitSubmit);
         // --- [ نهاية التعديل ] ---
-
         
         setIsLoading(true);
         setTimer(null); // (إيقاف العداد)
