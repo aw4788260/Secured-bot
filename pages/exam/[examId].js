@@ -1,6 +1,6 @@
 // pages/exam/[examId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 
 export default function ExamPage() {
@@ -15,15 +15,22 @@ export default function ExamPage() {
     const [timer, setTimer] = useState(null); // (سيتم تعيينه عند جلب التفاصيل)
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    
-    // --- [ ✅✅ هذا هو الإصلاح رقم 3 ] ---
-    // (جعل حقل الاسم فارغاً دائماً في البداية)
     const [studentName, setStudentName] = useState(""); 
-    // --- [ نهاية الإصلاح ] ---
 
     // (حالات تقنية)
     const attemptIdRef = useRef(null); // لتخزين ID المحاولة
     const timerIntervalRef = useRef(null); // للتحكم بالعداد
+
+    // --- [ ✅✅ جديد: Refs لحفظ الإجابات ومنع الإرسال المزدوج ] ---
+    const answersRef = useRef(answers); // (Ref لتخزين آخر نسخة من الإجابات)
+    const isSubmittingRef = useRef(false); // (Flag لمنع الإرسال مرتين)
+    
+    // (دالة لتحديث Ref الإجابات كلما تغيرت الحالة)
+    useEffect(() => {
+        answersRef.current = answers;
+    }, [answers]);
+    // --- [ نهاية الإضافة ] ---
+
 
     // (التحقق من المستخدم)
     useEffect(() => {
@@ -63,7 +70,7 @@ export default function ExamPage() {
     }, [examId, userId]); // (يعتمد على examId و userId)
 
 
-    // (العداد التنازلي - سليم من المرة السابقة)
+    // (العداد التنازلي)
     useEffect(() => {
         if (questions && timer > 0) {
             const timerId = setTimeout(() => {
@@ -88,9 +95,7 @@ export default function ExamPage() {
             setIsLoading(false);
             return;
         }
-
-        // ( userId و firstName من router.query قد تكونان غير جاهزتين في البداية)
-        // (لذا سنستخدم المتغيرات التي تأكدنا منها في useEffect)
+        
         const urlParams = new URLSearchParams(window.location.search);
         const currentUserId = urlParams.get('userId') || window.Telegram.WebApp.initDataUnsafe?.user?.id.toString();
 
@@ -100,25 +105,79 @@ export default function ExamPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ examId, userId: currentUserId, studentName: studentName.trim() })
             });
-
             const data = await res.json();
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
+            if (data.error) throw new Error(data.error);
             attemptIdRef.current = data.attemptId;
             setQuestions(data.questions); 
             setIsLoading(false);
-
         } catch (err) {
             setError(err.message);
             setIsLoading(false);
         }
     };
+    
+    // --- [ ✅✅ جديد: دالة الإرسال عند الخروج (باستخدام sendBeacon) ] ---
+    const handleExitSubmit = useCallback(() => {
+        // (1. منع الإرسال المزدوج)
+        if (isSubmittingRef.current) return;
+        
+        // (2. التأكد أن الامتحان بدأ فعلاً)
+        if (!attemptIdRef.current) return;
+
+        console.log("Exit detected. Force submitting answers via sendBeacon...");
+        isSubmittingRef.current = true;
+        
+        // (3. تجهيز البيانات للإرسال)
+        const data = {
+            attemptId: attemptIdRef.current,
+            answers: answersRef.current // (استخدام Ref للحصول على آخر إجابات)
+        };
+        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+        
+        // (4. استخدام sendBeacon لضمان الإرسال حتى لو أغلقت الصفحة)
+        navigator.sendBeacon('/api/exams/submit-attempt', blob);
+        
+    }, []); // (هذه الدالة لا تعتمد على أي شيء متغير، فهي تقرأ من Refs)
+    // --- [ نهاية الإضافة ] ---
+
+
+    // --- [ ✅✅ جديد: Effect لتفعيل رصد الخروج (عند بدء الامتحان) ] ---
+    useEffect(() => {
+        // (يعمل فقط بعد تحميل الأسئلة وبدء العداد)
+        if (questions && timer > 0) {
+            
+            // --- 1. رصد زر الرجوع الخاص بتطبيق تليجرام ---
+            if (window.Telegram && window.Telegram.WebApp) {
+                const twaBackButton = window.Telegram.WebApp.BackButton;
+                twaBackButton.show();
+                twaBackButton.onClick(handleExitSubmit); // (تعيين دالة الخروج)
+            }
+            
+            // --- 2. رصد إغلاق الصفحة أو التحديث (للمتصفح) ---
+            window.addEventListener('beforeunload', handleExitSubmit);
+
+            // --- 3. رصد الرجوع (داخل المتصفح - Next.js) ---
+            router.events.on('routeChangeStart', handleExitSubmit);
+
+            // --- [ دالة التنظيف (مهمة جداً) ] ---
+            // (هذه الدالة تعمل عند انتهاء الامتحان بشكل طبيعي)
+            return () => {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    window.Telegram.WebApp.BackButton.offClick(handleExitSubmit);
+                    window.Telegram.WebApp.BackButton.hide();
+                }
+                window.removeEventListener('beforeunload', handleExitSubmit);
+                router.events.off('routeChangeStart', handleExitSubmit);
+            };
+        }
+    }, [questions, timer, router.events, handleExitSubmit]); // (يعتمد على هذه المتغيرات)
+    // --- [ نهاية الإضافة ] ---
+
 
     // (دالة إرسال الإجابات)
+    // --- [ ✅✅ معدل: تعديل دالة الإرسال الأصلية ] ---
     const handleSubmit = async (isAutoSubmit = false) => {
+        // (التحقق من الإجابات الكاملة فقط إذا كان المستخدم هو من ضغط "إنهاء")
         if (!isAutoSubmit) {
             const allAnswered = questions ? Object.keys(answers).length === questions.length : false;
             if (!allAnswered) {
@@ -126,6 +185,21 @@ export default function ExamPage() {
                 return;
             }
         }
+        
+        // --- [ ✅ جديد: منع رصد الخروج عند الإرسال الطبيعي ] ---
+        // (1. منع أي محاولات إرسال مزدوجة)
+        if (isSubmittingRef.current) return;
+        isSubmittingRef.current = true;
+        
+        // (2. إزالة كل المستمعين (Listeners) يدوياً وفوراً)
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.BackButton.offClick(handleExitSubmit);
+            window.Telegram.WebApp.BackButton.hide();
+        }
+        window.removeEventListener('beforeunload', handleExitSubmit);
+        router.events.off('routeChangeStart', handleExitSubmit);
+        // --- [ نهاية التعديل ] ---
+
         
         setIsLoading(true);
         setTimer(null); // (إيقاف العداد)
@@ -143,6 +217,7 @@ export default function ExamPage() {
         } catch (err) {
             setError("حدث خطأ أثناء إرسال الإجابات.");
             setIsLoading(false);
+            isSubmittingRef.current = false; // (السماح بإعادة المحاولة إذا فشل الإرسال)
         }
     };
 
@@ -183,10 +258,7 @@ export default function ExamPage() {
                 <div className="exam-details-box">
                     <h1>{examDetails.title}</h1>
                     <p>المدة: {examDetails.duration_minutes} دقيقة</p>
-                    
-                    {/* --- [ ✅✅ هذا هو الإصلاح رقم 2 ] --- */}
                     <p>المحاولات المسموحة: محاولة واحدة فقط</p>
-                    {/* --- [ نهاية الإصلاح ] --- */}
 
                     {examDetails.requires_student_name && (
                         <input 
@@ -219,14 +291,12 @@ export default function ExamPage() {
             {questions.map((q, index) => (
                 <div key={q.id} className="question-box">
                     
-                    {/* [ ✅✅ جديد: عرض الصورة إن وجدت ] */}
                     {q.image_file_id && (
                         <div className="question-image-container">
                             <img 
                                 src={`/api/exams/get-image?file_id=${q.image_file_id}`} 
                                 alt="Question Image" 
                                 className="question-image"
-                                // (إضافة تحميل بطيء لتحسين الأداء)
                                 loading="lazy" 
                             />
                         </div>
