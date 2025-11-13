@@ -42,7 +42,7 @@ const sendPhotoMessage = async (chatId, photo_file_id, caption, reply_markup = n
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 6: إصلاح جذرى للـ Parse Mode)
+ * (✅✅ معدلة بالإصلاح 7: إعادة الأزرار المفقودة)
  * دالة إرسال الرسائل الرئيسية
  */
 const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null, protect_content = false) => {
@@ -54,15 +54,12 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null,
     let processedText;
     let final_parse_mode = parse_mode; // 'MarkdownV2', 'HTML', or null
 
-    // [ ✅✅ الإصلاح الجذري ]
-    // إذا كان نوع التنسيق هو HTML، ثق به
     if (parse_mode === 'HTML') {
         processedText = text;
     } else {
-        // إذا كان 'MarkdownV2' أو 'null' (افتراضي)
-        // عامل كل شيء آخر كنص عادي وقم بتهيئته (escape)
-        // هذا يمنع تليجرام من التفسير الخاطئ للنص العادي كـ Markdown
-        processedText = escapeMarkdownV2(String(text)); // (تحويله لنص احتياطاً)
+        // (parse_mode is 'MarkdownV2' or 'null')
+        // (في كلتا الحالتين، نقوم بالتهيئة لضمان الأمان)
+        processedText = escapeMarkdownV2(String(text)); 
         final_parse_mode = 'MarkdownV2';
     }
     
@@ -72,7 +69,16 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null,
         protect_content: protect_content
     };
     
-    if (final_parse_mode) payload.parse_mode = final_parse_mode;
+    // --- [ ✅✅ هذا هو السطر الذي تم إصلاحه ] ---
+    // (إضافة الأزرار (الكيبورد) إلى الرسالة إذا كانت موجودة)
+    if (reply_markup) {
+        payload.reply_markup = reply_markup;
+    }
+    // --- [ نهاية الإصلاح ] ---
+
+    if (final_parse_mode) {
+        payload.parse_mode = final_parse_mode;
+    }
     
     try {
         const response = await axios.post(`${TELEGRAM_API}/sendMessage`, payload);
@@ -84,7 +90,6 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null,
         // (الخطة البديلة: إذا فشل التنسيق لسبب ما)
         if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
             
-            // (سيعيد المحاولة باستخدام النص الأصلي بعد تهيئته)
             console.warn(`[Fallback] Markdown/HTML parsing failed for chat ${chatId}. Resending as escaped Markdown.`);
             
             const retryPayload = { 
@@ -92,6 +97,7 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null,
                  text: escapeMarkdownV2(String(text)), // (تهيئته بقوة)
                  parse_mode: 'MarkdownV2' 
             };
+            // (ملاحظة: الـ payload يحتوي بالفعل على reply_markup، لذا ستعمل الخطة البديلة أيضاً)
             
             try {
                 return await axios.post(`${TELEGRAM_API}/sendMessage`, retryPayload);
