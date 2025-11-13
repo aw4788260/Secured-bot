@@ -2504,7 +2504,7 @@ export default async (req, res) => {
 
 // (1. حالات المستخدم العادي - إرسال صورة/نص)
       if (!user.is_admin && currentState) {
-
+        
             // [ ✅✅ تعديل: حالة انتظار الملاحظة (إرسال نص) ]
             if (currentState === 'awaiting_user_note') {
                 if (!message.text || message.text === '/start' || message.text === '/cancel' || message.photo) {
@@ -2630,6 +2630,25 @@ export default async (req, res) => {
         // (حذف الرسالة النصية للأدمن لتبقى الواجهة نظيفة)
         try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
+        if (message.photo && (
+    currentState === 'awaiting_exam_questions' || 
+    currentState === 'awaiting_new_question_end' ||
+    currentState === 'awaiting_new_question_after' ||
+    currentState === 'awaiting_replacement_question'
+)) {
+    // (حذف رسالة الصورة التي أرسلها الأدمن للنظافة)
+    try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
+
+    const photo_file_id = message.photo[message.photo.length - 1].file_id;
+
+    // [ ✅✅ جديد: حفظ الصورة في "الذاكرة المؤقتة" (الحالة) ]
+    await setUserState(userId, currentState, { ...stateData, sticky_image_file_id: photo_file_id });
+
+    // (الرد على الأدمن لطلب السؤال)
+    await editMessage(chatId, stateData.message_id, `🖼️ تم استلام الصورة.\n\nأرسل الآن الـ Poll أو النص الخاص بهذه الصورة.\n\n(أو /cancel لإلغاء الصورة والسؤال)`);
+    return res.status(200).send('OK');
+}
+        
         switch (currentState) {
             
           case 'awaiting_user_ids':
@@ -2752,6 +2771,8 @@ export default async (req, res) => {
 
           // --- [ ✅✅ بداية: حالات استقبال الأسئلة (المعدلة) ] ---
           
+          // --- [ ✅✅ بداية: حالات استقبال الأسئلة (المعدلة) ] ---
+          
           case 'awaiting_exam_questions': // (الحالة الأساسية عند الإنشاء)
           case 'awaiting_replacement_question':
           case 'awaiting_new_question_after':
@@ -2791,6 +2812,7 @@ export default async (req, res) => {
                 try {
                     let savedTitle = "سؤال"; // (افتراضي)
                     const examId = stateData.current_exam_id || stateData.exam_id;
+                    const wasImageSaved = stateData.sticky_image_file_id; // (التحقق قبل الحفظ)
 
                     // (التعامل مع الحالات المختلفة)
                     if (currentState === 'awaiting_replacement_question') {
@@ -2821,14 +2843,17 @@ export default async (req, res) => {
                     } else { // (awaiting_exam_questions)
                          const { newSortOrder, savedTitles } = await saveParsedQuestions(parsedPoll, stateData, chatId, stateData.current_question_sort_order);
                          // (تعديل الرسالة الرئيسية بدلاً من إرسال جديدة)
-                         await editMessage(chatId, stateData.message_id, `✅ تم حفظ ${newSortOrder} سؤال.\n(آخر سؤال: ${savedTitles[0]}...)\n\nأرسل السؤال التالي (Poll أو نص)، أو /done للانتهاء.`);
+                         await editMessage(chatId, stateData.message_id, `✅ تم حفظ ${newSortOrder} سؤال.
+${wasImageSaved ? '🖼️ (تم إرفاق الصورة)' : ''}
+(آخر سؤال: ${savedTitles[0]}...)
+
+أرسل السؤال التالي (صورة ثم Poll، أو Poll مباشرة)، أو /done للانتهاء.`);
                          return res.status(200).send('OK'); // (الخروج هنا لهذه الحالة)
                     }
                     
                     // (إعادة تحميل جلسة التعديل للحالات الأخرى)
-                    // (هنا نستخدم callback_query.id لأنه غير متوفر في "message")
-                    await answerCallbackQuery(callback_query ? callback_query.id : '', { text: `✅ تم حفظ: ${savedTitle}...` });
-                    await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
+                    await answerCallbackQuery(callback_query ? callback_query.id : '', { text: `✅ تم حفظ: ${savedTitle}... ${wasImageSaved ? '🖼️' : ''}` });
+                    await loadQuestionsForEditSession(chatId, stateData.message_id, { ...stateData, sticky_image_file_id: null });
 
                 } catch (err) {
                     await editMessage(chatId, stateData.message_id, `حدث خطأ فادح: ${err.message}`);
@@ -2851,10 +2876,16 @@ export default async (req, res) => {
                     // (هنا نفترض أن النص سيُستخدم "فقط" في حالة الإنشاء الأولية)
                     if (currentState === 'awaiting_exam_questions') {
                         await editMessage(chatId, messageId, `⚙️ تم العثور على ${parsedQuestions.length} سؤال نصي، جاري حفظهم...`);
+                        
+                        const wasImageSaved = stateData.sticky_image_file_id; // (التحقق قبل الحفظ)
                         const { newSortOrder } = await saveParsedQuestions(parsedQuestions, stateData, chatId, stateData.current_question_sort_order);
                         
                         // (تعديل الرسالة الرئيسية بدلاً من إرسال جديدة)
-                        await editMessage(chatId, stateData.message_id, `✅ تم حفظ ${newSortOrder} سؤال.\n(آخر دفعة: ${parsedQuestions.length} سؤال نصي)\n\nأرسل المزيد (Poll أو نص)، أو /done.`);
+                        await editMessage(chatId, stateData.message_id, `✅ تم حفظ ${newSortOrder} سؤال.
+${wasImageSaved ? '🖼️ (تم إرفاق الصورة)' : ''}
+(آخر دفعة: ${parsedQuestions.length} سؤال نصي)
+
+أرسل المزيد (صورة ثم Poll، أو Poll مباشرة)، أو /done.`);
                     
                     } else {
                         // (لا ندعم إرسال نص في وضع التعديل حالياً للتبسيط)
@@ -2877,7 +2908,6 @@ export default async (req, res) => {
             break;
             
           // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
-          
             
           // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
 
