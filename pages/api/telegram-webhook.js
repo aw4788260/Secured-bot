@@ -755,7 +755,7 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 13: لإظهار A/B/C/Answer)
+ * (✅✅ معدلة بالإصلاح 14: إضافة نص الإجابة + إصلاح حذف الصورة)
  * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
@@ -770,7 +770,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     const safe_index = Math.max(0, Math.min(current_index, total - 1));
     const question = questions[safe_index];
     
-    // --- [ ✅✅ بداية: بناء النص الكامل (الإصلاح 13) ] ---
+    // --- [ ✅✅ بداية: بناء النص الكامل (الإصلاح 14) ] ---
     
     // (دالة مساعدة لتحويل 0 -> A, 1 -> B)
     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -782,14 +782,18 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     text_markdown += `*${escapeMarkdownV2(question.question_text)}*\n\n`; // السؤال
 
     let correctLetter = '?';
+    let correctAnswerText = ''; // [ ✅ جديد: لتخزين نص الإجابة ]
     question.options.forEach((opt, index) => {
         const letter = getLetter(index);
-        text_markdown += `${letter}) ${escapeMarkdownV2(opt.option_text)}\n`; // الاختيارات
+        const optionText = escapeMarkdownV2(opt.option_text);
+        text_markdown += `${letter}) ${optionText}\n`; // الاختيارات
         if (opt.is_correct) {
             correctLetter = letter;
+            correctAnswerText = optionText; // [ ✅ جديد: تخزين النص ]
         }
     });
-    text_markdown += `\nAnswer: ${correctLetter})`; // الإجابة
+    // [ ✅ تعديل: إضافة نص الإجابة ]
+    text_markdown += `\nAnswer: ${correctLetter}) ${correctAnswerText}`; 
     
     // (2. بناء نص عادي (لـ Fallback))
     let plainTextCaption = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
@@ -797,14 +801,17 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     plainTextCaption += `${question.question_text}\n\n`; // السؤال
 
     let correctLetterPlain = '?';
+    let correctAnswerTextPlain = ''; // [ ✅ جديد ]
     question.options.forEach((opt, index) => {
         const letter = getLetter(index);
         plainTextCaption += `${letter}) ${opt.option_text}\n`; // الاختيارات
         if (opt.is_correct) {
             correctLetterPlain = letter;
+            correctAnswerTextPlain = opt.option_text; // [ ✅ جديد ]
         }
     });
-    plainTextCaption += `\nAnswer: ${correctLetterPlain})`; // الإجابة
+    // [ ✅ تعديل: إضافة نص الإجابة ]
+    plainTextCaption += `\nAnswer: ${correctLetterPlain}) ${correctAnswerTextPlain}`; 
     
     // --- [ ✅✅ نهاية: بناء النص الكامل ] ---
 
@@ -921,7 +928,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         }
     }
 };
-
 
 /**
  * (جديد) دالة عرض إحصائيات الامتحان
@@ -2482,7 +2488,7 @@ export default async (req, res) => {
             return res.status(200).send('OK');
          }
          
-         // (✅✅ معدل بالإصلاح 13: إصلاح "حذف الصورة فقط" (بالإجبار))
+         // (✅✅ معدل بالإصلاح 14: إصلاح "حذف الصورة فقط" (بالتعديل المباشر))
          if (command.startsWith('exam_edit_q_delete_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             
@@ -2490,13 +2496,16 @@ export default async (req, res) => {
             await supabase.from('questions').update({ image_file_id: null }).eq('id', questionId);
             await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الصورة فقط' });
 
-            // 2. [ ✅✅ الإصلاح ] إعادة تحميل الجلسة بالكامل
-            // (هذا يضمن أننا نقرأ البيانات المحدثة من قاعدة البيانات)
-            // (سيعرض هذا السؤال (الآن كنص) أو السؤال الأول إذا تم حذف الأخير)
-            await editMessage(chatId, stateData.current_edit_message_id, "جاري حذف الصورة وإعادة تحميل الجلسة...");
+            // 2. [ ✅ الإصلاح ] تحديث الحالة (State) في الذاكرة
+            // (نبحث عن السؤال في مصفوفة الأسئلة ونحذف الصورة منه)
+            const questionIndex = stateData.questions.findIndex(q => q.id === questionId);
+            if (questionIndex > -1) {
+                 stateData.questions[questionIndex].image_file_id = null; // (احذفها من الذاكرة)
+            }
             
-            // (نستدعي "loadQuestions" وهي ستتعامل مع كل شيء)
-            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
+            // 3. إعادة عرض السؤال (الذي أصبح الآن بدون صورة)
+            // (الدالة ستتعامل مع حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
+            await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
             return res.status(200).send('OK');
          }
          
