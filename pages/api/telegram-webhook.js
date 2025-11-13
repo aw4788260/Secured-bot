@@ -2974,23 +2974,28 @@ export default async (req, res) => {
         // (حذف الرسالة النصية للأدمن لتبقى الواجهة نظيفة)
         try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
-             // [ ✅✅ معدل بالإصلاح 11: إصلاح خطأ 400 ]
+             // [ ✅✅ معدل بالإصلاح 21: إزالة حالة "replacement" من معالج "sticky image" ]
         if (message.photo && (
             currentState === 'awaiting_exam_questions' || 
             currentState === 'awaiting_new_question_end' ||
-            currentState === 'awaiting_new_question_after' ||
-            
+            currentState === 'awaiting_new_question_after'
+            // (تم حذف حالة "replacement" الخاطئة من هنا)
         )) {
+            // (حذف رسالة الصورة التي أرسلها الأدمن للنظافة)
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
             const photo_file_id = message.photo[message.photo.length - 1].file_id;
             
+            // (تخزين الصورة "مؤقتاً" في الحالة بانتظار الـ Poll)
             await setUserState(userId, currentState, { ...stateData, sticky_image_file_id: photo_file_id });
 
-            // (استدعاء الدالة الذكية - v11 - مع تحديد عدم الحماية)
+            // (تحديد الرسالة التي سيتم تعديلها)
+            const target_message_id = stateData.current_edit_message_id || stateData.message_id;
+
+            // (تعديل الرسالة لإعلام الأدمن باستلام الصورة)
             await editMessage(
                 chatId, 
-                stateData.current_edit_message_id, 
+                target_message_id, 
                 `🖼️ تم استلام الصورة.\n\nأرسل الآن الـ Poll أو النص الخاص بهذه الصورة.\n\n(أو /cancel لإلغاء الصورة والسؤال)`,
                 null, // reply_markup
                 null, // parse_mode
