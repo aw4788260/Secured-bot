@@ -3,14 +3,17 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// (انسخ دالة useUserCheck بالكامل من ملف watch/[videoId].js)
+// (دالة مخصصة لجلب المستخدم والتحقق منه)
 const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     useEffect(() => {
+        // (تأكد من نسخ كود التحقق من المستخدم بالكامل من ملف watch.js هنا)
+        // (الكود الذي يتحقق من APK و Telegram و Admin)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
+
         if (urlUserId && urlUserId.trim() !== '') {
             setUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -31,16 +34,13 @@ export default function ViewPdfPage() {
     const { pdfId } = router.query;
     const { user, error } = useUserCheck(router);
 
-    // --- [ ✅✅ جديد: إضافة حالة لتتبع خطأ تحميل الـ PDF ] ---
-    const [pdfError, setPdfError] = useState(false);
-
     // --- [ منطق العلامة المائية "المكررة" ] ---
     const [watermarkSpans, setWatermarkSpans] = useState([]);
     const watermarkText = user ? `${user.first_name} (${user.id})` : '';
 
     useEffect(() => {
         if (user) {
-            // (أنشئ 100 عنصر "وهمي" ليتم تكرارهم)
+            // (إنشاء 100 عنصر "وهمي" للتكرار)
             setWatermarkSpans(new Array(100).fill(0));
         }
     }, [user]); 
@@ -77,28 +77,6 @@ export default function ViewPdfPage() {
                     src={pdfStreamUrl}
                     className="pdf-iframe"
                     title="PDF Viewer"
-                    // --- [ ✅✅ جديد: إضافة معالج الخطأ ] ---
-                    onError={() => {
-                        console.error("Iframe onError triggered.");
-                        setPdfError(true);
-                    }}
-                    onLoad={(e) => {
-                        // (للتأكد أن التحميل نجح)
-                        // (بعض المتصفحات لا تطلق 'error' ولكن 'load' على صفحة خطأ)
-                        try {
-                            // (محاولة الوصول لـ contentWindow ستفشل إذا كان cross-origin)
-                            // (إذا نجحت وفشلت في قراءة document، فهذا خطأ)
-                            if (!e.target.contentWindow.document) {
-                                console.warn("Iframe onLoad triggered but contentWindow.document is inaccessible.");
-                                setPdfError(true);
-                            }
-                            // (إذا نجحت، فالتحميل سليم)
-                        } catch (e) {
-                            // (هذا هو المتوقع أن يحدث إذا نجح التحميل)
-                            // (خطأ Cross-origin - معناه أن التحميل "نجح" برابط تليجرام)
-                            console.log("Iframe load successful (cross-origin).");
-                        }
-                    }}
                 />
 
                 {/* (طبقة العلامة المائية المكررة) */}
@@ -109,15 +87,6 @@ export default function ViewPdfPage() {
                         </span>
                     ))}
                 </div>
-
-                {/* --- [ ✅✅ جديد: إظهار رسالة الخطأ فوق كل شيء ] --- */}
-                {pdfError && (
-                    <div className="pdf-load-error">
-                        <h1>خطأ في تحميل الملف</h1>
-                        <p>لم نتمكن من عرض ملف الـ PDF.</p>
-                        <p style={{fontSize: '0.8em', opacity: 0.7}}>(قد يكون الملف تالفاً، أو أن الـ API لا يعمل، أو أن المتصفح يمنع العرض)</p>
-                    </div>
-                )}
             </div>
 
             <style jsx global>{`
@@ -126,21 +95,21 @@ export default function ViewPdfPage() {
                 .message-container { 
                     display: flex; align-items: center; justify-content: center; 
                     height: 100vh; color: white; padding: 20px; text-align: center; 
-                    background: #111827; /* (نفس لون الخلفية) */
+                    background: #111827; 
                 }
                 
                 .page-container-pdf {
                     width: 100%;
                     height: 100vh;
                     display: flex;
-                    background: #111827; /* (نفس لون الخلفية) */
+                    background: #111827; 
                 }
                 .pdf-wrapper {
-                    position: relative; /* (هام جداً) */
+                    position: relative; 
                     width: 100%;
                     height: 100%;
                     border: none;
-                    background: #333; /* (خلفية رمادية للـ iframe قبل التحميل) */
+                    background: #333; /* (لون الخلفية قبل تحميل الـ PDF) */
                 }
                 .pdf-iframe {
                     width: 100%;
@@ -162,7 +131,7 @@ export default function ViewPdfPage() {
                     justify-content: center;
                     align-items: center;
                     overflow: hidden;
-                    background: transparent; /* [✅ تأكيد أنه شفاف] */
+                    background: transparent; 
                 }
                 
                 .watermark-tile {
@@ -173,22 +142,6 @@ export default function ViewPdfPage() {
                     transform: rotate(-30deg); 
                     white-space: nowrap;
                     user-select: none; /* (لمنع التحديد) */
-                }
-
-                /* --- [ ✅✅ ستايل رسالة الخطأ ] --- */
-                .pdf-load-error {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    z-index: 100; /* (فوق كل شيء) */
-                    background: rgba(200, 50, 50, 0.85); /* (أحمر) */
-                    color: white;
-                    padding: 20px 40px;
-                    border-radius: 10px;
-                    text-align: center;
-                    pointer-events: all; 
-                    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
                 }
             `}</style>
         </div>
