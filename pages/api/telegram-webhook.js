@@ -755,11 +755,10 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 12: إصلاح جذري لمنطق عرض الصورة)
+ * (✅✅ معدلة بالإصلاح 13: لإظهار A/B/C/Answer)
  * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
-    // ... (الكود من هنا حتى "const reply_markup" يبقى كما هو)
     const { questions, current_index } = stateData;
     const total = questions.length;
     
@@ -771,13 +770,46 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     const safe_index = Math.max(0, Math.min(current_index, total - 1));
     const question = questions[safe_index];
     
+    // --- [ ✅✅ بداية: بناء النص الكامل (الإصلاح 13) ] ---
+    
+    // (دالة مساعدة لتحويل 0 -> A, 1 -> B)
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const getLetter = (index) => letters[index] || (index + 1);
+    
+    // (1. بناء النص المنسق)
     let text_markdown = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
     text_markdown += `الترتيب: ${question.sort_order}\n\n`;
-    text_markdown += `*${escapeMarkdownV2(question.question_text)}*\n\n`;
-    question.options.forEach(opt => {
-        text_markdown += `• ${escapeMarkdownV2(opt.option_text)} ${opt.is_correct ? '✅' : ''}\n`;
-    });
+    text_markdown += `*${escapeMarkdownV2(question.question_text)}*\n\n`; // السؤال
 
+    let correctLetter = '?';
+    question.options.forEach((opt, index) => {
+        const letter = getLetter(index);
+        text_markdown += `${letter}) ${escapeMarkdownV2(opt.option_text)}\n`; // الاختيارات
+        if (opt.is_correct) {
+            correctLetter = letter;
+        }
+    });
+    text_markdown += `\nAnswer: ${correctLetter})`; // الإجابة
+    
+    // (2. بناء نص عادي (لـ Fallback))
+    let plainTextCaption = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
+    plainTextCaption += `الترتيب: ${question.sort_order}\n\n`;
+    plainTextCaption += `${question.question_text}\n\n`; // السؤال
+
+    let correctLetterPlain = '?';
+    question.options.forEach((opt, index) => {
+        const letter = getLetter(index);
+        plainTextCaption += `${letter}) ${opt.option_text}\n`; // الاختيارات
+        if (opt.is_correct) {
+            correctLetterPlain = letter;
+        }
+    });
+    plainTextCaption += `\nAnswer: ${correctLetterPlain})`; // الإجابة
+    
+    // --- [ ✅✅ نهاية: بناء النص الكامل ] ---
+
+
+    // --- بناء الأزرار (كما هي من قبل) ---
     const kbd = [];
     const navRow = [];
     if (safe_index > 0) navRow.push({ text: '<< السابق', callback_data: 'exam_edit_q_prev' });
@@ -803,21 +835,14 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     kbd.push([{ text: '✅ إنهاء التعديل', callback_data: 'exam_edit_q_finish' }]);
     const reply_markup = { inline_keyboard: kbd };
 
-    // --- [ ✅✅ المنطق الذكي للإرسال (المعدل v12) ] ---
+    // --- [ المنطق الذكي للإرسال (v12) ] ---
     const existing_message_id = messageId || stateData.current_edit_message_id;
     let new_message_id = null;
 
     try {
         if (question.image_file_id) {
-            // --- [ ✅ 1: نريد عرض "صورة" ] ---
-            
-            // (بناء نص عادي احتياطي)
-            let plainTextCaption = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
-            plainTextCaption += `${question.question_text}\n\n`;
-            
+            // --- [ 1: نريد عرض "صورة" ] ---
             try {
-                // (المحاولة 1: تعديل الكابشن)
-                // (سينجح هذا إذا كانت الرسالة القديمة صورة - مثل التنقل "التالي")
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                     chat_id: chatId,
                     message_id: existing_message_id,
@@ -825,14 +850,11 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                     parse_mode: 'MarkdownV2',
                     reply_markup: reply_markup
                 });
-                new_message_id = existing_message_id; // (نجح التعديل)
+                new_message_id = existing_message_id;
             
             } catch (e1) {
                 // (فشل تعديل الكابشن - غالباً لأن الرسالة القديمة كانت "نص")
-                // (هذه هي الحالة التي أبلغت عنها: الدخول لأول مرة)
-                
                 try {
-                    // (المحاولة 2: إرسال صورة "جديدة" بتنسيق)
                     const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
                         chat_id: chatId,
                         photo: question.image_file_id,
@@ -843,34 +865,29 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                     new_message_id = response.data.result.message_id;
                 
                 } catch (e2) {
-                    // (فشل التنسيق، أرسل كنص عادي)
                     if (e2.response && e2.response.data && e2.response.data.description.includes("can't parse entities")) {
                         console.warn("Markdown failed for sendPhoto, resending as plain text.");
                         const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
                             chat_id: chatId,
                             photo: question.image_file_id,
-                            caption: plainTextCaption,
+                            caption: plainTextCaption, // (استخدام النص العادي)
                             reply_markup: reply_markup
                         });
                         new_message_id = response.data.result.message_id;
                     } else {
-                        throw e2; // ارمي الخطأ
+                        throw e2; 
                     }
                 }
             }
 
         } else {
-            // --- [ ✅ 2: نريد عرض "نص" ] ---
+            // --- [ 2: نريد عرض "نص" ] ---
             try {
-                // (المحاولة 1: تعديل النص - باستخدام الدالة الذكية v11)
                 await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false, true); // force_text = true
                 new_message_id = existing_message_id; 
             
             } catch (e) {
-                // (فشل التعديل (force_text) - لأن الرسالة القديمة كانت صورة)
-                // (المحاولة 2: إرسال رسالة نصية "جديدة")
                 console.warn("Forced text edit failed (old msg was photo?), sending new text message.");
-                // (استدعاء دالة الإرسال الآمنة v8)
                 const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
                 if (response && response.data && response.data.result) {
                     new_message_id = response.data.result.message_id;
@@ -880,14 +897,14 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
             }
         }
 
-        // (3. حذف الرسالة القديمة *بعد* إرسال الجديدة بنجاح)
+        // (3. حذف الرسالة القديمة)
         if (existing_message_id && existing_message_id !== new_message_id) {
             try { 
                 await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: existing_message_id }); 
             } catch(e) { /* تجاهل الفشل */ }
         }
 
-        // (4. تحديث الحالة بالـ ID الجديد للرسالة)
+        // (4. تحديث الحالة)
         await setUserState(chatId, 'awaiting_question_edit', { 
             ...stateData, 
             current_edit_message_id: new_message_id, 
@@ -898,7 +915,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         console.error("Critical error in displayQuestionForEdit:", e.response ? e.response.data : e.message);
         const errorDetails = e.response ? (e.response.data.description || e.message) : e.message;
         try {
-            // (الدالة الآمنة v8 ستتعامل مع هذا)
             await sendMessage(chatId, `حدث خطأ أثناء عرض السؤال: ${errorDetails}.\n\n(يمكنك الضغط على "إنهاء التعديل" للعودة).`);
         } catch (e2) {
              console.error("Failed to even send the error message:", e2.response?.data || e2.message);
@@ -2466,8 +2482,7 @@ export default async (req, res) => {
             return res.status(200).send('OK');
          }
          
-         // (حذف "الصورة فقط")
-         // (✅✅ معدل بالإصلاح 10: إصلاح "حذف الصورة فقط")
+         // (✅✅ معدل بالإصلاح 13: إصلاح "حذف الصورة فقط" (بالإجبار))
          if (command.startsWith('exam_edit_q_delete_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             
@@ -2475,15 +2490,13 @@ export default async (req, res) => {
             await supabase.from('questions').update({ image_file_id: null }).eq('id', questionId);
             await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الصورة فقط' });
 
-            // 2. تحديث الحالة (State) في الذاكرة
-            const currentQuestion = stateData.questions[stateData.current_index];
-            if (currentQuestion && currentQuestion.id === questionId) {
-                currentQuestion.image_file_id = null; // (احذفها من الذاكرة)
-            }
+            // 2. [ ✅✅ الإصلاح ] إعادة تحميل الجلسة بالكامل
+            // (هذا يضمن أننا نقرأ البيانات المحدثة من قاعدة البيانات)
+            // (سيعرض هذا السؤال (الآن كنص) أو السؤال الأول إذا تم حذف الأخير)
+            await editMessage(chatId, stateData.current_edit_message_id, "جاري حذف الصورة وإعادة تحميل الجلسة...");
             
-            // 3. إعادة عرض السؤال (الذي أصبح الآن بدون صورة)
-            // (الدالة ستتعامل مع حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
-            await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
+            // (نستدعي "loadQuestions" وهي ستتعامل مع كل شيء)
+            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
             return res.status(200).send('OK');
          }
          
