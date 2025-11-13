@@ -2466,7 +2466,6 @@ export default async (req, res) => {
       }
 
       // --- [ ✅✅ بداية: معالجات أزرار محرر الأسئلة (معدلة) ] ---
-      // --- [ ✅✅ بداية: معالجات أزرار محرر الأسئلة (معدلة v17) ] ---
       
       if (user.admin_state === 'awaiting_question_edit') {
          const stateData = user.state_data;
@@ -2484,8 +2483,6 @@ export default async (req, res) => {
             return res.status(200).send('OK');
          }
 
-         // (✅✅ معدل بالإصلاح 17: إصلاح خطأ 400)
-         // (الانتهاء)
          // (الانتهاء)
          if (command === 'exam_edit_q_finish') {
             
@@ -2507,46 +2504,14 @@ export default async (req, res) => {
             await setUserState(userId, null, null);
             
             // 3. (إرسال قائمة الامتحانات كـ "رسالة جديدة")
-            // [ ✅✅✅ هذا هو الإصلاح: تم تصحيح ExSams إلى Exams ]
             await sendContentMenu_Exams_For_Subject(chatId, null, subject_id); 
             
             return res.status(200).send('OK');
          }
          
-         // (حذف السؤال كاملاً)
-         if (command.startsWith('exam_edit_q_delete_')) {
-            const questionId = parseInt(command.split('_')[4], 10);
-            await editMessage(chatId, stateData.current_edit_message_id, 'جاري حذف السؤال...');
-            await supabase.from('questions').delete().eq('id', questionId);
-            await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
-            // (إعادة تحميل الجلسة - ستقوم بحذف "جاري الحذف" وعرض السؤال التالي)
-            // (نمرر ID الرسالة الأصلية "جاري التحميل")
-            await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
-            return res.status(200).send('OK');
-         }
+         // --- [ ✅✅✅ الإصلاح الجذري: تم عكس ترتيب الشروط ] ---
+         // (يجب فحص الشرط "الأكثر تحديداً" أولاً)
 
-         // (بدء عملية استبدال "السؤال/Poll")
-         if (command.startsWith('exam_edit_q_replace_poll_')) {
-            const questionId = parseInt(command.split('_')[5], 10);
-            await setUserState(userId, 'awaiting_replacement_question_poll', {
-                ...stateData,
-                question_id_to_replace: questionId
-            });
-            await editMessage(chatId, stateData.current_edit_message_id, 'أرسل الـ (Poll) الجديد ليحل محل هذا السؤال: (أو /cancel)');
-            return res.status(200).send('OK');
-         }
-
-         // (بدء عملية استبدال "الصورة")
-         if (command.startsWith('exam_edit_q_replace_image_')) {
-            const questionId = parseInt(command.split('_')[5], 10);
-            await setUserState(userId, 'awaiting_replacement_image', {
-                ...stateData,
-                question_id_to_replace: questionId
-            });
-            await editMessage(chatId, stateData.current_edit_message_id, 'أرسل "الصورة الجديدة" لهذا السؤال: (أو /cancel)');
-            return res.status(200).send('OK');
-         }
-         
          // (✅✅ معدل بالإصلاح 20: إصلاح "فشل التحديث" الصامت لقاعدة البيانات)
          if (command.startsWith('exam_edit_q_delete_image_')) {
             const questionId_raw = command.split('_')[5];
@@ -2603,6 +2568,48 @@ export default async (req, res) => {
             
             return res.status(200).send('OK');
          }
+
+         // (الشرط "الأقل تحديداً" يأتي ثانياً)
+         if (command.startsWith('exam_edit_q_delete_')) {
+            const questionId_raw = command.split('_')[4];
+            const questionId = parseInt(questionId_raw, 10);
+
+            if (isNaN(questionId)) {
+                console.error(`[CRITICAL] Failed to parse questionId for DELETE: ${command}`);
+                await answerCallbackQuery(callback_query.id, { text: `خطأ فادح: لم أتمكن من قراءة ID السؤال من ${questionId_raw}`, show_alert: true });
+                return res.status(200).send('OK');
+            }
+
+            await editMessage(chatId, stateData.current_edit_message_id, 'جاري حذف السؤال...');
+            await supabase.from('questions').delete().eq('id', questionId);
+            await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
+            // (إعادة تحميل الجلسة - ستقوم بحذف "جاري الحذف" وعرض السؤال التالي)
+            // (نمرر ID الرسالة الأصلية "جاري التحميل")
+            await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
+            return res.status(200).send('OK');
+         }
+
+         // (بدء عملية استبدال "السؤال/Poll")
+         if (command.startsWith('exam_edit_q_replace_poll_')) {
+            const questionId = parseInt(command.split('_')[5], 10);
+            await setUserState(userId, 'awaiting_replacement_question_poll', {
+                ...stateData,
+                question_id_to_replace: questionId
+            });
+            await editMessage(chatId, stateData.current_edit_message_id, 'أرسل الـ (Poll) الجديد ليحل محل هذا السؤال: (أو /cancel)');
+            return res.status(200).send('OK');
+         }
+
+         // (بدء عملية استبدال "الصورة")
+         if (command.startsWith('exam_edit_q_replace_image_')) {
+            const questionId = parseInt(command.split('_')[5], 10);
+            await setUserState(userId, 'awaiting_replacement_image', {
+                ...stateData,
+                question_id_to_replace: questionId
+            });
+            await editMessage(chatId, stateData.current_edit_message_id, 'أرسل "الصورة الجديدة" لهذا السؤال: (أو /cancel)');
+            return res.status(200).send('OK');
+         }
          
          // (بدء عملية الإضافة "بعد")
          if (command.startsWith('exam_edit_q_add_after_')) {
@@ -2627,11 +2634,7 @@ export default async (req, res) => {
              return res.status(200).send('OK');
          }
       } // (نهاية if state === awaiting_question_edit)
-      
-      // --- [ ✅✅ نهاية: معالجات أزرار محرر الأسئلة ] ---
-      
-      // --- [ ✅✅ نهاية: معالجات أزرار محرر الأسئلة ] ---
-      // --- [ نهاية: قسم إدارة الامتحانات ] ---
+           // --- [ نهاية: قسم إدارة الامتحانات ] ---
      
       // --- [ نهاية: قسم إدارة الامتحانات ] ---
       
