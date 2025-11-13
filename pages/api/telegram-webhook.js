@@ -2547,25 +2547,40 @@ export default async (req, res) => {
             return res.status(200).send('OK');
          }
          
-         // (✅✅ معدل بالإصلاح 17: إصلاح "حذف الصورة فقط" (بالتعديل المباشر))
+         // (✅✅ معدل بالإصلاح 19: لحل مشكلة الحذف الصامت وتحديث الواجهة)
          if (command.startsWith('exam_edit_q_delete_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             
-            // 1. تحديث قاعدة البيانات
-            await supabase.from('questions').update({ image_file_id: null }).eq('id', questionId);
-            await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الصورة فقط' });
+            // 1. تحديث قاعدة البيانات (التنفيذ الفعلي)
+            const { error } = await supabase.from('questions')
+                .update({ image_file_id: null })
+                .eq('id', questionId);
 
-            // 2. [ ✅ الإصلاح ] تحديث الحالة (State) في الذاكرة
+            if (error) {
+                // (في حال فشل الحذف من قاعدة البيانات، أبلغ الأدمن)
+                console.error("Error updating database (delete image):", error.message);
+                await answerCallbackQuery(callback_query.id, { text: `خطأ DB: ${error.message}`, show_alert: true });
+                return res.status(200).send('OK');
+            }
+
+            // 2. تحديث الحالة (State) في الذاكرة لتعكس التغيير
             const questionIndex = stateData.questions.findIndex(q => q.id === questionId);
             if (questionIndex > -1) {
-                 stateData.questions[questionIndex].image_file_id = null; // (احذفها من الذاكرة)
+                 // (قم بتعديل الحالة التي سنرسلها للدالة التالية)
+                 stateData.questions[questionIndex].image_file_id = null;
             } else {
+                // (هذا لا ينبغي أن يحدث، ولكنه تنبيه)
                 console.error("Could not find question in state to update image_file_id");
             }
             
-            // 3. إعادة عرض السؤال (الذي أصبح الآن بدون صورة)
-            // (الدالة ستتعامل مع حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
+            // 3. (لا توجد رسالة منبثقة)
+            // (لا يوجد "جاري الحذف..." ولا يوجد Pop-up)
+
+            // 4. إعادة عرض السؤال
+            // (سيتم استدعاء displayQuestionForEdit بالحالة المعدلة)
+            // (ستقوم الدالة بمعالجة حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
             await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
+            
             return res.status(200).send('OK');
          }
          
