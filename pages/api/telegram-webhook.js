@@ -2547,38 +2547,58 @@ export default async (req, res) => {
             return res.status(200).send('OK');
          }
          
-         // (✅✅ معدل بالإصلاح 19: لحل مشكلة الحذف الصامت وتحديث الواجهة)
+         // (✅✅ معدل بالإصلاح 20: إصلاح "فشل التحديث" الصامت لقاعدة البيانات)
          if (command.startsWith('exam_edit_q_delete_image_')) {
-            const questionId = parseInt(command.split('_')[5], 10);
-            
-            // 1. تحديث قاعدة البيانات (التنفيذ الفعلي)
-            const { error } = await supabase.from('questions')
-                .update({ image_file_id: null })
-                .eq('id', questionId);
+            const questionId_raw = command.split('_')[5];
+            const questionId = parseInt(questionId_raw, 10);
 
+            // --- [ 1. التحقق من ID السؤال ] ---
+            if (isNaN(questionId)) {
+                console.error(`[CRITICAL] Failed to parse questionId from callback: ${command}`);
+                await answerCallbackQuery(callback_query.id, { text: `خطأ فادح: لم أتمكن من قراءة ID السؤال من ${questionId_raw}`, show_alert: true });
+                return res.status(200).send('OK');
+            }
+
+            // --- [ 2. تحديث قاعدة البيانات (مع .select() للتأكيد) ] ---
+            console.log(`[DB] Attempting to set image_file_id to null for question_id: ${questionId}`);
+            
+            const { data, error } = await supabase.from('questions')
+                .update({ image_file_id: null })
+                .eq('id', questionId)
+                .select(); // <-- [!!] اطلب إرجاع الصف الذي تم تحديثه
+
+            // --- [ 3. معالجة الأخطاء ] ---
             if (error) {
-                // (في حال فشل الحذف من قاعدة البيانات، أبلغ الأدمن)
-                console.error("Error updating database (delete image):", error.message);
+                console.error(`[DB] Supabase error while updating question ${questionId}:`, error.message);
                 await answerCallbackQuery(callback_query.id, { text: `خطأ DB: ${error.message}`, show_alert: true });
                 return res.status(200).send('OK');
             }
 
-            // 2. تحديث الحالة (State) في الذاكرة لتعكس التغيير
+            // --- [ 4. التحقق من نجاح التحديث ] ---
+            if (!data || data.length === 0) {
+                // (هذا هو الخطأ الصامت الذي كان يحدث)
+                console.error(`[DB] Update returned no data. Question ID ${questionId} not found or RLS failed.`);
+                await answerCallbackQuery(callback_query.id, { text: `خطأ: لم يتم العثور على السؤال (ID: ${questionId}) في قاعدة البيانات.`, show_alert: true });
+                return res.status(200).send('OK');
+            }
+
+            // --- [ 5. النجاح: تحديث الحالة (الذاكرة) ] ---
+            console.log(`[DB] Successfully updated question_id: ${questionId}. Image is now null.`);
+            
             const questionIndex = stateData.questions.findIndex(q => q.id === questionId);
             if (questionIndex > -1) {
-                 // (قم بتعديل الحالة التي سنرسلها للدالة التالية)
                  stateData.questions[questionIndex].image_file_id = null;
             } else {
-                // (هذا لا ينبغي أن يحدث، ولكنه تنبيه)
-                console.error("Could not find question in state to update image_file_id");
+                 // (هذا لا ينبغي أن يحدث، ولكن يجب إعادة تحميل الجلسة إذا حدث)
+                 console.error(`[STATE] Question ${questionId} was updated in DB, but not found in local state. Forcing reload.`);
+                 // (إعادة تحميل الجلسة بالكامل من قاعدة البيانات)
+                 await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
+                 return res.status(200).send('OK');
             }
             
-            // 3. (لا توجد رسالة منبثقة)
-            // (لا يوجد "جاري الحذف..." ولا يوجد Pop-up)
-
-            // 4. إعادة عرض السؤال
-            // (سيتم استدعاء displayQuestionForEdit بالحالة المعدلة)
-            // (ستقوم الدالة بمعالجة حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
+            // --- [ 6. إعادة عرض الواجهة ] ---
+            // (لا توجد رسالة منبثقة، لا يوجد "جاري الحذف")
+            // (سيتم استدعاء displayQuestionForEdit، الذي سيحذف الصورة القديمة ويرسل رسالة نصية)
             await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
             
             return res.status(200).send('OK');
