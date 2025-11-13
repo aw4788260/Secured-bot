@@ -97,6 +97,19 @@ export default function ResultsPage() {
                 
                 return (
                     <div key={q.id} className="question-box-result">
+                        
+                        {/* [ ✅✅ جديد: عرض الصورة إن وجدت ] */}
+                        {q.image_file_id && (
+                            <div className="question-image-container">
+                                <img 
+                                    src={`/api/exams/get-image?file_id=${q.image_file_id}`} 
+                                    alt="Question Image" 
+                                    className="question-image"
+                                    loading="lazy"
+                                />
+                            </div>
+                        )}
+
                         <h4>{index + 1}. {q.question_text}</h4>
                         <div className="options-list">
                             
