@@ -776,8 +776,7 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 14: إضافة نص الإجابة + إصلاح حذف الصورة)
- * (✅✅ معدلة بالإصلاح 18: إصلاح منطق عرض النص)
+ * (✅✅ معدلة بالإصلاح 19: إصلاح نهائي لمنطق حذف الصورة)
  * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
@@ -785,60 +784,53 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     const total = questions.length;
     
     if (total === 0) {
+         // (الحالة: لا توجد أسئلة)
          await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
          return;
     }
     
+    // (التأكد من أن المؤشر ضمن الحدود)
     const safe_index = Math.max(0, Math.min(current_index, total - 1));
     const question = questions[safe_index];
     
-    // --- [ ✅✅ بداية: بناء النص الكامل (الإصلاح 14) ] ---
-    
-    // (دالة مساعدة لتحويل 0 -> A, 1 -> B)
+    // --- [ 1. بناء النص الكامل (للعرض) ] ---
     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const getLetter = (index) => letters[index] || (index + 1);
     
-    // (1. بناء النص المنسق)
+    // (نص منسق MarkdownV2)
     let text_markdown = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
     text_markdown += `الترتيب: ${question.sort_order}\n\n`;
     text_markdown += `*${escapeMarkdownV2(question.question_text)}*\n\n`; // السؤال
-
     let correctLetter = '?';
-    let correctAnswerText = ''; // [ ✅ جديد: لتخزين نص الإجابة ]
+    let correctAnswerText = ''; 
     question.options.forEach((opt, index) => {
         const letter = getLetter(index);
         const optionText = escapeMarkdownV2(opt.option_text);
         text_markdown += `${letter}) ${optionText}\n`; // الاختيارات
         if (opt.is_correct) {
             correctLetter = letter;
-            correctAnswerText = optionText; // [ ✅ جديد: تخزين النص ]
+            correctAnswerText = optionText; 
         }
     });
-    // [ ✅ تعديل: إضافة نص الإجابة ]
     text_markdown += `\nAnswer: ${correctLetter}) ${correctAnswerText}`; 
     
-    // (2. بناء نص عادي (لـ Fallback))
+    // (نص عادي - كخطة بديلة)
     let plainTextCaption = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
     plainTextCaption += `الترتيب: ${question.sort_order}\n\n`;
     plainTextCaption += `${question.question_text}\n\n`; // السؤال
-
     let correctLetterPlain = '?';
-    let correctAnswerTextPlain = ''; // [ ✅ جديد ]
+    let correctAnswerTextPlain = ''; 
     question.options.forEach((opt, index) => {
         const letter = getLetter(index);
         plainTextCaption += `${letter}) ${opt.option_text}\n`; // الاختيارات
         if (opt.is_correct) {
             correctLetterPlain = letter;
-            correctAnswerTextPlain = opt.option_text; // [ ✅ جديد ]
+            correctAnswerTextPlain = opt.option_text; 
         }
     });
-    // [ ✅ تعديل: إضافة نص الإجابة ]
     plainTextCaption += `\nAnswer: ${correctLetterPlain}) ${correctAnswerTextPlain}`; 
     
-    // --- [ ✅✅ نهاية: بناء النص الكامل ] ---
-
-
-    // --- بناء الأزرار (كما هي من قبل) ---
+    // --- [ 2. بناء الأزرار ] ---
     const kbd = [];
     const navRow = [];
     if (safe_index > 0) navRow.push({ text: '<< السابق', callback_data: 'exam_edit_q_prev' });
@@ -849,6 +841,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         { text: '🔄 استبدال السؤال (النص/الاختيارات)', callback_data: `exam_edit_q_replace_poll_${question.id}` },
         { text: '🖼️ استبدال/إضافة صورة', callback_data: `exam_edit_q_replace_image_${question.id}` }
     ]);
+    // (إظهار زر "حذف الصورة" فقط إذا كانت موجودة)
     if (question.image_file_id) {
          kbd.push([
             { text: '🗑️ حذف الصورة فقط', callback_data: `exam_edit_q_delete_image_${question.id}` }
@@ -864,14 +857,15 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     kbd.push([{ text: '✅ إنهاء التعديل', callback_data: 'exam_edit_q_finish' }]);
     const reply_markup = { inline_keyboard: kbd };
 
-    // --- [ المنطق الذكي للإرسال (v12) ] ---
+    // --- [ 3. المنطق الذكي للإرسال/التعديل ] ---
     const existing_message_id = messageId || stateData.current_edit_message_id;
     let new_message_id = null;
 
     try {
         if (question.image_file_id) {
-            // --- [ 1: نريد عرض "صورة" ] ---
+            // --- [ الحالة 1: نريد عرض "صورة" ] ---
             try {
+                // (المحاولة 1: تعديل الكابشن - إذا كانت الرسالة القديمة صورة)
                 await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                     chat_id: chatId,
                     message_id: existing_message_id,
@@ -883,6 +877,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
             
             } catch (e1) {
                 // (فشل تعديل الكابشن - غالباً لأن الرسالة القديمة كانت "نص")
+                // (المحاولة 2: إرسال صورة جديدة)
                 try {
                     const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
                         chat_id: chatId,
@@ -894,6 +889,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                     new_message_id = response.data.result.message_id;
                 
                 } catch (e2) {
+                    // (فشل بسبب الماركداون؟ أرسل كنص عادي)
                     if (e2.response && e2.response.data && e2.response.data.description.includes("can't parse entities")) {
                         console.warn("Markdown failed for sendPhoto, resending as plain text.");
                         const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
@@ -904,15 +900,15 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                         });
                         new_message_id = response.data.result.message_id;
                     } else {
-                        throw e2; 
+                        throw e2; // (ارم خطأ إرسال الصورة)
                     }
                 }
             }
 
         } else {
-            // --- [ 2: نريد عرض "نص" (بمنطق جديد مُصحح) ] ---
+            // --- [ ✅✅ الحالة 2: نريد عرض "نص" (هذا هو الإصلاح) ] ---
             try {
-                // (المحاولة 1: تعديل النص - سينجح إذا كانت الرسالة نصية)
+                // (المحاولة 1: تعديل النص - إذا كانت الرسالة القديمة نصية)
                 await axios.post(`${TELEGRAM_API}/editMessageText`, {
                     chat_id: chatId,
                     message_id: existing_message_id,
@@ -923,7 +919,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                 new_message_id = existing_message_id;
             
             } catch (e1) {
-                // (فشل التعديل - غالباً لأن الرسالة القديمة كانت "صورة")
+                // (فشل تعديل النص - غالباً لأن الرسالة القديمة كانت "صورة")
                 // (المحاولة 2: إرسال رسالة نصية جديدة)
                 try {
                     const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
@@ -933,7 +929,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                         throw new Error("sendMessage returned null or invalid response after fallback.");
                     }
                 } catch (e2) {
-                    // (فشل الإرسال بسبب التنسيق؟ جرب نص عادي)
+                    // (فشل بسبب الماركداون؟ أرسل كنص عادي)
                     if (e2.response && e2.response.data && e2.response.data.description.includes("can't parse entities")) {
                         console.warn("Markdown failed for sendMessage (text), resending as plain text.");
                         const response = await sendMessage(chatId, plainTextCaption, reply_markup, null, false); // (استخدام النص العادي)
@@ -943,20 +939,22 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                             throw new Error("sendMessage (plain) returned null or invalid response after fallback.");
                         }
                     } else {
-                        throw e2; // (ارم خطأ الإرسال)
+                        throw e2; // (ارم خطأ إرسال الرسالة)
                     }
                 }
             }
         }
 
-        // (3. حذف الرسالة القديمة)
+        // --- [ 4. التنظيف وتحديث الحالة ] ---
+
+        // (إذا تم إرسال رسالة جديدة، احذف القديمة)
         if (existing_message_id && existing_message_id !== new_message_id) {
             try { 
                 await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: existing_message_id }); 
             } catch(e) { /* تجاهل الفشل */ }
         }
 
-        // (4. تحديث الحالة)
+        // (تحديث الحالة بـ ID الرسالة الجديد)
         await setUserState(chatId, 'awaiting_question_edit', { 
             ...stateData, 
             current_edit_message_id: new_message_id, 
@@ -973,6 +971,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         }
     }
 };
+
 /**
  * (جديد) دالة عرض إحصائيات الامتحان
  */
