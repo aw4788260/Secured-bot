@@ -71,6 +71,7 @@ export default async (req, res) => {
         id,
         question_text,
         sort_order,
+        image_file_id, 
         options ( id, question_id, option_text, sort_order )
       `)
       .eq('exam_id', examId)
