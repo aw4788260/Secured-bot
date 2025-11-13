@@ -3,29 +3,62 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// (انسخ دالة useUserCheck بالكامل من ملف watch/[videoId].js)
+// (دالة مخصصة لجلب المستخدم والتحقق منه)
+// (هذه مأخوذة ومعدلة من ملف watch/[videoId].js)
 const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        // ... (نفس كود التحقق من المستخدم من ملف watch.js)
-        // (يتضمن التحقق من APK, Telegram, Admin, etc.)
+        if (!router.isReady) return; // (انتظر حتى تصبح query جاهزة)
+
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
 
+        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
-            setUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
+            const apkUser = { 
+                id: urlUserId, 
+                first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
+            };
+            setUser(apkUser);
+
+        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-             window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.ready();
+            const platform = window.Telegram.WebApp.platform;
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (miniAppUser) setUser(miniAppUser);
-            else setError("لا يمكن التعرف على هويتك.");
+
+            if (!miniAppUser || !miniAppUser.id) {
+                setError("لا يمكن التعرف على هويتك من تليجرام.");
+                return;
+            }
+
+            // [ ✅ تعديل: السماح لـ (iOS, macOS, tdesktop) مباشرة ]
+            if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
+                setUser(miniAppUser);
+            } else {
+                // [ الحالة 2ب: المنصات الأخرى (مثل android, web) يجب التحقق من الأدمن ]
+                fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
+                    .then(res => res.json())
+                    .then(adminData => {
+                        if (adminData.isAdmin) {
+                            setUser(miniAppUser);
+                        } else {
+                            setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                        }
+                    })
+                    .catch(err => {
+                        setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
+                    });
+            }
+        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
-            setError('الوصول غير مصرح به.');
+             setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
+             return;
         }
-    }, [router.query]);
+    }, [router.isReady, router.query]); // (يعتمد على router.isReady)
 
     return { user, error };
 };
@@ -35,7 +68,7 @@ export default function StreamPage() {
     const { videoId } = router.query;
     const { user, error } = useUserCheck(router);
 
-    // --- [ ✅✅ تطبيق العلامة المائية المتحركة (كما هي في يوتيوب) ] ---
+    // --- [ تطبيق العلامة المائية المتحركة (كما هي في يوتيوب) ] ---
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const [stickerPos, setStickerPos] = useState({ top: '50%', left: '50%' });
     const watermarkIntervalRef = useRef(null);
@@ -66,14 +99,33 @@ export default function StreamPage() {
     }, [user]);
     // --- [ نهاية كود العلامة المائية المتحركة ] ---
 
-    if (error) { return <div className="message-container"><h1>{error}</h1></div>; }
-    if (!user || !videoId) { return <div className="message-container"><h1>جاري التحميل...</h1></div>; }
+    if (error) { 
+        return (
+            <div className="page-container">
+                <Head><title>خطأ</title></Head>
+                <h1>{error}</h1>
+            </div>
+        ); 
+    }
+    
+    // (إظهار شاشة تحميل حتى يتم جلب المستخدم والفيديو ID)
+    if (!user || !videoId) { 
+        return (
+             <div className="page-container">
+                <Head><title>جاري التحميل</title></Head>
+                <h1>جاري تحميل الفيديو...</h1>
+            </div>
+        );
+    }
 
     const videoStreamUrl = `/api/secure/get-video-stream?lessonId=${videoId}`;
 
     return (
         <div className="page-container">
-            <Head><title>مشاهدة الدرس</title></Head>
+            <Head>
+                <title>مشاهدة الدرس</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+            </Head>
 
             <div className="player-wrapper-html5">
                 <video
@@ -82,6 +134,7 @@ export default function StreamPage() {
                     controlsList="nodownload"
                     disablePictureInPicture
                     className="html5-video-player"
+                    preload="metadata"
                 />
 
                 {/* (طبقة العلامة المائية) */}
@@ -98,19 +151,44 @@ export default function StreamPage() {
                 </div>
             </div>
             
-            <footer className="developer-info">...</footer>
-
+            {/* --- [ ✅✅ تم حذف الفوتر من هنا لضمان التوسيط ] --- */}
+            
             <style jsx global>{`
-                /* ... (انسخ ستايلات .page-container و .message-container) ... */
+                body { 
+                    margin: 0; 
+                    overscroll-behavior: contain; 
+                    background: linear-gradient(to bottom, #111827, #000000);
+                }
                 
+                /* --- [ ✅✅ هذا هو الكود الأهم للتوسيط ] --- */
+                .page-container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;     /* (توسيط أفقي) */
+                    justify-content: center; /* (توسيط رأسي) */
+                    min-height: 100vh;
+                    width: 100%;
+                    padding: 10px;
+                    box-sizing: border-box;
+                    color: white;
+                    text-align: center;
+                }
+                /* --- [ نهاية كود التوسيط ] --- */
+
                 .player-wrapper-html5 {
                     position: relative; 
                     width: 100%;
                     max-width: 900px;
                     aspect-ratio: 16 / 9;
                     background: #111;
+                    border-radius: 8px; /* (شكل جمالي) */
+                    overflow: hidden; /* (لقص الزوايا) */
                 }
-                .html5-video-player { width: 100%; height: 100%; }
+                .html5-video-player { 
+                    width: 100%; 
+                    height: 100%; 
+                    border: none;
+                }
                 
                 .watermark-overlay {
                     position: absolute;
@@ -120,7 +198,6 @@ export default function StreamPage() {
                     overflow: hidden; 
                 }
 
-                /* (انسخ ستايلات .watermark و .sticker-watermark من ملف watch.js) */
                 .watermark {
                     position: absolute; 
                     padding: 4px 8px; 
@@ -137,6 +214,7 @@ export default function StreamPage() {
                     width: 80px; height: 80px;
                     background-image: url('/logo-sticker.png'); /* (مسار افتراضي للملصق) */
                     background-size: contain;
+                    background-repeat: no-repeat;
                     opacity: 0.6;
                     transition: top 1.5s ease-in-out, left 1.5s ease-in-out;
                     z-index: 21;
