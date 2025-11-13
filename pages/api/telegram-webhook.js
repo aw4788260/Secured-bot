@@ -42,7 +42,7 @@ const sendPhotoMessage = async (chatId, photo_file_id, caption, reply_markup = n
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 7: إعادة الأزرار المفقودة)
+ * (✅✅ معدلة بالإصلاح 8: إصلاح جذري ثلاثي المراحل)
  * دالة إرسال الرسائل الرئيسية
  */
 const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null, protect_content = false) => {
@@ -50,62 +50,74 @@ const sendMessage = async (chatId, text, reply_markup = null, parse_mode = null,
         console.warn(`Attempted to send empty message to chat ID: ${chatId}`);
         return null;
     }
-    
-    let processedText;
-    let final_parse_mode = parse_mode; // 'MarkdownV2', 'HTML', or null
 
-    if (parse_mode === 'HTML') {
-        processedText = text;
-    } else {
-        // (parse_mode is 'MarkdownV2' or 'null')
-        // (في كلتا الحالتين، نقوم بالتهيئة لضمان الأمان)
-        processedText = escapeMarkdownV2(String(text)); 
-        final_parse_mode = 'MarkdownV2';
-    }
-    
     const payload = {
         chat_id: chatId,
-        text: processedText,
+        text: text, // (البدء بالنص الأصلي)
         protect_content: protect_content
     };
-    
-    // --- [ ✅✅ هذا هو السطر الذي تم إصلاحه ] ---
-    // (إضافة الأزرار (الكيبورد) إلى الرسالة إذا كانت موجودة)
-    if (reply_markup) {
-        payload.reply_markup = reply_markup;
-    }
-    // --- [ نهاية الإصلاح ] ---
 
-    if (final_parse_mode) {
-        payload.parse_mode = final_parse_mode;
-    }
-    
+    if (reply_markup) payload.reply_markup = reply_markup;
+    if (parse_mode) payload.parse_mode = parse_mode; // (إضافته فقط إذا طلبه المتصل)
+
     try {
+        // --- [ المحاولة 1: الإرسال كما هو مطلوب ] ---
         const response = await axios.post(`${TELEGRAM_API}/sendMessage`, payload);
-        return response;
-    
+        return response; // (نجاح!)
+
     } catch (error) {
-        console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
         
-        // (الخطة البديلة: إذا فشل التنسيق لسبب ما)
-        if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
+        // (التحقق إذا كان خطأ تنسيق)
+        if (!error.response || !error.response.data || !error.response.data.description.includes("can't parse entities")) {
+            // (خطأ آخر غير التنسيق، ارمه مباشرة)
+            console.error(`Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
+            throw error; 
+        }
+
+        // --- [ المحاولة 2: Fallback إلى MarkdownV2 مهيأ ] ---
+        console.warn(`[Fallback 1] Markdown/HTML parsing failed for chat ${chatId}. Resending as escaped MarkdownV2.`);
+        
+        const retryPayload = { 
+            chat_id: chatId,
+            text: escapeMarkdownV2(String(text)), // (تهيئة النص الأصلي)
+            parse_mode: 'MarkdownV2',
+            protect_content: protect_content
+        };
+        if (reply_markup) retryPayload.reply_markup = reply_markup;
+
+        try {
+            const response = await axios.post(`${TELEGRAM_API}/sendMessage`, retryPayload);
+            return response; // (نجاح المحاولة 2)
+
+        } catch (retryError) {
             
-            console.warn(`[Fallback] Markdown/HTML parsing failed for chat ${chatId}. Resending as escaped Markdown.`);
+            // (التحقق إذا كان خطأ تنسيق "أيضاً")
+            if (!retryError.response || !retryError.response.data || !retryError.response.data.description.includes("can't parse entities")) {
+                console.error(`[Fallback 1] Failed to resend message to chat ${chatId}:`, retryError.response?.data || retryError.message);
+                throw retryError; 
+            }
+
+            // --- [ المحاولة 3: Fallback أخير (نص عادي) ] ---
+            console.warn(`[Fallback 2] Escaped MarkdownV2 also failed for chat ${chatId}. Resending as plain text.`);
             
-            const retryPayload = { 
-                 ...payload,
-                 text: escapeMarkdownV2(String(text)), // (تهيئته بقوة)
-                 parse_mode: 'MarkdownV2' 
+            const plainPayload = {
+                chat_id: chatId,
+                text: String(text), // (النص الأصلي، بدون تنسيق)
+                protect_content: protect_content
             };
-            // (ملاحظة: الـ payload يحتوي بالفعل على reply_markup، لذا ستعمل الخطة البديلة أيضاً)
-            
+            if (reply_markup) plainPayload.reply_markup = reply_markup;
+            // (لا يوجد parse_mode هنا)
+
             try {
-                return await axios.post(`${TELEGRAM_API}/sendMessage`, retryPayload);
-            } catch (retryError) {
-                console.error(`[Fallback] Failed to resend message to chat ${chatId}:`, retryError.response?.data || retryError.message);
+                const response = await axios.post(`${TELEGRAM_API}/sendMessage`, plainPayload);
+                return response; // (نجاح المحاولة 3)
+
+            } catch (plainError) {
+                // (استسلام، ارمي الخطأ الأخير)
+                console.error(`[Fallback 2] Failed to resend plain text message to chat ${chatId}:`, plainError.response?.data || plainError.message);
+                throw plainError; 
             }
         }
-        return null;
     }
 };
 
@@ -708,8 +720,8 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 
 
 /**
- * (✅✅ معدل بالإصلاح 3) دالة عرض السؤال الحالي في وضع التعديل
- * (تم إصلاح كتلة catch لعدم إلغاء الحالة)
+ * (✅✅ معدلة بالإصلاح 8: إصلاح كتلة catch)
+ * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     const { questions, current_index } = stateData;
@@ -766,7 +778,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         if (question.image_file_id) {
             // (1. إرسال صورة + كابشن)
             try {
-                // (المحاولة الأولى: إرسال بـ MarkdownV2)
                 const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
                     chat_id: chatId,
                     photo: question.image_file_id,
@@ -777,14 +788,11 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                 new_message_id = response.data.result.message_id;
             
             } catch (photoError) {
-                // ( [✅✅ الإصلاح] فشلت المحاولة الأولى، أعد المحاولة كنص عادي)
                 if (photoError.response && photoError.response.data && photoError.response.data.description.includes("can't parse entities")) {
                     console.warn(`Markdown parsing failed for sendPhoto. Resending as plain text.`);
-                    
-                    // (بناء نص عادي بدون تنسيق)
                     let plainText = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
                     plainText += `الترتيب: ${question.sort_order}\n\n`;
-                    plainText += `${question.question_text}\n\n`; // (نص خام)
+                    plainText += `${question.question_text}\n\n`; 
                     question.options.forEach(opt => {
                         plainText += `• ${opt.option_text} ${opt.is_correct ? '✅' : ''}\n`;
                     });
@@ -792,24 +800,33 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                     const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
                         chat_id: chatId,
                         photo: question.image_file_id,
-                        caption: plainText, // (إرسال النص العادي)
-                        // (parse_mode محذوف)
+                        caption: plainText, 
                         reply_markup: reply_markup
                     });
                     new_message_id = response.data.result.message_id;
                 } else {
-                    throw photoError; // (رمي الخطأ إذا كان شيئاً آخر)
+                    throw photoError; 
                 }
             }
 
         } else {
             // (2. إرسال نص فقط)
             try {
-                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2');
-                new_message_id = existing_message_id; // (نفس الرسالة)
+                // (حماية ضد النسخ)
+                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false); 
+                new_message_id = existing_message_id; 
             } catch (e) {
-                const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2');
-                new_message_id = response.data.result.message_id;
+                // (فشل التعديل - غالباً لأن الرسالة القديمة كانت صورة)
+                // (الدالة الجديدة سترمي الخطأ، نلتقطه هنا)
+                // (نرسل رسالة جديدة - الدالة الجديدة ستتعامل مع التنسيق بأمان)
+                const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
+                // (نتحقق أن response ليس null - على الرغم من أن الدالة الجديدة سترمي خطأ)
+                if (response && response.data && response.data.result) {
+                    new_message_id = response.data.result.message_id;
+                } else {
+                    // (هذا لا يجب أن يحدث إذا كانت sendMessage ترمي الأخطاء)
+                    throw new Error("sendMessage returned null or invalid response after fallback.");
+                }
             }
         }
 
@@ -828,22 +845,23 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         });
 
     } catch (e) {
+        // --- [ ✅✅ الإصلاح لـ "Cannot read properties of null" ] ---
+        // (الآن نلتقط الأخطاء المرمية من sendMessage أو editMessage)
         console.error("Critical error in displayQuestionForEdit:", e.response ? e.response.data : e.message);
         
         const errorDetails = e.response ? (e.response.data.description || e.message) : e.message;
         
         try {
-            // (نرسل رسالة خطأ، لكن "لا" نلغي الحالة)
-            // (هذا يسمح للأدمن بالضغط على "إنهاء" أو "رجوع" للهروب من الوضع)
+            // (الدالة الجديدة sendMessage ستتعامل مع هذا بأمان)
             await sendMessage(chatId, `حدث خطأ أثناء عرض السؤال: ${errorDetails}.\n\n(يمكنك الضغط على "إنهاء التعديل" للعودة).`);
             
-            // [ ✅✅ الإصلاح الرئيسي: تم حذف سطر "setUserState(chatId, null, null)" من هنا ]
-            // (بهذا الشكل، تبقى الحالة "awaiting_question_edit" فعالة)
-
-        } catch (e2) {}
+            // (نبقي المستخدم في حالته ليتمكن من الخروج)
+            
+        } catch (e2) {
+             console.error("Failed to even send the error message:", e2.response?.data || e2.message);
+        }
     }
 };
-
 
 /**
  * (جديد) دالة عرض إحصائيات الامتحان
