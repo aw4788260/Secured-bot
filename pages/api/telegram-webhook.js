@@ -860,7 +860,9 @@ const parseMcqText = (text) => {
     }
     return questions;
 };
+
 // (الكود الجديد - للاستبدال)
+
 /**
  * (✅ معدل) دالة مساعدة لحفظ الأسئلة (من Poll أو نص)
  * @param {Array} parsedQuestions - مصفوفة الأسئلة المجهزة
@@ -871,6 +873,9 @@ const parseMcqText = (text) => {
  */
 const saveParsedQuestions = async (parsedQuestions, stateData, chatId, sortOrder) => {
     const examId = stateData.current_exam_id || stateData.exam_id;
+    // [ ✅✅ جديد: جلب الصورة اللاصقة من الحالة ]
+    const stickyImageId = stateData.sticky_image_file_id || null;
+
     let currentSortOrder = sortOrder;
     let savedTitles = []; // (جديد: لتتبع ما تم حفظه)
 
@@ -879,14 +884,15 @@ const saveParsedQuestions = async (parsedQuestions, stateData, chatId, sortOrder
         const { data: newQuestion, error: qError } = await supabase.from('questions').insert({
             exam_id: examId,
             question_text: q.question_text,
-            sort_order: currentSortOrder
+            sort_order: currentSortOrder,
+            image_file_id: stickyImageId // [ ✅✅ جديد: إضافة الصورة هنا ]
         }).select().single();
 
         if (qError) {
             await sendMessage(chatId, `❌ خطأ بحفظ السؤال: ${qError.message}`);
             continue; // (الانتقال للسؤال التالي)
         }
-        
+
         savedTitles.push(q.question_text.substring(0, 30)); // (حفظ ملخص للسؤال)
 
         // 2. حفظ الاختيارات
@@ -896,15 +902,19 @@ const saveParsedQuestions = async (parsedQuestions, stateData, chatId, sortOrder
             is_correct: opt.is_correct,
             sort_order: index
         }));
-        
+
         await supabase.from('options').insert(optionsPayload);
-        
+
         currentSortOrder++;
     }
-    
-    // (تحديث الحالة بالترتيب الجديد)
-    await setUserState(chatId, stateData.current_state, { ...stateData, current_question_sort_order: currentSortOrder });
-    
+
+    // [ ✅✅ جديد: مسح الصورة اللاصقة من الحالة بعد الحفظ ]
+    await setUserState(chatId, stateData.current_state, { 
+        ...stateData, 
+        current_question_sort_order: currentSortOrder,
+        sticky_image_file_id: null // <-- (تنظيف الذاكرة)
+    });
+
     return { newSortOrder: currentSortOrder, savedTitles: savedTitles }; // (إرجاع كائن)
 };
 
