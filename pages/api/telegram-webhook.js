@@ -111,6 +111,10 @@ const editMarkup = async (chatId, messageId, reply_markup = null) => {
     }
 };
 
+/**
+ * (✅✅ معدلة بالإصلاح 4: رمي الأخطاء للسماح بالـ Fallback)
+ * دالة تعديل الرسائل
+ */
 const editMessage = async (chatId, messageId, text, reply_markup = null, parse_mode = null) => {
     if (!text || text.trim() === '') {
         console.warn(`Attempted to edit to empty message: ${chatId}:${messageId}`);
@@ -130,20 +134,42 @@ const editMessage = async (chatId, messageId, text, reply_markup = null, parse_m
     
     try {
         await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
+    
     } catch (error) {
-        if (error.response && error.response.data && error.response.data.description.includes("message is not modified")) {
-            // (لا مشكلة)
-        } else if (error.response && error.response.data && error.response.data.description.includes("can't parse entities")) {
-             console.error(`Markdown parsing failed for editMessage ${chatId}:${messageId}. Resending as plain text.`);
-             const retryPayload = { ...payload, text: text };
-             delete retryPayload.parse_mode;
-             try {
-                await axios.post(`${TELEGRAM_API}/editMessageText`, retryPayload);
-             } catch (retryError) {
-                 console.error(`Failed to resend plain text editMessage to ${chatId}:${messageId}:`, retryError.response?.data || retryError.message);
-             }
+        
+        if (error.response && error.response.data) {
+            const desc = error.response.data.description;
+
+            if (desc.includes("message is not modified")) {
+                // (لا مشكلة)
+                return; // (اخرج بهدوء)
+            }
+            
+            if (desc.includes("can't parse entities")) {
+                // (فشل الماركداون، أعد الإرسال كنص عادي)
+                console.warn(`Markdown parsing failed for editMessage ${chatId}:${messageId}. Resending as plain text.`);
+                const retryPayload = { ...payload, text: text };
+                delete retryPayload.parse_mode;
+                try {
+                    await axios.post(`${TELEGRAM_API}/editMessageText`, retryPayload);
+                } catch (retryError) {
+                    // (فشل إعادة الإرسال - غالباً لأنه رسالة صورة)
+                    console.error(`Failed to resend plain text editMessage to ${chatId}:${messageId}:`, retryError.response?.data || retryError.message);
+                    // ( [✅✅ الإصلاح] ارمي الخطأ ليتم التعامل معه في الخارج)
+                    throw retryError; 
+                }
+                return; // (نجحت إعادة الإرسال)
+            }
+
+            // ( [✅✅ الإصلاح] أي خطأ آخر، ارمه)
+            // (هذا يشمل "no text in the message to edit")
+            console.error(`Failed to edit message ${chatId}:${messageId}:`, desc);
+            throw error; 
+        
         } else {
-             console.error(`Failed to edit message ${chatId}:${messageId}:`, error.response?.data || error.message);
+            // (خطأ غير متوقع)
+            console.error(`Failed to edit message ${chatId}:${messageId}:`, error.message);
+            throw error;
         }
     }
 };
