@@ -734,10 +734,10 @@ const sendNewAttemptsMenu = async (chatId, messageId) => {
 };
 
 /**
- * (✅✅ معدل بالإصلاح 15: للتأكد من جلب image_file_id)
+ * (✅✅ معدل بالإصلاح 22: دعم العودة لسؤال محدد via targetIndex)
  * دالة جلب الأسئلة وبدء جلسة تعديل
  */
-const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
+const loadQuestionsForEditSession = async (chatId, messageId, stateData, targetIndex = 0) => {
     const { exam_id } = stateData;
     
     // جلب كل الأسئلة والاختيارات مرتبة
@@ -768,13 +768,16 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
         return;
     }
 
-    // تحديث الحالة (مهم: نخزن messageId الأصلي)
-    const newStateData = { ...stateData, questions: questions, current_index: 0, current_edit_message_id: messageId };
+    // [ ✅✅ جديد: حساب المؤشر الآمن بناءً على الرقم المطلوب ]
+    // (نضمن أن الرقم لا يقل عن 0 ولا يزيد عن آخر سؤال)
+    const safeIndex = Math.max(0, Math.min(targetIndex, questions.length - 1));
+
+    // تحديث الحالة (مع استخدام safeIndex بدلاً من 0)
+    const newStateData = { ...stateData, questions: questions, current_index: safeIndex, current_edit_message_id: messageId };
     
-    // عرض السؤال الأول (سيقوم بحذف الرسالة "جاري التحميل" وإرسال رسالة جديدة)
+    // عرض السؤال المحدد
     await displayQuestionForEdit(chatId, messageId, newStateData);
 };
-
 /**
  * (✅✅ معدلة بالإصلاح 20: إزالة التنسيقات ( * / \ / ✏️ )
  * دالة عرض السؤال الحالي في وضع التعديل (كنص صافي)
@@ -2425,191 +2428,104 @@ export default async (req, res) => {
       }
 
       // --- [ ✅✅ بداية: معالجات أزرار محرر الأسئلة (معدلة) ] ---
+      // --- [ ✅✅ بداية: معالجات أزرار محرر الأسئلة (معدلة: نصوص + حفاظ على الموقع) ] ---
       
       if (user.admin_state === 'awaiting_question_edit') {
          const stateData = user.state_data;
          
-         // (التنقل)
+         // --- 1. التنقل (التالي) ---
          if (command === 'exam_edit_q_next') {
             const newIndex = stateData.current_index + 1;
-            
-            // (أ) احذف الرسالة القديمة لضمان إرسال الصورة الجديدة
-            try { 
-                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
-            } catch(e){ /* تجاهل الفشل */ }
-
-            // (ب) اعرض السؤال الجديد كرسالة جديدة
-            // (نمرر current_edit_message_id: null لإجبار الدالة على الإرسال الجديد)
+            try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){}
             await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex, current_edit_message_id: null });
             return res.status(200).send('OK');
          }
 
-         // --- 2. التنقل (السابق) - [ ✅ إصلاح: حذف الرسالة القديمة ] ---
+         // --- 2. التنقل (السابق) ---
          if (command === 'exam_edit_q_prev') {
             const newIndex = stateData.current_index - 1;
-
-            // (أ) احذف الرسالة القديمة
-            try { 
-                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
-            } catch(e){ /* تجاهل الفشل */ }
-
-            // (ب) اعرض السؤال الجديد كرسالة جديدة
+            try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){}
             await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex, current_edit_message_id: null });
             return res.status(200).send('OK');
          }
 
-         // (الانتهاء)
+         // --- 3. الانتهاء ---
          if (command === 'exam_edit_q_finish') {
-            
-            // 1. [ ✅✅ الإصلاح ] التحقق من عدم حذف نفس الرسالة مرتين
             if (stateData.current_edit_message_id && stateData.current_edit_message_id !== stateData.message_id) {
-                try { 
-                    await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
-                } catch(e){ /* تجاهل الفشل */ }
+                try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){}
             }
-            
-            // 2. (تعديل الرسالة الأصلية "جاري التحميل" إلى "تم الحفظ")
-            try {
-                await editMessage(chatId, stateData.message_id, '✅ تم حفظ التعديلات.');
-            } catch (e) {
-                 console.error("Failed to edit original message on finish:", e.message);
-            }
-            
+            try { await editMessage(chatId, stateData.message_id, '✅ تم حفظ التعديلات.'); } catch (e) {}
             const subject_id = stateData.subject_id; 
             await setUserState(userId, null, null);
-            
-            // 3. (إرسال قائمة الامتحانات كـ "رسالة جديدة")
             await sendContentMenu_Exams_For_Subject(chatId, null, subject_id); 
-            
             return res.status(200).send('OK');
          }
          
-         // --- [ ✅✅✅ الإصلاح الجذري: تم عكس ترتيب الشروط ] ---
-         // (يجب فحص الشرط "الأكثر تحديداً" أولاً)
-
-         // (✅✅ معدل بالإصلاح 20: إصلاح "فشل التحديث" الصامت لقاعدة البيانات)
+         // --- 4. حذف الصورة فقط ---
          if (command.startsWith('exam_edit_q_delete_image_')) {
-            const questionId_raw = command.split('_')[5];
-            const questionId = parseInt(questionId_raw, 10);
-
-            // --- [ 1. التحقق من ID السؤال ] ---
-            if (isNaN(questionId)) {
-                console.error(`[CRITICAL] Failed to parse questionId from callback: ${command}`);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ فادح: لم أتمكن من قراءة ID السؤال من ${questionId_raw}`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            // --- [ 2. تحديث قاعدة البيانات (مع .select() للتأكيد) ] ---
-            console.log(`[DB] Attempting to set image_file_id to null for question_id: ${questionId}`);
+            const questionId = parseInt(command.split('_')[5], 10);
+            if (isNaN(questionId)) { await answerCallbackQuery(callback_query.id, { text: `خطأ ID`, show_alert: true }); return res.status(200).send('OK'); }
             
-            const { data, error } = await supabase.from('questions')
-                .update({ image_file_id: null })
-                .eq('id', questionId)
-                .select(); // <-- [!!] اطلب إرجاع الصف الذي تم تحديثه
+            const { data, error } = await supabase.from('questions').update({ image_file_id: null }).eq('id', questionId).select(); 
+            if (error || !data || data.length === 0) { await answerCallbackQuery(callback_query.id, { text: `خطأ حذف`, show_alert: true }); return res.status(200).send('OK'); }
 
-            // --- [ 3. معالجة الأخطاء ] ---
-            if (error) {
-                console.error(`[DB] Supabase error while updating question ${questionId}:`, error.message);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ DB: ${error.message}`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            // --- [ 4. التحقق من نجاح التحديث ] ---
-            if (!data || data.length === 0) {
-                // (هذا هو الخطأ الصامت الذي كان يحدث)
-                console.error(`[DB] Update returned no data. Question ID ${questionId} not found or RLS failed.`);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ: لم يتم العثور على السؤال (ID: ${questionId}) في قاعدة البيانات.`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            // --- [ 5. النجاح: تحديث الحالة (الذاكرة) ] ---
-            console.log(`[DB] Successfully updated question_id: ${questionId}. Image is now null.`);
-            
             const questionIndex = stateData.questions.findIndex(q => q.id === questionId);
-            if (questionIndex > -1) {
-                 stateData.questions[questionIndex].image_file_id = null;
-            } else {
-                 // (هذا لا ينبغي أن يحدث، ولكن يجب إعادة تحميل الجلسة إذا حدث)
-                 console.error(`[STATE] Question ${questionId} was updated in DB, but not found in local state. Forcing reload.`);
-                 // (إعادة تحميل الجلسة بالكامل من قاعدة البيانات)
-                 await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
-                 return res.status(200).send('OK');
-            }
+            if (questionIndex > -1) { stateData.questions[questionIndex].image_file_id = null; }
+            else { await loadQuestionsForEditSession(chatId, stateData.message_id, stateData, stateData.current_index); return res.status(200).send('OK'); }
             
-            // --- [ 6. إعادة عرض الواجهة ] ---
-            // (لا توجد رسالة منبثقة، لا يوجد "جاري الحذف")
-            // (سيتم استدعاء displayQuestionForEdit، الذي سيحذف الصورة القديمة ويرسل رسالة نصية)
             await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
-            
             return res.status(200).send('OK');
          }
 
-         // (الشرط "الأقل تحديداً" يأتي ثانياً)
+         // --- 5. حذف السؤال كاملاً ---
          if (command.startsWith('exam_edit_q_delete_')) {
-            const questionId_raw = command.split('_')[4];
-            const questionId = parseInt(questionId_raw, 10);
-
-            if (isNaN(questionId)) {
-                console.error(`[CRITICAL] Failed to parse questionId for DELETE: ${command}`);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ فادح: لم أتمكن من قراءة ID السؤال من ${questionId_raw}`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
+            const questionId = parseInt(command.split('_')[4], 10);
+            
             await editMessage(chatId, stateData.current_edit_message_id, 'جاري حذف السؤال...');
             await supabase.from('questions').delete().eq('id', questionId);
             await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
-            // (إعادة تحميل الجلسة - ستقوم بحذف "جاري الحذف" وعرض السؤال التالي)
-            // (نمرر ID الرسالة الأصلية "جاري التحميل")
-            await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
+            
+            // [ ✅ تعديل: الحفاظ على رقم السؤال الحالي بعد الحذف ]
+            await loadQuestionsForEditSession(chatId, stateData.message_id, stateData, stateData.current_index);
             return res.status(200).send('OK');
          }
 
-         // (بدء عملية استبدال "السؤال/Poll")
+         // --- 6. استبدال Poll ---
          if (command.startsWith('exam_edit_q_replace_poll_')) {
             const questionId = parseInt(command.split('_')[5], 10);
-            await setUserState(userId, 'awaiting_replacement_question_poll', {
-                ...stateData,
-                question_id_to_replace: questionId
-            });
-            await editMessage(chatId, stateData.current_edit_message_id, 'أرسل الـ (Poll) الجديد ليحل محل هذا السؤال: (أو /cancel)');
+            await setUserState(userId, 'awaiting_replacement_question_poll', { ...stateData, question_id_to_replace: questionId });
+            // [ ✅ تعديل النص ]
+            await editMessage(chatId, stateData.current_edit_message_id, 'أرسل الـ (Poll) أو (النص) الجديد ليحل محل هذا السؤال: (أو /cancel)');
             return res.status(200).send('OK');
          }
 
-         // (بدء عملية استبدال "الصورة")
+         // --- 7. استبدال صورة ---
          if (command.startsWith('exam_edit_q_replace_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
-            await setUserState(userId, 'awaiting_replacement_image', {
-                ...stateData,
-                question_id_to_replace: questionId
-            });
+            await setUserState(userId, 'awaiting_replacement_image', { ...stateData, question_id_to_replace: questionId });
             await editMessage(chatId, stateData.current_edit_message_id, 'أرسل "الصورة الجديدة" لهذا السؤال: (أو /cancel)');
             return res.status(200).send('OK');
          }
          
-         // (بدء عملية الإضافة "بعد")
+         // --- 8. إضافة "بعد" ---
          if (command.startsWith('exam_edit_q_add_after_')) {
-            const questionId = parseInt(command.split('_')[5], 10);
             const currentQuestion = stateData.questions[stateData.current_index];
-            await setUserState(userId, 'awaiting_new_question_after', {
-                ...stateData,
-                after_sort_order: currentQuestion.sort_order,
-                sticky_image_file_id: null // (مسح الذاكرة)
-            });
-            await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) الجديد ليتم إضافته "بعد" هذا السؤال:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
+            await setUserState(userId, 'awaiting_new_question_after', { ...stateData, after_sort_order: currentQuestion.sort_order, sticky_image_file_id: null });
+            // [ ✅ تعديل النص ]
+            await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) أو (النص) الجديد ليتم إضافته "بعد" هذا السؤال:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
             return res.status(200).send('OK');
          }
          
-         // (بدء عملية الإضافة "للنهاية")
+         // --- 9. إضافة "للنهاية" ---
          if (command === 'exam_edit_q_add_end') {
-             await setUserState(userId, 'awaiting_new_question_end', {
-                ...stateData,
-                sticky_image_file_id: null // (مسح الذاكرة)
-             });
-             await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) الجديد ليتم إضافته "في نهاية" الامتحان:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
+             await setUserState(userId, 'awaiting_new_question_end', { ...stateData, sticky_image_file_id: null });
+             // [ ✅ تعديل النص ]
+             await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) أو (النص) الجديد ليتم إضافته "في نهاية" الامتحان:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
              return res.status(200).send('OK');
          }
+
       } // (نهاية if state === awaiting_question_edit)
-           // --- [ نهاية: قسم إدارة الامتحانات ] ---
+                // --- [ نهاية: قسم إدارة الامتحانات ] ---
      
       // --- [ نهاية: قسم إدارة الامتحانات ] ---
       
@@ -3047,66 +2963,37 @@ export default async (req, res) => {
             break;
 
           // (✅✅ معدل: دعم النص والـ Poll للاستبدال)
-          case 'awaiting_replacement_question_poll':
-            // (حذف رسالة الأدمن للنظافة)
+                  case 'awaiting_replacement_question_poll':
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
             let replacementQuestions = [];
-            
-            // 1. التحقق هل هو Poll
             if (message.poll) {
                 if (message.poll.type !== 'quiz' || typeof message.poll.correct_option_id === 'undefined') {
                     await editMessage(chatId, stateData.current_edit_message_id, `❌ خطأ: الـ Poll ليس Quiz.\n\n(أرسل Poll صحيح أو نص، أو /cancel)`);
                     return res.status(200).send('OK');
                 }
-                replacementQuestions = [{
-                    question_text: message.poll.question,
-                    options: message.poll.options.map((opt, index) => ({
-                        text: opt.text,
-                        is_correct: (index === message.poll.correct_option_id)
-                    }))
-                }];
-            
-            // 2. التحقق هل هو نص
+                replacementQuestions = [{ question_text: message.poll.question, options: message.poll.options.map((opt, index) => ({ text: opt.text, is_correct: (index === message.poll.correct_option_id) })) }];
             } else if (text && text !== '/cancel') {
                 replacementQuestions = parseMcqText(text);
             }
 
-            // (إذا لم يكن لا هذا ولا ذاك)
             if (replacementQuestions.length === 0) {
                  await editMessage(chatId, stateData.current_edit_message_id, 'الرجاء إرسال (Poll) أو (نص سؤال) صحيح، أو /cancel');
                  return res.status(200).send('OK');
             }
 
-            // (للاستبدال: نأخذ السؤال الأول فقط إذا أرسل المستخدم نصاً يحتوي على عدة أسئلة)
             const parsedPoll = [replacementQuestions[0]];
-
             await editMessage(chatId, stateData.current_edit_message_id, '⚙️ جاري استبدال السؤال...');
-            
             const qid_to_replace = stateData.question_id_to_replace;
-            
-            // (نفس منطق الاستبدال القديم: حفظ الصورة القديمة والترتيب)
-            const { data: oldQ } = await supabase.from('questions')
-                .select('sort_order, image_file_id') 
-                .eq('id', qid_to_replace)
-                .single();
-            
-            // (حذف القديم)
+            const { data: oldQ } = await supabase.from('questions').select('sort_order, image_file_id').eq('id', qid_to_replace).single();
             await supabase.from('questions').delete().eq('id', qid_to_replace);
             
-            // (إدراج الجديد بنفس الترتيب والصورة)
-            const newState = { 
-                ...stateData, 
-                sticky_image_file_id: oldQ ? oldQ.image_file_id : null, 
-                current_state: 'awaiting_replacement_question_poll' 
-            };
-            
-            await saveParsedQuestions(parsedPoll, newState, chatId, (oldQ ? oldQ.sort_order : 0));
+            const newStateRepl = { ...stateData, sticky_image_file_id: oldQ ? oldQ.image_file_id : null, current_state: 'awaiting_replacement_question_poll' };
+            await saveParsedQuestions(parsedPoll, newStateRepl, chatId, (oldQ ? oldQ.sort_order : 0));
 
-            // (إعادة تحميل المحرر)
-            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
+            // [ ✅ تعديل: العودة لنفس رقم السؤال (current_index) ]
+            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData, stateData.current_index);
             break;
-            
           // --- [ نهاية الحالات الجديدة ] ---
             
           case 'awaiting_user_ids':
@@ -3224,6 +3111,8 @@ export default async (req, res) => {
 
             
             // (✅✅ معدل: توحيد منطق الإضافة للنص والـ Poll في كل الحالات)
+                               
+          // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
           case 'awaiting_exam_questions':
           case 'awaiting_new_question_after':
           case 'awaiting_new_question_end':
@@ -3231,100 +3120,69 @@ export default async (req, res) => {
             stateData.current_state = currentState; 
             const target_message_id = stateData.current_edit_message_id || stateData.message_id;
             
-            // (حذف رسالة الأدمن)
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
             let parsedInput = [];
-
-            // --- A. معالجة الـ Poll ---
             if (message.poll) {
                 if (message.poll.type !== 'quiz' || typeof message.poll.correct_option_id === 'undefined') {
                     await editMessage(chatId, target_message_id, `❌ خطأ: الـ Poll ليس Quiz.\n\n(أرسل سؤالاً صحيحاً أو /done)`);
                     return res.status(200).send('OK');
                 }
-                parsedInput = [{
-                    question_text: message.poll.question,
-                    options: message.poll.options.map((opt, index) => ({
-                        text: opt.text,
-                        is_correct: (index === message.poll.correct_option_id)
-                    }))
-                }];
-            
-            // --- B. معالجة النص ---
+                parsedInput = [{ question_text: message.poll.question, options: message.poll.options.map((opt, index) => ({ text: opt.text, is_correct: (index === message.poll.correct_option_id) })) }];
             } else if (text && text !== '/done') {
                 parsedInput = parseMcqText(text);
-                if (parsedInput.length === 0) {
-                    await editMessage(chatId, target_message_id, '❌ لم أتمكن من فهم النص. تأكد من التنسيق.\n(أرسل سؤالاً أو /done)');
-                    return res.status(200).send('OK');
-                }
-            
-            // --- C. معالجة /done ---
+                if (parsedInput.length === 0) { await editMessage(chatId, target_message_id, '❌ لم أتمكن من فهم النص. تأكد من التنسيق.\n(أرسل سؤالاً أو /done)'); return res.status(200).send('OK'); }
             } else if (text === '/done') {
-                if (stateData.current_edit_message_id) {
-                     try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){}
-                }
+                if (stateData.current_edit_message_id) { try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){} }
                 await editMessage(chatId, stateData.message_id, '👍 تم الانتهاء من إضافة الأسئلة.');
                 await setUserState(userId, null, null);
                 await sendContentMenu_Exams_For_Subject(chatId, stateData.message_id, stateData.subject_id);
                 return res.status(200).send('OK');
             }
 
-            // --- D. الحفظ (مشترك للنص والـ Poll) ---
             if (parsedInput.length > 0) {
                 try {
                     const examId = stateData.current_exam_id || stateData.exam_id;
                     
-                    // 1. حالة الإضافة "بعد" سؤال معين
                     if (currentState === 'awaiting_new_question_after') {
                          await editMessage(chatId, target_message_id, '⚙️ جاري إضافة الأسئلة...');
                          const after_sort_order = stateData.after_sort_order;
-                         
-                         // (إزاحة الأسئلة التالية لإفساح المجال لعدد الأسئلة الجديدة)
                          const shiftAmount = parsedInput.length;
                          for (let i = 0; i < shiftAmount; i++) {
-                             await supabase.rpc('increment_sort_order', { 
-                                 table_name: 'questions', 
-                                 parent_id_column: 'exam_id', 
-                                 parent_id_value: examId, 
-                                 from_sort_order: after_sort_order + 1 
-                             });
+                             await supabase.rpc('increment_sort_order', { table_name: 'questions', parent_id_column: 'exam_id', parent_id_value: examId, from_sort_order: after_sort_order + 1 });
                          }
-
                          await saveParsedQuestions(parsedInput, stateData, chatId, after_sort_order + 1);
+                         
+                         // [ ✅ تعديل: العودة لنفس رقم السؤال (current_index) ]
+                         await answerCallbackQuery(callback_query ? callback_query.id : '', { text: '✅ تم الحفظ' });
+                         await loadQuestionsForEditSession(chatId, target_message_id, { ...stateData, sticky_image_file_id: null }, stateData.current_index);
 
-                    // 2. حالة الإضافة في "النهاية" (الإضافة اللاحقة)
                     } else if (currentState === 'awaiting_new_question_end') {
                         await editMessage(chatId, target_message_id, '⚙️ جاري إضافة الأسئلة...');
                         const { data: maxSort } = await supabase.from('questions').select('sort_order').eq('exam_id', examId).order('sort_order', { ascending: false }).limit(1).single();
                         const newSortOrder = (maxSort ? maxSort.sort_order : 0) + 1;
                         await saveParsedQuestions(parsedInput, stateData, chatId, newSortOrder);
 
-                    // 3. حالة البناء الأولي (عند إنشاء الامتحان لأول مرة)
+                        // [ ✅ تعديل: العودة لنفس رقم السؤال (current_index) - أو يمكن جعله يذهب للأخير إذا فضلت ]
+                        await answerCallbackQuery(callback_query ? callback_query.id : '', { text: '✅ تم الحفظ' });
+                        await loadQuestionsForEditSession(chatId, target_message_id, { ...stateData, sticky_image_file_id: null }, stateData.current_index);
+
                     } else {
+                        // (حالة البناء الأولي - تبقى كما هي)
                         const { newSortOrder, savedTitles } = await saveParsedQuestions(parsedInput, stateData, chatId, stateData.current_question_sort_order);
                         const wasImageSaved = stateData.sticky_image_file_id;
-                        
                         let successMsg = `✅ تم حفظ ${parsedInput.length} سؤال.`;
                         if (wasImageSaved) successMsg += `\n🖼️ (تم إرفاق الصورة)`;
                         if (savedTitles.length > 0) successMsg += `\n(آخر سؤال: ${savedTitles[savedTitles.length-1].substring(0, 20)}...)`;
                         successMsg += `\n\nأرسل التالي (أو /done):`;
-
                         await editMessage(chatId, target_message_id, successMsg);
                         return res.status(200).send('OK');
                     }
-
-                    // (إعادة تحميل الجلسة للحالات 1 و 2 لتحديث العرض)
-                    await answerCallbackQuery(callback_query ? callback_query.id : '', { text: '✅ تم الحفظ' });
-                    await loadQuestionsForEditSession(chatId, target_message_id, { ...stateData, sticky_image_file_id: null });
-
                 } catch (err) {
                      await editMessage(chatId, target_message_id, `حدث خطأ: ${err.message}`);
                 }
             }
             break;
-                     
-          // --- [ ✅✅ نهاية: حالات استقبال الأسئلة (المعدلة) ] ---
-          
           // [ ✅ جديد: حالة سعر الكورس ]
           case 'awaiting_course_price':
             const coursePrice = parseInt(text.trim(), 10);
