@@ -134,50 +134,45 @@ export default function ExamPage() {
     }, []); // (هذه الدالة لا تعتمد على أي شيء متغير، فهي تقرأ من Refs)
 
     
-    // --- [ ✅✅ جديد: دالة تأكيد الخروج (لزر الرجوع) ] ---
+    // --- [ ✅✅ معدل: دالة تأكيد الخروج (لزر الرجوع) ] ---
     const handleBackButtonConfirm = useCallback(() => {
-        // (اعرض نافذة التأكيد)
         if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.showConfirm(
                 "هل أنت متأكد من الخروج؟ سيتم تسليم إجاباتك الحالية وإنهاء الامتحان.", 
                 (isConfirmed) => {
                     if (isConfirmed) {
-                        // (إذا ضغط "نعم"، قم بالتسليم)
+                        // (1. قم بالتسليم)
                         handleExitSubmit();
+                        // (2. [ ✅✅ هذا هو الإصلاح ] قم بالإغلاق)
+                        window.Telegram.WebApp.close();
                     }
-                    // (إذا ضغط "لا"، لا تفعل شيئاً)
                 }
             );
         }
     }, [handleExitSubmit]); // (تعتمد على دالة الإرسال)
-    // --- [ نهاية الإضافة ] ---
+    // --- [ نهاية التعديل ] ---
 
 
-    // --- [ ✅✅ معدل: Effect لتفعيل رصد الخروج (عند بدء الامتحان) ] ---
+    // (Effect لتفعيل رصد الخروج)
     useEffect(() => {
-        // (يعمل فقط بعد تحميل الأسئلة وبدء العداد)
         if (questions && timer > 0) {
             
-            // --- 1. رصد زر الرجوع الخاص بتطبيق تليجرام ---
+            // --- 1. رصد زر الرجوع (تليجرام فقط) ---
             if (window.Telegram && window.Telegram.WebApp) {
                 const twaBackButton = window.Telegram.WebApp.BackButton;
                 twaBackButton.show();
-                // [ ✅ تعديل: استدعاء دالة التأكيد بدلاً من الإرسال المباشر ]
                 twaBackButton.onClick(handleBackButtonConfirm); 
             }
             
-            // --- 2. رصد إغلاق الصفحة أو التحديث (للمتصفح) ---
-            // (هذه ستستمر في الإرسال المباشر لأننا لا نستطيع إيقافها)
+            // --- 2. رصد إغلاق الصفحة/التحديث (للمتصفح + الأندرويد) ---
             window.addEventListener('beforeunload', handleExitSubmit);
 
             // --- 3. رصد الرجوع (داخل المتصفح - Next.js) ---
-            // (هذه أيضاً ستستمر في الإرسال المباشر)
             router.events.on('routeChangeStart', handleExitSubmit);
 
-            // --- [ دالة التنظيف (مهمة جداً) ] ---
+            // --- [ دالة التنظيف ] ---
             return () => {
                 if (window.Telegram && window.Telegram.WebApp) {
-                    // [ ✅ تعديل: إزالة المستمع الصحيح ]
                     window.Telegram.WebApp.BackButton.offClick(handleBackButtonConfirm);
                     window.Telegram.WebApp.BackButton.hide();
                 }
@@ -185,15 +180,11 @@ export default function ExamPage() {
                 router.events.off('routeChangeStart', handleExitSubmit);
             };
         }
-    // [ ✅ تعديل: إضافة handleBackButtonConfirm للمصفوفة ]
     }, [questions, timer, router.events, handleExitSubmit, handleBackButtonConfirm]); 
-    // --- [ نهاية التعديل ] ---
 
 
     // (دالة إرسال الإجابات)
-    // --- [ ✅✅ معدل: تعديل دالة الإرسال الأصلية ] ---
     const handleSubmit = async (isAutoSubmit = false) => {
-        // (التحقق من الإجابات الكاملة فقط إذا كان المستخدم هو من ضغط "إنهاء")
         if (!isAutoSubmit) {
             const allAnswered = questions ? Object.keys(answers).length === questions.length : false;
             if (!allAnswered) {
@@ -202,20 +193,16 @@ export default function ExamPage() {
             }
         }
         
-        // --- [ ✅ جديد: منع رصد الخروج عند الإرسال الطبيعي ] ---
-        // (1. منع أي محاولات إرسال مزدوجة)
         if (isSubmittingRef.current) return;
         isSubmittingRef.current = true;
         
-        // (2. إزالة كل المستمعين (Listeners) يدوياً وفوراً)
+        // (إزالة كل المستمعين يدوياً)
         if (window.Telegram && window.Telegram.WebApp) {
-            // [ ✅ تعديل: إزالة المستمع الصحيح ]
             window.Telegram.WebApp.BackButton.offClick(handleBackButtonConfirm);
             window.Telegram.WebApp.BackButton.hide();
         }
         window.removeEventListener('beforeunload', handleExitSubmit);
         router.events.off('routeChangeStart', handleExitSubmit);
-        // --- [ نهاية التعديل ] ---
         
         setIsLoading(true);
         setTimer(null); // (إيقاف العداد)
@@ -233,7 +220,7 @@ export default function ExamPage() {
         } catch (err) {
             setError("حدث خطأ أثناء إرسال الإجابات.");
             setIsLoading(false);
-            isSubmittingRef.current = false; // (السماح بإعادة المحاولة إذا فشل الإرسال)
+            isSubmittingRef.current = false; 
         }
     };
 
