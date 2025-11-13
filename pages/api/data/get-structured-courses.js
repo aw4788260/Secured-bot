@@ -10,7 +10,13 @@ const subjectQuery = `
     id,
     title,
     sort_order,
-    videos ( id, title, sort_order )
+    videos ( 
+        id, 
+        title, 
+        sort_order, 
+        type,               /* [✅ جديد] */
+        storage_path        /* [✅ جديد] (مهم للـ PDF والفيديو) */
+    )
   ),
   exams ( 
     id, 
