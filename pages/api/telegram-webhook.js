@@ -713,7 +713,8 @@ const sendNewAttemptsMenu = async (chatId, messageId) => {
 };
 
 /**
- * (✅ معدل) دالة جلب الأسئلة وبدء جلسة تعديل
+ * (✅✅ معدل بالإصلاح 15: للتأكد من جلب image_file_id)
+ * دالة جلب الأسئلة وبدء جلسة تعديل
  */
 const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
     const { exam_id } = stateData;
@@ -737,7 +738,6 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
     }
 
     if (questions.length === 0) {
-        // (سنعرض أزرار إضافة فقط)
         const kbd = { inline_keyboard: [
              [{ text: '➕ إضافة سؤال (للنهاية)', callback_data: 'exam_edit_q_add_end' }],
              [{ text: '✅ إنهاء والعودة', callback_data: 'exam_edit_q_finish' }]
@@ -2488,7 +2488,7 @@ export default async (req, res) => {
             return res.status(200).send('OK');
          }
          
-         // (✅✅ معدل بالإصلاح 14: إصلاح "حذف الصورة فقط" (بالتعديل المباشر))
+         // (✅✅ معدل بالإصلاح 15: إصلاح "حذف الصورة فقط" (بالإجبار))
          if (command.startsWith('exam_edit_q_delete_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             
@@ -2496,16 +2496,20 @@ export default async (req, res) => {
             await supabase.from('questions').update({ image_file_id: null }).eq('id', questionId);
             await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الصورة فقط' });
 
-            // 2. [ ✅ الإصلاح ] تحديث الحالة (State) في الذاكرة
-            // (نبحث عن السؤال في مصفوفة الأسئلة ونحذف الصورة منه)
-            const questionIndex = stateData.questions.findIndex(q => q.id === questionId);
-            if (questionIndex > -1) {
-                 stateData.questions[questionIndex].image_file_id = null; // (احذفها من الذاكرة)
-            }
+            // 2. [ ✅✅ الإصلاح ] إعادة تحميل الجلسة بالكامل
+            // (تعديل الرسالة الحالية (الصورة) لإظهار التحميل)
+            await editMessage(
+                chatId, 
+                stateData.current_edit_message_id, 
+                "جاري حذف الصورة وإعادة تحميل الجلسة...",
+                null, // no kbd
+                null, // no parse_mode
+                false // no protect
+            );
             
-            // 3. إعادة عرض السؤال (الذي أصبح الآن بدون صورة)
-            // (الدالة ستتعامل مع حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
-            await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
+            // 3. (نستدعي "loadQuestions" وهي ستتعامل مع كل شيء)
+            // (نمرر ID الرسالة التي قمنا بتعديلها)
+            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
             return res.status(200).send('OK');
          }
          
