@@ -156,8 +156,8 @@ const editMarkup = async (chatId, messageId, reply_markup = null) => {
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 5: إضافة protect_content = false)
- * دالة تعديل الرسائل
+ * (✅✅ معدلة بالإصلاح 9: أذكى دالة تعديل)
+ * (تحاول تعديل النص، وإذا فشلت، تحاول تعديل الكابشن تلقائياً)
  */
 const editMessage = async (chatId, messageId, text, reply_markup = null, parse_mode = null, protect_content = false) => {
     if (!text || text.trim() === '') {
@@ -167,50 +167,80 @@ const editMessage = async (chatId, messageId, text, reply_markup = null, parse_m
     
     const processedText = (parse_mode === 'MarkdownV2') ? escapeMarkdownV2(text) : text;
 
-    const payload = {
-        chat_id: chatId,
-        message_id: messageId,
-        text: processedText,
-        protect_content: protect_content // [ ✅✅ هذا هو السطر الجديد ]
+    const createPayload = (isCaption = false) => {
+        const payload = {
+            chat_id: chatId,
+            message_id: messageId,
+            [isCaption ? 'caption' : 'text']: processedText,
+            protect_content: protect_content
+        };
+        if (reply_markup) payload.reply_markup = reply_markup;
+        if (parse_mode) payload.parse_mode = parse_mode;
+        return payload;
     };
-    
-    if (reply_markup) payload.reply_markup = reply_markup;
-    if (parse_mode) payload.parse_mode = parse_mode;
-    
-    try {
-        await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
-    
-    } catch (error) {
-        
-        if (error.response && error.response.data) {
-            const desc = error.response.data.description;
 
-            if (desc.includes("message is not modified")) {
-                // (لا مشكلة)
-                return; // (اخرج بهدوء)
+    try {
+        // --- المحاولة 1: تعديل النص (editMessageText) ---
+        await axios.post(`${TELEGRAM_API}/editMessageText`, createPayload(false));
+    
+    } catch (textError) {
+        
+        if (textError.response && textError.response.data) {
+            const desc = textError.response.data.description;
+
+            // [ ✅✅ جديد: إذا فشل تعديل النص، جرب تعديل الكابشن ]
+            if (desc.includes("no text in the message to edit") || desc.includes("message can't be edited")) {
+                
+                console.warn(`editMessageText failed. Attempting editMessageCaption...`);
+                try {
+                    // --- المحاولة 2: تعديل الكابشن (editMessageCaption) ---
+                    await axios.post(`${TELEGRAM_API}/editMessageCaption`, createPayload(true));
+                
+                } catch (captionError) {
+                    // (فشل تعديل الكابشن أيضاً)
+                    console.error(`editMessageCaption also failed:`, captionError.response?.data || captionError.message);
+                    
+                    // (هل فشل بسبب التنسيق؟)
+                    if (captionError.response && captionError.response.data && captionError.response.data.description.includes("can't parse entities")) {
+                        console.warn(`[Fallback] Caption Markdown failed. Resending as plain text caption.`);
+                        const plainCaptionPayload = createPayload(true);
+                        delete plainCaptionPayload.parse_mode;
+                        plainCaptionPayload.caption = text; // النص الأصلي غير المهيأ
+                        try {
+                            await axios.post(`${TELEGRAM_API}/editMessageCaption`, plainCaptionPayload);
+                            return; // نجاح
+                        } catch (plainCaptionError) {
+                             console.error(`[Fallback] Plain caption failed:`, plainCaptionError.response?.data || plainCaptionError.message);
+                             throw plainCaptionError; // ارمي الخطأ الأخير
+                        }
+                    }
+                    throw captionError; // ارمي خطأ الكابشن
+                }
+                return; // (نجاح تعديل الكابشن)
             }
-            
+
+            // (فشل تعديل النص بسبب التنسيق)
             if (desc.includes("can't parse entities")) {
-                // (فشل الماركداون، أعد الإرسال كنص عادي)
                 console.warn(`Markdown parsing failed for editMessage ${chatId}:${messageId}. Resending as plain text.`);
-                // (سيحتفظ بباقي الخصائص بما فيها protect_content)
-                const retryPayload = { ...payload, text: text };
-                delete retryPayload.parse_mode; 
+                const retryPayload = createPayload(false);
+                delete retryPayload.parse_mode;
+                retryPayload.text = text; // النص الأصلي
                 try {
                     await axios.post(`${TELEGRAM_API}/editMessageText`, retryPayload);
                 } catch (retryError) {
                     console.error(`Failed to resend plain text editMessage to ${chatId}:${messageId}:`, retryError.response?.data || retryError.message);
                     throw retryError; 
                 }
-                return; // (نجحت إعادة الإرسال)
+                return; // (نجاح إعادة الإرسال)
             }
 
+            // (خطأ آخر غير متوقع)
             console.error(`Failed to edit message ${chatId}:${messageId}:`, desc);
-            throw error; 
+            throw textError; 
         
         } else {
-            console.error(`Failed to edit message ${chatId}:${messageId}:`, error.message);
-            throw error;
+            console.error(`Failed to edit message ${chatId}:${messageId}:`, textError.message);
+            throw textError;
         }
     }
 };
