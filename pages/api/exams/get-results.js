@@ -36,6 +36,7 @@ export default async (req, res) => {
         id,
         question_text,
         sort_order,
+        image_file_id,
         options ( id, option_text, is_correct )
       `)
       .eq('exam_id', examId);
@@ -96,6 +97,7 @@ export default async (req, res) => {
       return {
         id: q.id,
         question_text: q.question_text,
+        image_file_id: q.image_file_id, // [ ✅✅ جديد ]
         options: q.options,
         correct_option_id: correctOption ? correctOption.id : null,
         user_answer: userAnswer || null 
