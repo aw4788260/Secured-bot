@@ -218,6 +218,20 @@ export default function ExamPage() {
             
             {questions.map((q, index) => (
                 <div key={q.id} className="question-box">
+                    
+                    {/* [ ✅✅ جديد: عرض الصورة إن وجدت ] */}
+                    {q.image_file_id && (
+                        <div className="question-image-container">
+                            <img 
+                                src={`/api/exams/get-image?file_id=${q.image_file_id}`} 
+                                alt="Question Image" 
+                                className="question-image"
+                                // (إضافة تحميل بطيء لتحسين الأداء)
+                                loading="lazy" 
+                            />
+                        </div>
+                    )}
+                    
                     <h4>{index + 1}. {q.question_text}</h4>
                     <div className="options-list">
                         {q.options.map(opt => (
