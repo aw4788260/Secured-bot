@@ -1,7 +1,8 @@
 // pages/api/data/get-structured-courses.js
 import { supabase } from '../../../lib/supabaseClient';
 
-// (الاستعلام لم نعد بحاجة لـ allowed_attempts)
+// [✅✅ تم الإصلاح]
+// تم حذف التعليقات العربية التي تسببت في الخطأ من داخل الاستعلام
 const subjectQuery = `
   id, 
   title,
@@ -14,8 +15,8 @@ const subjectQuery = `
         id, 
         title, 
         sort_order, 
-        type,               /* [✅ جديد] */
-        storage_path        /* [✅ جديد] (مهم للـ PDF والفيديو) */
+        type,
+        storage_path 
     )
   ),
   exams ( 
@@ -46,7 +47,7 @@ export default async (req, res) => {
       const courseIds = courseAccess.map(c => c.course_id);
       const { data: subjectsFromCourses, error: subjectsErr } = await supabase
         .from('subjects')
-        .select(subjectQuery) 
+        .select(subjectQuery) // <-- استخدام الاستعلام المعدل
         .in('course_id', courseIds)
         .order('sort_order', { ascending: true })
         .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -70,7 +71,7 @@ export default async (req, res) => {
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
           .from('subjects')
-          .select(subjectQuery) 
+          .select(subjectQuery) // <-- استخدام الاستعلام المعدل
           .in('id', specificSubjectIds)
           .order('sort_order', { ascending: true })
           .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -80,13 +81,13 @@ export default async (req, res) => {
       }
     }
 
-    // --- [ ✅✅ تعديل: جلب "المحاولة الأولى" فقط ] ---
+    // --- [ جلب "المحاولة الأولى" فقط ] ---
     const { data: userAttempts, error: attemptError } = await supabase
         .from('user_attempts')
         .select('id, exam_id')
         .eq('user_id', userId)
         .eq('status', 'completed') 
-        .order('started_at', { ascending: true }); // (الأقدم أولاً)
+        .order('started_at', { ascending: true }); 
 
     if (attemptError) throw attemptError;
 
@@ -101,7 +102,7 @@ export default async (req, res) => {
     }
     // --- [ نهاية التعديل ] ---
 
-    // --- الخطوة 4: [ ✅✅ تعديل بناء البيانات ] ---
+    // --- الخطوة 4: [ بناء البيانات ] ---
     finalSubjectsData.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
     const structuredData = finalSubjectsData.map(subject => ({
@@ -121,7 +122,7 @@ export default async (req, res) => {
                           return {
                               ...exam,
                               first_attempt_id: firstAttemptId,
-                              is_completed: !!firstAttemptId, // (هل أكمله؟ نعم/لا)
+                              is_completed: !!firstAttemptId, 
                           };
                       })
     }));
@@ -129,6 +130,7 @@ export default async (req, res) => {
     res.status(200).json(structuredData); 
 
   } catch (err) {
+    // هذا هو الخطأ الذي ظهر في اللوج
     console.error("CRITICAL Error in get-structured-data:", err.message, err.stack);
     res.status(500).json({ message: err.message, details: err.stack });
   }
