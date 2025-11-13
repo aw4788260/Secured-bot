@@ -16,6 +16,8 @@ export default function ExamPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [studentName, setStudentName] = useState(""); 
+    
+    // (تم حذف حالة isTelegramWebApp لأنها لم تعد مطلوبة)
 
     // (حالات تقنية)
     const attemptIdRef = useRef(null); // لتخزين ID المحاولة
@@ -44,6 +46,7 @@ export default function ExamPage() {
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
             if (miniAppUser && miniAppUser.id) {
                 effectiveUserId = miniAppUser.id.toString();
+                // (تم حذف setIsTelegramWebApp)
             }
         }
 
@@ -131,10 +134,9 @@ export default function ExamPage() {
         
         navigator.sendBeacon('/api/exams/submit-attempt', blob);
         
-    }, []); // (هذه الدالة لا تعتمد على أي شيء متغير، فهي تقرأ من Refs)
-
+    }, []); 
     
-    // --- [ ✅✅ معدل: دالة تأكيد الخروج (لزر الرجوع) ] ---
+    // (دالة تأكيد الخروج - لزر الرجوع)
     const handleBackButtonConfirm = useCallback(() => {
         if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.showConfirm(
@@ -143,14 +145,13 @@ export default function ExamPage() {
                     if (isConfirmed) {
                         // (1. قم بالتسليم)
                         handleExitSubmit();
-                        // (2. [ ✅✅ هذا هو الإصلاح ] قم بالإغلاق)
+                        // (2. قم بالإغلاق)
                         window.Telegram.WebApp.close();
                     }
                 }
             );
         }
-    }, [handleExitSubmit]); // (تعتمد على دالة الإرسال)
-    // --- [ نهاية التعديل ] ---
+    }, [handleExitSubmit]); 
 
 
     // (Effect لتفعيل رصد الخروج)
@@ -254,6 +255,7 @@ export default function ExamPage() {
     }
 
     // (الحالة 1: عرض تفاصيل الامتحان - قبل البدء)
+    // --- [ ✅✅ معدل: لإظهار التحذير دائماً ] ---
     if (!questions) {
         return (
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -272,6 +274,19 @@ export default function ExamPage() {
                             onChange={(e) => setStudentName(e.target.value)}
                         />
                     )}
+
+                    {/* --- [ ✅✅ هذا هو التحذير الدائم ] --- */}
+                    <p style={{ 
+                        color: '#f39c12', // (لون برتقالي للتحذير)
+                        fontWeight: 'bold', 
+                        marginTop: '15px',
+                        fontSize: '0.95em',
+                        lineHeight: '1.4'
+                    }}>
+                        ⚠️ تنبيه: بمجرد بدء الامتحان، الضغط على زر الرجوع سيؤدي إلى تسليم الامتحان فوراً.
+                    </p>
+                    {/* --- [ نهاية التحذير ] --- */}
+                    
                 </div>
                 <button className="button-link" onClick={startExam} style={{width: '90%', maxWidth: '400px', marginTop: '20px'}}>
                     🚀 بدء الامتحان
