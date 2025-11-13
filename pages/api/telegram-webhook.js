@@ -2432,13 +2432,29 @@ export default async (req, res) => {
          // (التنقل)
          if (command === 'exam_edit_q_next') {
             const newIndex = stateData.current_index + 1;
-            // (الدالة ستتعامل مع حذف الرسالة القديمة وإرسال الجديدة)
-            await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex });
+            
+            // (أ) احذف الرسالة القديمة لضمان إرسال الصورة الجديدة
+            try { 
+                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
+            } catch(e){ /* تجاهل الفشل */ }
+
+            // (ب) اعرض السؤال الجديد كرسالة جديدة
+            // (نمرر current_edit_message_id: null لإجبار الدالة على الإرسال الجديد)
+            await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex, current_edit_message_id: null });
             return res.status(200).send('OK');
          }
+
+         // --- 2. التنقل (السابق) - [ ✅ إصلاح: حذف الرسالة القديمة ] ---
          if (command === 'exam_edit_q_prev') {
             const newIndex = stateData.current_index - 1;
-            await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex });
+
+            // (أ) احذف الرسالة القديمة
+            try { 
+                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
+            } catch(e){ /* تجاهل الفشل */ }
+
+            // (ب) اعرض السؤال الجديد كرسالة جديدة
+            await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex, current_edit_message_id: null });
             return res.status(200).send('OK');
          }
 
