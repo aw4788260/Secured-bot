@@ -754,9 +754,8 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
     await displayQuestionForEdit(chatId, messageId, newStateData);
 };
 
-
 /**
- * (✅✅ معدلة بالإصلاح 11: استخدام force_text لحل مشكلة حذف الصورة)
+ * (✅✅ معدلة بالإصلاح 12: إصلاح جذري لمنطق عرض الصورة)
  * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
@@ -804,44 +803,74 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     kbd.push([{ text: '✅ إنهاء التعديل', callback_data: 'exam_edit_q_finish' }]);
     const reply_markup = { inline_keyboard: kbd };
 
-    // --- [ ✅✅ المنطق الذكي للإرسال (المعدل) ] ---
+    // --- [ ✅✅ المنطق الذكي للإرسال (المعدل v12) ] ---
     const existing_message_id = messageId || stateData.current_edit_message_id;
     let new_message_id = null;
 
     try {
         if (question.image_file_id) {
-            // (1. إرسال صورة + كابشن)
+            // --- [ ✅ 1: نريد عرض "صورة" ] ---
+            
+            // (بناء نص عادي احتياطي)
+            let plainTextCaption = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
+            plainTextCaption += `${question.question_text}\n\n`;
+            
             try {
-                // (استخدام الدالة الذكية - v11)
-                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false, false);
-                new_message_id = existing_message_id; // (نجح التعديل)
-                
-            } catch (e) {
-                // (فشل التعديل - غالباً لأن الرسالة القديمة كانت نص)
-                // (سنرسل صورة جديدة)
-                console.warn("Failed to edit (maybe text-to-photo), sending new photo.");
-                const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+                // (المحاولة 1: تعديل الكابشن)
+                // (سينجح هذا إذا كانت الرسالة القديمة صورة - مثل التنقل "التالي")
+                await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
                     chat_id: chatId,
-                    photo: question.image_file_id,
+                    message_id: existing_message_id,
                     caption: text_markdown,
                     parse_mode: 'MarkdownV2',
                     reply_markup: reply_markup
                 });
-                new_message_id = response.data.result.message_id;
+                new_message_id = existing_message_id; // (نجح التعديل)
+            
+            } catch (e1) {
+                // (فشل تعديل الكابشن - غالباً لأن الرسالة القديمة كانت "نص")
+                // (هذه هي الحالة التي أبلغت عنها: الدخول لأول مرة)
+                
+                try {
+                    // (المحاولة 2: إرسال صورة "جديدة" بتنسيق)
+                    const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+                        chat_id: chatId,
+                        photo: question.image_file_id,
+                        caption: text_markdown,
+                        parse_mode: 'MarkdownV2',
+                        reply_markup: reply_markup
+                    });
+                    new_message_id = response.data.result.message_id;
+                
+                } catch (e2) {
+                    // (فشل التنسيق، أرسل كنص عادي)
+                    if (e2.response && e2.response.data && e2.response.data.description.includes("can't parse entities")) {
+                        console.warn("Markdown failed for sendPhoto, resending as plain text.");
+                        const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+                            chat_id: chatId,
+                            photo: question.image_file_id,
+                            caption: plainTextCaption,
+                            reply_markup: reply_markup
+                        });
+                        new_message_id = response.data.result.message_id;
+                    } else {
+                        throw e2; // ارمي الخطأ
+                    }
+                }
             }
 
         } else {
-            // (2. إرسال نص فقط)
+            // --- [ ✅ 2: نريد عرض "نص" ] ---
             try {
-                // [ ✅✅ الإصلاح: إجبار التعديل كنص ]
-                // (هذا سيجبر الدالة على الفشل إذا كانت الرسالة القديمة صورة)
+                // (المحاولة 1: تعديل النص - باستخدام الدالة الذكية v11)
                 await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false, true); // force_text = true
                 new_message_id = existing_message_id; 
             
             } catch (e) {
-                // ( [✅✅ الإصلاح] فشل التعديل (force_text) لأن الرسالة القديمة كانت صورة )
-                // (الآن نرسل رسالة نصية "جديدة")
+                // (فشل التعديل (force_text) - لأن الرسالة القديمة كانت صورة)
+                // (المحاولة 2: إرسال رسالة نصية "جديدة")
                 console.warn("Forced text edit failed (old msg was photo?), sending new text message.");
+                // (استدعاء دالة الإرسال الآمنة v8)
                 const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
                 if (response && response.data && response.data.result) {
                     new_message_id = response.data.result.message_id;
@@ -869,12 +898,14 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         console.error("Critical error in displayQuestionForEdit:", e.response ? e.response.data : e.message);
         const errorDetails = e.response ? (e.response.data.description || e.message) : e.message;
         try {
+            // (الدالة الآمنة v8 ستتعامل مع هذا)
             await sendMessage(chatId, `حدث خطأ أثناء عرض السؤال: ${errorDetails}.\n\n(يمكنك الضغط على "إنهاء التعديل" للعودة).`);
         } catch (e2) {
              console.error("Failed to even send the error message:", e2.response?.data || e2.message);
         }
     }
 };
+
 
 /**
  * (جديد) دالة عرض إحصائيات الامتحان
@@ -2657,13 +2688,12 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // (✅✅ معدل بالإصلاح 10: إصلاح خطأ 400)
+      // (✅✅ معدل بالإصلاح 12: إصلاح /cancel لرسائل الصور)
       if (text === '/cancel') {
          const oldState = user.admin_state;
          const oldStateData = user.state_data;
          await setUserState(userId, null, null);
          
-         // [ ✅✅ إصلاح: جلب ID الرسالة الصحيح (سواء كانت أصلية أو محدثة) ]
          const stateMessageId = (oldStateData && oldStateData.current_edit_message_id) 
                                 ? oldStateData.current_edit_message_id 
                                 : (oldStateData && oldStateData.message_id) 
@@ -2673,15 +2703,29 @@ export default async (req, res) => {
          if (stateMessageId) {
              // --- [مسار المستخدم وهو في حالة (state)] ---
              try {
-                // (نحاول تعديل الرسالة الحالية (سواء كانت نص أو صورة))
-                // (لنعرض قائمة الأدمن الرئيسية مباشرة)
-                if (user.is_admin) {
-                    await sendAdminMenu(chatId, user, stateMessageId); 
+                // (إذا كنا في وضع تعديل الأسئلة، فمن المحتمل أن تكون الرسالة صورة)
+                // (لذا، نرسل رسالة جديدة ونحذف القديمة، بدلاً من المخاطرة بالتعديل)
+                if (oldState === 'awaiting_question_edit' || oldState === 'awaiting_replacement_image' || oldState === 'awaiting_replacement_question_poll') {
+                    
+                    if (user.is_admin) {
+                        await sendAdminMenu(chatId, user, null); // (إرسال كرسالة جديدة)
+                    } else {
+                        await handleStartCommand(chatId, user, null); // (إرسال كرسالة جديدة)
+                    }
+                    // (حذف رسالة السؤال القديمة)
+                    try { 
+                        await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateMessageId }); 
+                    } catch(e) { /* تجاهل الفشل */ }
+
                 } else {
-                    await handleStartCommand(chatId, user, stateMessageId);
+                    // (باقي الحالات آمنة للتعديل)
+                    if (user.is_admin) {
+                        await sendAdminMenu(chatId, user, stateMessageId); 
+                    } else {
+                        await handleStartCommand(chatId, user, stateMessageId);
+                    }
                 }
              } catch (editError) {
-                // (فشل التعديل لسبب ما، نرسل رسالة جديدة)
                 console.warn(`Failed to edit message on /cancel, sending new message:`, editError.message);
                 if (user.is_admin) {
                     await sendAdminMenu(chatId, user, null); 
