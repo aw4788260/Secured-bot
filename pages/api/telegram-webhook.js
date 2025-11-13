@@ -639,6 +639,10 @@ const sendStatistics = async (chatId, messageId) => {
 /**
  * (جديد) دالة عرض قائمة الامتحانات الخاصة بمادة
  */
+/**
+ * (جديد) دالة عرض قائمة الامتحانات الخاصة بمادة
+ * (✅✅ معدلة بالإصلاح 18: لحل مشكلة 400 (إنهاء التعديل))
+ */
 const sendContentMenu_Exams_For_Subject = async (chatId, messageId, subjectId) => {
   await setUserState(chatId, null, { current_subject_id: subjectId });
 
@@ -648,12 +652,10 @@ const sendContentMenu_Exams_For_Subject = async (chatId, messageId, subjectId) =
                                       .eq('subject_id', subjectId)
                                       .order('sort_order');
                                       
-  if (error) return await editMessage(chatId, messageId, `خطأ: ${error.message}`);
-
   // (الضغط على الامتحان سيفتح قائمة التعديل)
   const keyboard = buildKeyboard(exams.map(e => ({ id: e.id, text: `✏️ ${e.title}` })), `content_view_exam_`);
 
-  if (exams.length === 0) {
+  if (exams && exams.length === 0) {
       keyboard.push([{ text: '(لا توجد امتحانات)', callback_data: 'noop' }]);
   }
   
@@ -665,10 +667,29 @@ const sendContentMenu_Exams_For_Subject = async (chatId, messageId, subjectId) =
   
   keyboard.push([{ text: '🔙 رجوع (للمادة)', callback_data: `content_nav_subject_${subjectId}` }]);
   
+  const reply_markup = { inline_keyboard: keyboard };
   const text = 'إدارة الامتحانات (التابعة للمادة):\n\nاختر امتحاناً للتعديل أو أضف جديد:';
-  await editMessage(chatId, messageId, text, { inline_keyboard: keyboard });
-};
 
+  // (التعامل مع الخطأ هنا)
+  if (error) {
+      const error_text = `خطأ في جلب الامتحانات: ${error.message}`;
+      if (messageId) {
+          await editMessage(chatId, messageId, error_text, reply_markup);
+      } else {
+          await sendMessage(chatId, error_text, reply_markup);
+      }
+      return;
+  }
+
+  // --- [ ✅✅ هذا هو الإصلاح ] ---
+  // (إذا كان messageId موجوداً، قم بالتعديل)
+  if (messageId) {
+    await editMessage(chatId, messageId, text, reply_markup);
+  // (وإلا، قم بالإرسال كرسالة جديدة)
+  } else {
+    await sendMessage(chatId, text, reply_markup);
+  }
+};
 // (الكود الصحيح - للاستبدال)
 
 /**
@@ -2751,11 +2772,16 @@ export default async (req, res) => {
       }
 
       // (✅✅ معدل بالإصلاح 12: إصلاح /cancel لرسائل الصور)
+         // (✅✅ معدل بالإصلاح 18: لحل مشكلة /cancel مع الصور)
       if (text === '/cancel') {
          const oldState = user.admin_state;
          const oldStateData = user.state_data;
          await setUserState(userId, null, null);
          
+         // (1. حذف رسالة /cancel التي أرسلها المستخدم)
+         try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
+
+         // (2. تحديد ID الرسالة التي يجب حذفها (رسالة السؤال/الصورة))
          const stateMessageId = (oldStateData && oldStateData.current_edit_message_id) 
                                 ? oldStateData.current_edit_message_id 
                                 : (oldStateData && oldStateData.message_id) 
@@ -2765,16 +2791,28 @@ export default async (req, res) => {
          if (stateMessageId) {
              // --- [مسار المستخدم وهو في حالة (state)] ---
              try {
-                // (إذا كنا في وضع تعديل الأسئلة، فمن المحتمل أن تكون الرسالة صورة)
-                // (لذا، نرسل رسالة جديدة ونحذف القديمة، بدلاً من المخاطرة بالتعديل)
-                if (oldState === 'awaiting_question_edit' || oldState === 'awaiting_replacement_image' || oldState === 'awaiting_replacement_question_poll') {
+                // [ ✅✅✅ هذا هو الإصلاح: توسيع قائمة الحالات ]
+                // (تحديد كل الحالات التي قد تعرض رسالة (صورة أو نص) يجب حذفها)
+                const delete_and_send_new_states = [
+                    'awaiting_question_edit', 
+                    'awaiting_replacement_image', 
+                    'awaiting_replacement_question_poll',
+                    'awaiting_new_question_after',
+                    'awaiting_new_question_end',
+                    'awaiting_exam_questions', // (حالة إضافة الأسئلة لأول مرة)
+                    'awaiting_user_note', // (حالة انتظار الملاحظة للمستخدم)
+                    'awaiting_payment_proof' // (حالة انتظار الدفع للمستخدم)
+                ];
+
+                if (delete_and_send_new_states.includes(oldState)) {
                     
+                    // (إرسال القائمة كرسالة "جديدة")
                     if (user.is_admin) {
-                        await sendAdminMenu(chatId, user, null); // (إرسال كرسالة جديدة)
+                        await sendAdminMenu(chatId, user, null); 
                     } else {
-                        await handleStartCommand(chatId, user, null); // (إرسال كرسالة جديدة)
+                        await handleStartCommand(chatId, user, null); 
                     }
-                    // (حذف رسالة السؤال القديمة)
+                    // (حذف رسالة السؤال/الصورة القديمة)
                     try { 
                         await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateMessageId }); 
                     } catch(e) { /* تجاهل الفشل */ }
@@ -2806,7 +2844,6 @@ export default async (req, res) => {
          }
          return res.status(200).send('OK');
       }
-      
             // --- [ معالجة الحالات (State Machine) ] ---
       
       const currentState = user.admin_state; 
