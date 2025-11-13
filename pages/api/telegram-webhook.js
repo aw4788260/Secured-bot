@@ -756,14 +756,14 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 
 
 /**
- * (✅✅ معدلة بالإصلاح 8: إصلاح كتلة catch)
+ * (✅✅ معدلة بالإصلاح 11: استخدام force_text لحل مشكلة حذف الصورة)
  * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
+    // ... (الكود من هنا حتى "const reply_markup" يبقى كما هو)
     const { questions, current_index } = stateData;
     const total = questions.length;
     
-    // (في حال تم حذف كل الأسئلة)
     if (total === 0) {
          await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
          return;
@@ -772,7 +772,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     const safe_index = Math.max(0, Math.min(current_index, total - 1));
     const question = questions[safe_index];
     
-    // --- بناء الكابشن/النص (المرة الأولى - بالتنسيق) ---
     let text_markdown = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
     text_markdown += `الترتيب: ${question.sort_order}\n\n`;
     text_markdown += `*${escapeMarkdownV2(question.question_text)}*\n\n`;
@@ -780,7 +779,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         text_markdown += `• ${escapeMarkdownV2(opt.option_text)} ${opt.is_correct ? '✅' : ''}\n`;
     });
 
-    // --- بناء الأزرار (كما هي من قبل) ---
     const kbd = [];
     const navRow = [];
     if (safe_index > 0) navRow.push({ text: '<< السابق', callback_data: 'exam_edit_q_prev' });
@@ -806,7 +804,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     kbd.push([{ text: '✅ إنهاء التعديل', callback_data: 'exam_edit_q_finish' }]);
     const reply_markup = { inline_keyboard: kbd };
 
-    // --- [ المنطق الذكي للإرسال (المعدل) ] ---
+    // --- [ ✅✅ المنطق الذكي للإرسال (المعدل) ] ---
     const existing_message_id = messageId || stateData.current_edit_message_id;
     let new_message_id = null;
 
@@ -814,6 +812,14 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         if (question.image_file_id) {
             // (1. إرسال صورة + كابشن)
             try {
+                // (استخدام الدالة الذكية - v11)
+                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false, false);
+                new_message_id = existing_message_id; // (نجح التعديل)
+                
+            } catch (e) {
+                // (فشل التعديل - غالباً لأن الرسالة القديمة كانت نص)
+                // (سنرسل صورة جديدة)
+                console.warn("Failed to edit (maybe text-to-photo), sending new photo.");
                 const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
                     chat_id: chatId,
                     photo: question.image_file_id,
@@ -822,45 +828,24 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
                     reply_markup: reply_markup
                 });
                 new_message_id = response.data.result.message_id;
-            
-            } catch (photoError) {
-                if (photoError.response && photoError.response.data && photoError.response.data.description.includes("can't parse entities")) {
-                    console.warn(`Markdown parsing failed for sendPhoto. Resending as plain text.`);
-                    let plainText = `✏️ تعديل الأسئلة (السؤال ${safe_index + 1} من ${total})\n`;
-                    plainText += `الترتيب: ${question.sort_order}\n\n`;
-                    plainText += `${question.question_text}\n\n`; 
-                    question.options.forEach(opt => {
-                        plainText += `• ${opt.option_text} ${opt.is_correct ? '✅' : ''}\n`;
-                    });
-
-                    const response = await axios.post(`${TELEGRAM_API}/sendPhoto`, {
-                        chat_id: chatId,
-                        photo: question.image_file_id,
-                        caption: plainText, 
-                        reply_markup: reply_markup
-                    });
-                    new_message_id = response.data.result.message_id;
-                } else {
-                    throw photoError; 
-                }
             }
 
         } else {
             // (2. إرسال نص فقط)
             try {
-                // (حماية ضد النسخ)
-                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false); 
+                // [ ✅✅ الإصلاح: إجبار التعديل كنص ]
+                // (هذا سيجبر الدالة على الفشل إذا كانت الرسالة القديمة صورة)
+                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false, true); // force_text = true
                 new_message_id = existing_message_id; 
+            
             } catch (e) {
-                // (فشل التعديل - غالباً لأن الرسالة القديمة كانت صورة)
-                // (الدالة الجديدة سترمي الخطأ، نلتقطه هنا)
-                // (نرسل رسالة جديدة - الدالة الجديدة ستتعامل مع التنسيق بأمان)
+                // ( [✅✅ الإصلاح] فشل التعديل (force_text) لأن الرسالة القديمة كانت صورة )
+                // (الآن نرسل رسالة نصية "جديدة")
+                console.warn("Forced text edit failed (old msg was photo?), sending new text message.");
                 const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
-                // (نتحقق أن response ليس null - على الرغم من أن الدالة الجديدة سترمي خطأ)
                 if (response && response.data && response.data.result) {
                     new_message_id = response.data.result.message_id;
                 } else {
-                    // (هذا لا يجب أن يحدث إذا كانت sendMessage ترمي الأخطاء)
                     throw new Error("sendMessage returned null or invalid response after fallback.");
                 }
             }
@@ -881,18 +866,10 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         });
 
     } catch (e) {
-        // --- [ ✅✅ الإصلاح لـ "Cannot read properties of null" ] ---
-        // (الآن نلتقط الأخطاء المرمية من sendMessage أو editMessage)
         console.error("Critical error in displayQuestionForEdit:", e.response ? e.response.data : e.message);
-        
         const errorDetails = e.response ? (e.response.data.description || e.message) : e.message;
-        
         try {
-            // (الدالة الجديدة sendMessage ستتعامل مع هذا بأمان)
             await sendMessage(chatId, `حدث خطأ أثناء عرض السؤال: ${errorDetails}.\n\n(يمكنك الضغط على "إنهاء التعديل" للعودة).`);
-            
-            // (نبقي المستخدم في حالته ليتمكن من الخروج)
-            
         } catch (e2) {
              console.error("Failed to even send the error message:", e2.response?.data || e2.message);
         }
@@ -2480,20 +2457,27 @@ export default async (req, res) => {
          }
          
          // (بدء عملية الإضافة "بعد")
+         // (✅✅ معدل بالإصلاح 11: إصلاح "الصورة اللاصقة")
+         // (بدء عملية الإضافة "بعد")
          if (command.startsWith('exam_edit_q_add_after_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             const currentQuestion = stateData.questions[stateData.current_index];
             await setUserState(userId, 'awaiting_new_question_after', {
                 ...stateData,
-                after_sort_order: currentQuestion.sort_order 
+                after_sort_order: currentQuestion.sort_order,
+                sticky_image_file_id: null // [ ✅✅ إصلاح: مسح الذاكرة ]
             });
             await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) الجديد ليتم إضافته "بعد" هذا السؤال:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
             return res.status(200).send('OK');
          }
          
+         // (✅✅ معدل بالإصلاح 11: إصلاح "الصورة اللاصقة")
          // (بدء عملية الإضافة "للنهاية")
          if (command === 'exam_edit_q_add_end') {
-             await setUserState(userId, 'awaiting_new_question_end', stateData);
+             await setUserState(userId, 'awaiting_new_question_end', {
+                ...stateData,
+                sticky_image_file_id: null // [ ✅✅ إصلاح: مسح الذاكرة ]
+             });
              await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) الجديد ليتم إضافته "في نهاية" الامتحان:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
              return res.status(200).send('OK');
          }
@@ -2852,24 +2836,30 @@ export default async (req, res) => {
         // (حذف الرسالة النصية للأدمن لتبقى الواجهة نظيفة)
         try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
+             // [ ✅✅ معدل بالإصلاح 11: إصلاح خطأ 400 ]
         if (message.photo && (
-    currentState === 'awaiting_exam_questions' || 
-    currentState === 'awaiting_new_question_end' ||
-    currentState === 'awaiting_new_question_after' ||
-    currentState === 'awaiting_replacement_question'
-)) {
-    // (حذف رسالة الصورة التي أرسلها الأدمن للنظافة)
-    try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
+            currentState === 'awaiting_exam_questions' || 
+            currentState === 'awaiting_new_question_end' ||
+            currentState === 'awaiting_new_question_after' ||
+            currentState === 'awaiting_replacement_question'
+        )) {
+            try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
-    const photo_file_id = message.photo[message.photo.length - 1].file_id;
+            const photo_file_id = message.photo[message.photo.length - 1].file_id;
+            
+            await setUserState(userId, currentState, { ...stateData, sticky_image_file_id: photo_file_id });
 
-    // [ ✅✅ جديد: حفظ الصورة في "الذاكرة المؤقتة" (الحالة) ]
-    await setUserState(userId, currentState, { ...stateData, sticky_image_file_id: photo_file_id });
-
-    // (الرد على الأدمن لطلب السؤال)
-    await editMessage(chatId, stateData.message_id, `🖼️ تم استلام الصورة.\n\nأرسل الآن الـ Poll أو النص الخاص بهذه الصورة.\n\n(أو /cancel لإلغاء الصورة والسؤال)`);
-    return res.status(200).send('OK');
-}
+            // (استدعاء الدالة الذكية - v11 - مع تحديد عدم الحماية)
+            await editMessage(
+                chatId, 
+                stateData.current_edit_message_id, 
+                `🖼️ تم استلام الصورة.\n\nأرسل الآن الـ Poll أو النص الخاص بهذه الصورة.\n\n(أو /cancel لإلغاء الصورة والسؤال)`,
+                null, // reply_markup
+                null, // parse_mode
+                false // protect_content
+            );
+            return res.status(200).send('OK');
+        }
         
         switch (currentState) {
 
