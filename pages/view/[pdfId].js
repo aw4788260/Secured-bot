@@ -5,7 +5,6 @@ import Head from 'next/head';
 
 // (انسخ دالة useUserCheck بالكامل من ملف watch/[videoId].js)
 const useUserCheck = (router) => {
-    // ... (نفس كود التحقق من المستخدم)
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     useEffect(() => {
@@ -32,8 +31,10 @@ export default function ViewPdfPage() {
     const { pdfId } = router.query;
     const { user, error } = useUserCheck(router);
 
-    // --- [ ✅✅ بداية: منطق العلامة المائية "المكررة" ] ---
-    // (سنقوم بإنشاء مصفوفة من العناصر لتكرارها على الشاشة)
+    // --- [ ✅✅ جديد: إضافة حالة لتتبع خطأ تحميل الـ PDF ] ---
+    const [pdfError, setPdfError] = useState(false);
+
+    // --- [ منطق العلامة المائية "المكررة" ] ---
     const [watermarkSpans, setWatermarkSpans] = useState([]);
     const watermarkText = user ? `${user.first_name} (${user.id})` : '';
 
@@ -42,12 +43,26 @@ export default function ViewPdfPage() {
             // (أنشئ 100 عنصر "وهمي" ليتم تكرارهم)
             setWatermarkSpans(new Array(100).fill(0));
         }
-    }, [user]); // (يعتمد على المستخدم)
+    }, [user]); 
     // --- [ نهاية المنطق ] ---
 
 
-    if (error) { return <div className="message-container"><h1>{error}</h1></div>; }
-    if (!user || !pdfId) { return <div className="message-container"><h1>جاري التحميل...</h1></div>; }
+    if (error) { 
+        return (
+            <div className="message-container">
+                <Head><title>خطأ</title></Head>
+                <h1>{error}</h1>
+            </div>
+        ); 
+    }
+    if (!user || !pdfId) { 
+        return (
+            <div className="message-container">
+                <Head><title>جاري التحميل...</title></Head>
+                <h1>جاري التحميل...</h1>
+            </div>
+        ); 
+    }
 
     const pdfStreamUrl = `/api/secure/get-pdf?lessonId=${pdfId}`;
 
@@ -56,11 +71,34 @@ export default function ViewPdfPage() {
             <Head><title>عرض الملف</title></Head>
 
             <div className="pdf-wrapper">
+                
                 {/* (الـ PDF سيُعرض في الخلفية) */}
                 <iframe
                     src={pdfStreamUrl}
                     className="pdf-iframe"
                     title="PDF Viewer"
+                    // --- [ ✅✅ جديد: إضافة معالج الخطأ ] ---
+                    onError={() => {
+                        console.error("Iframe onError triggered.");
+                        setPdfError(true);
+                    }}
+                    onLoad={(e) => {
+                        // (للتأكد أن التحميل نجح)
+                        // (بعض المتصفحات لا تطلق 'error' ولكن 'load' على صفحة خطأ)
+                        try {
+                            // (محاولة الوصول لـ contentWindow ستفشل إذا كان cross-origin)
+                            // (إذا نجحت وفشلت في قراءة document، فهذا خطأ)
+                            if (!e.target.contentWindow.document) {
+                                console.warn("Iframe onLoad triggered but contentWindow.document is inaccessible.");
+                                setPdfError(true);
+                            }
+                            // (إذا نجحت، فالتحميل سليم)
+                        } catch (e) {
+                            // (هذا هو المتوقع أن يحدث إذا نجح التحميل)
+                            // (خطأ Cross-origin - معناه أن التحميل "نجح" برابط تليجرام)
+                            console.log("Iframe load successful (cross-origin).");
+                        }
+                    }}
                 />
 
                 {/* (طبقة العلامة المائية المكررة) */}
@@ -71,33 +109,47 @@ export default function ViewPdfPage() {
                         </span>
                     ))}
                 </div>
+
+                {/* --- [ ✅✅ جديد: إظهار رسالة الخطأ فوق كل شيء ] --- */}
+                {pdfError && (
+                    <div className="pdf-load-error">
+                        <h1>خطأ في تحميل الملف</h1>
+                        <p>لم نتمكن من عرض ملف الـ PDF.</p>
+                        <p style={{fontSize: '0.8em', opacity: 0.7}}>(قد يكون الملف تالفاً، أو أن الـ API لا يعمل، أو أن المتصفح يمنع العرض)</p>
+                    </div>
+                )}
             </div>
 
             <style jsx global>{`
                 body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-                .message-container { ... }
+                
+                .message-container { 
+                    display: flex; align-items: center; justify-content: center; 
+                    height: 100vh; color: white; padding: 20px; text-align: center; 
+                    background: #111827; /* (نفس لون الخلفية) */
+                }
                 
                 .page-container-pdf {
                     width: 100%;
                     height: 100vh;
                     display: flex;
+                    background: #111827; /* (نفس لون الخلفية) */
                 }
                 .pdf-wrapper {
                     position: relative; /* (هام جداً) */
                     width: 100%;
                     height: 100%;
                     border: none;
+                    background: #333; /* (خلفية رمادية للـ iframe قبل التحميل) */
                 }
                 .pdf-iframe {
                     width: 100%;
                     height: 100%;
                     border: none;
-                    /* (سيكون هو الطبقة السفلية) */
                     position: absolute;
-                    z-index: 1; 
+                    z-index: 1; /* (الطبقة السفلية) */
                 }
                 
-                /* --- [ ✅✅ ستايل العلامة المائية المكررة ] --- */
                 .pdf-watermark-overlay {
                     position: absolute;
                     top: 0; left: 0;
@@ -105,24 +157,38 @@ export default function ViewPdfPage() {
                     height: 100%;
                     z-index: 2; /* (فوق الـ PDF) */
                     pointer-events: none; /* (لتمرير النقرات للـ PDF) */
-                    
-                    /* (استخدام Flex لعمل التكرار) */
                     display: flex;
                     flex-wrap: wrap;
                     justify-content: center;
                     align-items: center;
-                    overflow: hidden; /* (لضمان عدم خروجها) */
+                    overflow: hidden;
+                    background: transparent; /* [✅ تأكيد أنه شفاف] */
                 }
                 
                 .watermark-tile {
-                    /* (كل بلاطة علامة مائية) */
-                    padding: 30px 50px; /* (التباعد بين الكلمات) */
+                    padding: 30px 50px; 
                     font-size: 16px;
                     font-weight: bold;
-                    color: rgba(128, 128, 128, 0.15); /* (لون رمادي شفاف جداً) */
-                    transform: rotate(-30deg); /* (زاوية ميلان) */
+                    color: rgba(128, 128, 128, 0.15); 
+                    transform: rotate(-30deg); 
                     white-space: nowrap;
                     user-select: none; /* (لمنع التحديد) */
+                }
+
+                /* --- [ ✅✅ ستايل رسالة الخطأ ] --- */
+                .pdf-load-error {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 100; /* (فوق كل شيء) */
+                    background: rgba(200, 50, 50, 0.85); /* (أحمر) */
+                    color: white;
+                    padding: 20px 40px;
+                    border-radius: 10px;
+                    text-align: center;
+                    pointer-events: all; 
+                    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
                 }
             `}</style>
         </div>
