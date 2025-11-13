@@ -652,8 +652,8 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 
 
 /**
- * (✅✅ معدل بالكامل ومصحح) دالة عرض السؤال الحالي في وضع التعديل
- * (تقوم بإرسال صورة أو تعديل نص + تحتوي على "Fallback" للـ Markdown)
+ * (✅✅ معدل بالإصلاح 3) دالة عرض السؤال الحالي في وضع التعديل
+ * (تم إصلاح كتلة catch لعدم إلغاء الحالة)
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     const { questions, current_index } = stateData;
@@ -702,7 +702,7 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     kbd.push([{ text: '✅ إنهاء التعديل', callback_data: 'exam_edit_q_finish' }]);
     const reply_markup = { inline_keyboard: kbd };
 
-    // --- [ ✅✅ المنطق الذكي للإرسال (المعدل) ] ---
+    // --- [ المنطق الذكي للإرسال (المعدل) ] ---
     const existing_message_id = messageId || stateData.current_edit_message_id;
     let new_message_id = null;
 
@@ -748,7 +748,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
 
         } else {
             // (2. إرسال نص فقط)
-            // (الدوال editMessage و sendMessage تحتوي "بالفعل" على هذا المنطق)
             try {
                 await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2');
                 new_message_id = existing_message_id; // (نفس الرسالة)
@@ -775,13 +774,16 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
     } catch (e) {
         console.error("Critical error in displayQuestionForEdit:", e.response ? e.response.data : e.message);
         
-        // ( [✅✅ تحسين رسالة الخطأ] إظهار الخطأ الحقيقي من تليجرام)
         const errorDetails = e.response ? (e.response.data.description || e.message) : e.message;
         
         try {
-            // (إرسال رسالة الخطأ للمستخدم)
-            await sendMessage(chatId, `حدث خطأ أثناء عرض السؤال: ${errorDetails}. تم إلغاء التعديل.`);
-            await setUserState(chatId, null, null);
+            // (نرسل رسالة خطأ، لكن "لا" نلغي الحالة)
+            // (هذا يسمح للأدمن بالضغط على "إنهاء" أو "رجوع" للهروب من الوضع)
+            await sendMessage(chatId, `حدث خطأ أثناء عرض السؤال: ${errorDetails}.\n\n(يمكنك الضغط على "إنهاء التعديل" للعودة).`);
+            
+            // [ ✅✅ الإصلاح الرئيسي: تم حذف سطر "setUserState(chatId, null, null)" من هنا ]
+            // (بهذا الشكل، تبقى الحالة "awaiting_question_edit" فعالة)
+
         } catch (e2) {}
     }
 };
