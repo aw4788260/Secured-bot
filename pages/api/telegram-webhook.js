@@ -2979,7 +2979,7 @@ export default async (req, res) => {
             currentState === 'awaiting_exam_questions' || 
             currentState === 'awaiting_new_question_end' ||
             currentState === 'awaiting_new_question_after' ||
-            currentState === 'awaiting_replacement_question'
+            
         )) {
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
