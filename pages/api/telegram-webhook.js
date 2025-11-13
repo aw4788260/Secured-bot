@@ -2942,24 +2942,29 @@ export default async (req, res) => {
 
           // --- [ ✅✅ جديد: حالات تعديل الأسئلة (صورة/بول) ] ---
           
+          // (✅✅ معدل: الحفاظ على رقم السؤال بعد استبدال الصورة)
           case 'awaiting_replacement_image':
             // (يجب أن يستقبل صورة فقط)
             if (!message.photo) {
                 await editMessage(chatId, stateData.current_edit_message_id, 'الرجاء إرسال "صورة" فقط، أو /cancel');
                 return res.status(200).send('OK');
             }
+            
             // (حذف رسالة الصورة للنظافة)
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
             
             const file_id = message.photo[message.photo.length - 1].file_id;
             
+            // 1. تحديث قاعدة البيانات
             await supabase.from('questions')
                 .update({ image_file_id: file_id })
                 .eq('id', stateData.question_id_to_replace);
                 
             await editMessage(chatId, stateData.current_edit_message_id, '🖼️ تم استبدال الصورة. جاري إعادة تحميل السؤال...');
-            // (إعادة تحميل الجلسة لإظهار السؤال بالصورة الجديدة)
-            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
+            
+            // 2. إعادة تحميل الجلسة (مع تمرير رقم السؤال الحالي)
+            // [ ✅✅ هذا هو التعديل الهام: تمرير stateData.current_index ]
+            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData, stateData.current_index);
             break;
 
           // (✅✅ معدل: دعم النص والـ Poll للاستبدال)
