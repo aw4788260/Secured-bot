@@ -2481,12 +2481,17 @@ export default async (req, res) => {
          if (command.startsWith('exam_edit_q_delete_')) {
             const questionId = parseInt(command.split('_')[4], 10);
             
-            await editMessage(chatId, stateData.current_edit_message_id, 'جاري حذف السؤال...');
-            await supabase.from('questions').delete().eq('id', questionId);
-            await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
+            // [ ✅ تعديل: حذفنا رسالة editMessage('جاري حذف السؤال...') ]
             
-            // [ ✅ تعديل: الحفاظ على رقم السؤال الحالي بعد الحذف ]
-            await loadQuestionsForEditSession(chatId, stateData.message_id, stateData, stateData.current_index);
+            const { error } = await supabase.from('questions').delete().eq('id', questionId);
+            
+            if (error) {
+                await answerCallbackQuery(callback_query.id, { text: `خطأ: ${error.message}`, show_alert: true });
+            } else {
+                await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
+                // (إعادة التحميل ستُحدّث الواجهة تلقائياً)
+                await loadQuestionsForEditSession(chatId, stateData.message_id, stateData, stateData.current_index);
+            }
             return res.status(200).send('OK');
          }
 
@@ -2943,6 +2948,7 @@ export default async (req, res) => {
           // --- [ ✅✅ جديد: حالات تعديل الأسئلة (صورة/بول) ] ---
           
           // (✅✅ معدل: الحفاظ على رقم السؤال بعد استبدال الصورة)
+        // (✅✅ معدل: حذف الرسالة القديمة وإرسال جديدة لحل مشكلة "الذاكرة القديمة")
           case 'awaiting_replacement_image':
             // (يجب أن يستقبل صورة فقط)
             if (!message.photo) {
@@ -2950,7 +2956,7 @@ export default async (req, res) => {
                 return res.status(200).send('OK');
             }
             
-            // (حذف رسالة الصورة للنظافة)
+            // (حذف رسالة الصورة التي أرسلها الأدمن)
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
             
             const file_id = message.photo[message.photo.length - 1].file_id;
@@ -2959,16 +2965,27 @@ export default async (req, res) => {
             await supabase.from('questions')
                 .update({ image_file_id: file_id })
                 .eq('id', stateData.question_id_to_replace);
-                
-            await editMessage(chatId, stateData.current_edit_message_id, '🖼️ تم استبدال الصورة. جاري إعادة تحميل السؤال...');
             
-            // 2. إعادة تحميل الجلسة (مع تمرير رقم السؤال الحالي)
-            // [ ✅✅ هذا هو التعديل الهام: تمرير stateData.current_index ]
-            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData, stateData.current_index);
-            break;
+            // 2. [ هام ] حذف رسالة السؤال القديمة (لإزالة الصورة القديمة من الشاشة)
+            if (stateData.current_edit_message_id) {
+                try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){}
+            }
 
-          // (✅✅ معدل: دعم النص والـ Poll للاستبدال)
-                  case 'awaiting_replacement_question_poll':
+            // 3. تحديث الحالة المحلية (لتجنب التأخير في جلب البيانات)
+            const qIndex = stateData.questions.findIndex(q => q.id === stateData.question_id_to_replace);
+            if (qIndex > -1) {
+                stateData.questions[qIndex].image_file_id = file_id;
+            }
+
+            // 4. عرض السؤال الجديد (كرسالة جديدة تماماً)
+            // (تمرير null يجبر الدالة على الإرسال من جديد)
+            await displayQuestionForEdit(chatId, null, { 
+                ...stateData, 
+                current_edit_message_id: null 
+            });
+            break;
+// (✅✅ معدل: حذف القديم وإرسال جديد لضمان تحديث المحتوى)
+          case 'awaiting_replacement_question_poll':
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
             let replacementQuestions = [];
@@ -2988,17 +3005,30 @@ export default async (req, res) => {
             }
 
             const parsedPoll = [replacementQuestions[0]];
-            await editMessage(chatId, stateData.current_edit_message_id, '⚙️ جاري استبدال السؤال...');
+            
+            // (إشعار مؤقت)
+            await editMessage(chatId, stateData.current_edit_message_id, '⚙️ جاري الاستبدال...');
+            
             const qid_to_replace = stateData.question_id_to_replace;
             const { data: oldQ } = await supabase.from('questions').select('sort_order, image_file_id').eq('id', qid_to_replace).single();
+            
+            // (حذف السؤال القديم من القاعدة)
             await supabase.from('questions').delete().eq('id', qid_to_replace);
             
+            // (إدراج الجديد)
             const newStateRepl = { ...stateData, sticky_image_file_id: oldQ ? oldQ.image_file_id : null, current_state: 'awaiting_replacement_question_poll' };
             await saveParsedQuestions(parsedPoll, newStateRepl, chatId, (oldQ ? oldQ.sort_order : 0));
 
-            // [ ✅ تعديل: العودة لنفس رقم السؤال (current_index) ]
-            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData, stateData.current_index);
+            // [ هام ] حذف رسالة السؤال القديمة من الشات
+            if (stateData.current_edit_message_id) {
+                try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); } catch(e){}
+            }
+
+            // [ هام ] إعادة تحميل الجلسة كرسالة جديدة (null)
+            await loadQuestionsForEditSession(chatId, null, stateData, stateData.current_index);
             break;
+
+            
           // --- [ نهاية الحالات الجديدة ] ---
             
           case 'awaiting_user_ids':
