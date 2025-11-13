@@ -156,7 +156,7 @@ const editMarkup = async (chatId, messageId, reply_markup = null) => {
 };
 
 /**
- * (✅✅ معدلة بالإصلاح 9: أذكى دالة تعديل)
+ * (✅✅ معدلة بالإصلاح 10: معالجة "message not modified" للكابشن)
  * (تحاول تعديل النص، وإذا فشلت، تحاول تعديل الكابشن تلقائياً)
  */
 const editMessage = async (chatId, messageId, text, reply_markup = null, parse_mode = null, protect_content = false) => {
@@ -198,10 +198,16 @@ const editMessage = async (chatId, messageId, text, reply_markup = null, parse_m
                 
                 } catch (captionError) {
                     // (فشل تعديل الكابشن أيضاً)
+                    const captionDesc = captionError.response?.data?.description || "";
+                    
+                    // [ ✅✅ إصلاح: تجاهل هذا الخطأ بهدوء ]
+                    if (captionDesc.includes("message is not modified")) {
+                        return; // (لا مشكلة، اخرج)
+                    }
+
                     console.error(`editMessageCaption also failed:`, captionError.response?.data || captionError.message);
                     
-                    // (هل فشل بسبب التنسيق؟)
-                    if (captionError.response && captionError.response.data && captionError.response.data.description.includes("can't parse entities")) {
+                    if (captionDesc.includes("can't parse entities")) {
                         console.warn(`[Fallback] Caption Markdown failed. Resending as plain text caption.`);
                         const plainCaptionPayload = createPayload(true);
                         delete plainCaptionPayload.parse_mode;
@@ -2453,12 +2459,23 @@ export default async (req, res) => {
          }
          
          // (حذف "الصورة فقط")
+         // (✅✅ معدل بالإصلاح 10: إصلاح "حذف الصورة فقط")
          if (command.startsWith('exam_edit_q_delete_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
+            
+            // 1. تحديث قاعدة البيانات
             await supabase.from('questions').update({ image_file_id: null }).eq('id', questionId);
             await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف الصورة فقط' });
-            // (إعادة تحميل الجلسة - سيعرض السؤال كنص الآن)
-            await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
+
+            // 2. تحديث الحالة (State) في الذاكرة
+            const currentQuestion = stateData.questions[stateData.current_index];
+            if (currentQuestion && currentQuestion.id === questionId) {
+                currentQuestion.image_file_id = null; // (احذفها من الذاكرة)
+            }
+            
+            // 3. إعادة عرض السؤال (الذي أصبح الآن بدون صورة)
+            // (الدالة ستتعامل مع حذف رسالة الصورة القديمة وإرسال رسالة نصية جديدة)
+            await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
             return res.status(200).send('OK');
          }
          
@@ -2656,58 +2673,51 @@ export default async (req, res) => {
         return res.status(200).send('OK');
       }
 
-      // أمر /cancel
-      // أمر /cancel
+      // (✅✅ معدل بالإصلاح 10: إصلاح خطأ 400)
       if (text === '/cancel') {
          const oldState = user.admin_state;
          const oldStateData = user.state_data;
          await setUserState(userId, null, null);
          
-         const stateMessageId = (oldState && oldStateData && oldStateData.message_id) ? oldStateData.message_id : null;
+         // [ ✅✅ إصلاح: جلب ID الرسالة الصحيح (سواء كانت أصلية أو محدثة) ]
+         const stateMessageId = (oldStateData && oldStateData.current_edit_message_id) 
+                                ? oldStateData.current_edit_message_id 
+                                : (oldStateData && oldStateData.message_id) 
+                                    ? oldStateData.message_id 
+                                    : null;
 
          if (stateMessageId) {
              // --- [مسار المستخدم وهو في حالة (state)] ---
-             
-             // 1. تعديل الرسالة الحالية (مثل "أرسل الملاحظة") إلى "تم الإلغاء"
-             await editMessage(chatId, stateMessageId, '👍 تم إلغاء العملية.');
-             
-             // 2. [ ✅ تعديل: استدعاء الدالة المناسبة مع messageId ]
-             // (الدوال ستقوم "بتعديل" الرسالة "تم الإلغاء")
-             if (user.is_admin) {
-                 await sendAdminMenu(chatId, user, stateMessageId); 
-             } else {
-                 await handleStartCommand(chatId, user, stateMessageId); // <-- سيقوم بالتعديل
+             try {
+                // (نحاول تعديل الرسالة الحالية (سواء كانت نص أو صورة))
+                // (لنعرض قائمة الأدمن الرئيسية مباشرة)
+                if (user.is_admin) {
+                    await sendAdminMenu(chatId, user, stateMessageId); 
+                } else {
+                    await handleStartCommand(chatId, user, stateMessageId);
+                }
+             } catch (editError) {
+                // (فشل التعديل لسبب ما، نرسل رسالة جديدة)
+                console.warn(`Failed to edit message on /cancel, sending new message:`, editError.message);
+                if (user.is_admin) {
+                    await sendAdminMenu(chatId, user, null); 
+                } else {
+                    await handleStartCommand(chatId, user, null);
+                }
              }
          
          } else {
              // --- [مسار المستخدم وهو "ليس" في حالة (state)] ---
-             
-             // 1. إرسال رسالة "تم الإلغاء" كرسالة جديدة
-             const sentMsgResponse = await sendMessage(chatId, '👍 تم إلغاء العملية.', null, null, true);
-             
-             if (sentMsgResponse && sentMsgResponse.data && sentMsgResponse.data.result) {
-                 const newMessageId = sentMsgResponse.data.result.message_id;
-
-                 // 2. [ ✅ تعديل: استدعاء الدالة المناسبة مع messageId ]
-                 // (الدوال ستقوم "بتعديل" الرسالة "تم الإلغاء")
-                 if (user.is_admin) {
-                     await sendAdminMenu(chatId, user, newMessageId);
-                 } else {
-                     await handleStartCommand(chatId, user, newMessageId); // <-- سيقوم بالتعديل
-                 }
+             if (user.is_admin) {
+                await sendAdminMenu(chatId, user, null);
              } else {
-                // (خطة بديلة إذا فشل إرسال "تم الإلغاء")
-                 if (user.is_admin) {
-                    await sendAdminMenu(chatId, user, null);
-                 } else {
-                    await handleStartCommand(chatId, user, null); // <-- سيرسل رسالة جديدة
-                 }
+                await handleStartCommand(chatId, user, null);
              }
          }
          return res.status(200).send('OK');
       }
-
-      // --- [ معالجة الحالات (State Machine) ] ---
+      
+            // --- [ معالجة الحالات (State Machine) ] ---
       
       const currentState = user.admin_state; 
       const stateData = user.state_data || {};
@@ -2887,6 +2897,7 @@ export default async (req, res) => {
             await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
             break;
 
+          // (✅✅ معدل بالإصلاح 10: إصلاح "استبدال السؤال" ليحتفظ بالصورة)
           case 'awaiting_replacement_question_poll':
             // (يجب أن يستقبل Poll فقط)
             if (!message.poll) {
@@ -2896,7 +2907,6 @@ export default async (req, res) => {
             // (حذف رسالة البول للنظافة)
             try { await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: message.message_id }); } catch(e){}
 
-            // (نفس منطق الإصلاح السابق للـ Poll)
             if (message.poll.type !== 'quiz' || message.poll.correct_option_id === null || typeof message.poll.correct_option_id === 'undefined') {
                 await editMessage(chatId, stateData.current_edit_message_id, `❌ خطأ: الـ Poll ليس Quiz أو لم يتم "حلّه".\n\n(جاري انتظار الـ Poll الصحيح أو /cancel)`);
                 return res.status(200).send('OK');
@@ -2912,14 +2922,26 @@ export default async (req, res) => {
 
             await editMessage(chatId, stateData.current_edit_message_id, '⚙️ جاري استبدال السؤال...');
             
-            // (جلب الترتيب القديم، حذف القديم، حفظ الجديد بنفس الترتيب)
             const qid_to_replace = stateData.question_id_to_replace;
-            const { data: oldQ } = await supabase.from('questions').select('sort_order').eq('id', qid_to_replace).single();
+            
+            // [ ✅✅ إصلاح: جلب الترتيب "والصورة" القديمة ]
+            const { data: oldQ } = await supabase.from('questions')
+                .select('sort_order, image_file_id') // <-- جلبنا الصورة
+                .eq('id', qid_to_replace)
+                .single();
+            
+            // (نحذف السؤال القديم)
             await supabase.from('questions').delete().eq('id', qid_to_replace);
             
-            // (مهم: stateData هنا قد تحتوي على صورة لاصقة قديمة، لذا نرسل نسخة نظيفة)
-            const cleanStateData = { ...stateData, sticky_image_file_id: null, current_state: 'awaiting_replacement_question_poll' };
-            await saveParsedQuestions(parsedPoll, cleanStateData, chatId, (oldQ ? oldQ.sort_order : 0));
+            // [ ✅✅ إصلاح: تمرير الصورة القديمة للحالة ليتم حفظها ]
+            const newState = { 
+                ...stateData, 
+                sticky_image_file_id: oldQ ? oldQ.image_file_id : null, // <-- نمرر الصورة القديمة
+                current_state: 'awaiting_replacement_question_poll' 
+            };
+            
+            // (دالة الحفظ ستستخدم الصورة القديمة)
+            await saveParsedQuestions(parsedPoll, newState, chatId, (oldQ ? oldQ.sort_order : 0));
 
             // (إعادة تحميل الجلسة)
             await loadQuestionsForEditSession(chatId, stateData.current_edit_message_id, stateData);
