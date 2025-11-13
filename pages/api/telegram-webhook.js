@@ -2546,128 +2546,10 @@ export default async (req, res) => {
             // (نمرر ID الرسالة الأصلية "جاري التحميل")
             await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
             return res.status(200).send('OK');
-
-           // --- [ ✅✅ بداية: معالجات أزرار محرر الأسئلة (معدلة) ] ---
-      
-      // [ ✅✅✅ إصلاح جذري: تحويل كل الأوامر إلى "if... else if" ]
-      if (user.admin_state === 'awaiting_question_edit') {
-         const stateData = user.state_data;
-         
-         // (التنقل)
-         // [ ✅✅✅ إصلاح (التالي): حذف الرسالة القديمة أولاً ]
-         if (command === 'exam_edit_q_next') {
-            const newIndex = stateData.current_index + 1;
-            
-            // (1. احذف الرسالة القديمة)
-            try { 
-                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
-            } catch(e){ /* تجاهل الفشل */ }
-
-            // (2. اعرض السؤال الجديد كرسالة جديدة)
-            await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex, current_edit_message_id: null });
-            return res.status(200).send('OK');
-         
-         // [ ✅✅✅ إصلاح (السابق): حذف الرسالة القديمة أولاً ]
-         } else if (command === 'exam_edit_q_prev') {
-            const newIndex = stateData.current_index - 1;
-
-            // (1. احذف الرسالة القديمة)
-            try { 
-                await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
-            } catch(e){ /* تجاهل الفشل */ }
-
-            // (2. اعرض السؤال الجديد كرسالة جديدة)
-            await displayQuestionForEdit(chatId, null, { ...stateData, current_index: newIndex, current_edit_message_id: null });
-            return res.status(200).send('OK');
-         
-         // (الانتهاء)
-         } else if (command === 'exam_edit_q_finish') {
-            
-            if (stateData.current_edit_message_id && stateData.current_edit_message_id !== stateData.message_id) {
-                try { 
-                    await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: stateData.current_edit_message_id }); 
-                } catch(e){ /* تجاهل الفشل */ }
-            }
-            
-            try {
-                await editMessage(chatId, stateData.message_id, '✅ تم حفظ التعديلات.');
-            } catch (e) {
-                 console.error("Failed to edit original message on finish:", e.message);
-            }
-            
-            const subject_id = stateData.subject_id; 
-            await setUserState(userId, null, null);
-            
-            await sendContentMenu_Exams_For_Subject(chatId, null, subject_id); 
-            
-            return res.status(200).send('OK');
-         
-         // (الشرط "الأكثر تحديداً" يأتي أولاً)
-         } else if (command.startsWith('exam_edit_q_delete_image_')) {
-            const questionId_raw = command.split('_')[5];
-            const questionId = parseInt(questionId_raw, 10);
-
-            if (isNaN(questionId)) {
-                console.error(`[CRITICAL] Failed to parse questionId from callback: ${command}`);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ فادح: لم أتمكن من قراءة ID السؤال من ${questionId_raw}`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            console.log(`[DB] Attempting to set image_file_id to null for question_id: ${questionId}`);
-            
-            const { data, error } = await supabase.from('questions')
-                .update({ image_file_id: null })
-                .eq('id', questionId)
-                .select(); 
-
-            if (error) {
-                console.error(`[DB] Supabase error while updating question ${questionId}:`, error.message);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ DB: ${error.message}`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            if (!data || data.length === 0) {
-                console.error(`[DB] Update returned no data. Question ID ${questionId} not found or RLS failed.`);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ: لم يتم العثور على السؤال (ID: ${questionId}) في قاعدة البيانات.`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            console.log(`[DB] Successfully updated question_id: ${questionId}. Image is now null.`);
-            
-            const questionIndex = stateData.questions.findIndex(q => q.id === questionId);
-            if (questionIndex > -1) {
-                 stateData.questions[questionIndex].image_file_id = null;
-            } else {
-                 console.error(`[STATE] Question ${questionId} was updated in DB, but not found in local state. Forcing reload.`);
-                 await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
-                 return res.status(200).send('OK');
-            }
-            
-            // (إعادة عرض الواجهة بدون أي رسائل)
-            await displayQuestionForEdit(chatId, stateData.current_edit_message_id, stateData);
-            
-            return res.status(200).send('OK');
-
-         // (الشرط "الأقل تحديداً" يأتي ثانياً)
-         } else if (command.startsWith('exam_edit_q_delete_')) {
-            const questionId_raw = command.split('_')[4];
-            const questionId = parseInt(questionId_raw, 10);
-
-            if (isNaN(questionId)) {
-                console.error(`[CRITICAL] Failed to parse questionId for DELETE: ${command}`);
-                await answerCallbackQuery(callback_query.id, { text: `خطأ فادح: لم أتمكن من قراءة ID السؤال من ${questionId_raw}`, show_alert: true });
-                return res.status(200).send('OK');
-            }
-
-            await editMessage(chatId, stateData.current_edit_message_id, 'جاري حذف السؤال...');
-            await supabase.from('questions').delete().eq('id', questionId);
-            await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
-            
-            await loadQuestionsForEditSession(chatId, stateData.message_id, stateData);
-            return res.status(200).send('OK');
+         }
 
          // (بدء عملية استبدال "السؤال/Poll")
-         } else if (command.startsWith('exam_edit_q_replace_poll_')) {
+         if (command.startsWith('exam_edit_q_replace_poll_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             await setUserState(userId, 'awaiting_replacement_question_poll', {
                 ...stateData,
@@ -2675,9 +2557,10 @@ export default async (req, res) => {
             });
             await editMessage(chatId, stateData.current_edit_message_id, 'أرسل الـ (Poll) الجديد ليحل محل هذا السؤال: (أو /cancel)');
             return res.status(200).send('OK');
+         }
 
          // (بدء عملية استبدال "الصورة")
-         } else if (command.startsWith('exam_edit_q_replace_image_')) {
+         if (command.startsWith('exam_edit_q_replace_image_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             await setUserState(userId, 'awaiting_replacement_image', {
                 ...stateData,
@@ -2685,9 +2568,10 @@ export default async (req, res) => {
             });
             await editMessage(chatId, stateData.current_edit_message_id, 'أرسل "الصورة الجديدة" لهذا السؤال: (أو /cancel)');
             return res.status(200).send('OK');
+         }
          
          // (بدء عملية الإضافة "بعد")
-         } else if (command.startsWith('exam_edit_q_add_after_')) {
+         if (command.startsWith('exam_edit_q_add_after_')) {
             const questionId = parseInt(command.split('_')[5], 10);
             const currentQuestion = stateData.questions[stateData.current_index];
             await setUserState(userId, 'awaiting_new_question_after', {
@@ -2697,9 +2581,10 @@ export default async (req, res) => {
             });
             await editMessage(chatId, stateData.current_edit_message_id, `أرسل الـ (Poll) الجديد ليتم إضافته "بعد" هذا السؤال:\n(يمكنك إرسال صورة أولاً) (أو /cancel)`);
             return res.status(200).send('OK');
+         }
          
          // (بدء عملية الإضافة "للنهاية")
-         } else if (command === 'exam_edit_q_add_end') {
+         if (command === 'exam_edit_q_add_end') {
              await setUserState(userId, 'awaiting_new_question_end', {
                 ...stateData,
                 sticky_image_file_id: null // (مسح الذاكرة)
@@ -2708,7 +2593,8 @@ export default async (req, res) => {
              return res.status(200).send('OK');
          }
       } // (نهاية if state === awaiting_question_edit)
-           
+           // --- [ نهاية: قسم إدارة الامتحانات ] ---
+     
       // --- [ نهاية: قسم إدارة الامتحانات ] ---
       
       // 10. إدارة المستخدمين (سحب الصلاحيات)
