@@ -756,6 +756,7 @@ const loadQuestionsForEditSession = async (chatId, messageId, stateData) => {
 
 /**
  * (✅✅ معدلة بالإصلاح 14: إضافة نص الإجابة + إصلاح حذف الصورة)
+ * (✅✅ معدلة بالإصلاح 18: إصلاح منطق عرض النص)
  * دالة عرض السؤال الحالي في وضع التعديل
  */
 const displayQuestionForEdit = async (chatId, messageId, stateData) => {
@@ -888,18 +889,41 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
             }
 
         } else {
-            // --- [ 2: نريد عرض "نص" ] ---
+            // --- [ 2: نريد عرض "نص" (بمنطق جديد مُصحح) ] ---
             try {
-                await editMessage(chatId, existing_message_id, text_markdown, reply_markup, 'MarkdownV2', false, true); // force_text = true
-                new_message_id = existing_message_id; 
+                // (المحاولة 1: تعديل النص - سينجح إذا كانت الرسالة نصية)
+                await axios.post(`${TELEGRAM_API}/editMessageText`, {
+                    chat_id: chatId,
+                    message_id: existing_message_id,
+                    text: text_markdown,
+                    parse_mode: 'MarkdownV2',
+                    reply_markup: reply_markup
+                });
+                new_message_id = existing_message_id;
             
-            } catch (e) {
-                console.warn("Forced text edit failed (old msg was photo?), sending new text message.");
-                const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
-                if (response && response.data && response.data.result) {
-                    new_message_id = response.data.result.message_id;
-                } else {
-                    throw new Error("sendMessage returned null or invalid response after fallback.");
+            } catch (e1) {
+                // (فشل التعديل - غالباً لأن الرسالة القديمة كانت "صورة")
+                // (المحاولة 2: إرسال رسالة نصية جديدة)
+                try {
+                    const response = await sendMessage(chatId, text_markdown, reply_markup, 'MarkdownV2', false);
+                    if (response && response.data && response.data.result) {
+                        new_message_id = response.data.result.message_id;
+                    } else {
+                        throw new Error("sendMessage returned null or invalid response after fallback.");
+                    }
+                } catch (e2) {
+                    // (فشل الإرسال بسبب التنسيق؟ جرب نص عادي)
+                    if (e2.response && e2.response.data && e2.response.data.description.includes("can't parse entities")) {
+                        console.warn("Markdown failed for sendMessage (text), resending as plain text.");
+                        const response = await sendMessage(chatId, plainTextCaption, reply_markup, null, false); // (استخدام النص العادي)
+                        if (response && response.data && response.data.result) {
+                            new_message_id = response.data.result.message_id;
+                        } else {
+                            throw new Error("sendMessage (plain) returned null or invalid response after fallback.");
+                        }
+                    } else {
+                        throw e2; // (ارم خطأ الإرسال)
+                    }
                 }
             }
         }
@@ -928,7 +952,6 @@ const displayQuestionForEdit = async (chatId, messageId, stateData) => {
         }
     }
 };
-
 /**
  * (جديد) دالة عرض إحصائيات الامتحان
  */
@@ -2444,6 +2467,7 @@ export default async (req, res) => {
 
          // (✅✅ معدل بالإصلاح 17: إصلاح خطأ 400)
          // (الانتهاء)
+         // (الانتهاء)
          if (command === 'exam_edit_q_finish') {
             
             // 1. [ ✅✅ الإصلاح ] التحقق من عدم حذف نفس الرسالة مرتين
@@ -2464,6 +2488,7 @@ export default async (req, res) => {
             await setUserState(userId, null, null);
             
             // 3. (إرسال قائمة الامتحانات كـ "رسالة جديدة")
+            // [ ✅✅✅ هذا هو الإصلاح: تم تصحيح ExSams إلى Exams ]
             await sendContentMenu_Exams_For_Subject(chatId, null, subject_id); 
             
             return res.status(200).send('OK');
