@@ -2481,16 +2481,19 @@ export default async (req, res) => {
          if (command.startsWith('exam_edit_q_delete_')) {
             const questionId = parseInt(command.split('_')[4], 10);
             
-            // [ ✅ تعديل: حذفنا رسالة editMessage('جاري حذف السؤال...') ]
-            
             const { error } = await supabase.from('questions').delete().eq('id', questionId);
             
             if (error) {
                 await answerCallbackQuery(callback_query.id, { text: `خطأ: ${error.message}`, show_alert: true });
             } else {
                 await answerCallbackQuery(callback_query.id, { text: '🗑️ تم حذف السؤال' });
-                // (إعادة التحميل ستُحدّث الواجهة تلقائياً)
-                await loadQuestionsForEditSession(chatId, stateData.message_id, stateData, stateData.current_index);
+                
+                // [ ✅✅✅ الإصلاح الجذري هنا ]
+                // استخدام current_edit_message_id لضمان "تعديل" الرسالة بدلاً من إرسال جديدة
+                const targetMessageId = stateData.current_edit_message_id || stateData.message_id;
+                
+                // (إعادة التحميل ستجلب الأسئلة المتبقية وتعدل الرسالة الحالية لتعرض السؤال التالي أو السابق)
+                await loadQuestionsForEditSession(chatId, targetMessageId, stateData, stateData.current_index);
             }
             return res.status(200).send('OK');
          }
