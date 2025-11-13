@@ -221,7 +221,7 @@ export default function App() {
     );
   }
 
-  // (المستوى 3: عرض الفيديوهات - يبقى كما هي)
+  // --- [ ✅✅ تعديل: المستوى 3 - عرض الفيديوهات والملفات ] ---
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
@@ -232,15 +232,40 @@ export default function App() {
         <h1>{selectedChapter.title}</h1>
         <ul className="item-list">
           {selectedChapter.videos.length > 0 ? (
-            selectedChapter.videos.map(video => (
-              <li key={video.id}>
-                <Link href={`/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`}>
-                  <a className="button-link video-link">
-                    {video.title}
-                  </a>
-                </Link>
-              </li>
-            ))
+            selectedChapter.videos.map(video => {
+              
+              // --- [ بداية المنطق الجديد ] ---
+              let href = '';
+              let linkClassName = 'button-link';
+              let icon = '▶️'; // (افتراضي ليوتيوب)
+              
+              // (تحديد المسار والأيقونة بناءً على النوع)
+              if (video.type === 'telegram-video') {
+                  href = `/stream/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`;
+                  linkClassName += ' video-link';
+                  icon = '🎥'; // (أيقونة فيديو تليجرام)
+              
+              } else if (video.type === 'pdf') {
+                  href = `/view/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`;
+                  icon = '📄'; // (أيقونة PDF)
+
+              } else {
+                  // (الافتراضي هو يوتيوب)
+                  href = `/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`;
+                  linkClassName += ' video-link';
+              }
+              // --- [ نهاية المنطق الجديد ] ---
+
+              return (
+                <li key={video.id}>
+                  <Link href={href}>
+                    <a className={linkClassName}>
+                      {icon} {video.title}
+                    </a>
+                  </Link>
+                </li>
+              );
+            })
           ) : (
             <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الشابتر بعد.</p>
           )}
@@ -253,7 +278,7 @@ export default function App() {
     );
   }
 
-  // (المستوى 2: اختيار الوضع أو عرض المحتوى)
+  // (المستوى 2: اختيار الوضع أو عرض المحتوى - يبقى كما هو)
   if (selectedSubject) {
     
     // --- [ الحالة 2أ: المستخدم لم يختر الوضع بعد ] ---
@@ -271,7 +296,7 @@ export default function App() {
           <ul className="item-list">
             <li>
               <button className="button-link" onClick={() => setMode('lectures')}>
-                📁 الشرح (الشباتر والفيديوهات)
+                📁 الشرح (الشباتر والمحتويات)
                 <span>({selectedSubject.chapters.length} شابتر)</span>
               </button>
             </li>
@@ -291,6 +316,7 @@ export default function App() {
     }
     
     // --- [ الحالة 2ب: المستخدم اختار "الشرح" (lectures) ] ---
+    // (تم تعديل بسيط في النصوص لتعميم كلمة "فيديو")
     if (mode === 'lectures') {
       return (
         <div className="app-container">
@@ -305,7 +331,7 @@ export default function App() {
                 <li key={chapter.id}>
                   <button className="button-link" onClick={() => setSelectedChapter(chapter)}>
                     📁 {chapter.title}
-                    <span>({chapter.videos.length} فيديو)</span>
+                    <span>({chapter.videos.length} ملف)</span>
                   </button>
                 </li>
               ))
