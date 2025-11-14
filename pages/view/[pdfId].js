@@ -8,12 +8,9 @@ const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     useEffect(() => {
-        // (تأكد من نسخ كود التحقق من المستخدم بالكامل من ملف watch.js هنا)
-        // (الكود الذي يتحقق من APK و Telegram و Admin)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
-
         if (urlUserId && urlUserId.trim() !== '') {
             setUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -34,18 +31,18 @@ export default function ViewPdfPage() {
     const { pdfId } = router.query;
     const { user, error } = useUserCheck(router);
 
-    // --- [ منطق العلامة المائية "المكررة" ] ---
+    // (حالة لتتبع خطأ تحميل الـ PDF)
+    const [pdfError, setPdfError] = useState(false);
+
+    // (منطق العلامة المائية "المكررة")
     const [watermarkSpans, setWatermarkSpans] = useState([]);
     const watermarkText = user ? `${user.first_name} (${user.id})` : '';
 
     useEffect(() => {
         if (user) {
-            // (إنشاء 100 عنصر "وهمي" للتكرار)
             setWatermarkSpans(new Array(100).fill(0));
         }
     }, [user]); 
-    // --- [ نهاية المنطق ] ---
-
 
     if (error) { 
         return (
@@ -72,11 +69,14 @@ export default function ViewPdfPage() {
 
             <div className="pdf-wrapper">
                 
-                {/* (الـ PDF سيُعرض في الخلفية) */}
                 <iframe
                     src={pdfStreamUrl}
                     className="pdf-iframe"
                     title="PDF Viewer"
+                    onError={() => { // (هذا سيعمل إذا فشل الـ API)
+                        console.error("Iframe onError triggered.");
+                        setPdfError(true);
+                    }}
                 />
 
                 {/* (طبقة العلامة المائية المكررة) */}
@@ -87,6 +87,15 @@ export default function ViewPdfPage() {
                         </span>
                     ))}
                 </div>
+
+                {/* (إظهار رسالة الخطأ فوق كل شيء) */}
+                {pdfError && (
+                    <div className="pdf-load-error">
+                        <h1>خطأ في تحميل الملف</h1>
+                        <p>لم نتمكن من عرض ملف الـ PDF.</p>
+                        <p style={{fontSize: '0.8em', opacity: 0.7}}>(الملف تالف أو تم حذفه)</p>
+                    </div>
+                )}
             </div>
 
             <style jsx global>{`
@@ -109,7 +118,7 @@ export default function ViewPdfPage() {
                     width: 100%;
                     height: 100%;
                     border: none;
-                    background: #333; /* (لون الخلفية قبل تحميل الـ PDF) */
+                    background: #333; /* (خلفية رمادية قبل التحميل) */
                 }
                 .pdf-iframe {
                     width: 100%;
@@ -142,6 +151,21 @@ export default function ViewPdfPage() {
                     transform: rotate(-30deg); 
                     white-space: nowrap;
                     user-select: none; /* (لمنع التحديد) */
+                }
+
+                .pdf-load-error {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 100; /* (فوق كل شيء) */
+                    background: rgba(200, 50, 50, 0.85); /* (أحمر) */
+                    color: white;
+                    padding: 20px 40px;
+                    border-radius: 10px;
+                    text-align: center;
+                    pointer-events: all; 
+                    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
                 }
             `}</style>
         </div>
