@@ -10,9 +10,21 @@ export default async (req, res) => {
 
   try {
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-    const info = await ytdl.getInfo(videoUrl);
     
-    // (نفس المنطق الذي كان في الأندرويد: ابحث عن 720p أو 360p)
+    // [ ✅✅✅ هذا هو الإصلاح ✅✅✅ ]
+    // (إضافة خيارات للطلب لجعله يشبه المتصفح)
+    // (هذا يساعد في تجاوز قيود يوتيوب على سيرفرات Vercel)
+    const info = await ytdl.getInfo(videoUrl, {
+        requestOptions: {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        }
+    });
+    // [ ✅✅✅ نهاية الإصلاح ✅✅✅ ]
+
+    
+    // (نفس المنطق القديم: ابحث عن 720p أو 360p)
     let format = ytdl.chooseFormat(info.formats, { 
         quality: '22', // itag 22 (720p, mp4)
         filter: format => format.container === 'mp4' && format.hasAudio && format.hasVideo
@@ -33,7 +45,8 @@ export default async (req, res) => {
     res.status(200).json({ downloadUrl: format.url });
 
   } catch (err) {
-    console.error(`ytdl-core error for ID ${youtubeId}:`, err.message);
+    // (تحسين تسجيل الخطأ)
+    console.error(`[ytdl-core CRASH] ID: ${youtubeId}, Error: ${err.message}`);
     res.status(500).json({ error: `Server failed to get link: ${err.message}` });
   }
 };
