@@ -3,24 +3,28 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// (دالة مخصصة لجلب المستخدم والتحقق منه - كما هي)
+// (دالة مخصصة لجلب المستخدم والتحقق منه)
 const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        if (!router.isReady) return; 
+        // (لا تعمل إلا في المتصفح والراوتر جاهز)
+        if (!router.isReady || typeof window === 'undefined') return; 
 
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
 
+        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
             const apkUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
             setUser(apkUser);
+
+        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
@@ -31,9 +35,11 @@ const useUserCheck = (router) => {
                 return;
             }
 
+            // (السماح للمنصات الآمنة)
             if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
                 setUser(miniAppUser);
             } else {
+                // (التحقق من الأدمن للمنصات الأخرى)
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
@@ -47,11 +53,12 @@ const useUserCheck = (router) => {
                         setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
                     });
             }
+        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
         }
-    }, [router.isReady, router.query]); 
+    }, [router.isReady, router.query]); // (الاعتماد على router.isReady هو الأهم)
 
     return { user, error };
 };
@@ -69,55 +76,98 @@ export default function StreamPage() {
 
     useEffect(() => {
         if (!user) return; 
-        watermarkIntervalRef.current = setInterval(() => { /* ... */ }, 5000);
-        stickerIntervalRef.current = setInterval(() => { /* ... */ }, 3000); 
+        watermarkIntervalRef.current = setInterval(() => {
+             setWatermarkPos({ 
+                top: `${Math.floor(Math.random() * 70) + 10}%`, 
+                left: `${Math.floor(Math.random() * 70) + 10}%` 
+            });
+        }, 5000);
+        stickerIntervalRef.current = setInterval(() => {
+             setStickerPos({ 
+                top: `${Math.floor(Math.random() * 60) + 20}%`, 
+                left: `${Math.floor(Math.random() * 60) + 20}%` 
+            });
+        }, 3000); 
+
         return () => {
-            clearInterval(watermarkIntervalRef.current);
-            clearInterval(stickerIntervalRef.current);
+            if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current);
+            if (stickerIntervalRef.current) clearInterval(stickerIntervalRef.current);
         };
     }, [user]);
     // --- [ نهاية كود العلامة المائية ] ---
     
-    // --- [ ✅✅ بداية: الكود الجديد ] ---
-    // (Ref للحاوية الرئيسية)
-    const playerWrapperRef = useRef(null); 
-    // (State لتخزين النسبة)
+    // --- [ ✅✅ بداية: الكود الاحترافي الجديد ] ---
+    
+    const videoRef = useRef(null); // (Ref للإشارة إلى عنصر الفيديو نفسه)
     const [aspectRatio, setAspectRatio] = useState('16 / 9'); // (الافتراضي)
-
-    // (دالة ملء الشاشة المخصصة التي تستهدف الحاوية)
-    const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; 
-        if (!elem) return;
-        
-        const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
-        const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        
-        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            if (requestFS) requestFS.call(elem); 
-        } else {
-            if (exitFS) exitFS.call(document);
-        }
-    };
+    // (Ref لتخزين النسبة الأصلية)
+    const originalAspectRatioRef = useRef('16 / 9'); 
 
     // (دالة لاكتشاف أبعاد الفيديو عند تحميله)
     const handleMetadata = (e) => {
         const { videoWidth, videoHeight } = e.target;
-        if (videoHeight > videoWidth) {
-            // (هذا فيديو طويل)
-            setAspectRatio('7 / 16');
-        } else {
-            // (هذا فيديو عريض)
-            setAspectRatio('16 / 9');
-        }
+        // (تحديد النسبة الأصلية)
+        const originalRatio = (videoHeight > videoWidth) ? '7 / 16' : '16 / 9';
+        
+        setAspectRatio(originalRatio); // (تطبيق النسبة)
+        originalAspectRatioRef.current = originalRatio; // (حفظها للرجوع إليها)
     };
-    // --- [ نهاية: الكود الجديد ] ---
+
+    // (هذا هو المستمع (Listener) الذي يحل المشكلة)
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            const videoElement = videoRef.current;
+            if (!videoElement) return; // (للأمان)
+
+            // (التحقق هل الفيديو "هو" العنصر الذي في ملء الشاشة؟)
+            const isVideoFullscreen = document.fullscreenElement === videoElement || 
+                                      document.webkitFullscreenElement === videoElement ||
+                                      document.mozFullScreenElement === videoElement ||
+                                      document.msFullscreenElement === videoElement;
+
+            if (isVideoFullscreen) {
+                // (نعم، الفيديو دخل ملء الشاشة -> حرر الحاوية)
+                setAspectRatio('auto');
+            } else {
+                // (لا، الفيديو خرج من ملء الشاشة -> أعد النسبة الأصلية)
+                setAspectRatio(originalAspectRatioRef.current);
+            }
+        };
+
+        // (إضافة المستمعين للنظام)
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // (لـ Safari/Chrome)
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange); // (لـ Firefox)
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange); // (لـ IE/Edge القديم)
 
 
+        // (تنظيف المستمعين عند الخروج)
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+        };
+    }, []); // (يعمل مرة واحدة)
+    // --- [ نهاية: الكود الاحترافي الجديد ] ---
+
+
+    // (شاشات التحميل والأخطاء)
     if (error) { 
-        return <div className="page-container"><h1>{error}</h1></div>; 
+        return (
+            <div className="page-container">
+                <Head><title>خطأ</title></Head>
+                <h1>{error}</h1>
+            </div>
+        ); 
     }
     if (!user || !videoId) { 
-        return <div className="page-container"><h1>جاري تحميل الفيديو...</h1></div>;
+        return (
+             <div className="page-container">
+                <Head><title>جاري التحميل</title></Head>
+                <h1>جاري تحميل الفيديو...</h1>
+            </div>
+        );
     }
 
     const videoStreamUrl = `/api/secure/get-video-stream?lessonId=${videoId}`;
@@ -129,35 +179,32 @@ export default function StreamPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* (تطبيق الـ ref والـ style الديناميكي) */}
+            {/* (تطبيق الـ style الديناميكي) */}
             <div 
                 className="player-wrapper-html5" 
-                ref={playerWrapperRef}
-                style={{ aspectRatio: aspectRatio }} // (تطبيق النسبة 16/9 أو 7/16)
+                style={{ aspectRatio: aspectRatio }} // (تطبيق النسبة 16/9 أو 7/16 أو auto)
             > 
                 <video
+                    ref={videoRef} // (إضافة الـ ref هنا)
                     src={videoStreamUrl}
                     controls
-                    // --- [ ✅✅ تعديل: إخفاء زر ملء الشاشة الأصلي ] ---
-                    controlsList="nodownload nofullscreen" 
+                    // --- [ ✅✅ تعديل: إرجاع زر ملء الشاشة الأصلي ] ---
+                    controlsList="nodownload" 
                     disablePictureInPicture
                     className="html5-video-player"
                     preload="metadata"
-                    // --- [ ✅✅ تعديل: إضافة مستمع التحميل ] ---
-                    onLoadedMetadata={handleMetadata}
+                    onLoadedMetadata={handleMetadata} // (إضافة مستمع التحميل)
                 />
                 <div className="watermark-overlay">
-                    {/* ... (العلامات المائية كما هي) ... */}
+                    <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
+                        {user.first_name} ({user.id})
+                    </div>
+                    <div 
+                        className="sticker-watermark" 
+                        style={{ top: stickerPos.top, left: stickerPos.left }}
+                    >
+                    </div>
                 </div>
-                
-                {/* --- [ ✅✅ جديد: إضافة الزر المخصص ] --- */}
-                <button 
-                    className="custom-fullscreen-btn" 
-                    onClick={handleFullscreen}
-                    title="ملء الشاشة"
-                >
-                    ⛶
-                </button>
             </div>
             
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
@@ -169,6 +216,7 @@ export default function StreamPage() {
                 body { 
                     margin: 0; 
                     overscroll-behavior: contain; 
+                    /* (الخلفية ستكون من globals.css) */
                 }
                 
                 .page-container {
@@ -188,21 +236,20 @@ export default function StreamPage() {
                     position: relative; 
                     width: 100%;
                     max-width: 900px;
-                    /* (تم حذف aspect-ratio الثابت من هنا) */
-                    /* (سيتم تطبيقه الآن عن طريق inline style) */
+                    /* (سيتم تطبيق النسبة الآن عن طريق inline style) */
                     background: #111;
                     border-radius: 8px; 
                     overflow: hidden; 
-                    /* (إضافة حركة ناعمة عند تغيير النسبة) */
-                    transition: aspect-ratio 0.3s ease;
+                    transition: aspect-ratio 0.2s ease-out; /* (حركة ناعمة) */
                 }
                 
-                /* (هذا هو الإصلاح الذي يحل مشكلة التعارض) */
+                /* (هذا الكود يضمن أن الحاوية نفسها تتمدد إذا دخلت هي في ملء الشاشة) */
+                /* (هذا احتياطي لو الكود الديناميكي فشل) */
                 .player-wrapper-html5:fullscreen,
                 .player-wrapper-html5:-webkit-full-screen,
                 .player-wrapper-html5:-moz-full-screen,
                 .player-wrapper-html5:-ms-fullscreen {
-                    aspect-ratio: auto !important; /* (الغاء النسبة تماماً في ملء الشاشة) */
+                    aspect-ratio: auto !important; 
                     max-width: none;
                 }
 
@@ -220,34 +267,27 @@ export default function StreamPage() {
                     z-index: 10;
                     overflow: hidden; 
                 }
-                
-                /* ... (ستايل .watermark و .sticker-watermark كما هو) ... */
-                .watermark { /* ... */ }
-                .sticker-watermark { /* ... */ }
 
-                /* --- [ ✅✅ جديد: ستايل الزر المخصص ] --- */
-                .custom-fullscreen-btn {
-                    position: absolute;
-                    bottom: 12px; /* (تعديل المسافة لتناسب شريط التحكم) */
-                    right: 15px;
-                    z-index: 21; /* (فوق الفيديو) */
-                    background: rgba(0,0,0,0.5);
-                    color: white;
-                    border: none;
+                .watermark {
+                    position: absolute; 
+                    padding: 4px 8px; 
+                    background: rgba(0, 0, 0, 0.7); 
+                    color: white; 
+                    font-size: clamp(10px, 2.5vw, 14px);
                     border-radius: 4px;
-                    font-size: 18px;
-                    font-weight: bold;
-                    cursor: pointer;
-                    padding: 5px 8px;
-                    line-height: 1;
-                    opacity: 0.7;
-                    transition: opacity 0.2s ease;
+                    transition: top 2s ease-in-out, left 2s ease-in-out;
+                    z-index: 20;
+                    white-space: nowrap;
                 }
-                .player-wrapper-html5:hover .custom-fullscreen-btn {
-                    opacity: 1;
-                }
-                .custom-fullscreen-btn:hover {
-                    background: rgba(0,0,0,0.8);
+                .sticker-watermark {
+                    position: absolute;
+                    width: 80px; height: 80px;
+                    background-image: url('/logo-sticker.png'); 
+                    background-size: contain;
+                    background-repeat: no-repeat;
+                    opacity: 0.6;
+                    transition: top 1.5s ease-in-out, left 1.5s ease-in-out;
+                    z-index: 21;
                 }
             `}</style>
         </div>
