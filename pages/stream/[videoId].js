@@ -151,16 +151,21 @@ export default function StreamPage() {
                 </div>
             </div>
             
-            {/* --- [ ✅✅ تم حذف الفوتر من هنا لضمان التوسيط ] --- */}
+            {/* --- [ ✅✅ بداية: إضافة الفوتر هنا ] --- */}
+            <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
+              <p>برمجة وتطوير: A7MeD WaLiD</p>
+              <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+            </footer>
+            {/* --- [ نهاية: إضافة الفوتر ] --- */}
             
             <style jsx global>{`
                 body { 
                     margin: 0; 
                     overscroll-behavior: contain; 
-                    background: linear-gradient(to bottom, #111827, #000000);
+                    /* (الخلفية ستكون من globals.css) */
                 }
                 
-                /* --- [ ✅✅ هذا هو الكود الأهم للتوسيط ] --- */
+                /* (كود التوسيط - سيقوم بتوسيط المشغل والفوتر كمجموعة) */
                 .page-container {
                     display: flex;
                     flex-direction: column;
@@ -173,7 +178,6 @@ export default function StreamPage() {
                     color: white;
                     text-align: center;
                 }
-                /* --- [ نهاية كود التوسيط ] --- */
 
                 .player-wrapper-html5 {
                     position: relative; 
@@ -219,6 +223,10 @@ export default function StreamPage() {
                     transition: top 1.5s ease-in-out, left 1.5s ease-in-out;
                     z-index: 21;
                 }
+                
+                /* (لا نحتاج لإضافة ستايل .developer-info هنا)
+                  (لأنه موجود بالفعل في styles/globals.css)
+                */
             `}</style>
         </div>
     );
