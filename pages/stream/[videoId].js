@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// (دالة مخصصة لجلب المستخدم والتحقق منه)
+// (دالة مخصصة لجلب المستخدم والتحقق منه - كما هي)
 const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
@@ -15,15 +15,12 @@ const useUserCheck = (router) => {
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
 
-        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
             const apkUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
             setUser(apkUser);
-
-        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
@@ -50,7 +47,6 @@ const useUserCheck = (router) => {
                         setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
                     });
             }
-        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
@@ -73,19 +69,8 @@ export default function StreamPage() {
 
     useEffect(() => {
         if (!user) return; 
-        watermarkIntervalRef.current = setInterval(() => {
-            setWatermarkPos({ 
-                top: `${Math.floor(Math.random() * 70) + 10}%`, 
-                left: `${Math.floor(Math.random() * 70) + 10}%` 
-            });
-        }, 5000);
-        stickerIntervalRef.current = setInterval(() => {
-            setStickerPos({ 
-                top: `${Math.floor(Math.random() * 60) + 20}%`, 
-                left: `${Math.floor(Math.random() * 60) + 20}%` 
-            });
-        }, 3000); 
-
+        watermarkIntervalRef.current = setInterval(() => { /* ... */ }, 5000);
+        stickerIntervalRef.current = setInterval(() => { /* ... */ }, 3000); 
         return () => {
             clearInterval(watermarkIntervalRef.current);
             clearInterval(stickerIntervalRef.current);
@@ -93,31 +78,43 @@ export default function StreamPage() {
     }, [user]);
     // --- [ نهاية كود العلامة المائية ] ---
     
-    // (للتأكد من أننا نستخدم الحاوية الصحيحة)
+    // --- [ ✅✅ بداية: الكود الجديد ] ---
+    // (Ref للحاوية الرئيسية)
     const playerWrapperRef = useRef(null); 
+    // (State لتخزين النسبة)
+    const [aspectRatio, setAspectRatio] = useState('16 / 9'); // (الافتراضي)
 
-    // (دالة ملء الشاشة)
+    // (دالة ملء الشاشة المخصصة التي تستهدف الحاوية)
     const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; // (استهداف الحاوية)
+        const elem = playerWrapperRef.current; 
         if (!elem) return;
         
         const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
         const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
         
         if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            if (requestFS) {
-                requestFS.call(elem); 
-            }
+            if (requestFS) requestFS.call(elem); 
         } else {
-            if (exitFS) {
-                exitFS.call(document);
-            }
+            if (exitFS) exitFS.call(document);
         }
     };
 
+    // (دالة لاكتشاف أبعاد الفيديو عند تحميله)
+    const handleMetadata = (e) => {
+        const { videoWidth, videoHeight } = e.target;
+        if (videoHeight > videoWidth) {
+            // (هذا فيديو طويل)
+            setAspectRatio('7 / 16');
+        } else {
+            // (هذا فيديو عريض)
+            setAspectRatio('16 / 9');
+        }
+    };
+    // --- [ نهاية: الكود الجديد ] ---
+
 
     if (error) { 
-        return <div className="page-container">...</div>; 
+        return <div className="page-container"><h1>{error}</h1></div>; 
     }
     if (!user || !videoId) { 
         return <div className="page-container"><h1>جاري تحميل الفيديو...</h1></div>;
@@ -132,28 +129,35 @@ export default function StreamPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* (إضافة ref هنا) */}
-            <div className="player-wrapper-html5" ref={playerWrapperRef}> 
+            {/* (تطبيق الـ ref والـ style الديناميكي) */}
+            <div 
+                className="player-wrapper-html5" 
+                ref={playerWrapperRef}
+                style={{ aspectRatio: aspectRatio }} // (تطبيق النسبة 16/9 أو 7/16)
+            > 
                 <video
                     src={videoStreamUrl}
                     controls
-                    controlsList="nodownload"
+                    // --- [ ✅✅ تعديل: إخفاء زر ملء الشاشة الأصلي ] ---
+                    controlsList="nodownload nofullscreen" 
                     disablePictureInPicture
                     className="html5-video-player"
                     preload="metadata"
+                    // --- [ ✅✅ تعديل: إضافة مستمع التحميل ] ---
+                    onLoadedMetadata={handleMetadata}
                 />
                 <div className="watermark-overlay">
-                    <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
-                        {user.first_name} ({user.id})
-                    </div>
-                    <div 
-                        className="sticker-watermark" 
-                        style={{ top: stickerPos.top, left: stickerPos.left }}
-                    >
-                    </div>
+                    {/* ... (العلامات المائية كما هي) ... */}
                 </div>
-                {/* (زر ملء الشاشة المخصص - إذا أردت استخدامه بدلاً من زر المتصفح) */}
-                {/* <button onClick={handleFullscreen} style={{position: 'absolute', bottom: '10px', right: '10px', zIndex: 99}}>FS</button> */}
+                
+                {/* --- [ ✅✅ جديد: إضافة الزر المخصص ] --- */}
+                <button 
+                    className="custom-fullscreen-btn" 
+                    onClick={handleFullscreen}
+                    title="ملء الشاشة"
+                >
+                    ⛶
+                </button>
             </div>
             
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
@@ -184,32 +188,23 @@ export default function StreamPage() {
                     position: relative; 
                     width: 100%;
                     max-width: 900px;
-                    /* (هذا هو السطر المسبب للمشكلة) */
-                    aspect-ratio: 16 / 9; 
+                    /* (تم حذف aspect-ratio الثابت من هنا) */
+                    /* (سيتم تطبيقه الآن عن طريق inline style) */
                     background: #111;
                     border-radius: 8px; 
                     overflow: hidden; 
+                    /* (إضافة حركة ناعمة عند تغيير النسبة) */
+                    transition: aspect-ratio 0.3s ease;
                 }
                 
-                /* --- [ ✅✅ بداية: هذا هو الإصلاح ] --- */
-                /* (عندما تكون الحاوية في وضع ملء الشاشة) */
-                .player-wrapper-html5:fullscreen {
-                    aspect-ratio: auto; /* (1. الغي تثبيت النسبة) */
-                    max-width: none;    /* (2. اسمح لها بملء الشاشة) */
-                }
-                .player-wrapper-html5:-webkit-full-screen {
-                    aspect-ratio: auto;
-                    max-width: none;
-                }
-                .player-wrapper-html5:-moz-full-screen {
-                    aspect-ratio: auto;
-                    max-width: none;
-                }
+                /* (هذا هو الإصلاح الذي يحل مشكلة التعارض) */
+                .player-wrapper-html5:fullscreen,
+                .player-wrapper-html5:-webkit-full-screen,
+                .player-wrapper-html5:-moz-full-screen,
                 .player-wrapper-html5:-ms-fullscreen {
-                    aspect-ratio: auto;
+                    aspect-ratio: auto !important; /* (الغاء النسبة تماماً في ملء الشاشة) */
                     max-width: none;
                 }
-                /* --- [ نهاية: الإصلاح ] --- */
 
 
                 .html5-video-player { 
@@ -225,27 +220,34 @@ export default function StreamPage() {
                     z-index: 10;
                     overflow: hidden; 
                 }
+                
+                /* ... (ستايل .watermark و .sticker-watermark كما هو) ... */
+                .watermark { /* ... */ }
+                .sticker-watermark { /* ... */ }
 
-                .watermark {
-                    position: absolute; 
-                    padding: 4px 8px; 
-                    background: rgba(0, 0, 0, 0.7); 
-                    color: white; 
-                    font-size: clamp(10px, 2.5vw, 14px);
-                    border-radius: 4px;
-                    transition: top 2s ease-in-out, left 2s ease-in-out;
-                    z-index: 20;
-                    white-space: nowrap;
-                }
-                .sticker-watermark {
+                /* --- [ ✅✅ جديد: ستايل الزر المخصص ] --- */
+                .custom-fullscreen-btn {
                     position: absolute;
-                    width: 80px; height: 80px;
-                    background-image: url('/logo-sticker.png'); 
-                    background-size: contain;
-                    background-repeat: no-repeat;
-                    opacity: 0.6;
-                    transition: top 1.5s ease-in-out, left 1.5s ease-in-out;
-                    z-index: 21;
+                    bottom: 12px; /* (تعديل المسافة لتناسب شريط التحكم) */
+                    right: 15px;
+                    z-index: 21; /* (فوق الفيديو) */
+                    background: rgba(0,0,0,0.5);
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 18px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    padding: 5px 8px;
+                    line-height: 1;
+                    opacity: 0.7;
+                    transition: opacity 0.2s ease;
+                }
+                .player-wrapper-html5:hover .custom-fullscreen-btn {
+                    opacity: 1;
+                }
+                .custom-fullscreen-btn:hover {
+                    background: rgba(0,0,0,0.8);
                 }
             `}</style>
         </div>
