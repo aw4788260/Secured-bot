@@ -185,7 +185,7 @@ export default function StreamPage() {
                     width: 100%;
                     max-width: 900px;
                     /* (هذا هو السطر المسبب للمشكلة) */
-                    aspect-ratio: 16 / 9; 
+                    aspect-ratio: 16 / 7; 
                     background: #111;
                     border-radius: 8px; 
                     overflow: hidden; 
