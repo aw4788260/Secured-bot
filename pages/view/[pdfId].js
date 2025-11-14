@@ -8,9 +8,11 @@ const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     useEffect(() => {
+        // (تأكد من نسخ كود التحقق من المستخدم بالكامل من ملف watch.js هنا)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
+
         if (urlUserId && urlUserId.trim() !== '') {
             setUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -44,6 +46,23 @@ export default function ViewPdfPage() {
         }
     }, [user]); 
 
+    // --- [ ✅✅ جديد: كود منع الضغط المطول (ContextMenu) ] ---
+    useEffect(() => {
+        const disableContextMenu = (e) => {
+            e.preventDefault();
+        };
+
+        // (تطبيقه على مستوى الصفحة كلها)
+        document.addEventListener('contextmenu', disableContextMenu);
+
+        return () => {
+            // (إزالته عند الخروج من الصفحة)
+            document.removeEventListener('contextmenu', disableContextMenu);
+        };
+    }, []); // (يعمل مرة واحدة عند فتح الصفحة)
+    // --- [ نهاية كود المنع ] ---
+
+
     if (error) { 
         return (
             <div className="message-container">
@@ -69,15 +88,23 @@ export default function ViewPdfPage() {
 
             <div className="pdf-wrapper">
                 
-                <iframe
-                    src={pdfStreamUrl}
-                    className="pdf-iframe"
-                    title="PDF Viewer"
+                {/* --- [ ✅✅ تعديل: استبدال <iframe> بـ <object> ] --- */}
+                <object
+                    data={pdfStreamUrl} // (استخدام "data" بدلاً من "src")
+                    type="application/pdf"
+                    className="pdf-iframe" // (هنستخدم نفس الستايل)
                     onError={() => { // (هذا سيعمل إذا فشل الـ API)
-                        console.error("Iframe onError triggered.");
+                        console.error("Object tag onError triggered.");
                         setPdfError(true);
                     }}
-                />
+                >
+                    {/* (رسالة تظهر إذا فشل العنصر تماماً) */}
+                    <div className="pdf-load-error">
+                         <h1>فشل عرض العنصر</h1>
+                         <p>المتصفح أو البرنامج لا يدعم عنصر object.</p>
+                    </div>
+                </object>
+                {/* --- [ نهاية التعديل ] --- */}
 
                 {/* (طبقة العلامة المائية المكررة) */}
                 <div className="pdf-watermark-overlay">
@@ -119,8 +146,19 @@ export default function ViewPdfPage() {
                     height: 100%;
                     border: none;
                     background: #333; /* (خلفية رمادية قبل التحميل) */
+
+                    /* --- [ ✅✅ ستايل منع الضغط المطول ] --- */
+                    -webkit-touch-callout: none; /* (لمنع القائمة في iOS) */
+                    -webkit-user-select: none; /* (لمنع التحديد في Chrome/Safari) */
+                    -khtml-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                    /* --- [ نهاية الستايل ] --- */
                 }
-                .pdf-iframe {
+
+                /* (هذا الستايل يطبق على <object> الآن) */
+                .pdf-iframe { 
                     width: 100%;
                     height: 100%;
                     border: none;
