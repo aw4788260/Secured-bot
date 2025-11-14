@@ -9,8 +9,7 @@ const useUserCheck = (router) => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        // (لا تعمل إلا في المتصفح والراوتر جاهز)
-        if (!router.isReady || typeof window === 'undefined') return; 
+        if (!router.isReady) return; 
 
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
@@ -35,11 +34,9 @@ const useUserCheck = (router) => {
                 return;
             }
 
-            // (السماح للمنصات الآمنة)
             if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
                 setUser(miniAppUser);
             } else {
-                // (التحقق من الأدمن للمنصات الأخرى)
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
@@ -58,7 +55,7 @@ const useUserCheck = (router) => {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
         }
-    }, [router.isReady, router.query]); // (الاعتماد على router.isReady هو الأهم)
+    }, [router.isReady, router.query]); 
 
     return { user, error };
 };
@@ -77,104 +74,53 @@ export default function StreamPage() {
     useEffect(() => {
         if (!user) return; 
         watermarkIntervalRef.current = setInterval(() => {
-             setWatermarkPos({ 
+            setWatermarkPos({ 
                 top: `${Math.floor(Math.random() * 70) + 10}%`, 
                 left: `${Math.floor(Math.random() * 70) + 10}%` 
             });
         }, 5000);
         stickerIntervalRef.current = setInterval(() => {
-             setStickerPos({ 
+            setStickerPos({ 
                 top: `${Math.floor(Math.random() * 60) + 20}%`, 
                 left: `${Math.floor(Math.random() * 60) + 20}%` 
             });
         }, 3000); 
 
         return () => {
-            if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current);
-            if (stickerIntervalRef.current) clearInterval(stickerIntervalRef.current);
+            clearInterval(watermarkIntervalRef.current);
+            clearInterval(stickerIntervalRef.current);
         };
     }, [user]);
     // --- [ نهاية كود العلامة المائية ] ---
     
-    // --- [ ✅✅ بداية: الكود الاحترافي المعدل ] ---
-    
-    const videoRef = useRef(null); // (Ref للإشارة إلى عنصر الفيديو نفسه)
-    
-    // --- [ ✅ تعديل: النسبة الافتراضية ] ---
-    const [aspectRatio, setAspectRatio] = useState('7 / 11'); // (الافتراضي الجديد)
-    const originalAspectRatioRef = useRef('7 / 11'); 
+    // (للتأكد من أننا نستخدم الحاوية الصحيحة)
+    const playerWrapperRef = useRef(null); 
 
-    // (دالة لاكتشاف أبعاد الفيديو عند تحميله)
-    const handleMetadata = (e) => {
-        const { videoWidth, videoHeight } = e.target;
-        let originalRatio;
-
-        // --- [ ✅ تعديل: تطبيق النسب المطلوبة ] ---
-        if (videoHeight > videoWidth) {
-            // (هذا فيديو طويل)
-            originalRatio = '7 / 13';
-        } else {
-            // (هذا فيديو عريض)
-            originalRatio = '7 / 11';
-        }
+    // (دالة ملء الشاشة)
+    const handleFullscreen = () => {
+        const elem = playerWrapperRef.current; // (استهداف الحاوية)
+        if (!elem) return;
         
-        setAspectRatio(originalRatio); // (تطبيق النسبة)
-        originalAspectRatioRef.current = originalRatio; // (حفظها للرجوع إليها)
+        const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
+        const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        
+        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+            if (requestFS) {
+                requestFS.call(elem); 
+            }
+        } else {
+            if (exitFS) {
+                exitFS.call(document);
+            }
+        }
     };
 
-    // (هذا هو المستمع (Listener) الذي يحل مشكلة ملء الشاشة)
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            const videoElement = videoRef.current;
-            if (!videoElement) return; // (للأمان)
 
-            const isVideoFullscreen = document.fullscreenElement === videoElement || 
-                                      document.webkitFullscreenElement === videoElement ||
-                                      document.mozFullScreenElement === videoElement ||
-                                      document.msFullscreenElement === videoElement;
-
-            if (isVideoFullscreen) {
-                // (نعم، الفيديو دخل ملء الشاشة -> حرر الحاوية)
-                setAspectRatio('auto');
-            } else {
-                // (لا، الفيديو خرج من ملء الشاشة -> أعد النسبة الأصلية)
-                setAspectRatio(originalAspectRatioRef.current);
-            }
-        };
-
-        // (إضافة المستمعين للنظام)
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange); 
-        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-        // (تنظيف المستمعين عند الخروج)
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-        };
-    }, []); // (يعمل مرة واحدة)
-    // --- [ نهاية: الكود الاحترافي المعدل ] ---
-
-
-    // (شاشات التحميل والأخطاء)
     if (error) { 
-        return (
-            <div className="page-container">
-                <Head><title>خطأ</title></Head>
-                <h1>{error}</h1>
-            </div>
-        ); 
+        return <div className="page-container">...</div>; 
     }
     if (!user || !videoId) { 
-        return (
-             <div className="page-container">
-                <Head><title>جاري التحميل</title></Head>
-                <h1>جاري تحميل الفيديو...</h1>
-            </div>
-        );
+        return <div className="page-container"><h1>جاري تحميل الفيديو...</h1></div>;
     }
 
     const videoStreamUrl = `/api/secure/get-video-stream?lessonId=${videoId}`;
@@ -186,20 +132,15 @@ export default function StreamPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* (تطبيق الـ style الديناميكي) */}
-            <div 
-                className="player-wrapper-html5" 
-                style={{ aspectRatio: aspectRatio }} // (تطبيق النسبة 7/11 أو 7/13 أو auto)
-            > 
+            {/* (إضافة ref هنا) */}
+            <div className="player-wrapper-html5" ref={playerWrapperRef}> 
                 <video
-                    ref={videoRef} // (إضافة الـ ref هنا)
                     src={videoStreamUrl}
                     controls
-                    controlsList="nodownload" // (إبقاء زر ملء الشاشة الأصلي)
+                    controlsList="nodownload"
                     disablePictureInPicture
                     className="html5-video-player"
                     preload="metadata"
-                    onLoadedMetadata={handleMetadata} // (إضافة مستمع التحميل)
                 />
                 <div className="watermark-overlay">
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
@@ -211,6 +152,8 @@ export default function StreamPage() {
                     >
                     </div>
                 </div>
+                {/* (زر ملء الشاشة المخصص - إذا أردت استخدامه بدلاً من زر المتصفح) */}
+                {/* <button onClick={handleFullscreen} style={{position: 'absolute', bottom: '10px', right: '10px', zIndex: 99}}>FS</button> */}
             </div>
             
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
@@ -241,21 +184,32 @@ export default function StreamPage() {
                     position: relative; 
                     width: 100%;
                     max-width: 900px;
-                    /* (سيتم تطبيق النسبة الآن عن طريق inline style) */
+                    /* (هذا هو السطر المسبب للمشكلة) */
+                    aspect-ratio: 16 / 9; 
                     background: #111;
                     border-radius: 8px; 
                     overflow: hidden; 
-                    transition: aspect-ratio 0.2s ease-out; /* (حركة ناعمة) */
                 }
                 
-                /* (هذا الكود يضمن أن الحاوية نفسها تتمدد إذا دخلت هي في ملء الشاشة) */
-                .player-wrapper-html5:fullscreen,
-                .player-wrapper-html5:-webkit-full-screen,
-                .player-wrapper-html5:-moz-full-screen,
-                .player-wrapper-html5:-ms-fullscreen {
-                    aspect-ratio: auto !important; 
+                /* --- [ ✅✅ بداية: هذا هو الإصلاح ] --- */
+                /* (عندما تكون الحاوية في وضع ملء الشاشة) */
+                .player-wrapper-html5:fullscreen {
+                    aspect-ratio: auto; /* (1. الغي تثبيت النسبة) */
+                    max-width: none;    /* (2. اسمح لها بملء الشاشة) */
+                }
+                .player-wrapper-html5:-webkit-full-screen {
+                    aspect-ratio: auto;
                     max-width: none;
                 }
+                .player-wrapper-html5:-moz-full-screen {
+                    aspect-ratio: auto;
+                    max-width: none;
+                }
+                .player-wrapper-html5:-ms-fullscreen {
+                    aspect-ratio: auto;
+                    max-width: none;
+                }
+                /* --- [ نهاية: الإصلاح ] --- */
 
 
                 .html5-video-player { 
