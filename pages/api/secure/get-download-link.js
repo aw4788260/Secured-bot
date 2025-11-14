@@ -1,9 +1,10 @@
 // pages/api/secure/get-download-link.js
-import axios from 'axios';
+import YTDlp from 'yt-dlp-exec';
+import path from 'path';
+import fs from 'fs';
 
-// [ ✅✅✅ هذا هو الإصلاح: استخدام البديل الرسمي والجديد لـ Cobalt ✅✅✅ ]
-// (هذا السيرفر يعمل ومصمم لتجاوز الحظر)
-const COYOT_API_URL = 'https://api.coyot.dev/api/json';
+// (مسار مؤقت لكتابة ملف الكوكيز فيه)
+const COOKIE_FILE_PATH = path.join('/tmp', 'youtube-cookies.txt');
 
 export default async (req, res) => {
   const { youtubeId } = req.query;
@@ -15,46 +16,43 @@ export default async (req, res) => {
   const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
 
   try {
-    // 1. (إرسال الطلب للسيرفر الخارجي الجديد)
-    const response = await axios.post(
-      COYOT_API_URL,
-      {
-        url: videoUrl,
-        vQuality: '720', // (اطلب 720p)
-        isAudioOnly: false,
-      },
-      {
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        timeout: 8000 // (مهلة 8 ثواني)
-      }
-    );
-
-    // 2. (تحليل الرد - الكود متطابق مع Cobalt)
-    if (response.data && response.data.status === 'success' && response.data.url) {
-      // (نجحنا! أرسل الرابط لتطبيق الأندرويد)
-      res.status(200).json({ downloadUrl: response.data.url });
-    
-    } else if (response.data && response.data.status === 'picker' && response.data.picker.length > 0) {
-        // (إذا لم يجد جودة 720p، سنأخذ أول جودة بديلة)
-        const fallbackUrl = response.data.picker[0].url;
-        res.status(200).json({ downloadUrl: fallbackUrl });
-        
-    } else {
-      // (فشل السيرفر الخارجي)
-      throw new Error(response.data.text || 'coyot.dev API failed');
+    // 1. [ ✅✅✅ هذا هو الحل ✅✅✅ ]
+    // (جلب الكوكيز من متغيرات Vercel)
+    const cookieValue = process.env.YOUTUBE_COOKIE;
+    if (!cookieValue) {
+        throw new Error('YOUTUBE_COOKIE is not set on the server.');
     }
+    
+    // (كتابة الكوكيز في ملف مؤقت لأن yt-dlp يفضل القراءة من ملف)
+    fs.writeFileSync(COOKIE_FILE_PATH, cookieValue);
+
+    // 2. (استدعاء yt-dlp الحقيقي)
+    const output = await YTDlp(videoUrl, {
+      format: '22/18/best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best',
+      getUrl: true,
+      cookie: COOKIE_FILE_PATH, // (استخدام ملف الكوكيز)
+    });
+
+    // 3. (تنظيف الملف المؤقت)
+    fs.unlinkSync(COOKIE_FILE_PATH);
+
+    // (الناتج سيكون هو الرابط مباشرة)
+    if (!output || !output.startsWith('https://')) {
+      throw new Error('yt-dlp did not return a valid URL.');
+    }
+
+    // 4. (إرسال الرابط لتطبيق الأندرويد)
+    res.status(200).json({ downloadUrl: output.trim() });
 
   } catch (err) {
-    // (التقاط أي خطأ من السيرفر الخارجي)
-    let errorMessage = err.message;
-    if (err.response && err.response.data && err.response.data.text) {
-        errorMessage = err.response.data.text;
+    // (تنظيف الملف المؤقت في حال حدوث خطأ)
+    if (fs.existsSync(COOKIE_FILE_PATH)) {
+        fs.unlinkSync(COOKIE_FILE_PATH);
     }
     
-    console.error(`[External API CRASH] ID: ${youtubeId}, Error:`, errorMessage);
-    res.status(500).json({ error: `External API failed: ${errorMessage}` });
+    // (إظهار الخطأ الحقيقي)
+    const errorMessage = err.stderr || err.message;
+    console.error(`[yt-dlp-exec CRASH] ID: ${youtubeId}, Error:`, errorMessage);
+    res.status(500).json({ error: `Server failed (yt-dlp-exec): ${errorMessage}` });
   }
 };
