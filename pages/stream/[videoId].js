@@ -96,30 +96,38 @@ export default function StreamPage() {
     }, [user]);
     // --- [ نهاية كود العلامة المائية ] ---
     
-    // --- [ ✅✅ بداية: الكود الاحترافي الجديد ] ---
+    // --- [ ✅✅ بداية: الكود الاحترافي المعدل ] ---
     
     const videoRef = useRef(null); // (Ref للإشارة إلى عنصر الفيديو نفسه)
-    const [aspectRatio, setAspectRatio] = useState('16 / 9'); // (الافتراضي)
-    // (Ref لتخزين النسبة الأصلية)
-    const originalAspectRatioRef = useRef('16 / 9'); 
+    
+    // --- [ ✅ تعديل: النسبة الافتراضية ] ---
+    const [aspectRatio, setAspectRatio] = useState('7 / 11'); // (الافتراضي الجديد)
+    const originalAspectRatioRef = useRef('7 / 11'); 
 
     // (دالة لاكتشاف أبعاد الفيديو عند تحميله)
     const handleMetadata = (e) => {
         const { videoWidth, videoHeight } = e.target;
-        // (تحديد النسبة الأصلية)
-        const originalRatio = (videoHeight > videoWidth) ? '7 / 16' : '16 / 9';
+        let originalRatio;
+
+        // --- [ ✅ تعديل: تطبيق النسب المطلوبة ] ---
+        if (videoHeight > videoWidth) {
+            // (هذا فيديو طويل)
+            originalRatio = '7 / 13';
+        } else {
+            // (هذا فيديو عريض)
+            originalRatio = '7 / 11';
+        }
         
         setAspectRatio(originalRatio); // (تطبيق النسبة)
         originalAspectRatioRef.current = originalRatio; // (حفظها للرجوع إليها)
     };
 
-    // (هذا هو المستمع (Listener) الذي يحل المشكلة)
+    // (هذا هو المستمع (Listener) الذي يحل مشكلة ملء الشاشة)
     useEffect(() => {
         const handleFullscreenChange = () => {
             const videoElement = videoRef.current;
             if (!videoElement) return; // (للأمان)
 
-            // (التحقق هل الفيديو "هو" العنصر الذي في ملء الشاشة؟)
             const isVideoFullscreen = document.fullscreenElement === videoElement || 
                                       document.webkitFullscreenElement === videoElement ||
                                       document.mozFullScreenElement === videoElement ||
@@ -136,10 +144,9 @@ export default function StreamPage() {
 
         // (إضافة المستمعين للنظام)
         document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // (لـ Safari/Chrome)
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange); // (لـ Firefox)
-        document.addEventListener('MSFullscreenChange', handleFullscreenChange); // (لـ IE/Edge القديم)
-
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange); 
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
 
         // (تنظيف المستمعين عند الخروج)
         return () => {
@@ -149,7 +156,7 @@ export default function StreamPage() {
             document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
         };
     }, []); // (يعمل مرة واحدة)
-    // --- [ نهاية: الكود الاحترافي الجديد ] ---
+    // --- [ نهاية: الكود الاحترافي المعدل ] ---
 
 
     // (شاشات التحميل والأخطاء)
@@ -182,14 +189,13 @@ export default function StreamPage() {
             {/* (تطبيق الـ style الديناميكي) */}
             <div 
                 className="player-wrapper-html5" 
-                style={{ aspectRatio: aspectRatio }} // (تطبيق النسبة 16/9 أو 7/16 أو auto)
+                style={{ aspectRatio: aspectRatio }} // (تطبيق النسبة 7/11 أو 7/13 أو auto)
             > 
                 <video
                     ref={videoRef} // (إضافة الـ ref هنا)
                     src={videoStreamUrl}
                     controls
-                    // --- [ ✅✅ تعديل: إرجاع زر ملء الشاشة الأصلي ] ---
-                    controlsList="nodownload" 
+                    controlsList="nodownload" // (إبقاء زر ملء الشاشة الأصلي)
                     disablePictureInPicture
                     className="html5-video-player"
                     preload="metadata"
@@ -216,7 +222,6 @@ export default function StreamPage() {
                 body { 
                     margin: 0; 
                     overscroll-behavior: contain; 
-                    /* (الخلفية ستكون من globals.css) */
                 }
                 
                 .page-container {
@@ -244,7 +249,6 @@ export default function StreamPage() {
                 }
                 
                 /* (هذا الكود يضمن أن الحاوية نفسها تتمدد إذا دخلت هي في ملء الشاشة) */
-                /* (هذا احتياطي لو الكود الديناميكي فشل) */
                 .player-wrapper-html5:fullscreen,
                 .player-wrapper-html5:-webkit-full-screen,
                 .player-wrapper-html5:-moz-full-screen,
