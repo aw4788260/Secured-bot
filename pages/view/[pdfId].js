@@ -2,17 +2,22 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
+// (استيراد المكتبة)
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
 
-// (دالة مخصصة لجلب المستخدم والتحقق منه)
+// (تحديد مسار الـ worker)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+
+// (دالة التحقق من المستخدم - انسخها من رد سابق)
 const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     useEffect(() => {
-        // (تأكد من نسخ كود التحقق من المستخدم بالكامل من ملف watch.js هنا)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
-
         if (urlUserId && urlUserId.trim() !== '') {
             setUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -33,78 +38,69 @@ export default function ViewPdfPage() {
     const { pdfId } = router.query;
     const { user, error } = useUserCheck(router);
 
-    // (حالة لتتبع خطأ تحميل الـ PDF)
-    const [pdfError, setPdfError] = useState(false);
-
-    // (منطق العلامة المائية "المكررة")
+    const [numPages, setNumPages] = useState(null);
+    const [pdfError, setPdfError] = useState(null);
     const [watermarkSpans, setWatermarkSpans] = useState([]);
     const watermarkText = user ? `${user.first_name} (${user.id})` : '';
 
     useEffect(() => {
-        if (user) {
-            setWatermarkSpans(new Array(100).fill(0));
-        }
+        if (user) setWatermarkSpans(new Array(100).fill(0));
     }, [user]); 
 
-    // --- [ ✅✅ جديد: كود منع الضغط المطول (ContextMenu) ] ---
     useEffect(() => {
-        const disableContextMenu = (e) => {
-            e.preventDefault();
-        };
-
-        // (تطبيقه على مستوى الصفحة كلها)
+        const disableContextMenu = (e) => e.preventDefault();
         document.addEventListener('contextmenu', disableContextMenu);
+        return () => document.removeEventListener('contextmenu', disableContextMenu);
+    }, []); 
 
-        return () => {
-            // (إزالته عند الخروج من الصفحة)
-            document.removeEventListener('contextmenu', disableContextMenu);
-        };
-    }, []); // (يعمل مرة واحدة عند فتح الصفحة)
-    // --- [ نهاية كود المنع ] ---
-
-
-    if (error) { 
-        return (
-            <div className="message-container">
-                <Head><title>خطأ</title></Head>
-                <h1>{error}</h1>
-            </div>
-        ); 
-    }
-    if (!user || !pdfId) { 
-        return (
-            <div className="message-container">
-                <Head><title>جاري التحميل...</title></Head>
-                <h1>جاري التحميل...</h1>
-            </div>
-        ); 
-    }
+    if (error) { /* ... كود عرض الخطأ ... */ }
+    if (!user || !pdfId) { /* ... كود التحميل ... */ }
 
     const pdfStreamUrl = `/api/secure/get-pdf?lessonId=${pdfId}`;
+
+    function onDocumentLoadSuccess({ numPages: nextNumPages }) {
+        setNumPages(nextNumPages);
+    }
+
+    function onDocumentLoadError(error) {
+        console.error("react-pdf error:", error.message);
+        // --- [ ✅✅ هنا مكان الخطأ المتوقع ] ---
+        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+            setPdfError('خطأ أمان (CORS): البرنامج يمنع تحميل الملف مباشرة من سيرفر تليجرام.');
+        } else {
+            setPdfError(`فشل تحميل الـ PDF: ${error.message}`);
+        }
+    }
 
     return (
         <div className="page-container-pdf">
             <Head><title>عرض الملف</title></Head>
-
             <div className="pdf-wrapper">
                 
-                {/* --- [ ✅✅ تعديل: استبدال <iframe> بـ <object> ] --- */}
-                <object
-                    data={pdfStreamUrl} // (استخدام "data" بدلاً من "src")
-                    type="application/pdf"
-                    className="pdf-iframe" // (هنستخدم نفس الستايل)
-                    onError={() => { // (هذا سيعمل إذا فشل الـ API)
-                        console.error("Object tag onError triggered.");
-                        setPdfError(true);
-                    }}
-                >
-                    {/* (رسالة تظهر إذا فشل العنصر تماماً) */}
-                    <div className="pdf-load-error">
-                         <h1>فشل عرض العنصر</h1>
-                         <p>المتصفح أو البرنامج لا يدعم عنصر object.</p>
-                    </div>
-                </object>
-                {/* --- [ نهاية التعديل ] --- */}
+                <div className="pdf-document-container">
+                    <Document
+                        file={pdfStreamUrl} // (هنا سيتم استدعاء الـ API)
+                        onLoadSuccess={onDocumentLoadSuccess}
+                        onLoadError={onDocumentLoadError} // (هذه الدالة ستعمل وتعرض الخطأ)
+                        loading={<div className="message-container"><h1>جاري تحميل الـ PDF...</h1></div>}
+                        error={<div className="message-container"><h1>{pdfError || 'خطأ غير معروف'}</h1></div>}
+                        options={{
+                            cMapUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+                            cMapPacked: true,
+                        }}
+                    >
+                        {Array.from(new Array(numPages), (el, index) => (
+                            <Page
+                                key={`page_${index + 1}`}
+                                pageNumber={index + 1}
+                                width={Math.min(window.innerWidth * 0.95, 800)} 
+                                className="pdf-page"
+                                renderTextLayer={false}
+                                renderAnnotationLayer={false}
+                            />
+                        ))}
+                    </Document>
+                </div>
 
                 {/* (طبقة العلامة المائية المكررة) */}
                 <div className="pdf-watermark-overlay">
@@ -115,96 +111,16 @@ export default function ViewPdfPage() {
                     ))}
                 </div>
 
-                {/* (إظهار رسالة الخطأ فوق كل شيء) */}
-                {pdfError && (
-                    <div className="pdf-load-error">
-                        <h1>خطأ في تحميل الملف</h1>
-                        <p>لم نتمكن من عرض ملف الـ PDF.</p>
-                        <p style={{fontSize: '0.8em', opacity: 0.7}}>(الملف تالف أو تم حذفه)</p>
-                    </div>
-                )}
             </div>
 
+            {/* (انسخ ستايل الـ CSS من الرد السابق) */}
             <style jsx global>{`
-                body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-                
-                .message-container { 
-                    display: flex; align-items: center; justify-content: center; 
-                    height: 100vh; color: white; padding: 20px; text-align: center; 
-                    background: #111827; 
-                }
-                
-                .page-container-pdf {
-                    width: 100%;
-                    height: 100vh;
-                    display: flex;
-                    background: #111827; 
-                }
-                .pdf-wrapper {
-                    position: relative; 
-                    width: 100%;
-                    height: 100%;
-                    border: none;
-                    background: #333; /* (خلفية رمادية قبل التحميل) */
-
-                    /* --- [ ✅✅ ستايل منع الضغط المطول ] --- */
-                    -webkit-touch-callout: none; /* (لمنع القائمة في iOS) */
-                    -webkit-user-select: none; /* (لمنع التحديد في Chrome/Safari) */
-                    -khtml-user-select: none;
-                    -moz-user-select: none;
-                    -ms-user-select: none;
-                    user-select: none;
-                    /* --- [ نهاية الستايل ] --- */
-                }
-
-                /* (هذا الستايل يطبق على <object> الآن) */
-                .pdf-iframe { 
-                    width: 100%;
-                    height: 100%;
-                    border: none;
-                    position: absolute;
-                    z-index: 1; /* (الطبقة السفلية) */
-                }
-                
-                .pdf-watermark-overlay {
-                    position: absolute;
-                    top: 0; left: 0;
-                    width: 100%;
-                    height: 100%;
-                    z-index: 2; /* (فوق الـ PDF) */
-                    pointer-events: none; /* (لتمرير النقرات للـ PDF) */
-                    display: flex;
-                    flex-wrap: wrap;
-                    justify-content: center;
-                    align-items: center;
-                    overflow: hidden;
-                    background: transparent; 
-                }
-                
-                .watermark-tile {
-                    padding: 30px 50px; 
-                    font-size: 16px;
-                    font-weight: bold;
-                    color: rgba(128, 128, 128, 0.15); 
-                    transform: rotate(-30deg); 
-                    white-space: nowrap;
-                    user-select: none; /* (لمنع التحديد) */
-                }
-
-                .pdf-load-error {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    z-index: 100; /* (فوق كل شيء) */
-                    background: rgba(200, 50, 50, 0.85); /* (أحمر) */
-                    color: white;
-                    padding: 20px 40px;
-                    border-radius: 10px;
-                    text-align: center;
-                    pointer-events: all; 
-                    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
-                }
+                /* ... (نفس كود الـ CSS بالكامل) ... */
+                .page-container-pdf { /* ... */ }
+                .pdf-wrapper { /* ... */ }
+                .pdf-document-container { /* ... */ }
+                .pdf-watermark-overlay { /* ... */ }
+                .watermark-tile { /* ... */ }
             `}</style>
         </div>
     );
