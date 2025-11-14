@@ -1,5 +1,5 @@
 // pages/api/secure/get-download-link.js
-import ytdl from 'ytdl-core';
+import play from 'play-dl';
 
 export default async (req, res) => {
   const { youtubeId } = req.query;
@@ -10,43 +10,47 @@ export default async (req, res) => {
 
   try {
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-    
-    // [ ✅✅✅ هذا هو الإصلاح ✅✅✅ ]
-    // (إضافة خيارات للطلب لجعله يشبه المتصفح)
-    // (هذا يساعد في تجاوز قيود يوتيوب على سيرفرات Vercel)
-    const info = await ytdl.getInfo(videoUrl, {
-        requestOptions: {
+
+    // (تعيين مصدر IP وهمي لتجاوز حظر يوتيوب على Vercel)
+    await play.setToken({
+        youtube: {
+            cookie: process.env.YOUTUBE_COOKIE || '' 
+        }
+    });
+
+    // 1. جلب معلومات الفيديو (هذه المكتبة أسرع)
+    const info = await play.video_info(videoUrl, {
+        request: {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         }
     });
-    // [ ✅✅✅ نهاية الإصلاح ✅✅✅ ]
 
-    
-    // (نفس المنطق القديم: ابحث عن 720p أو 360p)
-    let format = ytdl.chooseFormat(info.formats, { 
-        quality: '22', // itag 22 (720p, mp4)
-        filter: format => format.container === 'mp4' && format.hasAudio && format.hasVideo
-    });
-
-    if (!format) {
-      format = ytdl.chooseFormat(info.formats, { 
-          quality: '18', // itag 18 (360p, mp4)
-          filter: format => format.container === 'mp4' && format.hasAudio && format.hasVideo
-      });
+    // 2. البحث عن صيغة mp4 (itag 22 أو 18)
+    let bestFormat = info.format.find(f => f.itag === 22 && f.container === 'mp4');
+    if (!bestFormat) {
+        bestFormat = info.format.find(f => f.itag === 18 && f.container === 'mp4');
     }
 
-    if (!format) {
-      throw new Error('No suitable mp4 format found (itag 22 or 18)');
+    // (إذا لم نجدها، نحاول جلب أفضل صيغة mp4 متاحة)
+    if (!bestFormat) {
+        const mp4Formats = info.format.filter(f => f.container === 'mp4' && f.hasAudio && f.hasVideo);
+        if (mp4Formats.length > 0) {
+            bestFormat = mp4Formats[0];
+        }
     }
 
-    // (إرسال الرابط كـ JSON)
-    res.status(200).json({ downloadUrl: format.url });
+    if (!bestFormat || !bestFormat.url) {
+      throw new Error('No suitable mp4 format found (itag 22/18 or other)');
+    }
+
+    // 3. إرسال الرابط
+    res.status(200).json({ downloadUrl: bestFormat.url });
 
   } catch (err) {
-    // (تحسين تسجيل الخطأ)
-    console.error(`[ytdl-core CRASH] ID: ${youtubeId}, Error: ${err.message}`);
-    res.status(500).json({ error: `Server failed to get link: ${err.message}` });
+    console.error(`[play-dl CRASH] ID: ${youtubeId}, Error: ${err.message}`);
+    // (إظهار الخطأ الحقيقي للأندرويد)
+    res.status(500).json({ error: `Server failed (play-dl): ${err.message}` });
   }
 };
