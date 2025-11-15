@@ -2,17 +2,20 @@ import YTDlpWrap from "yt-dlp-wrap";
 
 export default async function handler(req, res) {
   try {
-    const { url } = req.query;
+    // [ ✅ تعديل: اقبل url أو youtubeId ]
+    const { url, youtubeId } = req.query;
+    const videoUrl = url || youtubeId; // استخدم أياً منهما
 
-    if (!url) {
-      return res.status(400).json({ error: "No URL provided" });
+    if (!videoUrl) {
+      // [ ✅ تعديل: تحديث رسالة الخطأ ]
+      return res.status(400).json({ error: "No URL or youtubeId provided" });
     }
 
     const ytdlp = new YTDlpWrap();
 
     // Get JSON metadata
     const jsonOutput = await ytdlp.execPromise([
-      url,
+      videoUrl, // [ ✅ تعديل: استخدم المتغير الجديد ]
       "--dump-single-json",
       "--no-warnings",
       "--prefer-free-formats"
