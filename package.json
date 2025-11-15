@@ -17,7 +17,7 @@
     "react-dom": "^18",
     "react-youtube": "^10.1.0",
     "react-pdf": "^7.7.1",
-    "yt-dlp-wrap": "^2.4.1"
+    "yt-dlp-wrap": "2.3.3"
   },
   "devDependencies": {
     "eslint": "^8",
