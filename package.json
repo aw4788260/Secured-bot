@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "postinstall": "node -e \"require('yt-dlp-wrap').downloadFromGithub().catch(console.error)\"",
+    "postinstall": "node ./node_modules/yt-dlp-wrap/bin/download.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
