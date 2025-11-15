@@ -1,4 +1,4 @@
-import { yt-dlp } from "yt-dlp-exec";
+import ytDlp from "yt-dlp-exec";
 
 export default async function handler(req, res) {
   const { youtubeId } = req.query;
@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   try {
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
 
-    const result = await yt-dlp(videoUrl, {
+    const result = await ytDlp(videoUrl, {
       dumpSingleJson: true,
       noWarnings: true,
       noCheckCertificates: true,
@@ -22,7 +22,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "No formats available" });
     }
 
-    // اختيار أعلى جودة MP4
     const bestFormat = result.formats
       .filter(f => f.ext === "mp4" && f.url)
       .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
