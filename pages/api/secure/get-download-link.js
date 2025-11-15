@@ -1,61 +1,43 @@
-// pages/api/secure/get-download-link.js
-import axios from 'axios';
+import { yt-dlp } from "yt-dlp-exec";
 
-// (استخدام سيرفر خارجي جديد ومختلف يعمل حالياً)
-const API_URL = 'https://api.y2mate.app/api/v1/info';
-
-export default async (req, res) => {
+export default async function handler(req, res) {
   const { youtubeId } = req.query;
 
   if (!youtubeId) {
-    return res.status(400).json({ error: 'Missing youtubeId' });
+    return res.status(400).json({ error: "Missing youtubeId" });
   }
-
-  // (هذا السيرفر يفضل الرابط الكامل)
-  const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
 
   try {
-    // 1. (إرسال الطلب للسيرفر الخارجي الجديد)
-    const response = await axios.get(API_URL, {
-      params: {
-        url: videoUrl,
-      },
-      headers: {
-        Accept: 'application/json',
-      },
-      timeout: 8000, // (مهلة 8 ثواني)
+    const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+
+    const result = await yt-dlp(videoUrl, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      noCheckCertificates: true,
+      preferFreeFormats: true,
+      youtubeSkipDashManifest: true,
     });
 
-    // 2. (تحليل الرد)
-    const links = response.data?.links;
-    if (!links || !links.mp4 || links.mp4.length === 0) {
-      throw new Error('No MP4 links found by y2mate API');
+    if (!result || !result.formats) {
+      return res.status(500).json({ error: "No formats available" });
     }
 
-    // 3. (البحث عن الجودة المطلوبة)
-    let downloadUrl = links.mp4.find((f) => f.q === '720p')?.url;
-    if (!downloadUrl) {
-      downloadUrl = links.mp4.find((f) => f.q === '360p')?.url;
-    }
-    // (إذا لم نجدها، نأخذ أول جودة متاحة)
-    if (!downloadUrl) {
-      downloadUrl = links.mp4[0].url;
+    // اختيار أعلى جودة MP4
+    const bestFormat = result.formats
+      .filter(f => f.ext === "mp4" && f.url)
+      .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+
+    if (!bestFormat) {
+      return res.status(500).json({ error: "No direct mp4 link found" });
     }
 
-    if (!downloadUrl) {
-      throw new Error('Could not extract a valid download URL');
-    }
-
-    // 4. (إرسال الرابط لتطبيق الأندرويد)
-    res.status(200).json({ downloadUrl });
+    return res.status(200).json({
+      downloadUrl: bestFormat.url,
+      quality: bestFormat.height,
+    });
 
   } catch (err) {
-    let errorMessage = err.message;
-    if (err.response && err.response.data && err.response.data.error) {
-      errorMessage = err.response.data.error;
-    }
-    
-    console.error(`[y2mate API CRASH] ID: ${youtubeId}, Error:`, errorMessage);
-    res.status(500).json({ error: `External API (y2mate) failed: ${errorMessage}` });
+    console.error("Download error:", err);
+    return res.status(500).json({ error: "yt-dlp failed", details: err.message });
   }
-};
+}
