@@ -5,7 +5,8 @@ import Head from 'next/head';
 
 // [ ✅✅ جديد: إضافة هذه الأسطر ]
 import Plyr from 'plyr-react';
-import 'plyr-react/dist/plyr.css'; // (مهم جداً لجلب الشكل الاحترافي)
+// [ ✅✅✅ هذا هو الإصلاح: تغيير المسار ]
+import 'plyr/dist/plyr.css'; // (مهم جداً لجلب الشكل الاحترافي)
 
 // (دالة مخصصة لجلب المستخدم والتحقق منه - تبقى كما هي)
 const useUserCheck = (router) => {
