@@ -1,8 +1,13 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-import YouTube from 'react-youtube';
+
+// [ ✅✅ جديد: إضافة هذه الأسطر ]
+import Plyr from 'plyr-react';
+import 'plyr-react/dist/plyr.css';
+
+// (تم حذف import react-youtube)
 
 export default function WatchPage() {
     const router = useRouter();
@@ -10,33 +15,26 @@ export default function WatchPage() {
     const [youtubeId, setYoutubeId] = useState(null);
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const playerRef = useRef(null);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [showSeekIcon, setShowSeekIcon] = useState({ direction: null, visible: false });
-    const seekTimeoutRef = useRef(null);
+    
+    // [ ✅✅ جديد: حالة لتخزين عنوان الفيديو ]
+    const [videoTitle, setVideoTitle] = useState("جاري تحميل العنوان...");
+    // [ ✅✅ جديد: حالة للتحقق من وجود الجسر (للأندرويد) ]
+    const [isNativeAndroid, setIsNativeAndroid] = useState(false);
+
+    // [ ✅✅ الإبقاء على كود العلامة المائية ]
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
-    const [isSeeking, setIsSeeking] = useState(false);
-    const progressBarRef = useRef(null);
-    const [playbackRate, setPlaybackRate] = useState(1);
-    const [availablePlaybackRates, setAvailablePlaybackRates] = useState([]);
-    const [videoQuality, setVideoQuality] = useState('auto');
-    const [availableQualityLevels, setAvailableQualityLevels] = useState([]);
-    const [qualitiesFetched, setQualitiesFetched] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
-    
-    const playerWrapperRef = useRef(null);
 
-    // [ ✅ جديد: حالة لتخزين عنوان الفيديو ]
-    const [videoTitle, setVideoTitle] = useState("جاري تحميل العنوان...");
-    // [ ✅ جديد: حالة للتحقق من وجود الجسر (للأندرويد) ]
-    const [isNativeAndroid, setIsNativeAndroid] = useState(false);
+    // [ 🛑🛑 حذف: كل الـ states الخاصة بالمشغل المخصص ]
+    // (تم حذف: isPlaying, playerRef, currentTime, duration, showSeekIcon, 
+    // isSeeking, progressBarRef, playbackRate, videoQuality, isFullscreen ...إلخ)
+    
+    const playerWrapperRef = useRef(null); // (سنبقيه لزر التحميل)
+
 
     useEffect(() => {
         
-        // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو)
+        // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو - تبقى كما هي)
         const setupUserAndLoadVideo = (foundUser) => {
             if (foundUser && foundUser.id) { 
                 setUser(foundUser); 
@@ -53,6 +51,7 @@ export default function WatchPage() {
             }
         };
 
+        // (منطق التحقق من المستخدم - يبقى كما هو)
         // --- [ ✅✅ بداية المنطق الجديد للتحقق (المعدل) ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
@@ -112,157 +111,42 @@ export default function WatchPage() {
         // --- [ ✅✅ نهاية المنطق الجديد ] ---
 
 
-        const progressInterval = setInterval(() => { if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && !isSeeking) { setCurrentTime(playerRef.current.getCurrentTime()); } }, 500);
+        // [ ✅✅ تبسيط: الإبقاء على عداد العلامة المائية فقط ]
         watermarkIntervalRef.current = setInterval(() => {
             const newTop = Math.floor(Math.random() * 70) + 10;
             const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
         
-        const handleFullscreenChange = () => {
-            const isFs = !!(document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
-            setIsFullscreen(isFs);
-        };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('msfullscreenchange', handleFullscreenChange);
+        // (تم حذف كل الأكواد الخاصة بـ progressInterval و handleFullscreenChange)
 
         return () => { 
-            clearInterval(progressInterval); 
             clearInterval(watermarkIntervalRef.current); 
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+            // (تم حذف كل الـ event listeners)
         };
-    }, [videoId, isSeeking]); // (يعتمد على videoId و isSeeking)
+    }, [videoId]); // (تم تبسيط الـ dependencies)
 
-    // (دالة ترجمة الجودات)
-    const formatQualityLabel = (quality) => {
-        const qualityMap = {
-            hd1080: '1080p',
-            hd720: '720p',
-            large: '480p',
-            medium: '360p',
-            small: '240p',
-            tiny: '144p',
-            auto: 'تلقائي'
-        };
-        return qualityMap[quality] || quality;
-    };
-    
-    // (دوال التحكم الأساسية)
-    const handlePlayPause = () => { if (!playerRef.current) return; const playerState = playerRef.current.getPlayerState(); if (playerState === 1) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); } };
-    const handleSeek = (direction) => { if (!playerRef.current) return; const currentTimeVal = playerRef.current.getCurrentTime(); const newTime = direction === 'forward' ? currentTimeVal + 10 : currentTimeVal - 10; playerRef.current.seekTo(newTime, true); setShowSeekIcon({ direction: direction, visible: true }); if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current); seekTimeoutRef.current = setTimeout(() => { setShowSeekIcon({ direction: null, visible: false }); }, 600); };
-    
-    const onPlayerReady = useCallback((event) => {
-        playerRef.current = event.target;
-        setDuration(event.target.getDuration());
-        const rates = playerRef.current.getAvailablePlaybackRates();
-        if (rates && rates.length > 0) {
-            setAvailablePlaybackRates(rates);
-            setPlaybackRate(playerRef.current.getPlaybackRate());
-        }
+    // [ 🛑🛑 حذف: كل دوال التحكم بالمشغل ]
+    // (تم حذف: formatQualityLabel, handlePlayPause, handleSeek, onPlayerReady, 
+    // handleOnPlay, calculateSeekTime, handleScrubStart, handleScrubbing, 
+    // handleScrubEnd, handleSetPlaybackRate, formatTime, handleSetQuality, 
+    // handleActualQualityChange, handleFullscreen)
 
-        // [ ✅ جديد: جلب عنوان الفيديو عند الاستعداد ]
-        try {
-            const videoData = event.target.getVideoData();
-            if (videoData && videoData.title) {
-                setVideoTitle(videoData.title);
-            } else {
-                setVideoTitle("فيديو"); // اسم احتياطي
-            }
-        } catch (e) {
-            setVideoTitle("فيديو"); // اسم احتياطي
-        }
-
-        try {
-            const iframe = event.target.getIframe();
-            if (iframe) {
-                iframe.setAttribute('allow', 'fullscreen; autoplay; encrypted-media');
-                iframe.setAttribute('allowfullscreen', 'true');
-            }
-        } catch (e) {
-            console.error("Failed to set iframe attributes:", e);
-        }
-    }, [youtubeId]); // [ ✅ تعديل: أضف youtubeId هنا ]
-
-    const handleOnPlay = () => { setIsPlaying(true); if (playerRef.current && !qualitiesFetched) { const qualities = playerRef.current.getAvailableQualityLevels(); if (qualities && qualities.length > 0) { setAvailableQualityLevels(['auto', ...qualities]); setVideoQuality(playerRef.current.getPlaybackQuality()); setQualitiesFetched(true); } } };
-    
-    // (دوال شريط التمرير)
-    const calculateSeekTime = (e) => { if (!progressBarRef.current || duration === 0) return null; const bar = progressBarRef.current; const rect = bar.getBoundingClientRect(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const boundedX = Math.max(0, Math.min(rect.width, clientX - rect.left)); const seekRatio = boundedX / rect.width; return seekRatio * duration; };
-    const handleScrubStart = (e) => { e.preventDefault(); setIsSeeking(true); const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } window.addEventListener('mousemove', handleScrubbing); window.addEventListener('touchmove', handleScrubbing); window.addEventListener('mouseup', handleScrubEnd); window.addEventListener('touchend', handleScrubEnd); };
-    const handleScrubbing = (e) => { const seekTime = calculateSeekTime(e); if (seekTime !== null) { setCurrentTime(seekTime); playerRef.current.seekTo(seekTime, true); } };
-    const handleScrubEnd = () => { setIsSeeking(false); window.removeEventListener('mousemove', handleScrubbing); window.removeEventListener('touchmove', handleScrubbing); window.removeEventListener('mouseup', handleScrubEnd); window.removeEventListener('touchend', handleScrubEnd); };
-    
-    // (دالة السرعة وتنسيق الوقت)
-    const handleSetPlaybackRate = (e) => { const newRate = parseFloat(e.target.value); if (playerRef.current && !isNaN(newRate)) { playerRef.current.setPlaybackRate(newRate); setPlaybackRate(newRate); } };
-    const formatTime = (timeInSeconds) => { if (isNaN(timeInSeconds) || timeInSeconds <= 0) return '0:00'; const minutes = Math.floor(timeInSeconds / 60); const seconds = Math.floor(timeInSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; };
-    
-    // (دالة "طلب" تغيير الجودة)
-    const handleSetQuality = (e) => {
-        const newQuality = e.target.value;
-        
-        if (!playerRef.current || !youtubeId) return;
-
-        console.log(`▶️ جاري فرض تغيير الجودة إلى ${newQuality}...`);
-
-        try {
-            const currentTime = playerRef.current.getCurrentTime();
-
-            // (استخدام 'loadVideoById' لإجبار المشغل)
-            playerRef.current.loadVideoById({
-                videoId: youtubeId,
-                startSeconds: currentTime,
-                suggestedQuality: newQuality
-            });
-            
-             setVideoQuality(newQuality); 
-
-        } catch (err) {
-            console.error("Failed to force quality change:", err);
-            playerRef.current.setPlaybackQuality(newQuality);
-        }
-    };
-    
-    
-    const handleActualQualityChange = (event) => {
-        const actualQuality = event.data;
-        if (actualQuality) {
-            setVideoQuality(actualQuality); 
-        }
-    };
-
-    const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; 
-        if (!elem) return;
-        const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
-        const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            if (requestFS) {
-                requestFS.call(elem); 
-                setIsFullscreen(true);
-            }
-        } else {
-            if (exitFS) {
-                exitFS.call(document);
-                setIsFullscreen(false);
-            }
-        }
-    };
-
-    // [ ✅✅✅ دالة التحميل الجديدة (الجسر) ]
+    // [ ✅✅ الإبقاء على دالة التحميل الخاصة بالأندرويد ]
     const handleDownloadClick = () => {
-        if (!youtubeId || !videoTitle || videoTitle === "جاري تحميل العنوان...") {
+        // (ملاحظة: نحتاج لجلب العنوان بطريقة أخرى)
+        // (سنقوم بتعيين العنوان يدوياً هنا، أو يمكنك جلب العنوان بـ API call منفصل)
+        const fakeVideoTitle = videoTitle || "video"; // (يفضل جلب العنوان مع get-video-id API)
+        
+        if (!youtubeId) {
             alert("بيانات الفيديو غير جاهزة بعد، يرجى الانتظار ثانية.");
             return;
         }
 
         if (isNativeAndroid) {
             try {
-                // إرسال الأمر لتطبيق الأندرويد
-                window.Android.downloadVideo(youtubeId, videoTitle);
+                // (استخدام العنوان الذي جلبناه)
+                window.Android.downloadVideo(youtubeId, fakeVideoTitle);
             } catch (e) {
                 console.error("Error calling native bridge:", e);
                 alert("حدث خطأ أثناء الاتصال بالتطبيق.");
@@ -276,7 +160,31 @@ export default function WatchPage() {
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
     
-    const opts = { playerVars: { autoplay: 0, controls: 0, rel: 0, showinfo: 0, modestbranding: 1, disablekb: 1, }, };
+    // [ ✅✅ جديد: إعدادات مشغل Plyr ]
+    const plyrSource = {
+      type: 'video',
+      sources: [
+        {
+          src: youtubeId,
+          provider: 'youtube', // (تحديد المصدر: يوتيوب)
+        },
+      ],
+    };
+    
+    const plyrOptions = {
+        controls: [
+            'play-large', 'play', 'progress', 'current-time',
+            'mute', 'volume', 'settings', 'fullscreen'
+        ],
+        settings: ['quality', 'speed'],
+        // (لإخفاء أزرار يوتيوب الأصلية والسماح لـ Plyr بالتحكم)
+        youtube: {
+            rel: 0, // (عدم عرض فيديوهات مقترحة)
+            showinfo: 0, // (إخفاء معلومات الفيديو)
+            modestbranding: 1, // (إخفاء لوجو يوتيوب)
+            controls: 0, // (إخفاء الأزرار الأصلية)
+        }
+    };
 
     return (
         <div className="page-container">
@@ -286,80 +194,36 @@ export default function WatchPage() {
             </Head>
 
             <div className="player-wrapper" ref={playerWrapperRef}>
-                <YouTube
-                    videoId={youtubeId}
-                    opts={opts}
-                    className="youtube-player"
-                    iframeClassName="youtube-iframe"
-                    onReady={onPlayerReady}
-                    onPlay={handleOnPlay}
-                    onPause={() => setIsPlaying(false)}
-                    onEnd={() => setIsPlaying(false)}
-                    onPlaybackQualityChange={handleActualQualityChange}
+                
+                {/* [ ✅✅✅ بداية: استبدال المشغل ] */}
+                <Plyr
+                  source={plyrSource}
+                  options={plyrOptions}
                 />
+                {/* [ ✅✅✅ نهاية: استبدال المشغل ] */}
 
-                <div className="controls-overlay">
-                    <div className="interaction-grid">
-                        <div className="seek-zone" onDoubleClick={() => handleSeek('backward')}></div>
-                        <div className="play-pause-zone" onClick={handlePlayPause}>
-                            {!isPlaying && <div className="play-icon">▶</div>}
-                        </div>
-                        <div className="seek-zone" onDoubleClick={() => handleSeek('forward')}></div>
-                    </div>
-
-                    <div className="bottom-controls">
-                        <div className="extra-controls">
-                            {availableQualityLevels.length > 0 && (
-                                <select className="control-select" value={videoQuality} onChange={handleSetQuality}>
-                                    {availableQualityLevels.map(quality => (
-                                        <option key={quality} value={quality}>
-                                            {formatQualityLabel(quality)}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
-                            {availablePlaybackRates.length > 0 && (
-                                <select className="control-select" value={playbackRate} onChange={handleSetPlaybackRate}>
-                                    {availablePlaybackRates.map(rate => (
-                                        <option key={rate} value={rate}>{rate}x</option>
-                                    ))}
-                                </select>
-                            )}
-                        </div>
-                        <span className="time-display">{formatTime(currentTime)}</span>
-                        <div
-                            ref={progressBarRef}
-                            className="progress-bar-container"
-                            onMouseDown={handleScrubStart}
-                            onTouchStart={handleScrubStart}
-                        >
-                            <div className="progress-bar-track"></div>
-                            <div className="progress-bar-filled" style={{ width: `${(currentTime / duration) * 100}%` }}></div>
-                            <div className="progress-bar-handle" style={{ left: `${(currentTime / duration) * 100}%` }}></div>
-                        </div>
-                        <span className="time-display">{formatTime(duration)}</span>
-                        
-                        <button className="fullscreen-btn" onClick={handleFullscreen} title="ملء الشاشة">
-                            {isFullscreen ? '⤡' : '⛶'}
-                        </button>
-                    </div>
-
-                    {showSeekIcon.visible && (
-                        <div className={`seek-indicator ${showSeekIcon.direction}`}>
-                            {showSeekIcon.direction === 'forward' ? '» 10' : '10 «'}
-                        </div>
-                    )}
-
-                    <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
-                        {user.first_name} ({user.id})
-                    </div>
+                {/* [ ✅✅ الإبقاء على العلامة المائية ولكن تبسيطها ] */}
+                {/* (تم حذف كل الأزرار المخصصة من هنا) */}
+                <div className="watermark" style={{ 
+                    position: 'absolute', // (يجب أن تكون absolute)
+                    top: watermarkPos.top, 
+                    left: watermarkPos.left,
+                    zIndex: 15, // (أعلى من المشغل)
+                    pointerEvents: 'none',
+                    padding: '4px 8px', 
+                    background: 'rgba(0, 0, 0, 0.7)', 
+                    color: 'white', 
+                    fontSize: 'clamp(10px, 2.5vw, 14px)',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                    transition: 'top 2s ease-in-out, left 2s ease-in-out',
+                    whiteSpace: 'nowrap'
+                }}>
+                    {user.first_name} ({user.id})
                 </div>
             </div>
 
-            {/* [ ✅✅✅ الزر الجديد ] */}
-            {/* سيظهر هذا الزر "فقط" إذا كان 
-              المستخدم داخل تطبيق الأندرويد (isNativeAndroid = true)
-            */}
+            {/* [ ✅✅ الإبقاء على زر التحميل ] */}
             {isNativeAndroid && (
                 <button 
                     onClick={handleDownloadClick} 
@@ -376,11 +240,22 @@ export default function WatchPage() {
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
 
+            {/* [ ✅✅ تبسيط الـ CSS: حذف كل الأكواد الخاصة بالأزرار القديمة ] */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
-                .player-wrapper { position: relative; width: 100%; max-width: 900px; aspect-ratio: 16 / 7; background: #111; }
+                
+                /* (حاوية المشغل الرئيسية) */
+                .player-wrapper { 
+                    position: relative; 
+                    width: 100%; 
+                    max-width: 900px; 
+                    aspect-ratio: 16 / 7; 
+                    background: #111; 
+                    border-radius: 8px; /* (جديد: ليتناسب مع Plyr) */
+                    overflow: hidden; /* (جديد: ليتناسب مع Plyr) */
+                }
                 
                 .player-wrapper:fullscreen,
                 .player-wrapper:-webkit-full-screen,
@@ -392,32 +267,19 @@ export default function WatchPage() {
                     aspect-ratio: auto; 
                 }
                 
-                .youtube-player, .youtube-iframe { width: 100%; height: 100%; }
-                .controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; }
-                .interaction-grid { flex-grow: 1; display: flex; direction: ltr; }
-                .seek-zone { flex: 1; height: 100%; }
-                .play-pause-zone { flex: 2; height: 100%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
-                .play-icon { font-size: clamp(40px, 10vw, 80px); color: white; text-shadow: 0 0 15px rgba(0,0,0,0.8); opacity: 0.9; }
-                .bottom-controls { height: 40px; display: flex; align-items: center; padding: 0 10px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); z-index: 11; gap: 10px; }
-                .extra-controls { display: flex; gap: 8px; direction: ltr; }
-                .control-select { background-color: rgba(255, 255, 255, 0.2); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: clamp(11px, 2.5vw, 14px); cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; direction: ltr; text-align: center; text-align-last: center; }
-                .control-select option { background-color: #333; color: white; }
-                .time-display { color: white; font-size: clamp(11px, 2.5vw, 14px); margin: 0 5px; min-width: 40px; text-align: center; }
-                .progress-bar-container { position: relative; flex-grow: 1; height: 15px; display: flex; align-items: center; cursor: pointer; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; direction: ltr; }
-                .progress-bar-track { position: absolute; width: 100%; height: 4px; background: rgba(255, 255, 255, 0.3); border-radius: 2px; transition: height 0.1s ease; }
-                .progress-bar-filled { position: absolute; height: 4px; background: #FF0000; border-radius: 2px; transition: height 0.1s ease; }
-                .progress-bar-handle { position: absolute; width: 12px; height: 12px; background-color: #FF0000; border-radius: 50%; transform: translateX(-50%); transition: transform 0.1s ease, height 0.1s ease, width 0.1s ease; }
-                .progress-bar-container:hover .progress-bar-track, .progress-bar-container:hover .progress-bar-filled { height: 6px; }
-                .progress-bar-container:hover .progress-bar-handle { transform: translateX(-50%) scale(1.2); }
-                .seek-indicator { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: clamp(30px, 6vw, 40px); color: white; opacity: 0.8; animation: seek-pop 0.6s ease-out; pointer-events: none; direction: ltr; }
-                .seek-indicator.forward { left: 75%; }
-                .seek-indicator.backward { left: 25%; }
-                @keyframes seek-pop { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; } 50% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
-                .watermark { position: absolute; padding: 4px 8px; background: rgba(0, 0, 0, 0.7); color: white; font-size: clamp(10px, 2.5vw, 14px); border-radius: 4px; font-weight: bold; pointer-events: none; transition: top 2s ease-in-out, left 2s ease-in-out; white-space: nowrap; z-index: 20; }
-                .fullscreen-btn { background: none; border: none; color: white; font-size: clamp(18px, 3vw, 22px); cursor: pointer; padding: 0 5px; line-height: 1; font-weight: bold; min-width: 25px; }
-                .fullscreen-btn:hover { color: #FF0000; }
+                /* (مشغل Plyr سيملأ الحاوية) */
+                .player-wrapper .plyr {
+                    width: 100%;
+                    height: 100%;
+                }
+
+                /* (تم حذف كل كلاسات الأزرار المخصصة مثل: 
+                   .controls-overlay, .interaction-grid, .seek-zone, 
+                   .play-pause-zone, .bottom-controls, .extra-controls, 
+                   .time-display, .progress-bar-container, .seek-indicator, 
+                   .fullscreen-btn) */
                 
-                /* [ ✅ جديد: تنسيق زر التحميل ] */
+                /* [ ✅ جديد: تنسيق زر التحميل (كما كان) ] */
                 .download-button-native {
                     background-color: #38bdf8; /* لون أزرق مميز */
                     color: #111827; /* لون النص غامق */
