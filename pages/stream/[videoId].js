@@ -3,10 +3,14 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// [ ✅✅ جديد: إضافة هذه الأسطر ]
-import Plyr from 'plyr-react';
-// [ ✅✅✅ هذا هو الإصلاح: تغيير المسار ]
-import 'plyr/dist/plyr.css'; // (مهم جداً لجلب الشكل الاحترافي)
+// [ ✅✅✅ بداية الإصلاح ]
+import dynamic from 'next/dynamic';
+// 1. تحميل المشغل "ديناميكياً" ومنع تشغيله على السيرفر
+const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
+// 2. استيراد الـ CSS بشكل عادي
+import 'plyr/dist/plyr.css';
+// [ ✅✅✅ نهاية الإصلاح ]
+
 
 // (دالة مخصصة لجلب المستخدم والتحقق منه - تبقى كما هي)
 const useUserCheck = (router) => {
