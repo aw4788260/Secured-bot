@@ -3,13 +3,56 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// [ ✅✅✅ بداية الإصلاح ]
+// [ ✅✅ الإصلاح الذي قمت به في المرة السابقة ]
 import dynamic from 'next/dynamic';
-// 1. تحميل المشغل "ديناميكياً" ومنع تشغيله على السيرفر
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
-// 2. استيراد الـ CSS بشكل عادي
 import 'plyr/dist/plyr.css';
-// [ ✅✅✅ نهاية الإصلاح ]
+
+
+// [ ✅✅✅ بداية الإصلاح الجديد: كومبوننت العلامة المائية ]
+// قمنا بعزل كل ما يخص العلامة المائية هنا
+const WatermarkOverlay = ({ user }) => {
+    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
+    const [stickerPos, setStickerPos] = useState({ top: '50%', left: '50%' });
+    const watermarkIntervalRef = useRef(null);
+    const stickerIntervalRef = useRef(null);
+
+    useEffect(() => {
+        if (!user) return; 
+        // هذا الكود الآن سيعيد رسم "WatermarkOverlay" فقط، وليس الصفحة كلها
+        watermarkIntervalRef.current = setInterval(() => {
+            setWatermarkPos({ 
+                top: `${Math.floor(Math.random() * 70) + 10}%`, 
+                left: `${Math.floor(Math.random() * 70) + 10}%` 
+            });
+        }, 5000);
+        stickerIntervalRef.current = setInterval(() => {
+            setStickerPos({ 
+                top: `${Math.floor(Math.random() * 60) + 20}%`, 
+                left: `${Math.floor(Math.random() * 60) + 20}%` 
+            });
+        }, 3000); 
+
+        return () => {
+            clearInterval(watermarkIntervalRef.current);
+            clearInterval(stickerIntervalRef.current);
+        };
+    }, [user]); // (يعتمد على المستخدم فقط)
+
+    return (
+        <div className="watermark-overlay">
+            <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
+                {user.first_name} ({user.id})
+            </div>
+            <div 
+                className="sticker-watermark" 
+                style={{ top: stickerPos.top, left: stickerPos.left }}
+            >
+            </div>
+        </div>
+    );
+};
+// [ ✅✅✅ نهاية الإصلاح الجديد ]
 
 
 // (دالة مخصصة لجلب المستخدم والتحقق منه - تبقى كما هي)
@@ -74,35 +117,9 @@ export default function StreamPage() {
     const { videoId } = router.query;
     const { user, error } = useUserCheck(router);
 
-    // --- [ كود العلامة المائية (كما هو) ] ---
-    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
-    const [stickerPos, setStickerPos] = useState({ top: '50%', left: '50%' });
-    const watermarkIntervalRef = useRef(null);
-    const stickerIntervalRef = useRef(null);
-
-    useEffect(() => {
-        if (!user) return; 
-        watermarkIntervalRef.current = setInterval(() => {
-            setWatermarkPos({ 
-                top: `${Math.floor(Math.random() * 70) + 10}%`, 
-                left: `${Math.floor(Math.random() * 70) + 10}%` 
-            });
-        }, 5000);
-        stickerIntervalRef.current = setInterval(() => {
-            setStickerPos({ 
-                top: `${Math.floor(Math.random() * 60) + 20}%`, 
-                left: `${Math.floor(Math.random() * 60) + 20}%` 
-            });
-        }, 3000); 
-
-        return () => {
-            clearInterval(watermarkIntervalRef.current);
-            clearInterval(stickerIntervalRef.current);
-        };
-    }, [user]);
-    // --- [ نهاية كود العلامة المائية ] ---
+    // [ 🛑🛑 حذف: تم نقل كل الأكواد المتعلقة بالعلامة المائية ]
+    // (تم حذف states و useEffects الخاصة بـ watermarkPos و stickerPos)
     
-    // (تم حذف دالة ملء الشاشة لأن Plyr يعالجها بنفسه)
     const playerWrapperRef = useRef(null); 
 
     if (error) { 
@@ -114,7 +131,7 @@ export default function StreamPage() {
 
     const videoStreamUrl = `/api/secure/get-video-stream?lessonId=${videoId}`;
 
-    // [ ✅✅ جديد: إعدادات مشغل Plyr ]
+    // (إعدادات مشغل Plyr - تبقى كما هي)
     const plyrSource = {
       type: 'video',
       sources: [
@@ -131,7 +148,6 @@ export default function StreamPage() {
             'mute', 'volume', 'settings', 'fullscreen'
         ],
         settings: ['quality', 'speed'],
-        // (لإخفاء زر التحميل من قائمة الإعدادات)
         config: {
             controlsList: "nodownload" 
         }
@@ -145,26 +161,17 @@ export default function StreamPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* (إضافة ref هنا) */}
             <div className="player-wrapper-html5" ref={playerWrapperRef}> 
                 
-                {/* [ ✅✅✅ بداية: استبدال المشغل ] */}
+                {/* المشغل (لن يتأثر الآن بإعادة الرسم) */}
                 <Plyr
                   source={plyrSource}
                   options={plyrOptions}
                 />
-                {/* [ ✅✅✅ نهاية: استبدال المشغل ] */}
-
-                <div className="watermark-overlay">
-                    <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
-                        {user.first_name} ({user.id})
-                    </div>
-                    <div 
-                        className="sticker-watermark" 
-                        style={{ top: stickerPos.top, left: stickerPos.left }}
-                    >
-                    </div>
-                </div>
+                
+                {/* [ ✅✅ جديد: استدعاء الكومبوننت المنفصل ] */}
+                {/* هذا الكومبوننت فقط هو الذي سيعيد الرسم */}
+                <WatermarkOverlay user={user} />
             </div>
             
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
@@ -172,7 +179,7 @@ export default function StreamPage() {
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
             
-            {/* (الـ CSS يبقى كما هو لأنه يعالج الحاوية والعلامة المائية) */}
+            {/* (الـ CSS يبقى كما هو تماماً) */}
             <style jsx global>{`
                 body { 
                     margin: 0; 
@@ -202,7 +209,6 @@ export default function StreamPage() {
                     overflow: hidden; 
                 }
                 
-                /* (الإصلاح الخاص بملء الشاشة يبقى كما هو) */
                 .player-wrapper-html5:fullscreen {
                     aspect-ratio: auto; 
                     max-width: none;    
@@ -220,7 +226,6 @@ export default function StreamPage() {
                     max-width: none;
                 }
 
-                /* (Plyr سيقوم بإنشاء عنصر الفيديو الخاص به) */
                 .player-wrapper-html5 .plyr {
                     width: 100%;
                     height: 100%;
