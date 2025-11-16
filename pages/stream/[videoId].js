@@ -9,8 +9,7 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 
-// [ ✅✅✅ بداية الإصلاح الجديد: كومبوننت العلامة المائية ]
-// قمنا بعزل كل ما يخص العلامة المائية هنا
+// [ ✅✅✅ كومبوننت العلامة المائية المنفصل (كما هو) ]
 const WatermarkOverlay = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const [stickerPos, setStickerPos] = useState({ top: '50%', left: '50%' });
@@ -19,7 +18,6 @@ const WatermarkOverlay = ({ user }) => {
 
     useEffect(() => {
         if (!user) return; 
-        // هذا الكود الآن سيعيد رسم "WatermarkOverlay" فقط، وليس الصفحة كلها
         watermarkIntervalRef.current = setInterval(() => {
             setWatermarkPos({ 
                 top: `${Math.floor(Math.random() * 70) + 10}%`, 
@@ -52,7 +50,7 @@ const WatermarkOverlay = ({ user }) => {
         </div>
     );
 };
-// [ ✅✅✅ نهاية الإصلاح الجديد ]
+// [ ✅✅✅ نهاية الكومبوننت المنفصل ]
 
 
 // (دالة مخصصة لجلب المستخدم والتحقق منه - تبقى كما هي)
@@ -116,9 +114,6 @@ export default function StreamPage() {
     const router = useRouter();
     const { videoId } = router.query;
     const { user, error } = useUserCheck(router);
-
-    // [ 🛑🛑 حذف: تم نقل كل الأكواد المتعلقة بالعلامة المائية ]
-    // (تم حذف states و useEffects الخاصة بـ watermarkPos و stickerPos)
     
     const playerWrapperRef = useRef(null); 
 
@@ -131,7 +126,7 @@ export default function StreamPage() {
 
     const videoStreamUrl = `/api/secure/get-video-stream?lessonId=${videoId}`;
 
-    // (إعدادات مشغل Plyr - تبقى كما هي)
+    // (إعدادات مشغل Plyr)
     const plyrSource = {
       type: 'video',
       sources: [
@@ -142,6 +137,7 @@ export default function StreamPage() {
       ],
     };
     
+    // [ ✅✅✅ بداية الإصلاح: إضافة إعدادات ملء الشاشة ]
     const plyrOptions = {
         controls: [
             'play-large', 'play', 'progress', 'current-time',
@@ -150,8 +146,15 @@ export default function StreamPage() {
         settings: ['quality', 'speed'],
         config: {
             controlsList: "nodownload" 
+        },
+        fullscreen: {
+            enabled: true,
+            fallback: true,
+            iosNative: true,
+            container: '.player-wrapper-html5' // <-- هذا هو السطر الحاسم
         }
     };
+    // [ ✅✅✅ نهاية الإصلاح ]
 
 
     return (
@@ -161,16 +164,14 @@ export default function StreamPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
+            {/* (اسم الكلاس هنا يجب أن يطابق ".player-wrapper-html5" في الإعدادات) */}
             <div className="player-wrapper-html5" ref={playerWrapperRef}> 
                 
-                {/* المشغل (لن يتأثر الآن بإعادة الرسم) */}
                 <Plyr
                   source={plyrSource}
                   options={plyrOptions}
                 />
                 
-                {/* [ ✅✅ جديد: استدعاء الكومبوننت المنفصل ] */}
-                {/* هذا الكومبوننت فقط هو الذي سيعيد الرسم */}
                 <WatermarkOverlay user={user} />
             </div>
             
