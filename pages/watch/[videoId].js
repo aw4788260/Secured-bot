@@ -3,10 +3,13 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// [ ✅✅ جديد: إضافة هذه الأسطر ]
-import Plyr from 'plyr-react';
-// [ ✅✅✅ هذا هو الإصلاح: تغيير المسار ]
+// [ ✅✅✅ بداية الإصلاح ]
+import dynamic from 'next/dynamic';
+// 1. تحميل المشغل "ديناميكياً" ومنع تشغيله على السيرفر
+const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
+// 2. استيراد الـ CSS بشكل عادي
 import 'plyr/dist/plyr.css';
+// [ ✅✅✅ نهاية الإصلاح ]
 
 // (تم حذف import react-youtube)
 
@@ -45,12 +48,13 @@ export default function WatchPage() {
             }
 
             if (videoId) {
+                // (الكود الحالي الخاص بك يعمل بشكل مثالي مع Plyr)
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                     .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
                     .then(data => {
                         setYoutubeId(data.youtube_video_id);
-                        // (هنا يمكنك جلب العنوان إذا أرجعه الـ API)
-                        // setVideoTitle(data.title); 
+                        // (يمكنك إضافة حقل "العنوان" للـ API لإرجاعه هنا)
+                        // setVideoTitle(data.title || "فيديو"); 
                     })
                     .catch(err => setError(err.message));
             }
