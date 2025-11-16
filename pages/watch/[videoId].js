@@ -3,15 +3,52 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// [ ✅✅✅ بداية الإصلاح ]
+// [ ✅✅ الإصلاح الذي قمت به في المرة السابقة ]
 import dynamic from 'next/dynamic';
-// 1. تحميل المشغل "ديناميكياً" ومنع تشغيله على السيرفر
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
-// 2. استيراد الـ CSS بشكل عادي
 import 'plyr/dist/plyr.css';
-// [ ✅✅✅ نهاية الإصلاح ]
 
-// (تم حذف import react-youtube)
+
+// [ ✅✅✅ بداية الإصلاح الجديد: كومبوننت العلامة المائية ]
+const Watermark = ({ user }) => {
+    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
+    const watermarkIntervalRef = useRef(null);
+
+    useEffect(() => {
+        if (!user) return;
+        watermarkIntervalRef.current = setInterval(() => {
+            const newTop = Math.floor(Math.random() * 70) + 10;
+            const newLeft = Math.floor(Math.random() * 70) + 10;
+            setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
+        }, 5000);
+
+        return () => { 
+            clearInterval(watermarkIntervalRef.current); 
+        };
+    }, [user]);
+
+    return (
+        <div className="watermark" style={{ 
+            position: 'absolute', 
+            top: watermarkPos.top, 
+            left: watermarkPos.left,
+            zIndex: 15, 
+            pointerEvents: 'none',
+            padding: '4px 8px', 
+            background: 'rgba(0, 0, 0, 0.7)', 
+            color: 'white', 
+            fontSize: 'clamp(10px, 2.5vw, 14px)',
+            borderRadius: '4px',
+            fontWeight: 'bold',
+            transition: 'top 2s ease-in-out, left 2s ease-in-out',
+            whiteSpace: 'nowrap'
+        }}>
+            {user.first_name} ({user.id})
+        </div>
+    );
+};
+// [ ✅✅✅ نهاية الإصلاح الجديد ]
+
 
 export default function WatchPage() {
     const router = useRouter();
@@ -20,20 +57,13 @@ export default function WatchPage() {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     
-    // [ ✅✅ جديد: حالة لتخزين عنوان الفيديو ]
     const [videoTitle, setVideoTitle] = useState("جاري تحميل العنوان...");
-    // [ ✅✅ جديد: حالة للتحقق من وجود الجسر (للأندرويد) ]
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
 
-    // [ ✅✅ الإبقاء على كود العلامة المائية ]
-    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
-    const watermarkIntervalRef = useRef(null);
-
-    // [ 🛑🛑 حذف: كل الـ states الخاصة بالمشغل المخصص ]
-    // (تم حذف: isPlaying, playerRef, currentTime, duration, showSeekIcon, 
-    // isSeeking, progressBarRef, playbackRate, videoQuality, isFullscreen ...إلخ)
+    // [ 🛑🛑 حذف: تم نقل كل الأكواد المتعلقة بالعلامة المائية ]
+    // (تم حذف states و useEffects الخاصة بـ watermarkPos)
     
-    const playerWrapperRef = useRef(null); // (سنبقيه لزر التحميل)
+    const playerWrapperRef = useRef(null); 
 
 
     useEffect(() => {
@@ -61,26 +91,21 @@ export default function WatchPage() {
         };
 
         // (منطق التحقق من المستخدم - يبقى كما هو)
-        // --- [ ✅✅ بداية المنطق الجديد للتحقق (المعدل) ] ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
 
-        // [ الحالة 1: مستخدم البرنامج (APK) ]
         if (urlUserId && urlUserId.trim() !== '') {
             const apkUser = { 
                 id: urlUserId, 
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
-            setupUserAndLoadVideo(apkUser); // (سماح بالدخول)
+            setupUserAndLoadVideo(apkUser); 
 
-            // [ ✅ جديد: التحقق من وجود الجسر ]
-            // "Android" هو الاسم الذي سنعرفه في جافا
             if (typeof window.Android !== 'undefined' && typeof window.Android.downloadVideo === 'function') {
                 setIsNativeAndroid(true);
             }
 
-        // [ الحالة 2: مستخدم تليجرام ميني آب ]
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
@@ -91,20 +116,15 @@ export default function WatchPage() {
                 return;
             }
 
-            // [ ✅ تعديل: السماح لـ (iOS, macOS, tdesktop) مباشرة ]
             if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
-                // (سماح بالدخول للآيفون، الماك، والويندوز/لينكس ديسكتوب)
                 setupUserAndLoadVideo(miniAppUser);
             } else {
-                // [ الحالة 2ب: المنصات الأخرى (مثل android, web) يجب التحقق من الأدمن ]
                 fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
                     .then(res => res.json())
                     .then(adminData => {
                         if (adminData.isAdmin) {
-                            // (سماح بالدخول للأدمن على أي منصة)
                             setupUserAndLoadVideo(miniAppUser);
                         } else {
-                            // (منع الدخول لغير الأدمن على هذه المنصات)
                             setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
                         }
                     })
@@ -112,40 +132,20 @@ export default function WatchPage() {
                         setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
                     });
             }
-        // [ الحالة 3: مستخدم متصفح عادي (منع الدخول) ]
         } else {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
         }
-        // --- [ ✅✅ نهاية المنطق الجديد ] ---
-
-
-        // [ ✅✅ تبسيط: الإبقاء على عداد العلامة المائية فقط ]
-        watermarkIntervalRef.current = setInterval(() => {
-            const newTop = Math.floor(Math.random() * 70) + 10;
-            const newLeft = Math.floor(Math.random() * 70) + 10;
-            setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
-        }, 5000);
         
         // (تم حذف كل الأكواد الخاصة بـ progressInterval و handleFullscreenChange)
 
-        return () => { 
-            clearInterval(watermarkIntervalRef.current); 
-            // (تم حذف كل الـ event listeners)
-        };
     }, [videoId]); // (تم تبسيط الـ dependencies)
 
     // [ 🛑🛑 حذف: كل دوال التحكم بالمشغل ]
-    // (تم حذف: formatQualityLabel, handlePlayPause, handleSeek, onPlayerReady, 
-    // handleOnPlay, calculateSeekTime, handleScrubStart, handleScrubbing, 
-    // handleScrubEnd, handleSetPlaybackRate, formatTime, handleSetQuality, 
-    // handleActualQualityChange, handleFullscreen)
 
     // [ ✅✅ الإبقاء على دالة التحميل الخاصة بالأندرويد ]
     const handleDownloadClick = () => {
-        // (ملاحظة: نحتاج لجلب العنوان بطريقة أخرى)
-        // (سنقوم بتعيين العنوان يدوياً هنا، أو يمكنك جلب العنوان بـ API call منفصل)
-        const fakeVideoTitle = videoTitle || "video"; // (يفضل جلب العنوان مع get-video-id API)
+        const fakeVideoTitle = videoTitle || "video"; 
         
         if (!youtubeId) {
             alert("بيانات الفيديو غير جاهزة بعد، يرجى الانتظار ثانية.");
@@ -154,7 +154,6 @@ export default function WatchPage() {
 
         if (isNativeAndroid) {
             try {
-                // (استخدام العنوان الذي جلبناه)
                 window.Android.downloadVideo(youtubeId, fakeVideoTitle);
             } catch (e) {
                 console.error("Error calling native bridge:", e);
@@ -186,12 +185,11 @@ export default function WatchPage() {
             'mute', 'volume', 'settings', 'fullscreen'
         ],
         settings: ['quality', 'speed'],
-        // (لإخفاء أزرار يوتيوب الأصلية والسماح لـ Plyr بالتحكم)
         youtube: {
-            rel: 0, // (عدم عرض فيديوهات مقترحة)
-            showinfo: 0, // (إخفاء معلومات الفيديو)
-            modestbranding: 1, // (إخفاء لوجو يوتيوب)
-            controls: 0, // (إخفاء الأزرار الأصلية)
+            rel: 0, 
+            showinfo: 0, 
+            modestbranding: 1, 
+            controls: 0, 
         }
     };
 
@@ -204,32 +202,15 @@ export default function WatchPage() {
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 
-                {/* [ ✅✅✅ بداية: استبدال المشغل ] */}
+                {/* المشغل (لن يتأثر الآن بإعادة الرسم) */}
                 <Plyr
                   source={plyrSource}
                   options={plyrOptions}
                 />
-                {/* [ ✅✅✅ نهاية: استبدال المشغل ] */}
-
-                {/* [ ✅✅ الإبقاء على العلامة المائية ولكن تبسيطها ] */}
-                {/* (تم حذف كل الأزرار المخصصة من هنا) */}
-                <div className="watermark" style={{ 
-                    position: 'absolute', // (يجب أن تكون absolute)
-                    top: watermarkPos.top, 
-                    left: watermarkPos.left,
-                    zIndex: 15, // (أعلى من المشغل)
-                    pointerEvents: 'none',
-                    padding: '4px 8px', 
-                    background: 'rgba(0, 0, 0, 0.7)', 
-                    color: 'white', 
-                    fontSize: 'clamp(10px, 2.5vw, 14px)',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    transition: 'top 2s ease-in-out, left 2s ease-in-out',
-                    whiteSpace: 'nowrap'
-                }}>
-                    {user.first_name} ({user.id})
-                </div>
+                
+                {/* [ ✅✅ جديد: استدعاء الكومبوننت المنفصل ] */}
+                {/* هذا الكومبوننت فقط هو الذي سيعيد الرسم */}
+                <Watermark user={user} />
             </div>
 
             {/* [ ✅✅ الإبقاء على زر التحميل ] */}
@@ -282,11 +263,7 @@ export default function WatchPage() {
                     height: 100%;
                 }
 
-                /* (تم حذف كل كلاسات الأزرار المخصصة مثل: 
-                   .controls-overlay, .interaction-grid, .seek-zone, 
-                   .play-pause-zone, .bottom-controls, .extra-controls, 
-                   .time-display, .progress-bar-container, .seek-indicator, 
-                   .fullscreen-btn) */
+                /* (تم حذف كل كلاسات الأزرار المخصصة) */
                 
                 /* [ ✅ جديد: تنسيق زر التحميل (كما كان) ] */
                 .download-button-native {
