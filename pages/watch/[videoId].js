@@ -61,7 +61,6 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
 
     // [ 🛑🛑 حذف: تم نقل كل الأكواد المتعلقة بالعلامة المائية ]
-    // (تم حذف states و useEffects الخاصة بـ watermarkPos)
     
     const playerWrapperRef = useRef(null); 
 
@@ -137,11 +136,7 @@ export default function WatchPage() {
              return;
         }
         
-        // (تم حذف كل الأكواد الخاصة بـ progressInterval و handleFullscreenChange)
-
     }, [videoId]); // (تم تبسيط الـ dependencies)
-
-    // [ 🛑🛑 حذف: كل دوال التحكم بالمشغل ]
 
     // [ ✅✅ الإبقاء على دالة التحميل الخاصة بالأندرويد ]
     const handleDownloadClick = () => {
@@ -168,7 +163,7 @@ export default function WatchPage() {
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
     
-    // [ ✅✅ جديد: إعدادات مشغل Plyr ]
+    // (إعدادات مشغل Plyr)
     const plyrSource = {
       type: 'video',
       sources: [
@@ -179,6 +174,7 @@ export default function WatchPage() {
       ],
     };
     
+    // [ ✅✅✅ بداية الإصلاح: إضافة إعدادات ملء الشاشة ]
     const plyrOptions = {
         controls: [
             'play-large', 'play', 'progress', 'current-time',
@@ -190,8 +186,15 @@ export default function WatchPage() {
             showinfo: 0, 
             modestbranding: 1, 
             controls: 0, 
+        },
+        fullscreen: {
+            enabled: true,
+            fallback: true,
+            iosNative: true,
+            container: '.player-wrapper' // <-- هذا هو السطر الحاسم
         }
     };
+    // [ ✅✅✅ نهاية الإصلاح ]
 
     return (
         <div className="page-container">
@@ -200,16 +203,15 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
+             {/* (اسم الكلاس هنا يجب أن يطابق ".player-wrapper" في الإعدادات) */}
             <div className="player-wrapper" ref={playerWrapperRef}>
                 
-                {/* المشغل (لن يتأثر الآن بإعادة الرسم) */}
                 <Plyr
                   source={plyrSource}
                   options={plyrOptions}
                 />
                 
                 {/* [ ✅✅ جديد: استدعاء الكومبوننت المنفصل ] */}
-                {/* هذا الكومبوننت فقط هو الذي سيعيد الرسم */}
                 <Watermark user={user} />
             </div>
 
@@ -230,21 +232,20 @@ export default function WatchPage() {
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
 
-            {/* [ ✅✅ تبسيط الـ CSS: حذف كل الأكواد الخاصة بالأزرار القديمة ] */}
+            {/* (الـ CSS يبقى كما هو) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
                 .message-container { display: flex; align-items: center; justify-content: center; height: 100vh; color: white; padding: 20px; text-align: center; }
                 
-                /* (حاوية المشغل الرئيسية) */
                 .player-wrapper { 
                     position: relative; 
                     width: 100%; 
                     max-width: 900px; 
                     aspect-ratio: 16 / 7; 
                     background: #111; 
-                    border-radius: 8px; /* (جديد: ليتناسب مع Plyr) */
-                    overflow: hidden; /* (جديد: ليتناسب مع Plyr) */
+                    border-radius: 8px; 
+                    overflow: hidden; 
                 }
                 
                 .player-wrapper:fullscreen,
@@ -257,18 +258,14 @@ export default function WatchPage() {
                     aspect-ratio: auto; 
                 }
                 
-                /* (مشغل Plyr سيملأ الحاوية) */
                 .player-wrapper .plyr {
                     width: 100%;
                     height: 100%;
                 }
-
-                /* (تم حذف كل كلاسات الأزرار المخصصة) */
                 
-                /* [ ✅ جديد: تنسيق زر التحميل (كما كان) ] */
                 .download-button-native {
-                    background-color: #38bdf8; /* لون أزرق مميز */
-                    color: #111827; /* لون النص غامق */
+                    background-color: #38bdf8; 
+                    color: #111827; 
                     font-weight: bold;
                     padding: 12px 20px;
                     border: none;
@@ -276,13 +273,13 @@ export default function WatchPage() {
                     cursor: pointer;
                     font-size: 16px;
                     margin: 15px 0 0 0;
-                    display: block; /* اجعله يظهر */
+                    display: block; 
                     width: 100%;
                     max-width: 900px;
                     transition: background-color 0.3s ease;
                 }
                 .download-button-native:hover {
-                    background-color: #7dd3fc; /* لون أفتح عند المرور */
+                    background-color: #7dd3fc; 
                 }
             `}</style>
         </div>
