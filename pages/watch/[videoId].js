@@ -5,7 +5,8 @@ import Head from 'next/head';
 
 // [ ✅✅ جديد: إضافة هذه الأسطر ]
 import Plyr from 'plyr-react';
-import 'plyr-react/dist/plyr.css';
+// [ ✅✅✅ هذا هو الإصلاح: تغيير المسار ]
+import 'plyr/dist/plyr.css';
 
 // (تم حذف import react-youtube)
 
@@ -46,7 +47,11 @@ export default function WatchPage() {
             if (videoId) {
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                     .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
-                    .then(data => setYoutubeId(data.youtube_video_id))
+                    .then(data => {
+                        setYoutubeId(data.youtube_video_id);
+                        // (هنا يمكنك جلب العنوان إذا أرجعه الـ API)
+                        // setVideoTitle(data.title); 
+                    })
                     .catch(err => setError(err.message));
             }
         };
