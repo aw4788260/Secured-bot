@@ -3,7 +3,11 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// (دالة مخصصة لجلب المستخدم والتحقق منه)
+// [ ✅✅ جديد: إضافة هذه الأسطر ]
+import Plyr from 'plyr-react';
+import 'plyr-react/dist/plyr.css'; // (مهم جداً لجلب الشكل الاحترافي)
+
+// (دالة مخصصة لجلب المستخدم والتحقق منه - تبقى كما هي)
 const useUserCheck = (router) => {
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
@@ -93,37 +97,41 @@ export default function StreamPage() {
     }, [user]);
     // --- [ نهاية كود العلامة المائية ] ---
     
-    // (للتأكد من أننا نستخدم الحاوية الصحيحة)
+    // (تم حذف دالة ملء الشاشة لأن Plyr يعالجها بنفسه)
     const playerWrapperRef = useRef(null); 
 
-    // (دالة ملء الشاشة)
-    const handleFullscreen = () => {
-        const elem = playerWrapperRef.current; // (استهداف الحاوية)
-        if (!elem) return;
-        
-        const requestFS = elem.requestFullscreen || elem.mozRequestFullScreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
-        const exitFS = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        
-        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            if (requestFS) {
-                requestFS.call(elem); 
-            }
-        } else {
-            if (exitFS) {
-                exitFS.call(document);
-            }
-        }
-    };
-
-
     if (error) { 
-        return <div className="page-container">...</div>; 
+        return <div className="page-container"><h1>{error}</h1></div>; 
     }
     if (!user || !videoId) { 
         return <div className="page-container"><h1>جاري تحميل الفيديو...</h1></div>;
     }
 
     const videoStreamUrl = `/api/secure/get-video-stream?lessonId=${videoId}`;
+
+    // [ ✅✅ جديد: إعدادات مشغل Plyr ]
+    const plyrSource = {
+      type: 'video',
+      sources: [
+        {
+          src: videoStreamUrl,
+          type: 'video/mp4',
+        },
+      ],
+    };
+    
+    const plyrOptions = {
+        controls: [
+            'play-large', 'play', 'progress', 'current-time',
+            'mute', 'volume', 'settings', 'fullscreen'
+        ],
+        settings: ['quality', 'speed'],
+        // (لإخفاء زر التحميل من قائمة الإعدادات)
+        config: {
+            controlsList: "nodownload" 
+        }
+    };
+
 
     return (
         <div className="page-container">
@@ -134,14 +142,14 @@ export default function StreamPage() {
 
             {/* (إضافة ref هنا) */}
             <div className="player-wrapper-html5" ref={playerWrapperRef}> 
-                <video
-                    src={videoStreamUrl}
-                    controls
-                    controlsList="nodownload"
-                    disablePictureInPicture
-                    className="html5-video-player"
-                    preload="metadata"
+                
+                {/* [ ✅✅✅ بداية: استبدال المشغل ] */}
+                <Plyr
+                  source={plyrSource}
+                  options={plyrOptions}
                 />
+                {/* [ ✅✅✅ نهاية: استبدال المشغل ] */}
+
                 <div className="watermark-overlay">
                     <div className="watermark" style={{ top: watermarkPos.top, left: watermarkPos.left }}>
                         {user.first_name} ({user.id})
@@ -152,8 +160,6 @@ export default function StreamPage() {
                     >
                     </div>
                 </div>
-                {/* (زر ملء الشاشة المخصص - إذا أردت استخدامه بدلاً من زر المتصفح) */}
-                {/* <button onClick={handleFullscreen} style={{position: 'absolute', bottom: '10px', right: '10px', zIndex: 99}}>FS</button> */}
             </div>
             
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
@@ -161,6 +167,7 @@ export default function StreamPage() {
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
             
+            {/* (الـ CSS يبقى كما هو لأنه يعالج الحاوية والعلامة المائية) */}
             <style jsx global>{`
                 body { 
                     margin: 0; 
@@ -184,18 +191,16 @@ export default function StreamPage() {
                     position: relative; 
                     width: 100%;
                     max-width: 900px;
-                    /* (هذا هو السطر المسبب للمشكلة) */
                     aspect-ratio: 16 / 7; 
                     background: #111;
                     border-radius: 8px; 
                     overflow: hidden; 
                 }
                 
-                /* --- [ ✅✅ بداية: هذا هو الإصلاح ] --- */
-                /* (عندما تكون الحاوية في وضع ملء الشاشة) */
+                /* (الإصلاح الخاص بملء الشاشة يبقى كما هو) */
                 .player-wrapper-html5:fullscreen {
-                    aspect-ratio: auto; /* (1. الغي تثبيت النسبة) */
-                    max-width: none;    /* (2. اسمح لها بملء الشاشة) */
+                    aspect-ratio: auto; 
+                    max-width: none;    
                 }
                 .player-wrapper-html5:-webkit-full-screen {
                     aspect-ratio: auto;
@@ -209,13 +214,11 @@ export default function StreamPage() {
                     aspect-ratio: auto;
                     max-width: none;
                 }
-                /* --- [ نهاية: الإصلاح ] --- */
 
-
-                .html5-video-player { 
-                    width: 100%; 
-                    height: 100%; 
-                    border: none;
+                /* (Plyr سيقوم بإنشاء عنصر الفيديو الخاص به) */
+                .player-wrapper-html5 .plyr {
+                    width: 100%;
+                    height: 100%;
                 }
                 
                 .watermark-overlay {
