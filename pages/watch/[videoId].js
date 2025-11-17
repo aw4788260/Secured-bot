@@ -2,12 +2,13 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-
-// (المكتبات زي ما هي)
 import dynamic from 'next/dynamic';
+
+// [ ✅✅ جديد: استيراد مكتبة Hls.js عشان Plyr يفهم m3u8 ]
+import Hls from 'hls.js'; 
+
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
-
 
 // (كومبوننت العلامة المائية زي ما هو - مفيش تغيير)
 const Watermark = ({ user }) => {
@@ -23,7 +24,9 @@ const Watermark = ({ user }) => {
         }, 5000);
 
         return () => { 
-            clearInterval(watermarkIntervalRef.current); 
+            if (watermarkIntervalRef.current) {
+                clearInterval(watermarkIntervalRef.current); 
+            }
         };
     }, [user]);
 
@@ -53,17 +56,35 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    // [ ✅✅ تعديل: محتاجين الـ ID للتحميل، واللينك للتشغيل ]
-    const [streamUrl, setStreamUrl] = useState(null); // <-- للتشغيل (الستريم الجديد)
-    const [youtubeId, setYoutubeId] = useState(null); // <-- للتحميل (زرار الأندرويد)
-
+    const [streamUrl, setStreamUrl] = useState(null); 
+    const [youtubeId, setYoutubeId] = useState(null); 
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
-    
     const [videoTitle, setVideoTitle] = useState("جاري تحميل العنوان...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
     const playerWrapperRef = useRef(null); 
+    const plyrInstanceRef = useRef(null); // (Ref جديد للبلاير)
+
+    // [ ✅✅ جديد: دالة لتشغيل HLS (m3u8) ]
+    useEffect(() => {
+        // (لا تعمل إلا إذا اللينك وصل، والبلاير جاهز)
+        if (!streamUrl || !plyrInstanceRef.current) return;
+        
+        const videoElement = plyrInstanceRef.current.plyr.media;
+        
+        if (Hls.isSupported()) {
+            // (لو المتصفح (زي Chrome) محتاج مساعدة Hls.js)
+            const hls = new Hls();
+            hls.loadSource(streamUrl);
+            hls.attachMedia(videoElement);
+            console.log("HLS.js attached");
+        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+            // (لو المتصفح (زي Safari/iOS) بيدعم m3u8 أصلاً)
+            videoElement.src = streamUrl;
+            console.log("Native HLS support detected");
+        }
+    }, [streamUrl]); // (هتشتغل لما الـ streamUrl ييجي)
 
 
     useEffect(() => {
@@ -77,26 +98,22 @@ export default function WatchPage() {
             }
 
             if (videoId) {
-                // [ ✅✅ تعديل: جلب البيانات من الـ API الجديد ]
+                // (الـ API ده هيرجع m3u8 streamUrl)
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                     .then(res => { 
                         if (!res.ok) {
-                          // محاولة قراءة رسالة الخطأ من السيرفر
                           return res.json().then(errData => {
                               throw new Error(errData.message || 'لا تملك صلاحية مشاهدة هذا الفيديو');
                           }).catch(() => {
-                              // لو فشل قراءة الـ JSON (مثلاً 500 Server Error)
                               throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو');
                           });
                         }
                         return res.json(); 
                     })
                     .then(data => {
-                        // لو السيرفر رجع خطأ (زي خطأ Railway)
                         if (data.message) throw new Error(data.message); 
                         
-                        // [ ✅✅ تعديل: حفظ اللينك والـ ID ]
-                        setStreamUrl(data.streamUrl); 
+                        setStreamUrl(data.streamUrl); // <-- ده لينك m3u8
                         setYoutubeId(data.youtube_video_id);
                         setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                     })
@@ -104,7 +121,7 @@ export default function WatchPage() {
             }
         };
 
-        // (منطق التحقق من المستخدم - يبقى كما هو تماماً)
+        // (منطق التحقق من المستخدم - يبقى كما هو)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
@@ -151,19 +168,16 @@ export default function WatchPage() {
              return;
         }
         
-    }, [videoId]); // (الـ dependencies زي ما هي)
+    }, [videoId]); 
 
-    // [ ✅✅ تعديل: دالة التحميل مبقتش محتاجة fakeVideoTitle ]
-    // (الدالة دي سليمة 100% لأنها بتعتمد على `youtubeId` اللي لسه موجود)
+    // (دالة التحميل - سليمة ومش محتاجة تعديل)
     const handleDownloadClick = () => {
-        if (!youtubeId) { // (لسه بنعتمد على الـ ID)
+        if (!youtubeId) { 
             alert("بيانات الفيديو غير جاهزة بعد، يرجى الانتظار ثانية.");
             return;
         }
-
         if (isNativeAndroid) {
             try {
-                // (هنا بنبعت الـ ID الأصلي والاسم الحقيقي اللي جبناه من Railway)
                 window.Android.downloadVideo(youtubeId, videoTitle);
             } catch (e) {
                 console.error("Error calling native bridge:", e);
@@ -176,36 +190,22 @@ export default function WatchPage() {
 
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
+    if (!user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري التحقق...</h1></div>; }
     
-    // [ ✅✅ تعديل: شاشة التحميل بقت بتعتمد على الـ streamUrl ]
-    if (!streamUrl || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    
-    // [ ✅✅ تعديل: إعدادات مشغل Plyr ]
-    // (مبقاش "يوتيوب"، بقى "فيديو عادي")
+    // (هنرجع فيديو فاضي، والـ useEffect هو اللي هيحط اللينك)
     const plyrSource = {
       type: 'video',
       title: videoTitle,
-      sources: [
-        {
-          src: streamUrl, // <-- [✅✅ الأهم] بنستخدم الستريم الجديد
-          type: 'video/mp4', // <-- [✅✅ الأهم] بنقوله إنه ملف فيديو
-        },
-      ],
+      sources: [], // (هنسيبه فاضي في الأول)
     };
     
-    // (الإعدادات زي ما هي، بس Plyr هيتجاهل إعدادات 'youtube' لأنه مبقاش يوتيوب)
     const plyrOptions = {
         controls: [
             'play-large', 'play', 'progress', 'current-time',
             'mute', 'volume', 'settings', 'fullscreen'
         ],
-        settings: ['quality', 'speed'],
-        youtube: { // (ده هيتم تجاهله)
-            rel: 0, 
-            showinfo: 0, 
-            modestbranding: 1, 
-            controls: 0, 
-        },
+        // (Plyr هيفهم إن ده HLS وهيظهر الجودات لوحده)
+        settings: ['quality', 'speed'], 
         fullscreen: {
             enabled: true,
             fallback: true,
@@ -223,15 +223,26 @@ export default function WatchPage() {
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 
+                {/* [ ✅✅ تعديل: 
+                   1. هنستخدم ref عشان نوصل للبلاير.
+                   2. هنعرض شاشة تحميل لو اللينك لسه مجاش.
+                ] 
+                */}
+                {!streamUrl && (
+                     <div className="message-container" style={{position: 'absolute', height: '100%'}}>
+                         <h1>جاري تحميل الفيديو...</h1>
+                     </div>
+                )}
+                
                 <Plyr
-                  source={plyrSource} // <-- بنمرر الستريم الجديد
+                  ref={plyrInstanceRef} // (ربط الـ Ref)
+                  source={plyrSource} 
                   options={plyrOptions}
                 />
                 
                 <Watermark user={user} />
             </div>
 
-            {/* (زرار التحميل هيفضل شغال زي ما هو) */}
             {isNativeAndroid && (
                 <button 
                     onClick={handleDownloadClick} 
@@ -246,7 +257,7 @@ export default function WatchPage() {
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
 
-            {/* (الـ CSS زي ما هو بالظبط) */}
+            {/* (الـ CSS يبقى كما هو) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
