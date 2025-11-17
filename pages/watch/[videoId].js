@@ -1,6 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef, useCallback } from 'react'; // (أضفنا useCallback)
+import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
@@ -61,69 +61,10 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
     const playerWrapperRef = useRef(null); 
-    const plyrInstanceRef = useRef(null); 
-
     
-    // [ ✅✅✅ بداية التعديل: إصلاح الخطأ الفادح ]
-
-    // (1. قمنا بفصل دالة التهيئة وجعلناها "تستدعي نفسها" إذا لم يكن المشغل جاهزاً)
-    const initializeHls = useCallback(() => {
-        try {
-            // (التحقق الأول: هل المشغل (Plyr) جاهز؟)
-            if (!plyrInstanceRef.current || !plyrInstanceRef.current.plyr) {
-                console.warn("Player instance not ready. Retrying in 100ms...");
-                // (إذا لم يكن جاهزاً، أعد المحاولة بعد 100 ميللي ثانية)
-                setTimeout(initializeHls, 100);
-                return;
-            }
-
-            const videoElement = plyrInstanceRef.current.plyr.media;
-
-            // (التحقق الثاني: هل عنصر الفيديو (<video>) جاهز؟)
-            if (!videoElement) {
-                console.warn("Player media element not ready. Retrying in 100ms...");
-                setTimeout(initializeHls, 100);
-                return;
-            }
-
-            // (الآن نحن متأكدون أن المشغل جاهز)
-            
-            // (التحقق من وجود المكتبة (من الـ CDN) وبدء التشغيل)
-            if (window.Hls && window.Hls.isSupported()) {
-                const Hls = window.Hls;
-                const hls = new Hls();
-                hls.loadSource(streamUrl); // (streamUrl موجود ومتأكدين منه)
-                hls.attachMedia(videoElement);
-                console.log("HLS.js attached successfully from CDN");
-            
-            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                videoElement.src = streamUrl;
-                console.log("Native HLS support detected");
-            } else {
-                setError("حدث خطأ أثناء تهيئة مشغل الفيديو (HLS not supported).");
-            }
-
-        } catch (e) {
-            // (هذا هو الخطأ الفادح الذي ظهر لك، الآن قمنا بحمايته)
-            console.error("Fatal error during HLS initialization:", e);
-            setError("حدث خطأ فادح أثناء تشغيل الفيديو.");
-        }
-    }, [streamUrl]); // (الدالة تعتمد فقط على streamUrl)
-
-
-    useEffect(() => {
-        // (2. تغيير المنطق: هذا الـ Effect يعمل فقط عند وصول الرابط)
-        if (!streamUrl) return;
-
-        // (3. نستدعي الدالة. وهي ستقوم بالانتظار (setTimeout) حتى يصبح المشغل جاهزاً)
-        initializeHls();
-
-    }, [streamUrl, initializeHls]); // (تعتمد على الرابط والدالة التي أنشأناها)
-
-    // [ ✅✅✅ نهاية التعديل ]
-
-
-    // (باقي كود الـ useEffect بتاع جلب الداتا - يبقى كما هو)
+    // [ ✅✅✅ تم حذف كود HLS.js بالكامل ]
+    
+    // (كود جلب الداتا - يبقى كما هو)
     useEffect(() => {
         const setupUserAndLoadVideo = (foundUser) => {
             if (foundUser && foundUser.id) { 
@@ -134,6 +75,7 @@ export default function WatchPage() {
             }
 
             if (videoId) {
+                // (هذا الـ API الآن يرجع رابط MP4)
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                     .then(res => { 
                         if (!res.ok) {
@@ -147,7 +89,7 @@ export default function WatchPage() {
                     })
                     .then(data => {
                         if (data.message) throw new Error(data.message); 
-                        setStreamUrl(data.streamUrl);
+                        setStreamUrl(data.streamUrl); // <-- هذا الآن رابط MP4
                         setYoutubeId(data.youtube_video_id);
                         setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                     })
@@ -221,11 +163,18 @@ export default function WatchPage() {
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري التحقق...</h1></div>; }
     
+    // [ ✅✅✅ بداية التعديل: تمرير الرابط المباشر للمشغل ]
     const plyrSource = {
       type: 'video',
       title: videoTitle,
-      sources: [], 
+      sources: [
+        {
+            src: streamUrl, // <-- وضعنا الرابط هنا مباشرة
+            type: 'video/mp4',
+        }
+      ], 
     };
+    // [ ✅✅✅ نهاية التعديل ]
     
     const plyrOptions = {
         controls: [
@@ -247,8 +196,7 @@ export default function WatchPage() {
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
                 
-                {/* (ما زلنا نعتمد على الـ CDN) */}
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.14"></script>
+                {/* [ 🛑 تم حذف سكريبت hls.js من هنا ] */}
                 
             </Head>
 
@@ -260,11 +208,13 @@ export default function WatchPage() {
                      </div>
                 )}
                 
-                <Plyr
-                  ref={plyrInstanceRef} 
-                  source={plyrSource} 
-                  options={plyrOptions}
-                />
+                {/* (الآن Plyr سيعمل فقط عندما يكون streamUrl جاهزاً) */}
+                {streamUrl && (
+                  <Plyr
+                    source={plyrSource} 
+                    options={plyrOptions}
+                  />
+                )}
                 
                 <Watermark user={user} />
             </div>
