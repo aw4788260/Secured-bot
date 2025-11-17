@@ -1,73 +1,99 @@
-// pages/api/secure/get-video-id.js
-
 import { supabase } from '../../../lib/supabaseClient';
-// [ ✅✅✅ تعديل: استيراد "ytdl-core" بدلاً من "play-dl" ]
 import ytdl from '@distube/ytdl-core';
 
+// ⚠️ الكوكيز التي أرسلتها (من كود Colab) أصبحت هنا
+const hardcodedCookies = [
+  "APISID=YCj4RD7H6PBQR2Du/ArlQgkOCHT3eSS8_-",
+  "SAPISID=rirduiJSx3-Gb8Og/AApbQlnHxVw2_tijX",
+  "__Secure-1PAPISID=rirduiJSx3-Gb8Og/AApbQlnHxVw2_tijX",
+  "__Secure-3PAPISID=rirduiJSx3-Gb8Og/AApbQlnHxVw2_tijX",
+  "SID=g.a0003gjDsrYAXLuqBTmYUnW8bfKOz7_-9jfy09MhkDgRlfizxZ6XSjTlYL6xx4w7JY5_o2clcQACgYKAWISARYSFQHGX2MiDpZsacPJu-ZgbMU4XhP4WhoVAUF8yKq0a7SEjMtqZlVpBhqoGmr40076",
+  "PREF=f6=40000000&tz=Africa.Cairo",
+  "SIDCC=AKEyXzVglg5IFqX6kpeKEtD0O025ej7MjvPxUyqX-MMW4wwmnJxSH4K9qe_BKKwvHyeZEmeMFQ"
+];
+
+// ⚠️ إنشاء الـ Agent مرة واحدة (كما في كود Colab)
+const agent = ytdl.createAgent(hardcodedCookies);
+
+
 export default async (req, res) => {
-  const { lessonId } = req.query;
-  if (!lessonId) {
-    return res.status(400).json({ message: 'Missing lessonId' });
-  }
   
-  let youtubeId; 
-
-  try {
-    // 1. التحقق الأمني من Supabase (كما كان)
-    const { data, error } = await supabase
-      .from('videos')
-      .select('youtube_video_id')
-      .eq('id', lessonId)
-      .single();
-
-    if (error || !data || !data.youtube_video_id) {
-      throw new Error('Video not found or permission denied');
+  // --- [ 1. المسار الخاص بتطبيق الويب (watch page) ] ---
+  if (req.query.lessonId) {
+    const { lessonId } = req.query;
+    if (!lessonId) {
+      return res.status(400).json({ message: 'Missing lessonId' });
     }
 
-    youtubeId = data.youtube_video_id;
+    try {
+      // (نفس الكود القديم للتحقق من Supabase)
+      const { data, error } = await supabase
+        .from('videos')
+        .select('youtube_video_id')
+        .eq('id', lessonId)
+        .single();
+
+      if (error || !data || !data.youtube_video_id) {
+        throw new Error('Video not found or permission denied');
+      }
+
+      console.log(`[Web App Request] Success for lessonId: ${lessonId}`);
+      // (إرجاع الرد الذي يحتاجه الويب)
+      res.status(200).json({ 
+          youtube_video_id: data.youtube_video_id 
+      });
+
+    } catch (err) {
+      console.error(`[Web App FAILED] Error for lessonId ${lessonId}:`, err.message);
+      res.status(500).json({ message: err.message || 'Web app check failed' });
+    }
+    return; // (إنهاء التنفيذ هنا)
+  }
+
+  // --- [ 2. المسار الخاص بتطبيق الأندرويد (DownloadWorker) ] ---
+  if (req.query.youtubeId) {
+    const { youtubeId } = req.query;
+    if (!youtubeId) {
+      return res.status(400).json({ message: 'Missing youtubeId' });
+    }
+
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
 
-    // --- [ ✅✅✅ بداية: الإصلاح النهائي (من كود Colab) ] ---
-    
-    // 2. جلب الكوكيز من متغيرات البيئة الآمنة
-    // (نفترض أنه "string" واحد طويل)
-    const cookieString = process.env.YOUTUBE_COOKIES;
-    if (!cookieString) {
-        console.error("[CRITICAL] YOUTUBE_COOKIES environment variable is not set on Vercel!");
-        throw new Error("Server configuration error: Missing cookies.");
-    }
-    console.log(`[ytdl-core] Cookies loaded. Attempting info for: ${youtubeId}`);
+    try {
+      console.log(`[Android App Request] Attempting info for: ${youtubeId}`);
+      
+      // (نفس الكود الناجح من Colab)
+      const info = await ytdl.getInfo(videoUrl, { agent });
+      
+      // (اختيار فورمات 720p أو الأفضل المتاح)
+      const format = ytdl.chooseFormat(info.formats, {
+        quality: 'highestvideo',
+        filter: f => f.container === 'mp4' && f.hasAudio && f.hasVideo,
+      });
 
-    // 3. [ ✅✅✅ الأهم ]
-    // (تحويل الكوكيز من "string" إلى "Array<string>" كما يتطلبه ytdl-core)
-    const cookiesArray = cookieString.split(';').map(cookie => cookie.trim()).filter(Boolean);
-    
-    // (إنشاء العميل مع الكوكيز - تماماً مثل كود Colab)
-    const agent = ytdl.createAgent(cookiesArray);
-
-    // (استدعاء "getInfo" باستخدام العميل)
-    const info = await ytdl.getInfo(videoUrl, { agent });
-
-    // (اختيار أي Format فقط للتأكد من نجاح العملية)
-    const streamFormat = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
-    if (!streamFormat || !streamFormat.url) {
+      if (!format || !format.url) {
         throw new Error("ytdl-core could not find a valid stream format.");
+      }
+
+      const streamUrl = format.url;
+      const videoTitle = info.videoDetails.title;
+
+      console.log(`[Android App Success] Stream found for: ${videoTitle}`);
+      
+      // (إرجاع الـ JSON الذي يحتاجه تطبيق الأندرويد)
+      res.status(200).json({ 
+          streamUrl: streamUrl,
+          videoTitle: videoTitle 
+      });
+
+    } catch (err) {
+      console.error(`[Android App FAILED] Error for ${youtubeId}:`, err.message);
+      // (هنا سيظهر خطأ "bot" إذا استمرت المشكلة)
+      res.status(500).json({ message: err.message || 'ytdl-core execution failed' });
     }
-    
-    // [ ✅✅✅ اللوج الذي طلبته ]
-    console.log(`[TEST SUCCESS] Video: ${info.videoDetails.title}`);
-    console.log(`[TEST SUCCESS] Stream URL Found: ${streamFormat.url.substring(0, 100)}...`);
-
-    // --- [ ✅✅✅ نهاية: الإصلاح النهائي ] ---
-
-    // 4. إرجاع الـ ID للمشغل كالمعتاد
-    // (الكود يعمل "كـجهاز تحقق" فقط، وهو ينجح إذا لم يرمِ خطأ)
-    res.status(200).json({ 
-        youtube_video_id: youtubeId 
-    });
-
-  } catch (err) {
-    console.error(`[ytdl-core FAILED] Error for ${youtubeId}:`, err.message);
-    res.status(500).json({ message: err.message || 'ytdl-core execution failed' });
+    return; // (إنهاء التنفيذ هنا)
   }
+
+  // (حالة خطأ: إذا لم يتم إرسال أي بارامتر)
+  res.status(400).json({ message: 'Missing lessonId or youtubeId' });
 };
