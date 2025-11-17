@@ -19,7 +19,7 @@
     "react-dom": "^18",
     "react-pdf": "^7.7.1",
     "react-youtube": "^10.1.0",
-    "@distube/ytdl-core": "^2.1.9"
+    "@distube/ytdl-core": "^4.16.12"
   },
   "devDependencies": {
     "eslint": "^8",
