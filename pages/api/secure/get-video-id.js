@@ -1,9 +1,6 @@
 // pages/api/secure/get-video-id.js
 import { supabase } from '../../../lib/supabaseClient';
-
-// [ ✅✅✅ هذا هو الإصلاح: إزالة الأقواس ]
 import YtDlpWrap from 'yt-dlp-wrap'; 
-
 import fs from 'fs'; 
 import path from 'path'; 
 
@@ -38,20 +35,32 @@ export default async (req, res) => {
         throw new Error("Server configuration error: Missing cookies.");
     }
 
-    // 3. كتابة الكوكيز في ملف مؤقت (كما فعلت أنت في البايثون)
-    // (Vercel يسمح بالكتابة في مجلد /tmp)
+    // 3. كتابة الكوكيز في ملف مؤقت
     const cookieFile = path.join('/tmp', 'cookies.txt');
     fs.writeFileSync(cookieFile, cookiesContent);
     console.log(`[yt-dlp] Cookies written to ${cookieFile}`);
 
-    // 4. تهيئة المكتبة وتحميل ملف yt-dlp (سيتم تحميله مرة واحدة)
-    const ytDlpWrap = new YtDlpWrap();
-    await YtDlpWrap.downloadFromGithub();
+    // [ ✅✅✅ بداية الإصلاح: تحديد مسار قابل للكتابة (tmp) ]
+    // 4. تحديد المسار القابل للكتابة لملف yt-dlp الثنائي
+    const ytDlpBinaryPath = path.join('/tmp', 'yt-dlp');
+
+    // 5. تهيئة المكتبة (وإخبارها بمكان الملف الثنائي)
+    const ytDlpWrap = new YtDlpWrap(ytDlpBinaryPath);
+    
+    // 6. تحميل الملف الثنائي "إلى" المسار القابل للكتابة
+    // (سيقوم بالتحميل فقط إذا لم يكن موجوداً)
+    if (!fs.existsSync(ytDlpBinaryPath)) {
+        console.log(`[yt-dlp] Binary not found at ${ytDlpBinaryPath}. Downloading...`);
+        await YtDlpWrap.downloadFromGithub(ytDlpBinaryPath);
+        console.log(`[yt-dlp] Binary downloaded successfully.`);
+    } else {
+        console.log(`[yt-dlp] Binary already exists at ${ytDlpBinaryPath}. Skipping download.`);
+    }
+    // [ ✅✅✅ نهاية الإصلاح ]
     
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
 
-    // 5. [ ✅✅ جديد: تنفيذ الأمر ]
-    // (هذا هو المكافئ لـ ydl.extract_info)
+    // 7. تنفيذ الأمر
     const infoJsonString = await ytDlpWrap.execPromise([
         videoUrl,
         '--cookie', cookieFile, // (استخدام ملف الكوكيز)
@@ -72,7 +81,7 @@ export default async (req, res) => {
 
     // --- [ ✅✅✅ نهاية: تطبيق منطق yt-dlp ] ---
 
-    // 6. إرجاع الـ ID للمشغل كالمعتاد (كما طلبت)
+    // 9. إرجاع الـ ID للمشغل كالمعتاد
     res.status(200).json({ 
         youtube_video_id: youtubeId 
     });
