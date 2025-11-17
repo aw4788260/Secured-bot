@@ -1,10 +1,9 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react'; // (أضفنا useCallback)
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
-// (ما زلنا نحتاج استيراد Plyr ديناميكياً)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
@@ -64,56 +63,64 @@ export default function WatchPage() {
     const playerWrapperRef = useRef(null); 
     const plyrInstanceRef = useRef(null); 
 
-    // [ ✅✅✅ هذا هو التعديل البديل (الحل) ]
-    // (سنعتمد على تحميل المكتبة من الـ CDN الموجود في <Head>)
-    useEffect(() => {
-        // (لا تعمل إلا إذا اللينك وصل، والبلاير جاهز)
-        if (!streamUrl || !plyrInstanceRef.current) return;
+    
+    // [ ✅✅✅ بداية التعديل: إصلاح الخطأ الفادح ]
 
-        // (1. الدالة التي ستقوم بتهيئة الفيديو)
-        const initializeHls = () => {
-            try {
-                const videoElement = plyrInstanceRef.current.plyr.media;
-                
-                // (2. التحقق من وجود المكتبة التي جلبها الـ CDN)
-                if (window.Hls && window.Hls.isSupported()) {
-                    const Hls = window.Hls; // (استخدام النسخة المحملة في المتصفح)
-                    const hls = new Hls();
-                    hls.loadSource(streamUrl);
-                    hls.attachMedia(videoElement);
-                    console.log("HLS.js attached successfully from CDN");
-                
-                // (3. دعم المتصفحات الأصلية مثل Safari)
-                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                    videoElement.src = streamUrl;
-                    console.log("Native HLS support detected");
-                } else {
-                    // (فشل حتى مع الـ CDN)
-                    setError("حدث خطأ أثناء تهيئة مشغل الفيديو (HLS not supported).");
-                }
-            } catch (e) {
-                console.error("Error during HLS initialization:", e);
-                setError("حدث خطأ فادح أثناء تشغيل الفيديو.");
+    // (1. قمنا بفصل دالة التهيئة وجعلناها "تستدعي نفسها" إذا لم يكن المشغل جاهزاً)
+    const initializeHls = useCallback(() => {
+        try {
+            // (التحقق الأول: هل المشغل (Plyr) جاهز؟)
+            if (!plyrInstanceRef.current || !plyrInstanceRef.current.plyr) {
+                console.warn("Player instance not ready. Retrying in 100ms...");
+                // (إذا لم يكن جاهزاً، أعد المحاولة بعد 100 ميللي ثانية)
+                setTimeout(initializeHls, 100);
+                return;
             }
-        };
 
-        // (4. التحقق: هل المكتبة (من الـ CDN) جاهزة؟)
-        if (window.Hls) {
-            initializeHls();
-        } else {
-            // (احتياطي: إذا كان السكريبت في <Head> يتأخر في التحميل)
-            // (سننتظر ثانية واحدة ونحاول مرة أخرى)
-            setTimeout(() => {
-                if (window.Hls) {
-                    initializeHls();
-                } else {
-                    console.error("Failed to load hls.js from CDN (Timeout)");
-                    setError("حدث خطأ أثناء تحميل مكتبة تشغيل الفيديو.");
-                }
-            }, 1000); // (انتظار 1 ثانية)
+            const videoElement = plyrInstanceRef.current.plyr.media;
+
+            // (التحقق الثاني: هل عنصر الفيديو (<video>) جاهز؟)
+            if (!videoElement) {
+                console.warn("Player media element not ready. Retrying in 100ms...");
+                setTimeout(initializeHls, 100);
+                return;
+            }
+
+            // (الآن نحن متأكدون أن المشغل جاهز)
+            
+            // (التحقق من وجود المكتبة (من الـ CDN) وبدء التشغيل)
+            if (window.Hls && window.Hls.isSupported()) {
+                const Hls = window.Hls;
+                const hls = new Hls();
+                hls.loadSource(streamUrl); // (streamUrl موجود ومتأكدين منه)
+                hls.attachMedia(videoElement);
+                console.log("HLS.js attached successfully from CDN");
+            
+            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                videoElement.src = streamUrl;
+                console.log("Native HLS support detected");
+            } else {
+                setError("حدث خطأ أثناء تهيئة مشغل الفيديو (HLS not supported).");
+            }
+
+        } catch (e) {
+            // (هذا هو الخطأ الفادح الذي ظهر لك، الآن قمنا بحمايته)
+            console.error("Fatal error during HLS initialization:", e);
+            setError("حدث خطأ فادح أثناء تشغيل الفيديو.");
         }
+    }, [streamUrl]); // (الدالة تعتمد فقط على streamUrl)
 
-    }, [streamUrl, plyrInstanceRef.current]); // (يعتمد على وصول اللينك والبلاير)
+
+    useEffect(() => {
+        // (2. تغيير المنطق: هذا الـ Effect يعمل فقط عند وصول الرابط)
+        if (!streamUrl) return;
+
+        // (3. نستدعي الدالة. وهي ستقوم بالانتظار (setTimeout) حتى يصبح المشغل جاهزاً)
+        initializeHls();
+
+    }, [streamUrl, initializeHls]); // (تعتمد على الرابط والدالة التي أنشأناها)
+
+    // [ ✅✅✅ نهاية التعديل ]
 
 
     // (باقي كود الـ useEffect بتاع جلب الداتا - يبقى كما هو)
@@ -240,8 +247,7 @@ export default function WatchPage() {
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
                 
-                {/* [ ✅✅✅ هذا هو السطر الأهم في الحل البديل ] */}
-                {/* (جلب المكتبة مباشرة من CDN بدلاً من npm) */}
+                {/* (ما زلنا نعتمد على الـ CDN) */}
                 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.14"></script>
                 
             </Head>
