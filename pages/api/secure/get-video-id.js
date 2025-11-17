@@ -2,7 +2,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 
-// [ ✅✅ الرابط الأساسي لسيرفر Railway ]
 const PYTHON_PROXY_BASE_URL = 'https://web-production-3a04a.up.railway.app';
 
 export default async (req, res) => {
@@ -24,19 +23,22 @@ export default async (req, res) => {
       }
       youtubeId = data.youtube_video_id;
 
-      // 2. [ ✅✅ تعديل: بنكلم المسار الجديد بتاع الجودات (HLS) ]
-      const hls_playlist_url = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
+      // 2. [ ✅✅✅ هذا هو التعديل ]
+      // (تم تغيير المسار من /get-hls-playlist إلى /get-video-info)
+      // (هذا المسار يرجع رابط MP4 مباشر ومضمون)
+      const stream_url_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-video-info`;
       
-      console.log(`[Vercel App] Getting HLS Playlist for ${youtubeId} from Railway...`);
+      console.log(`[Vercel App] Getting MP4 Stream for ${youtubeId} from Railway...`);
       
-      const proxyResponse = await axios.get(hls_playlist_url, { params: { youtubeId } });
+      const proxyResponse = await axios.get(stream_url_endpoint, { params: { youtubeId } });
       
-      // 3. [ ✅✅ تعديل: بنرجع لينك الـ M3U8 ]
-      console.log(`[Vercel App] Railway HLS check SUCCESS for ${youtubeId}`);
+      // 3. [ ✅✅✅ تعديل ]
+      // (الآن streamUrl هو رابط MP4)
+      console.log(`[Vercel App] Railway MP4 check SUCCESS for ${youtubeId}`);
       res.status(200).json({ 
-          streamUrl: proxyResponse.data.streamUrl, // <-- ده لينك m3u8
+          streamUrl: proxyResponse.data.streamUrl, // <-- هذا الآن رابط MP4
           videoTitle: proxyResponse.data.videoTitle,
-          youtube_video_id: youtubeId // (ده هيفضل موجود عشان زرار التحميل)
+          youtube_video_id: youtubeId 
       });
 
     } catch (err) {
