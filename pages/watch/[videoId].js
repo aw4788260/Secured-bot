@@ -2,14 +2,12 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-
-// (المكتبات زي ما هي)
 import dynamic from 'next/dynamic';
+
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
-
-// (كومبوننت العلامة المائية زي ما هو - مفيش تغيير)
+// (كومبوننت العلامة المائية - يبقى كما هو)
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -23,7 +21,9 @@ const Watermark = ({ user }) => {
         }, 5000);
 
         return () => { 
-            clearInterval(watermarkIntervalRef.current); 
+            if (watermarkIntervalRef.current) {
+                clearInterval(watermarkIntervalRef.current); 
+            }
         };
     }, [user]);
 
@@ -53,21 +53,19 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    // [ ✅✅ تعديل: محتاجين الـ ID للتحميل، واللينك للتشغيل ]
-    const [streamUrl, setStreamUrl] = useState(null); // <-- للتشغيل (الستريم الجديد)
-    const [youtubeId, setYoutubeId] = useState(null); // <-- للتحميل (زرار الأندرويد)
-
+    const [streamUrl, setStreamUrl] = useState(null); 
+    const [youtubeId, setYoutubeId] = useState(null); 
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
-    
     const [videoTitle, setVideoTitle] = useState("جاري تحميل العنوان...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
     const playerWrapperRef = useRef(null); 
-
-
+    
+    // [ ✅✅✅ تم حذف كود HLS.js بالكامل ]
+    
+    // (كود جلب الداتا - يبقى كما هو)
     useEffect(() => {
-        
         const setupUserAndLoadVideo = (foundUser) => {
             if (foundUser && foundUser.id) { 
                 setUser(foundUser); 
@@ -77,26 +75,21 @@ export default function WatchPage() {
             }
 
             if (videoId) {
-                // [ ✅✅ تعديل: جلب البيانات من الـ API الجديد ]
+                // (هذا الـ API الآن يرجع رابط MP4)
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                     .then(res => { 
                         if (!res.ok) {
-                          // محاولة قراءة رسالة الخطأ من السيرفر
                           return res.json().then(errData => {
                               throw new Error(errData.message || 'لا تملك صلاحية مشاهدة هذا الفيديو');
                           }).catch(() => {
-                              // لو فشل قراءة الـ JSON (مثلاً 500 Server Error)
                               throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو');
                           });
                         }
                         return res.json(); 
                     })
                     .then(data => {
-                        // لو السيرفر رجع خطأ (زي خطأ Railway)
                         if (data.message) throw new Error(data.message); 
-                        
-                        // [ ✅✅ تعديل: حفظ اللينك والـ ID ]
-                        setStreamUrl(data.streamUrl); 
+                        setStreamUrl(data.streamUrl); // <-- هذا الآن رابط MP4
                         setYoutubeId(data.youtube_video_id);
                         setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                     })
@@ -104,7 +97,7 @@ export default function WatchPage() {
             }
         };
 
-        // (منطق التحقق من المستخدم - يبقى كما هو تماماً)
+        // (منطق التحقق من المستخدم - يبقى كما هو)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
@@ -115,21 +108,17 @@ export default function WatchPage() {
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
             setupUserAndLoadVideo(apkUser); 
-
             if (typeof window.Android !== 'undefined' && typeof window.Android.downloadVideo === 'function') {
                 setIsNativeAndroid(true);
             }
-
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-
             if (!miniAppUser || !miniAppUser.id) {
                 setError("لا يمكن التعرف على هويتك من تليجرام.");
                 return;
             }
-
             if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
                 setupUserAndLoadVideo(miniAppUser);
             } else {
@@ -150,20 +139,16 @@ export default function WatchPage() {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
         }
-        
-    }, [videoId]); // (الـ dependencies زي ما هي)
+    }, [videoId]); 
 
-    // [ ✅✅ تعديل: دالة التحميل مبقتش محتاجة fakeVideoTitle ]
-    // (الدالة دي سليمة 100% لأنها بتعتمد على `youtubeId` اللي لسه موجود)
+    // (دالة التحميل - تبقى كما هي)
     const handleDownloadClick = () => {
-        if (!youtubeId) { // (لسه بنعتمد على الـ ID)
+        if (!youtubeId) { 
             alert("بيانات الفيديو غير جاهزة بعد، يرجى الانتظار ثانية.");
             return;
         }
-
         if (isNativeAndroid) {
             try {
-                // (هنا بنبعت الـ ID الأصلي والاسم الحقيقي اللي جبناه من Railway)
                 window.Android.downloadVideo(youtubeId, videoTitle);
             } catch (e) {
                 console.error("Error calling native bridge:", e);
@@ -174,38 +159,29 @@ export default function WatchPage() {
         }
     };
 
-
+    // (باقي الكود زي ما هو بالظبط)
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
+    if (!user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري التحقق...</h1></div>; }
     
-    // [ ✅✅ تعديل: شاشة التحميل بقت بتعتمد على الـ streamUrl ]
-    if (!streamUrl || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
-    
-    // [ ✅✅ تعديل: إعدادات مشغل Plyr ]
-    // (مبقاش "يوتيوب"، بقى "فيديو عادي")
+    // [ ✅✅✅ بداية التعديل: تمرير الرابط المباشر للمشغل ]
     const plyrSource = {
       type: 'video',
       title: videoTitle,
       sources: [
         {
-          src: streamUrl, // <-- [✅✅ الأهم] بنستخدم الستريم الجديد
-          type: 'video/mp4', // <-- [✅✅ الأهم] بنقوله إنه ملف فيديو
-        },
-      ],
+            src: streamUrl, // <-- وضعنا الرابط هنا مباشرة
+            type: 'video/mp4',
+        }
+      ], 
     };
+    // [ ✅✅✅ نهاية التعديل ]
     
-    // (الإعدادات زي ما هي، بس Plyr هيتجاهل إعدادات 'youtube' لأنه مبقاش يوتيوب)
     const plyrOptions = {
         controls: [
             'play-large', 'play', 'progress', 'current-time',
             'mute', 'volume', 'settings', 'fullscreen'
         ],
-        settings: ['quality', 'speed'],
-        youtube: { // (ده هيتم تجاهله)
-            rel: 0, 
-            showinfo: 0, 
-            modestbranding: 1, 
-            controls: 0, 
-        },
+        settings: ['quality', 'speed'], 
         fullscreen: {
             enabled: true,
             fallback: true,
@@ -219,19 +195,30 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                
+                {/* [ 🛑 تم حذف سكريبت hls.js من هنا ] */}
+                
             </Head>
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 
-                <Plyr
-                  source={plyrSource} // <-- بنمرر الستريم الجديد
-                  options={plyrOptions}
-                />
+                {!streamUrl && (
+                     <div className="message-container" style={{position: 'absolute', height: '100%'}}>
+                         <h1>جاري تحميل الفيديو...</h1>
+                     </div>
+                )}
+                
+                {/* (الآن Plyr سيعمل فقط عندما يكون streamUrl جاهزاً) */}
+                {streamUrl && (
+                  <Plyr
+                    source={plyrSource} 
+                    options={plyrOptions}
+                  />
+                )}
                 
                 <Watermark user={user} />
             </div>
 
-            {/* (زرار التحميل هيفضل شغال زي ما هو) */}
             {isNativeAndroid && (
                 <button 
                     onClick={handleDownloadClick} 
@@ -246,7 +233,7 @@ export default function WatchPage() {
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
 
-            {/* (الـ CSS زي ما هو بالظبط) */}
+            {/* (الـ CSS يبقى كما هو) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
