@@ -1,16 +1,14 @@
 // pages/watch/[videoId].js
-// Force Vercel to re-build (Fix HLS.js cache)
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
-// [ 🛑 تم حذف "import Hls from 'hls.js';" من هنا ]
-
+// (ما زلنا نحتاج استيراد Plyr ديناميكياً)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
-// (كومبوننت العلامة المائية زي ما هو - مفيش تغيير)
+// (كومبوننت العلامة المائية - يبقى كما هو)
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -66,38 +64,60 @@ export default function WatchPage() {
     const playerWrapperRef = useRef(null); 
     const plyrInstanceRef = useRef(null); 
 
-    // [ ✅✅✅ هذا هو التعديل الأهم (الحل) ]
+    // [ ✅✅✅ هذا هو التعديل البديل (الحل) ]
+    // (سنعتمد على تحميل المكتبة من الـ CDN الموجود في <Head>)
     useEffect(() => {
         // (لا تعمل إلا إذا اللينك وصل، والبلاير جاهز)
         if (!streamUrl || !plyrInstanceRef.current) return;
-        
-        // (1. نستدعي المكتبة "ديناميكياً" هنا جوه الـ useEffect)
-        import('hls.js').then((HlsModule) => {
-            const Hls = HlsModule.default; // (Hls.js ليها default export)
-            const videoElement = plyrInstanceRef.current.plyr.media;
 
-            if (Hls.isSupported()) {
-                // (2. نستخدمها بعد ما اتحملت)
-                const hls = new Hls();
-                hls.loadSource(streamUrl);
-                hls.attachMedia(videoElement);
-                console.log("HLS.js attached dynamically");
-            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                // (لو المتصفح (زي Safari/iOS) بيدعم m3u8 أصلاً)
-                videoElement.src = streamUrl;
-                console.log("Native HLS support detected");
+        // (1. الدالة التي ستقوم بتهيئة الفيديو)
+        const initializeHls = () => {
+            try {
+                const videoElement = plyrInstanceRef.current.plyr.media;
+                
+                // (2. التحقق من وجود المكتبة التي جلبها الـ CDN)
+                if (window.Hls && window.Hls.isSupported()) {
+                    const Hls = window.Hls; // (استخدام النسخة المحملة في المتصفح)
+                    const hls = new Hls();
+                    hls.loadSource(streamUrl);
+                    hls.attachMedia(videoElement);
+                    console.log("HLS.js attached successfully from CDN");
+                
+                // (3. دعم المتصفحات الأصلية مثل Safari)
+                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoElement.src = streamUrl;
+                    console.log("Native HLS support detected");
+                } else {
+                    // (فشل حتى مع الـ CDN)
+                    setError("حدث خطأ أثناء تهيئة مشغل الفيديو (HLS not supported).");
+                }
+            } catch (e) {
+                console.error("Error during HLS initialization:", e);
+                setError("حدث خطأ فادح أثناء تشغيل الفيديو.");
             }
-        }).catch(err => {
-            console.error("Failed to load hls.js dynamically", err);
-            setError("حدث خطأ أثناء تحميل مشغل الفيديو.");
-        });
+        };
 
-    }, [streamUrl]); // (هتشتغل لما الـ streamUrl ييجي)
+        // (4. التحقق: هل المكتبة (من الـ CDN) جاهزة؟)
+        if (window.Hls) {
+            initializeHls();
+        } else {
+            // (احتياطي: إذا كان السكريبت في <Head> يتأخر في التحميل)
+            // (سننتظر ثانية واحدة ونحاول مرة أخرى)
+            setTimeout(() => {
+                if (window.Hls) {
+                    initializeHls();
+                } else {
+                    console.error("Failed to load hls.js from CDN (Timeout)");
+                    setError("حدث خطأ أثناء تحميل مكتبة تشغيل الفيديو.");
+                }
+            }, 1000); // (انتظار 1 ثانية)
+        }
+
+    }, [streamUrl, plyrInstanceRef.current]); // (يعتمد على وصول اللينك والبلاير)
 
 
-    // (باقي كود الـ useEffect بتاع جلب الداتا زي ما هو - مفيش تغيير)
+    // (باقي كود الـ useEffect بتاع جلب الداتا - يبقى كما هو)
     useEffect(() => {
-        
         const setupUserAndLoadVideo = (foundUser) => {
             if (foundUser && foundUser.id) { 
                 setUser(foundUser); 
@@ -107,7 +127,6 @@ export default function WatchPage() {
             }
 
             if (videoId) {
-                // (الـ API ده هيرجع m3u8 streamUrl)
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                     .then(res => { 
                         if (!res.ok) {
@@ -121,8 +140,7 @@ export default function WatchPage() {
                     })
                     .then(data => {
                         if (data.message) throw new Error(data.message); 
-                        
-                        setStreamUrl(data.streamUrl); // <-- ده لينك m3u8
+                        setStreamUrl(data.streamUrl);
                         setYoutubeId(data.youtube_video_id);
                         setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                     })
@@ -141,21 +159,17 @@ export default function WatchPage() {
                 first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User"
             };
             setupUserAndLoadVideo(apkUser); 
-
             if (typeof window.Android !== 'undefined' && typeof window.Android.downloadVideo === 'function') {
                 setIsNativeAndroid(true);
             }
-
         } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const platform = window.Telegram.WebApp.platform;
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-
             if (!miniAppUser || !miniAppUser.id) {
                 setError("لا يمكن التعرف على هويتك من تليجرام.");
                 return;
             }
-
             if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
                 setupUserAndLoadVideo(miniAppUser);
             } else {
@@ -176,10 +190,9 @@ export default function WatchPage() {
              setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
              return;
         }
-        
     }, [videoId]); 
 
-    // (دالة التحميل - سليمة ومش محتاجة تعديل)
+    // (دالة التحميل - تبقى كما هي)
     const handleDownloadClick = () => {
         if (!youtubeId) { 
             alert("بيانات الفيديو غير جاهزة بعد، يرجى الانتظار ثانية.");
@@ -226,6 +239,11 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                
+                {/* [ ✅✅✅ هذا هو السطر الأهم في الحل البديل ] */}
+                {/* (جلب المكتبة مباشرة من CDN بدلاً من npm) */}
+                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.14"></script>
+                
             </Head>
 
             <div className="player-wrapper" ref={playerWrapperRef}>
