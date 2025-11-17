@@ -1,6 +1,8 @@
 // pages/api/secure/get-video-id.js
 import { supabase } from '../../../lib/supabaseClient';
-import ytdl from 'ytdl-core';
+import { YtDlpWrap } from 'yt-dlp-wrap'; // [ ✅✅ جديد: استيراد المكتبة الجديدة ]
+import fs from 'fs'; // [ ✅✅ جديد: للتعامل مع الملفات ]
+import path from 'path'; // [ ✅✅ جديد: للتعامل مع المسارات ]
 
 export default async (req, res) => {
   const { lessonId } = req.query;
@@ -24,64 +26,59 @@ export default async (req, res) => {
 
     youtubeId = data.youtube_video_id;
 
-    // --- [ ✅✅✅ هذا هو الإصلاح: إضافة الكوكيز ] ---
+    // --- [ ✅✅✅ بداية: تطبيق منطق yt-dlp بالكوكيز ] ---
     
     // 2. جلب الكوكيز من متغيرات البيئة الآمنة
-    const cookies = process.env.YOUTUBE_COOKIES;
-    if (!cookies) {
+    const cookiesContent = process.env.YOUTUBE_COOKIES;
+    if (!cookiesContent) {
         console.error("[CRITICAL] YOUTUBE_COOKIES environment variable is not set on Vercel!");
         throw new Error("Server configuration error: Missing cookies.");
     }
 
-    // 3. إعداد خيارات الطلب (لإرسال الكوكيز)
-    const requestOptions = {
-      requestOptions: {
-        headers: {
-          cookie: cookies,
-          // (إضافة User-Agent احتياطياً)
-          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36'
-        }
-      }
-    };
+    // 3. كتابة الكوكيز في ملف مؤقت (كما فعلت أنت في البايثون)
+    // (Vercel يسمح بالكتابة في مجلد /tmp)
+    const cookieFile = path.join('/tmp', 'cookies.txt');
+    fs.writeFileSync(cookieFile, cookiesContent);
+    console.log(`[yt-dlp] Cookies written to ${cookieFile}`);
 
-    // 4. سحب الرابط (باستخدام الكوكيز)
+    // 4. تهيئة المكتبة وتحميل ملف yt-dlp (سيتم تحميله مرة واحدة)
+    const ytDlpWrap = new YtDlpWrap();
+    await YtDlpWrap.downloadFromGithub();
+    
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-    console.log(`[ytdl] Auth success. Fetching info for: ${youtubeId} (with cookies)`);
+
+    // 5. [ ✅✅ جديد: تنفيذ الأمر ]
+    // (هذا هو المكافئ لـ ydl.extract_info)
+    const infoJsonString = await ytDlpWrap.execPromise([
+        videoUrl,
+        '--cookie', cookieFile, // (استخدام ملف الكوكيز)
+        '-j', // (طلب المعلومات كـ JSON)
+        '--skip-download' // (عدم التحميل)
+    ]);
     
-    // (تمرير الخيارات الجديدة هنا)
-    const info = await ytdl.getInfo(videoUrl, requestOptions); 
-    
-    const format = ytdl.chooseFormat(info.formats, { 
-        quality: 'highestaudio', 
-        filter: 'audioandvideo' 
-    });
-    
-    let streamUrl;
-    if (format && format.url) {
-      streamUrl = format.url;
-    } else {
-       const fallbackFormat = ytdl.chooseFormat(info.formats, { container: 'mp4', filter: 'audioandvideo' });
-       streamUrl = fallbackFormat ? fallbackFormat.url : "No suitable format found";
-    }
+    const info = JSON.parse(infoJsonString); // تحويل النص إلى JSON
 
     // [ ✅✅✅ اللوج الذي طلبته ]
-    console.log(`[TEST SUCCESS] Video: ${info.videoDetails.title}`);
-    console.log(`[TEST SUCCESS] Stream URL Found: ${streamUrl}`);
-    // --- [ ✅✅✅ نهاية الإصلاح ] ---
+    console.log(`[TEST SUCCESS] Video: ${info.title}`);
+    
+    // (اختياري: طباعة بعض الروابط للتأكد)
+    const testFormat = info.formats.find(f => f.format_id === '18' || f.format_id === '22');
+    if (testFormat) {
+       console.log(`[TEST SUCCESS] Sample URL (Format ${testFormat.format_id}): ${testFormat.url.substring(0, 100)}...`);
+    }
 
+    // --- [ ✅✅✅ نهاية: تطبيق منطق yt-dlp ] ---
 
-    // 5. إرجاع الـ ID للمشغل كالمعتاد (كما طلبت)
+    // 6. إرجاع الـ ID للمشغل كالمعتاد (كما طلبت)
     res.status(200).json({ 
         youtube_video_id: youtubeId 
     });
 
   } catch (err) {
-    console.error(`[ytdl FAILED] Error for ${youtubeId}:`, err.message);
-    // (إرجاع الخطأ 410 الذي رأيناه)
-    if (err.message.includes("Status code: 410")) {
-         res.status(410).json({ message: "Video blocked by YouTube (410 Gone). Check Cookies." });
-    } else {
-         res.status(500).json({ message: err.message });
+    console.error(`[yt-dlp FAILED] Error for ${youtubeId}:`, err.message);
+    if (err.stderr) {
+        console.error(`[yt-dlp STDERR]: ${err.stderr}`);
     }
+    res.status(500).json({ message: err.message || 'yt-dlp execution failed' });
   }
 };
