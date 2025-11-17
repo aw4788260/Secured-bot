@@ -1,8 +1,11 @@
 // pages/api/secure/get-video-id.js
 import { supabase } from '../../../lib/supabaseClient';
-import { YtDlpWrap } from 'yt-dlp-wrap'; // [ ✅✅ جديد: استيراد المكتبة الجديدة ]
-import fs from 'fs'; // [ ✅✅ جديد: للتعامل مع الملفات ]
-import path from 'path'; // [ ✅✅ جديد: للتعامل مع المسارات ]
+
+// [ ✅✅✅ هذا هو الإصلاح: إزالة الأقواس ]
+import YtDlpWrap from 'yt-dlp-wrap'; 
+
+import fs from 'fs'; 
+import path from 'path'; 
 
 export default async (req, res) => {
   const { lessonId } = req.query;
