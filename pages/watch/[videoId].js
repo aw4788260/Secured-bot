@@ -4,8 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
-// [ ✅✅ جديد: استيراد مكتبة Hls.js عشان Plyr يفهم m3u8 ]
-import Hls from 'hls.js'; 
+// [ 🛑 تم حذف "import Hls from 'hls.js';" من هنا ]
 
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
@@ -64,29 +63,38 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
     const playerWrapperRef = useRef(null); 
-    const plyrInstanceRef = useRef(null); // (Ref جديد للبلاير)
+    const plyrInstanceRef = useRef(null); 
 
-    // [ ✅✅ جديد: دالة لتشغيل HLS (m3u8) ]
+    // [ ✅✅✅ هذا هو التعديل الأهم (الحل) ]
     useEffect(() => {
         // (لا تعمل إلا إذا اللينك وصل، والبلاير جاهز)
         if (!streamUrl || !plyrInstanceRef.current) return;
         
-        const videoElement = plyrInstanceRef.current.plyr.media;
-        
-        if (Hls.isSupported()) {
-            // (لو المتصفح (زي Chrome) محتاج مساعدة Hls.js)
-            const hls = new Hls();
-            hls.loadSource(streamUrl);
-            hls.attachMedia(videoElement);
-            console.log("HLS.js attached");
-        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-            // (لو المتصفح (زي Safari/iOS) بيدعم m3u8 أصلاً)
-            videoElement.src = streamUrl;
-            console.log("Native HLS support detected");
-        }
+        // (1. نستدعي المكتبة "ديناميكياً" هنا جوه الـ useEffect)
+        import('hls.js').then((HlsModule) => {
+            const Hls = HlsModule.default; // (Hls.js ليها default export)
+            const videoElement = plyrInstanceRef.current.plyr.media;
+
+            if (Hls.isSupported()) {
+                // (2. نستخدمها بعد ما اتحملت)
+                const hls = new Hls();
+                hls.loadSource(streamUrl);
+                hls.attachMedia(videoElement);
+                console.log("HLS.js attached dynamically");
+            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                // (لو المتصفح (زي Safari/iOS) بيدعم m3u8 أصلاً)
+                videoElement.src = streamUrl;
+                console.log("Native HLS support detected");
+            }
+        }).catch(err => {
+            console.error("Failed to load hls.js dynamically", err);
+            setError("حدث خطأ أثناء تحميل مشغل الفيديو.");
+        });
+
     }, [streamUrl]); // (هتشتغل لما الـ streamUrl ييجي)
 
 
+    // (باقي كود الـ useEffect بتاع جلب الداتا زي ما هو - مفيش تغيير)
     useEffect(() => {
         
         const setupUserAndLoadVideo = (foundUser) => {
@@ -188,15 +196,14 @@ export default function WatchPage() {
         }
     };
 
-
+    // (باقي الكود زي ما هو بالظبط)
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
     if (!user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري التحقق...</h1></div>; }
     
-    // (هنرجع فيديو فاضي، والـ useEffect هو اللي هيحط اللينك)
     const plyrSource = {
       type: 'video',
       title: videoTitle,
-      sources: [], // (هنسيبه فاضي في الأول)
+      sources: [], 
     };
     
     const plyrOptions = {
@@ -204,7 +211,6 @@ export default function WatchPage() {
             'play-large', 'play', 'progress', 'current-time',
             'mute', 'volume', 'settings', 'fullscreen'
         ],
-        // (Plyr هيفهم إن ده HLS وهيظهر الجودات لوحده)
         settings: ['quality', 'speed'], 
         fullscreen: {
             enabled: true,
@@ -223,11 +229,6 @@ export default function WatchPage() {
 
             <div className="player-wrapper" ref={playerWrapperRef}>
                 
-                {/* [ ✅✅ تعديل: 
-                   1. هنستخدم ref عشان نوصل للبلاير.
-                   2. هنعرض شاشة تحميل لو اللينك لسه مجاش.
-                ] 
-                */}
                 {!streamUrl && (
                      <div className="message-container" style={{position: 'absolute', height: '100%'}}>
                          <h1>جاري تحميل الفيديو...</h1>
@@ -235,7 +236,7 @@ export default function WatchPage() {
                 )}
                 
                 <Plyr
-                  ref={plyrInstanceRef} // (ربط الـ Ref)
+                  ref={plyrInstanceRef} 
                   source={plyrSource} 
                   options={plyrOptions}
                 />
