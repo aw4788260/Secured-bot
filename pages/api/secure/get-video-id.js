@@ -1,22 +1,10 @@
 // pages/api/secure/get-video-id.js
 import { supabase } from '../../../lib/supabaseClient';
-// [ ✅✅✅ جديد: استيراد المكتبة الصحيحة ]
-import { video_info, stream, setToken } from 'play-dl'; 
+// [ ✅✅✅ تعديل: استيراد "stream" فقط ]
+import { stream } from 'play-dl'; 
 
-// [ ✅✅✅ جديد: إعداد الكوكيز (مرة واحدة عالمياً) ]
-// (يقرأ الكوكيز من Vercel ويجهز المكتبة)
-const cookies = process.env.YOUTUBE_COOKIES;
-if (cookies) {
-    setToken({
-        youtube: {
-            cookie: cookies 
-        }
-    });
-    console.log("[play-dl] YouTube cookies set successfully.");
-} else {
-    console.error("[CRITICAL] YOUTUBE_COOKIES environment variable is not set on Vercel!");
-}
-
+// [ 🛑🛑 حذف: لم نعد بحاجة لـ setToken ]
+// (سنقوم بتمرير الكوكيز مع كل طلب لضمان الأمان)
 
 export default async (req, res) => {
   const { lessonId } = req.query;
@@ -39,28 +27,35 @@ export default async (req, res) => {
     }
 
     youtubeId = data.youtube_video_id;
-
-    // --- [ ✅✅✅ بداية: تطبيق منطق play-dl ] ---
-    
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-    
-    console.log(`[play-dl] Auth success. Fetching info for: ${youtubeId} (with cookies)`);
-    
-    // 2. جلب معلومات الفيديو (باستخدام الكوكيز)
-    const info = await video_info(videoUrl);
 
-    // 3. جلب رابط البث (باستخدام الكوكيز)
+    // --- [ ✅✅✅ بداية: الإصلاح النهائي ] ---
+    
+    // 2. جلب الكوكيز من متغيرات البيئة الآمنة
+    const cookies = process.env.YOUTUBE_COOKIES;
+    if (!cookies) {
+        console.error("[CRITICAL] YOUTUBE_COOKIES environment variable is not set on Vercel!");
+        throw new Error("Server configuration error: Missing cookies.");
+    }
+    console.log(`[play-dl] Cookies loaded. Attempting stream for: ${youtubeId}`);
+
+    // 3. [ ✅✅✅ الأهم ]
+    // (استدعاء "stream" مباشرة وتمرير الكوكيز لها)
     const streamData = await stream(videoUrl, {
-        quality: 2 // (جودة 720p أو 1080p - يمكنك تغييرها)
+        quality: 2, // (جودة 720p أو 1080p)
+        youtube: { // (تمرير الكوكيز هنا)
+            cookie: cookies 
+        }
     });
 
     const streamUrl = streamData.url;
     
     // [ ✅✅✅ اللوج الذي طلبته ]
-    console.log(`[TEST SUCCESS] Video: ${info.video_details.title}`);
+    // (العنوان غير متوفر لأننا تخطينا video_info، وهذا طبيعي للاختبار)
+    console.log(`[TEST SUCCESS] Video: ${youtubeId}`);
     console.log(`[TEST SUCCESS] Stream URL Found: ${streamUrl.substring(0, 100)}...`);
 
-    // --- [ ✅✅✅ نهاية: تطبيق منطق play-dl ] ---
+    // --- [ ✅✅✅ نهاية: الإصلاح النهائي ] ---
 
     // 4. إرجاع الـ ID للمشغل كالمعتاد
     res.status(200).json({ 
