@@ -2,8 +2,8 @@
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 
-// [ ✅✅ الرابط الجديد بتاع Railway ]
-const PYTHON_PROXY_URL = 'https://web-production-3a04a.up.railway.app/api/get-video-info';
+// [ ✅✅ الرابط الأساسي لسيرفر Railway ]
+const PYTHON_PROXY_BASE_URL = 'https://web-production-3a04a.up.railway.app';
 
 export default async (req, res) => {
   
@@ -12,7 +12,7 @@ export default async (req, res) => {
     let youtubeId; 
     
     try {
-      // 1. جلب الـ ID من Supabase (زي ما كان)
+      // 1. التحقق من Supabase
       const { data, error } = await supabase
         .from('videos')
         .select('youtube_video_id')
@@ -24,19 +24,20 @@ export default async (req, res) => {
       }
       youtubeId = data.youtube_video_id;
 
-      // 2. [ ✅✅ تعديل ] Vercel بيكلم Railway وبيجيب الرد
-      console.log(`[Vercel App] Getting stream URL for ${youtubeId} from Railway...`);
+      // 2. [ ✅✅ تعديل: بنكلم المسار الجديد بتاع الجودات (HLS) ]
+      const hls_playlist_url = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
       
-      const proxyResponse = await axios.get(PYTHON_PROXY_URL, { params: { youtubeId } });
+      console.log(`[Vercel App] Getting HLS Playlist for ${youtubeId} from Railway...`);
       
-      // 3. [ ✅✅ تعديل ] إرجاع كل البيانات (الستريم + الـ ID)
-      // (عشان صفحة المشاهدة تشغل الستريم، وزرار التحميل يلاقي الـ ID)
-      console.log(`[Vercel App] Railway proxy check SUCCESS for ${youtubeId}`);
+      const proxyResponse = await axios.get(hls_playlist_url, { params: { youtubeId } });
+      
+      // 3. [ ✅✅ تعديل: بنرجع لينك الـ M3U8 ]
+      console.log(`[Vercel App] Railway HLS check SUCCESS for ${youtubeId}`);
       res.status(200).json({ 
-          streamUrl: proxyResponse.data.streamUrl,
+          streamUrl: proxyResponse.data.streamUrl, // <-- ده لينك m3u8
           videoTitle: proxyResponse.data.videoTitle,
-          youtube_video_id: youtubeId // <-- مهم جداً لزرار التحميل
-      }); 
+          youtube_video_id: youtubeId // (ده هيفضل موجود عشان زرار التحميل)
+      });
 
     } catch (err) {
       console.error(`[Vercel App] Check FAILED:`, err.response ? err.response.data.message : err.message);
