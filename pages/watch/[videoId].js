@@ -3,13 +3,13 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// [ ✅✅ الإصلاح الذي قمت به في المرة السابقة ]
+// (المكتبات زي ما هي)
 import dynamic from 'next/dynamic';
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 
-// [ ✅✅✅ بداية الإصلاح الجديد: كومبوننت العلامة المائية ]
+// (كومبوننت العلامة المائية زي ما هو - مفيش تغيير)
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -47,27 +47,27 @@ const Watermark = ({ user }) => {
         </div>
     );
 };
-// [ ✅✅✅ نهاية الإصلاح الجديد ]
 
 
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
-    const [youtubeId, setYoutubeId] = useState(null);
+    
+    // [ ✅✅ تعديل: محتاجين الـ ID للتحميل، واللينك للتشغيل ]
+    const [streamUrl, setStreamUrl] = useState(null); // <-- للتشغيل (الستريم الجديد)
+    const [youtubeId, setYoutubeId] = useState(null); // <-- للتحميل (زرار الأندرويد)
+
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     
     const [videoTitle, setVideoTitle] = useState("جاري تحميل العنوان...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
-
-    // [ 🛑🛑 حذف: تم نقل كل الأكواد المتعلقة بالعلامة المائية ]
     
     const playerWrapperRef = useRef(null); 
 
 
     useEffect(() => {
         
-        // (دالة مساعدة لضبط المستخدم وبدء تحميل الفيديو - تبقى كما هي)
         const setupUserAndLoadVideo = (foundUser) => {
             if (foundUser && foundUser.id) { 
                 setUser(foundUser); 
@@ -77,19 +77,34 @@ export default function WatchPage() {
             }
 
             if (videoId) {
-                // (الكود الحالي الخاص بك يعمل بشكل مثالي مع Plyr)
+                // [ ✅✅ تعديل: جلب البيانات من الـ API الجديد ]
                 fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                    .then(res => { if (!res.ok) throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو'); return res.json(); })
+                    .then(res => { 
+                        if (!res.ok) {
+                          // محاولة قراءة رسالة الخطأ من السيرفر
+                          return res.json().then(errData => {
+                              throw new Error(errData.message || 'لا تملك صلاحية مشاهدة هذا الفيديو');
+                          }).catch(() => {
+                              // لو فشل قراءة الـ JSON (مثلاً 500 Server Error)
+                              throw new Error('لا تملك صلاحية مشاهدة هذا الفيديو');
+                          });
+                        }
+                        return res.json(); 
+                    })
                     .then(data => {
+                        // لو السيرفر رجع خطأ (زي خطأ Railway)
+                        if (data.message) throw new Error(data.message); 
+                        
+                        // [ ✅✅ تعديل: حفظ اللينك والـ ID ]
+                        setStreamUrl(data.streamUrl); 
                         setYoutubeId(data.youtube_video_id);
-                        // (يمكنك إضافة حقل "العنوان" للـ API لإرجاعه هنا)
-                        // setVideoTitle(data.title || "فيديو"); 
+                        setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                     })
                     .catch(err => setError(err.message));
             }
         };
 
-        // (منطق التحقق من المستخدم - يبقى كما هو)
+        // (منطق التحقق من المستخدم - يبقى كما هو تماماً)
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         const urlFirstName = urlParams.get('firstName');
@@ -136,20 +151,20 @@ export default function WatchPage() {
              return;
         }
         
-    }, [videoId]); // (تم تبسيط الـ dependencies)
+    }, [videoId]); // (الـ dependencies زي ما هي)
 
-    // [ ✅✅ الإبقاء على دالة التحميل الخاصة بالأندرويد ]
+    // [ ✅✅ تعديل: دالة التحميل مبقتش محتاجة fakeVideoTitle ]
+    // (الدالة دي سليمة 100% لأنها بتعتمد على `youtubeId` اللي لسه موجود)
     const handleDownloadClick = () => {
-        const fakeVideoTitle = videoTitle || "video"; 
-        
-        if (!youtubeId) {
+        if (!youtubeId) { // (لسه بنعتمد على الـ ID)
             alert("بيانات الفيديو غير جاهزة بعد، يرجى الانتظار ثانية.");
             return;
         }
 
         if (isNativeAndroid) {
             try {
-                window.Android.downloadVideo(youtubeId, fakeVideoTitle);
+                // (هنا بنبعت الـ ID الأصلي والاسم الحقيقي اللي جبناه من Railway)
+                window.Android.downloadVideo(youtubeId, videoTitle);
             } catch (e) {
                 console.error("Error calling native bridge:", e);
                 alert("حدث خطأ أثناء الاتصال بالتطبيق.");
@@ -161,27 +176,31 @@ export default function WatchPage() {
 
 
     if (error) { return <div className="message-container"><Head><title>خطأ</title></Head><h1>{error}</h1></div>; }
-    if (!youtubeId || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
     
-    // (إعدادات مشغل Plyr)
+    // [ ✅✅ تعديل: شاشة التحميل بقت بتعتمد على الـ streamUrl ]
+    if (!streamUrl || !user) { return <div className="message-container"><Head><title>جاري التحميل</title></Head><h1>جاري تحميل الفيديو...</h1></div>; }
+    
+    // [ ✅✅ تعديل: إعدادات مشغل Plyr ]
+    // (مبقاش "يوتيوب"، بقى "فيديو عادي")
     const plyrSource = {
       type: 'video',
+      title: videoTitle,
       sources: [
         {
-          src: youtubeId,
-          provider: 'youtube', // (تحديد المصدر: يوتيوب)
+          src: streamUrl, // <-- [✅✅ الأهم] بنستخدم الستريم الجديد
+          type: 'video/mp4', // <-- [✅✅ الأهم] بنقوله إنه ملف فيديو
         },
       ],
     };
     
-    // [ ✅✅✅ بداية الإصلاح: إضافة إعدادات ملء الشاشة ]
+    // (الإعدادات زي ما هي، بس Plyr هيتجاهل إعدادات 'youtube' لأنه مبقاش يوتيوب)
     const plyrOptions = {
         controls: [
             'play-large', 'play', 'progress', 'current-time',
             'mute', 'volume', 'settings', 'fullscreen'
         ],
         settings: ['quality', 'speed'],
-        youtube: {
+        youtube: { // (ده هيتم تجاهله)
             rel: 0, 
             showinfo: 0, 
             modestbranding: 1, 
@@ -191,10 +210,9 @@ export default function WatchPage() {
             enabled: true,
             fallback: true,
             iosNative: true,
-            container: '.player-wrapper' // <-- هذا هو السطر الحاسم
+            container: '.player-wrapper'
         }
     };
-    // [ ✅✅✅ نهاية الإصلاح ]
 
     return (
         <div className="page-container">
@@ -203,19 +221,17 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-             {/* (اسم الكلاس هنا يجب أن يطابق ".player-wrapper" في الإعدادات) */}
             <div className="player-wrapper" ref={playerWrapperRef}>
                 
                 <Plyr
-                  source={plyrSource}
+                  source={plyrSource} // <-- بنمرر الستريم الجديد
                   options={plyrOptions}
                 />
                 
-                {/* [ ✅✅ جديد: استدعاء الكومبوننت المنفصل ] */}
                 <Watermark user={user} />
             </div>
 
-            {/* [ ✅✅ الإبقاء على زر التحميل ] */}
+            {/* (زرار التحميل هيفضل شغال زي ما هو) */}
             {isNativeAndroid && (
                 <button 
                     onClick={handleDownloadClick} 
@@ -224,15 +240,13 @@ export default function WatchPage() {
                     ⬇️ تحميل الفيديو (أوفلاين)
                 </button>
             )}
-            {/* [ نهاية الزر الجديد ] */}
-
 
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
               <p>برمجة وتطوير: A7MeD WaLiD</p>
               <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
             </footer>
 
-            {/* (الـ CSS يبقى كما هو) */}
+            {/* (الـ CSS زي ما هو بالظبط) */}
             <style jsx global>{`
                 body { margin: 0; overscroll-behavior: contain; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 10px; box-sizing: border-box; }
