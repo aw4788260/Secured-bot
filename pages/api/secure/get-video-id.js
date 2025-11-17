@@ -1,22 +1,36 @@
 // pages/api/secure/get-video-id.js
-import ytdl from 'ytdl-core'; // [ ✅✅ جديد: استيراد المكتبة ]
-
-// (لم نعد بحاجة لـ Supabase هنا لأننا نختبر)
+import { supabase } from '../../../lib/supabaseClient';
+import ytdl from 'ytdl-core';
 
 export default async (req, res) => {
-  const { youtubeId } = req.query;
-  if (!youtubeId) {
-    return res.status(400).json({ message: 'Missing youtubeId' });
+  // [ ✅✅ إصلاح 1: العودة لاستخدام lessonId ]
+  const { lessonId } = req.query;
+  if (!lessonId) {
+    return res.status(400).json({ message: 'Missing lessonId' });
   }
   
   try {
+    // [ ✅✅ إصلاح 2: إعادة التحقق الأمني من Supabase ]
+    // (هذا هو الذي يحدد "هل لديك صلاحية أم لا")
+    const { data, error } = await supabase
+      .from('videos')
+      .select('youtube_video_id')
+      .eq('id', lessonId)
+      .single();
+
+    if (error || !data || !data.youtube_video_id) {
+      console.error(`[AUTH FAILED] User requested lessonId ${lessonId}, but no matching video found in Supabase.`);
+      throw new Error('Video not found or permission denied');
+    }
+
+    const youtubeId = data.youtube_video_id;
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-    
-    // 1. جلب معلومات الفيديو
-    console.log(`[TEST] Attempting to fetch info for: ${youtubeId}`);
+
+    // [ ✅✅ 3. تنفيذ "سرقة" الرابط (كما طلبت) ]
+    console.log(`[ytdl] Auth success. Fetching info for: ${youtubeId}`);
     const info = await ytdl.getInfo(videoUrl);
     
-    // 2. اختيار أفضل صيغة (صوت وصورة)
+    // (اختيار أفضل صيغة صوت وصورة)
     const format = ytdl.chooseFormat(info.formats, { 
         quality: 'highestaudio', 
         filter: 'audioandvideo' 
@@ -26,7 +40,7 @@ export default async (req, res) => {
     let videoTitle = info.videoDetails.title;
 
     if (!format || !format.url) {
-       // (خطة بديلة: اختيار أي صيغة MP4)
+       // (خطة بديلة)
        const fallbackFormat = ytdl.chooseFormat(info.formats, { container: 'mp4', filter: 'audioandvideo' });
        if (!fallbackFormat || !fallbackFormat.url) {
            throw new Error('No suitable video format found.');
@@ -36,20 +50,17 @@ export default async (req, res) => {
        streamUrl = format.url;
     }
 
-    // 3. [ ✅✅✅ هذا هو طلبك: طباعة الرابط في اللوج ]
-    console.log(`[TEST SUCCESS] Video: ${videoTitle}`);
-    console.log(`[TEST SUCCESS] Stream URL Found: ${streamUrl}`);
+    console.log(`[ytdl SUCCESS] Stream URL Found for ${youtubeId}`);
 
-    // 4. إرسال رد ناجح للتطبيق
+    // [ ✅✅ 4. إرسال الرابط المسروق + ID الفيديو (لزر التحميل) ]
     res.status(200).json({ 
-        success: true, 
-        message: "Test success. Check Vercel logs for URL.",
-        title: videoTitle
+        streamUrl: streamUrl, // <-- الرابط المسروق (مثل r2.googlevideo.com)
+        videoTitle: videoTitle,
+        youtube_video_id: youtubeId // <-- سنحتاجه لزر التحميل في الأندرويد
     });
 
   } catch (err) {
-    // 5. طباعة الخطأ في اللوج إذا فشل
-    console.error(`[TEST FAILED] ytdl Error for ${youtubeId}:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
+    console.error(`[ytdl FAILED] Error fetching video ID ${req.query.lessonId}:`, err.message);
+    res.status(500).json({ message: err.message });
   }
 };
