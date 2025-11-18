@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// استيراد ستايل Plyr فقط (سنستدعي الـ JS من الـ CDN لضمان عدم التعارض)
+// (استيراد الستايل فقط)
 import 'plyr/dist/plyr.css';
 
 const Watermark = ({ user }) => {
@@ -25,7 +25,7 @@ const Watermark = ({ user }) => {
     return (
         <div className="watermark" style={{ 
             position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-            zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
+            zIndex: 15, pointerEvents: 'none', padding: '4px 8px', 
             background: 'rgba(0, 0, 0, 0.7)', color: 'white', 
             fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
             fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
@@ -63,23 +63,27 @@ export default function WatchPage() {
             const defaultOptions = {
                 controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
                 settings: ['quality', 'speed'],
+                // (مهم) إعداد أولي للجودة لتجهيز القائمة
                 quality: { default: 0, options: [0], forced: true, onChange: (e) => updateQuality(e) }
             };
 
             if (window.Hls && window.Hls.isSupported()) {
-                const hls = new window.Hls();
+                const hls = new window.Hls({
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 600,
+                });
                 hlsInstance.current = hls;
 
                 hls.loadSource(streamUrl);
                 hls.attachMedia(video);
 
                 hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                    // استخراج الجودات من HLS
+                    // 1. استخراج الجودات من HLS
                     const availableQualities = hls.levels.map((l) => l.height);
-                    // إضافة خيار Auto (0)
+                    // 2. إضافة خيار Auto (0)
                     availableQualities.unshift(0);
 
-                    // تحديث خيارات Plyr بالجودات الحقيقية
+                    // 3. تحديث إعدادات Plyr بالجودات الحقيقية
                     defaultOptions.quality = {
                         default: 0,
                         options: availableQualities,
@@ -97,14 +101,17 @@ export default function WatchPage() {
                         }
                     };
                     
-                    // تشغيل Plyr الآن (بعد تجهيز الجودات)
+                    // 4. تشغيل Plyr الآن (بعد تجهيز الجودات)
                     if (!plyrInstance.current) {
                         // @ts-ignore
                         const Plyr = window.Plyr;
                         const player = new Plyr(video, defaultOptions);
                         
                         // تسمية Auto
-                        player.config.i18n.qualityLabel = { 0: 'Auto' };
+                        player.config.i18n = { 
+                            ...player.config.i18n, 
+                            qualityLabel: { 0: 'Auto' } 
+                        };
                         
                         plyrInstance.current = player;
                     }
@@ -121,7 +128,7 @@ export default function WatchPage() {
                 });
 
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                // دعم سفاري
+                // دعم سفاري (Native HLS)
                 video.src = streamUrl;
                 // @ts-ignore
                 const Plyr = window.Plyr;
@@ -197,14 +204,14 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                {/* تحميل المكتبات من CDN لضمان العمل */}
+                {/* تحميل المكتبات من CDN لضمان العمل والتوافق */}
                 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
                 <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
                 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
             </Head>
 
             <div className="player-wrapper">
-                {/* عنصر الفيديو الخام */}
+                {/* عنصر الفيديو الخام الذي سيتصل به HLS و Plyr */}
                 <video 
                     ref={videoRef} 
                     className="plyr-video" 
