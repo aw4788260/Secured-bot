@@ -48,24 +48,22 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
-    const playerWrapperRef = useRef(null); 
     const plyrRef = useRef(null);
     const hlsRef = useRef(null);
 
     // ##############################
-    //        تفعيل الجودة (HLS)
+    //        تفعيل الجودة
     // ##############################
     const initHLSPlayer = useCallback(() => {
         if (!streamUrl) return;
 
-        // التأكد من أن المشغل جاهز
-        if (!plyrRef.current || !plyrRef.current.plyr) {
+        const video = plyrRef.current?.plyr?.media;
+        const player = plyrRef.current?.plyr; // نحفظ مرجع للمشغل
+
+        if (!video || !player) {
             setTimeout(initHLSPlayer, 200);
             return;
         }
-
-        const video = plyrRef.current.plyr.media;
-        const player = plyrRef.current.plyr;
 
         if (window.Hls && window.Hls.isSupported()) {
             const hls = new window.Hls({
@@ -75,23 +73,25 @@ export default function WatchPage() {
             });
 
             hlsRef.current = hls;
+
             hls.loadSource(streamUrl);
             hls.attachMedia(video);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
                 // 1. استخراج الجودات
                 const availableQualities = hls.levels.map((l) => l.height);
-                // 2. إضافة خيار Auto (نرمز له بـ 0)
+                // 2. إضافة "Auto" (0) في البداية
                 availableQualities.unshift(0);
 
-                // 3. تحديث إعدادات Plyr (استخدام config بدلاً من options)
+                // 3. [تعديل هام] استخدام player.config بدلاً من options
+                // هذا هو التعديل الذي سيظهر الزر
                 player.config.quality = {
-                    default: 0, // افتراضياً Auto
+                    default: 0,
                     options: availableQualities,
                     forced: true,
                     onChange: (newQuality) => {
                         if (newQuality === 0) {
-                            hls.currentLevel = -1; // وضع Auto
+                            hls.currentLevel = -1; // Auto
                         } else {
                             hls.levels.forEach((level, levelIndex) => {
                                 if (level.height === newQuality) {
@@ -101,30 +101,18 @@ export default function WatchPage() {
                         }
                     },
                 };
-                
-                // 4. تسمية خيار 0 بـ "Auto"
-                player.config.i18n = {
-                    ...player.config.i18n,
-                    qualityLabel: { 0: 'Auto' },
+
+                // 4. تسمية خيار Auto
+                player.config.i18n = { 
+                    ...player.config.i18n, 
+                    qualityLabel: { 0: 'Auto' } 
                 };
 
-                // تفعيل التحديثات
+                // 5. [تعديل هام] تعيين الجودة يدوياً لتفعيل القائمة
                 player.quality = 0; 
             });
 
-            // معالجة الأخطاء
-            hls.on(window.Hls.Events.ERROR, function (event, data) {
-                if (data.fatal) {
-                    switch (data.type) {
-                        case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-                        case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
-                        default: hls.destroy(); break;
-                    }
-                }
-            });
-
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            // دعم سفاري
             video.src = streamUrl;
         }
     }, [streamUrl]);
@@ -204,8 +192,8 @@ export default function WatchPage() {
             "mute","volume","settings","fullscreen"
         ],
         settings: ["quality","speed"],
-        fullscreen: { enabled: true, fallback: true, iosNative: true },
-        // (هام) لا نضع quality هنا لأننا نضبطه ديناميكياً في دالة initHLSPlayer
+        // (ملاحظة: أزلنا quality من هنا لأننا نضبطها ديناميكياً بالأعلى)
+        fullscreen: { enabled: true, fallback: true, iosNative: true }
     };
 
     return (
@@ -231,6 +219,7 @@ export default function WatchPage() {
                 </button>
             )}
 
+            {/* [تعديل] الفوتر في الأسفل تماماً */}
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
                 <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank">اضغط هنا</a></p>
@@ -239,15 +228,15 @@ export default function WatchPage() {
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 
-                /* [✅ تعديل التوسط] */
+                /* [تعديل] التوسط العمودي والأفقي */
                 .page-container { 
                     display: flex; 
                     flex-direction: column; 
                     align-items: center; 
-                    justify-content: center; /* توسيط عمودي */
+                    justify-content: center; /* يوسط المحتوى رأسياً */
                     min-height: 100vh; 
                     padding: 10px; 
-                    position: relative; 
+                    position: relative; /* عشان الفوتر */
                 }
                 
                 .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -258,10 +247,10 @@ export default function WatchPage() {
                     aspect-ratio: 16/9; 
                     background: #000; 
                     position: relative; 
+                    /* إزالة المارجن السفلي الكبير ليسمح بالتوسط */
+                    margin-bottom: 0;
                     border-radius: 8px;
                     overflow: hidden;
-                    /* إزالة المارجن الكبير عشان التوسط يظبط */
-                    margin: 0;
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
                 }
                 
@@ -278,7 +267,7 @@ export default function WatchPage() {
                     margin-top: 20px; 
                 }
 
-                /* [✅ الفوتر ثابت في الأسفل] */
+                /* [تعديل] تثبيت الفوتر في الأسفل */
                 .developer-info {
                     position: absolute;
                     bottom: 10px;
