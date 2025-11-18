@@ -1,14 +1,17 @@
+// pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
-// مكونات Watermark و SettingsIcon (بدون تغيير)
+// أيقونة الإعدادات
 const SettingsIcon = () => (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0px 0px 2px black)' }}>
         <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.23,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z" />
     </svg>
 );
+
+// العلامة المائية
 const Watermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
     useEffect(() => {
@@ -35,15 +38,13 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     
     const [qualities, setQualities] = useState([]);
-    const [currentQuality, setCurrentQuality] = useState(0); 
+    const [currentQuality, setCurrentQuality] = useState(0);
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     
     const videoRef = useRef(null);
     const hlsRef = useRef(null); 
 
-    // ##############################
-    // نظام تسجيل الأخطاء (LOGGING)
-    // ##############################
+    // --- نظام اللوجات ---
     const logBuffer = useRef([]); 
     const queueLog = useCallback((message, type = 'info', details = null) => {
         const time = new Date().toLocaleTimeString();
@@ -67,13 +68,9 @@ export default function WatchPage() {
         return () => clearInterval(interval);
     }, [sendLogsNow]);
     
-
-    // ##############################
-    // 1. وظيفة تحميل بث HLS
-    // ##############################
+    // --- تشغيل الفيديو ---
     const loadHLSStream = useCallback((url, qualityHeight) => {
         if (!videoRef.current || !window.Hls) {
-            queueLog("HLS not ready or video element missing.", 'error');
             return;
         }
 
@@ -112,8 +109,7 @@ export default function WatchPage() {
                 if (data.fatal) {
                     queueLog(`❌ FATAL ERROR: ${data.type}`, 'error', { 
                         details: data.details, 
-                        responseCode: data.response?.code,
-                        url: data.response?.url 
+                        responseCode: data.response?.code 
                     });
                     hls.destroy();
                 }
@@ -128,9 +124,6 @@ export default function WatchPage() {
         }
     }, [queueLog]); 
 
-    // ##############################
-    // 2. تغيير الجودة
-    // ##############################
     const changeQuality = (newQuality) => {
         const targetQuality = newQuality === -1 ? qualities[0].quality : newQuality;
         const selectedStream = qualities.find(q => q.quality === targetQuality);
@@ -143,9 +136,7 @@ export default function WatchPage() {
         }
     };
 
-    // ##############################
-    // 3. جلب البيانات (يستخدم Next.js API)
-    // ##############################
+    // --- جلب البيانات (مع الإصلاحات) ---
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -156,9 +147,9 @@ export default function WatchPage() {
         else if (window.Telegram?.WebApp) { window.Telegram.WebApp.ready(); const u = window.Telegram.WebApp.initDataUnsafe?.user; if (u) setupUser(u); } 
         
         if (videoId) {
-            queueLog(`Fetching video links for ID: ${videoId} from Next.js API`, 'info');
+            queueLog(`Fetching video links for ID: ${videoId}`, 'info');
             
-            // [التعديل الأهم] الاتصال بالـ Next.js API Route المحلي
+            // استخدام API Route المحلي
             const fetchUrl = `/api/secure/get-video-id?lessonId=${videoId}`;
             
             fetch(fetchUrl)
@@ -169,21 +160,23 @@ export default function WatchPage() {
                             responseStatus: res.status, 
                             responseText: errorText.substring(0, 150)
                         });
-                        throw new Error(`API failed with status ${res.status}. Check Vercel Logs for details.`);
+                        throw new Error(`API failed with status ${res.status}. Check Vercel Logs.`);
                     }
                     
-                    try {
-                        return res.json();
-                    } catch (e) {
-                        const rawText = await res.text();
-                        queueLog(`Failed to parse API response as JSON.`, 'error', { rawText: rawText.substring(0, 150) });
-                        throw new Error("Invalid JSON response from API. See Vercel logs.");
+                    // التحقق من نوع المحتوى قبل قراءة JSON
+                    const contentType = res.headers.get("content-type");
+                    if (!contentType || !contentType.includes("application/json")) {
+                        const text = await res.text();
+                        queueLog(`Invalid content type: ${contentType}`, 'error', { textSnippet: text.substring(0, 100) });
+                        throw new Error("Invalid response from API (not JSON)");
                     }
+
+                    return res.json();
                 })
                 .then(data => {
-                    if (data.message && data.message.includes("Failed to get separate HLS streams")) {
+                    if (data.message && data.message.includes("Failed")) {
                         setError(`خطأ من الخادم: ${data.message}`);
-                        queueLog(`Server returned HLS failure: ${data.message}`, 'error');
+                        queueLog(`Server returned failure: ${data.message}`, 'error');
                         return;
                     }
 
@@ -207,6 +200,7 @@ export default function WatchPage() {
                     setError(err.message);
                     queueLog(`Final Catch Error: ${err.message}`, 'error');
                 });
+        } // تم إضافة القوس المفقود هنا ✅
     }, [videoId, queueLog]);
 
     useEffect(() => {
@@ -236,9 +230,9 @@ export default function WatchPage() {
                     playsInline 
                     className="main-video"
                     controlsList="nodownload"
+                    style={{ width: '100%', height: '100%' }} // تحسين التنسيق
                 />
 
-                {/* زر الجودة المخصص */}
                 {qualities.length > 0 && (
                     <div className="custom-controls">
                         <button 
@@ -274,7 +268,6 @@ export default function WatchPage() {
             </div>
 
             <style jsx global>{`
-                /* CSS (بدون تغيير) */
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; overflow-x: hidden; }
                 .page-container { 
                     display: flex; flex-direction: column; align-items: center; justify-content: center; 
@@ -287,8 +280,7 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;
                 }
                 .main-video { width: 100%; height: 100%; outline: none; }
-
-                /* أدوات التحكم المخصصة (زر الجودة) */
+                
                 .custom-controls { position: absolute; top: 10px; right: 10px; z-index: 25; }
                 .settings-btn {
                     background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255,255,255,0.2);
@@ -301,7 +293,6 @@ export default function WatchPage() {
                     box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column;
                     border: 1px solid rgba(255,255,255,0.1);
                 }
-                
                 .quality-item {
                     padding: 12px 20px; cursor: pointer; font-size: 14px; font-weight: bold; text-align: center;
                     border-bottom: 1px solid rgba(255,255,255,0.05); color: #ddd;
