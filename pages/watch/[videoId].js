@@ -1,12 +1,9 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 
-const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
-import 'plyr/dist/plyr.css';
-
+// (كومبوننت العلامة المائية)
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -18,19 +15,17 @@ const Watermark = ({ user }) => {
             const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
-        return () => { 
-            if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current); 
-        };
+        return () => { if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current); };
     }, [user]);
 
     return (
         <div className="watermark" style={{ 
             position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-            zIndex: 15, pointerEvents: 'none', padding: '4px 8px', 
-            background: 'rgba(0, 0, 0, 0.7)', color: 'white', 
-            fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
+            zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
+            background: 'rgba(0, 0, 0, 0.5)', color: 'white', 
+            fontSize: 'clamp(12px, 2.5vw, 14px)', borderRadius: '4px',
             fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap', textShadow: '1px 1px 2px black'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -48,105 +43,85 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
-    const plyrRef = useRef(null);
-    const hlsRef = useRef(null);
+    const videoNode = useRef(null);
+    const playerRef = useRef(null);
 
-    // ##############################
-    //        تفعيل الجودة
-    // ##############################
-    const initHLSPlayer = useCallback(() => {
-        if (!streamUrl) return;
+    // 1. تهيئة Video.js
+    useEffect(() => {
+        // لا نبدأ إلا إذا توفر الرابط وتوفرت المكتبة
+        if (!streamUrl || !window.videojs) return;
 
-        const video = plyrRef.current?.plyr?.media;
-        const player = plyrRef.current?.plyr; // نحفظ مرجع للمشغل
-
-        if (!video || !player) {
-            setTimeout(initHLSPlayer, 200);
+        // إذا كان المشغل موجوداً بالفعل، قم بتحديث المصدر فقط
+        if (playerRef.current) {
+            playerRef.current.src({ src: streamUrl, type: 'application/x-mpegURL' });
             return;
         }
 
-        if (window.Hls && window.Hls.isSupported()) {
-            const hls = new window.Hls({
-                maxBufferLength: 30,
-                maxMaxBufferLength: 600,
-                enableWorker: true,
-            });
+        // إعدادات المشغل
+        const options = {
+            autoplay: false,
+            controls: true,
+            responsive: true,
+            fluid: true,
+            sources: [{
+                src: streamUrl,
+                type: 'application/x-mpegURL'
+            }],
+            html5: {
+                vhs: {
+                    overrideNative: true, // إجبار استخدام VHS لضمان عمل اختيار الجودة
+                },
+                nativeAudioTracks: false,
+                nativeVideoTracks: false,
+            }
+        };
 
-            hlsRef.current = hls;
+        // إنشاء المشغل
+        const player = window.videojs(videoNode.current, options, function onPlayerReady() {
+            console.log('Video.js Ready');
+            
+            // تفعيل إضافة اختيار الجودة (إذا تم تحميلها)
+            if (this.hlsQualitySelector) {
+                this.hlsQualitySelector({
+                    displayCurrentQuality: true,
+                });
+            } else {
+                console.warn("hlsQualitySelector plugin not loaded");
+            }
+        });
 
-            hls.loadSource(streamUrl);
-            hls.attachMedia(video);
+        playerRef.current = player;
 
-            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                // 1. استخراج الجودات
-                const availableQualities = hls.levels.map((l) => l.height);
-                // 2. إضافة "Auto" (0) في البداية
-                availableQualities.unshift(0);
+        // تنظيف المشغل عند الخروج
+        return () => {
+            if (player) {
+                player.dispose();
+                playerRef.current = null;
+            }
+        };
+    }, [streamUrl]); // يعتمد على streamUrl
 
-                // 3. [تعديل هام] استخدام player.config بدلاً من options
-                // هذا هو التعديل الذي سيظهر الزر
-                player.config.quality = {
-                    default: 0,
-                    options: availableQualities,
-                    forced: true,
-                    onChange: (newQuality) => {
-                        if (newQuality === 0) {
-                            hls.currentLevel = -1; // Auto
-                        } else {
-                            hls.levels.forEach((level, levelIndex) => {
-                                if (level.height === newQuality) {
-                                    hls.currentLevel = levelIndex;
-                                }
-                            });
-                        }
-                    },
-                };
-
-                // 4. تسمية خيار Auto
-                player.config.i18n = { 
-                    ...player.config.i18n, 
-                    qualityLabel: { 0: 'Auto' } 
-                };
-
-                // 5. [تعديل هام] تعيين الجودة يدوياً لتفعيل القائمة
-                player.quality = 0; 
-            });
-
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            video.src = streamUrl;
-        }
-    }, [streamUrl]);
-
+    // 2. جلب البيانات (نفس المنطق السابق)
     useEffect(() => {
-        if (streamUrl) initHLSPlayer();
-    }, [streamUrl, initHLSPlayer]);
-
-
-    // ##############################
-    //        جلب البيانات
-    // ##############################
-    useEffect(() => {
-        const setupUser = (u) => {
-            if (u && u.id) setUser(u);
+        const setupUser = (foundUser) => {
+            if (foundUser && foundUser.id) setUser(foundUser);
             else setError("خطأ: لا يمكن التعرف على المستخدم.");
         };
 
-        const params = new URLSearchParams(window.location.search);
-        const urlUserId = params.get("userId");
-        const urlFirstName = params.get("firstName");
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlUserId = urlParams.get('userId');
+        const urlFirstName = urlParams.get('firstName');
 
         if (urlUserId) {
-            setupUser({ id: urlUserId, first_name: urlFirstName || "User" });
-            if (window.Android) setIsNativeAndroid(true);
-        } 
-        else if (window.Telegram?.WebApp) {
-            window.Telegram.WebApp.ready();
-            const u = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (u) setupUser(u);
-            else setError("يرجى الفتح من تليجرام.");
-        } 
-        else {
-            setError("يرجى الفتح من التطبيق المخصص.");
+            setupUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
+            if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
+        } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+             window.Telegram.WebApp.ready();
+             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+             if(miniAppUser) setupUser(miniAppUser);
+             else setError("يرجى الفتح من تليجرام.");
+        } else {
+             setError('يرجى الفتح من التطبيق المخصص.');
         }
 
         if (videoId) {
@@ -162,54 +137,42 @@ export default function WatchPage() {
         }
     }, [videoId]);
 
-
-    // ##############################
-    //       تحميل الفيديو
-    // ##############################
     const handleDownloadClick = () => {
         if (!youtubeId) return alert("انتظر..");
         if (isNativeAndroid) {
             try { window.Android.downloadVideo(youtubeId, videoTitle); } 
             catch { alert("خطأ في الاتصال."); }
-        } else {
-            alert("متاح فقط في التطبيق.");
-        }
+        } else { alert("متاح فقط في التطبيق."); }
     };
 
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
     if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
-
-
-    const plyrSource = {
-        type: "video",
-        title: videoTitle,
-        sources: [{ src: streamUrl, type: "application/x-mpegURL" }]
-    };
-
-    const plyrOptions = {
-        controls: [
-            "play-large","play","progress","current-time",
-            "mute","volume","settings","fullscreen"
-        ],
-        settings: ["quality","speed"],
-        // (ملاحظة: أزلنا quality من هنا لأننا نضبطها ديناميكياً بالأعلى)
-        fullscreen: { enabled: true, fallback: true, iosNative: true }
-    };
 
     return (
         <div className="page-container">
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
+                
+                {/* 1. ستايل Video.js الأساسي */}
+                <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+                
+                {/* 2. مكتبة Video.js الأساسية */}
+                <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+                
+                {/* 3. إضافات الجودة (Quality Levels + Selector) */}
+                <script src="https://unpkg.com/videojs-contrib-quality-levels@2.1.0/dist/videojs-contrib-quality-levels.min.js"></script>
+                <script src="https://unpkg.com/videojs-hls-quality-selector@1.1.4/dist/videojs-hls-quality-selector.min.js"></script>
             </Head>
 
             <div className="player-wrapper">
-                <Plyr 
-                    ref={plyrRef}
-                    source={plyrSource}
-                    options={plyrOptions}
-                />
+                <div data-vjs-player>
+                    <video 
+                        ref={videoNode} 
+                        className="video-js vjs-big-play-centered vjs-theme-city" 
+                        playsInline
+                    />
+                </div>
                 <Watermark user={user} />
             </div>
 
@@ -219,7 +182,6 @@ export default function WatchPage() {
                 </button>
             )}
 
-            {/* [تعديل] الفوتر في الأسفل تماماً */}
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
                 <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank">اضغط هنا</a></p>
@@ -228,15 +190,14 @@ export default function WatchPage() {
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 
-                /* [تعديل] التوسط العمودي والأفقي */
                 .page-container { 
                     display: flex; 
                     flex-direction: column; 
                     align-items: center; 
-                    justify-content: center; /* يوسط المحتوى رأسياً */
+                    justify-content: center; 
                     min-height: 100vh; 
                     padding: 10px; 
-                    position: relative; /* عشان الفوتر */
+                    position: relative;
                 }
                 
                 .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -244,14 +205,28 @@ export default function WatchPage() {
                 .player-wrapper { 
                     width: 100%; 
                     max-width: 900px; 
-                    aspect-ratio: 16/9; 
-                    background: #000; 
                     position: relative; 
-                    /* إزالة المارجن السفلي الكبير ليسمح بالتوسط */
-                    margin-bottom: 0;
+                    margin: 0;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
                     border-radius: 8px;
                     overflow: hidden;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                }
+
+                /* تنسيقات خاصة بـ Video.js لتظهر بشكل جميل */
+                .video-js {
+                    width: 100%;
+                    height: auto;
+                    aspect-ratio: 16/9;
+                }
+                
+                /* تحسين شكل قائمة الجودة */
+                .vjs-menu-button-popup .vjs-menu {
+                    width: 10em;
+                    left: -3em;
+                }
+                .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
+                    background-color: rgba(43, 51, 63, 0.9);
+                    max-height: 15em;
                 }
                 
                 .download-button-native { 
@@ -267,7 +242,6 @@ export default function WatchPage() {
                     margin-top: 20px; 
                 }
 
-                /* [تعديل] تثبيت الفوتر في الأسفل */
                 .developer-info {
                     position: absolute;
                     bottom: 10px;
@@ -277,9 +251,6 @@ export default function WatchPage() {
                     color: #777;
                 }
                 .developer-info a { color: #38bdf8; text-decoration: none; }
-                
-                .player-wrapper :global(.plyr--video) { height: 100%; }
-                .player-wrapper:fullscreen { max-width: none; width: 100%; height: 100%; }
             `}</style>
         </div>
     );
