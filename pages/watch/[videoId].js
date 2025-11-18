@@ -2,10 +2,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 
-// استيراد Plyr بدون SSR
-const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 const Watermark = ({ user }) => {
@@ -19,9 +16,7 @@ const Watermark = ({ user }) => {
             const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
-        return () => { 
-            if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current); 
-        };
+        return () => { if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current); };
     }, [user]);
 
     return (
@@ -49,45 +44,77 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
-    // مراجع
-    const ref = useRef(null); // مرجع لـ Plyr
+    const videoRef = useRef(null);
+    const plyrInstance = useRef(null);
+    const hlsInstance = useRef(null);
 
-    // 1. تهيئة HLS وربطها بـ Plyr
+    // 1. بناء المشغل (Plyr) فوراً (حتى لو مفيش رابط لسه)
     useEffect(() => {
-        // شرط: الرابط موجود + المشغل تم بناؤه (ref.current موجود)
-        if (!streamUrl || !ref.current) return;
+        if (!videoRef.current || plyrInstance.current) return;
 
-        const player = ref.current.plyr;
-        
-        // (تأكد أننا لم نقم بالربط مسبقاً لتجنب التكرار)
-        if (player.hlsAttached) return;
+        // ننتظر تحميل مكتبة Plyr من الـ CDN
+        const initPlyr = () => {
+            if (window.Plyr) {
+                // بناء المشغل بإعدادات مبدئية فارغة
+                const player = new window.Plyr(videoRef.current, {
+                    controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
+                    settings: ['quality', 'speed'],
+                    // جودة وهمية لحجز المكان في القائمة
+                    quality: { default: 0, options: [0], forced: true, onChange: ()=>{} },
+                    // إعدادات أخرى
+                    hideControls: false,
+                    clickToPlay: true,
+                });
+                
+                // تسمية الزر "جاري التحميل..." مؤقتاً
+                player.config.i18n.qualityLabel = { 0: 'Loading...' };
+                
+                plyrInstance.current = player;
+            } else {
+                setTimeout(initPlyr, 100);
+            }
+        };
 
-        const videoElement = player.media; // عنصر الفيديو الأصلي
+        initPlyr();
+
+        return () => {
+            if (plyrInstance.current) plyrInstance.current.destroy();
+        };
+    }, []); // يعمل مرة واحدة عند فتح الصفحة
+
+
+    // 2. تفعيل HLS وحقن الإعدادات (لما الرابط يوصل)
+    useEffect(() => {
+        if (!streamUrl || !plyrInstance.current) return;
+
+        const player = plyrInstance.current;
+        const video = videoRef.current;
 
         if (window.Hls && window.Hls.isSupported()) {
+            if (hlsInstance.current) hlsInstance.current.destroy(); // تنظيف القديم لو وجد
+
             const hls = new window.Hls({
                 maxBufferLength: 30,
                 maxMaxBufferLength: 600,
             });
-            
+            hlsInstance.current = hls;
+
             hls.loadSource(streamUrl);
-            hls.attachMedia(videoElement);
-            player.hlsAttached = true; // علامة لمنع التكرار
+            hls.attachMedia(video);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                // 1. استخراج الجودات من HLS
+                // استخراج الجودات
                 const availableQualities = hls.levels.map((l) => l.height);
-                // إضافة خيار Auto (0)
-                availableQualities.unshift(0);
+                availableQualities.unshift(0); // Auto
 
-                // 2. [الحيلة لإظهار الزر] تحديث إعدادات Plyr ديناميكياً
+                // تحديث إعدادات Plyr الحالية (Runtime Update)
                 player.config.quality = {
                     default: 0,
                     options: availableQualities,
-                    forced: true, // يجبر القائمة على الظهور
+                    forced: true,
                     onChange: (newQuality) => {
                         if (newQuality === 0) {
-                            hls.currentLevel = -1; // Auto
+                            hls.currentLevel = -1;
                         } else {
                             hls.levels.forEach((level, levelIndex) => {
                                 if (level.height === newQuality) {
@@ -95,40 +122,39 @@ export default function WatchPage() {
                                 }
                             });
                         }
-                    },
+                    }
                 };
 
-                // 3. تحديث النصوص (تسمية Auto)
-                player.config.i18n = { 
-                    ...player.config.i18n, 
-                    qualityLabel: { 0: 'Auto' } 
-                };
-
-                // 4. [هام] إعادة تعيين المصدر "وهمياً" لتطبيق التغييرات أو تعيين الجودة
-                // Plyr أحياناً يحتاج "نكزة" ليحدث الواجهة
-                player.quality = 0; 
+                // تحديث النصوص
+                player.config.i18n.qualityLabel = { 0: 'Auto' };
                 
-                console.log("Plyr qualities updated:", availableQualities);
+                // إجبار Plyr على تحديث الواجهة
+                // (تعيين الجودة لنفسها يجبره على إعادة رسم القائمة)
+                player.quality = 0;
+                
+                // تشغيل الفيديو تلقائياً إذا أردت
+                // player.play();
             });
 
             hls.on(window.Hls.Events.ERROR, function (event, data) {
-               if (data.fatal) {
-                  switch (data.type) {
-                     case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-                     case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
-                     default: hls.destroy(); break;
-                  }
-               }
+                if (data.fatal) {
+                    switch (data.type) {
+                        case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+                        case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+                        default: hls.destroy(); break;
+                    }
+                }
             });
 
-        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-            // دعم سفاري (Native HLS)
-            videoElement.src = streamUrl;
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // سفاري
+            video.src = streamUrl;
         }
-    }, [streamUrl]); // يعمل عند توفر الرابط
+
+    }, [streamUrl]); // يعمل لما الرابط يتغير
 
 
-    // 2. جلب البيانات (نفس الكود السابق)
+    // 3. جلب البيانات
     useEffect(() => {
         const setupUser = (u) => {
             if (u && u.id) setUser(u);
@@ -171,40 +197,41 @@ export default function WatchPage() {
         } else { alert("متاح فقط في التطبيق."); }
     };
 
+    // فقط خطأ المستخدم يمنع العرض، أما الفيديو فنسمح ببناء المشغل
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
-    if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
-
-    // إعدادات Plyr المبدئية
-    const plyrOptions = {
-        controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
-        settings: ['quality', 'speed'],
-        // نضع قيمة افتراضية للجودة "لحجز المكان" حتى يتم التحديث
-        quality: { default: 0, options: [0], forced: true, onChange: ()=>{} }
-    };
-
-    // مصدر الفيديو (مهم لـ Plyr)
-    const plyrSource = {
-        type: 'video',
-        title: videoTitle,
-        // نضع الرابط هنا أيضاً، مع أن HLS سيقوم بتحميله يدوياً، لكن هذا يفيد Plyr في التهيئة
-        sources: [{ src: streamUrl, type: 'application/x-mpegURL' }]
-    };
+    if (!user) return <div className="message-container"><h1>جاري التحقق...</h1></div>;
 
     return (
         <div className="page-container">
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                {/* تحميل HLS من CDN */}
                 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
+                <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+                <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
             </Head>
 
             <div className="player-wrapper">
-                <Plyr 
-                    ref={ref} 
-                    source={plyrSource} 
-                    options={plyrOptions} 
-                />
+                {/* هذا العنصر سيتحول لمشغل Plyr فوراً */}
+                <video 
+                    ref={videoRef} 
+                    className="plyr-video" 
+                    crossOrigin="anonymous" 
+                    playsInline 
+                    controls
+                    // صورة مصغرة (اختياري)
+                    poster="/placeholder.png" 
+                >
+                </video>
+                
+                {/* شاشة تحميل تظهر فوق المشغل حتى يصل الرابط */}
+                {!streamUrl && (
+                    <div className="player-loader-overlay">
+                        <div className="spinner"></div>
+                        <p>جاري جلب الفيديو...</p>
+                    </div>
+                )}
+
                 <Watermark user={user} />
             </div>
 
@@ -222,7 +249,6 @@ export default function WatchPage() {
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 
-                /* التوسيط */
                 .page-container { 
                     display: flex; flex-direction: column; align-items: center; 
                     justify-content: center; min-height: 100vh; padding: 10px; 
@@ -236,8 +262,25 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-radius: 8px; overflow: hidden;
                 }
                 
-                /* جعل الفيديو يملأ الحاوية */
-                .plyr { height: 100%; width: 100%; }
+                video { width: 100%; height: 100%; }
+
+                /* شاشة التحميل فوق المشغل */
+                .player-loader-overlay {
+                    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.8);
+                    display: flex; flex-direction: column;
+                    justify-content: center; align-items: center;
+                    z-index: 10; /* فوق الفيديو، تحت العلامة المائية */
+                }
+                .spinner {
+                    width: 40px; height: 40px;
+                    border: 4px solid rgba(255,255,255,0.3);
+                    border-radius: 50%;
+                    border-top-color: #38bdf8;
+                    animation: spin 1s ease-in-out infinite;
+                    margin-bottom: 10px;
+                }
+                @keyframes spin { to { transform: rotate(360deg); } }
 
                 .download-button-native { 
                     width: 100%; max-width: 900px; padding: 15px; 
@@ -251,7 +294,6 @@ export default function WatchPage() {
                 }
                 .developer-info a { color: #38bdf8; text-decoration: none; }
                 
-                /* إصلاحات Plyr */
                 .player-wrapper :global(.plyr--video) { height: 100%; }
                 .player-wrapper:fullscreen { max-width: none; width: 100%; height: 100%; }
             `}</style>
