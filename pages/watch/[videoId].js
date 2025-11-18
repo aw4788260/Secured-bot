@@ -7,147 +7,169 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    const [streamUrl, setStreamUrl] = useState(null);
-    const [logs, setLogs] = useState([]); // لتخزين سجلات الديباج
+    const [originalUrl, setOriginalUrl] = useState(null);
+    const [logs, setLogs] = useState([]);
+    const [useProxy, setUseProxy] = useState(false); // حالة التبديل بين البروكسي والمباشر
     const videoRef = useRef(null);
+    const hlsRef = useRef(null);
 
-    // دالة لإضافة سطر في شاشة اللوج
-    const addLog = (msg, data = null) => {
+    // دالة اللوج
+    const addLog = (msg, type = 'info') => {
         const time = new Date().toLocaleTimeString().split(' ')[0];
-        const dataStr = data ? JSON.stringify(data, null, 2) : '';
-        // بنضيف اللوج الجديد فوق القديم
-        setLogs(prev => [`[${time}] ${msg} ${dataStr}`, ...prev].slice(0, 50));
-        console.log(`[${time}] ${msg}`, data);
+        setLogs(prev => [`[${time}] [${type.toUpperCase()}] ${msg}`, ...prev].slice(0, 50));
     };
 
+    // 1. جلب الرابط الأصلي فقط
     useEffect(() => {
         if (videoId) {
-            addLog("1. Starting fetch for Video ID: " + videoId);
+            addLog(`Fetching details for ID: ${videoId}`, 'info');
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.json())
                 .then(data => {
-                    addLog("2. API Response received");
                     if (data.streamUrl) {
-                        addLog("3. Stream URL found: " + data.streamUrl.substring(0, 50) + "...");
-                        setStreamUrl(data.streamUrl.trim());
+                        const url = data.streamUrl.trim();
+                        setOriginalUrl(url);
+                        addLog(`Original URL found.`, 'success');
                     } else {
-                        addLog("Error: Stream URL is empty in API response", data);
+                        addLog('Stream URL is empty!', 'error');
                     }
                 })
-                .catch(err => addLog("API Error: " + err.message));
+                .catch(err => addLog(`API Error: ${err.message}`, 'error'));
         }
     }, [videoId]);
 
-    useEffect(() => {
-        if (!streamUrl || !videoRef.current || typeof window === 'undefined' || !window.Hls) return;
+    // 2. دالة تشغيل HLS
+    const initPlayer = () => {
+        if (!originalUrl || !videoRef.current || !window.Hls) return;
 
-        addLog("4. Initializing HLS.js...");
+        // تدمير النسخة السابقة
+        if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+        }
+
+        // تحديد الرابط بناءً على الوضع المختار
+        let playUrl = originalUrl;
+        if (useProxy) {
+            playUrl = `/api/proxy-m3u8?url=${encodeURIComponent(originalUrl)}`;
+            addLog(`🔄 Mode: PROXY. Connecting to local API...`, 'warning');
+        } else {
+            addLog(`DIRECT Mode. Connecting to Google directly...`, 'warning');
+        }
 
         if (window.Hls.isSupported()) {
             const hls = new window.Hls({
-                debug: true, // تفعيل الديباج الداخلي للمكتبة
+                debug: false,
                 enableWorker: true,
                 xhrSetup: function (xhr, url) {
                     xhr.withCredentials = false;
                 }
             });
 
-            addLog("5. Loading Source...");
-            hls.loadSource(streamUrl);
+            hls.loadSource(playUrl);
             hls.attachMedia(videoRef.current);
 
-            // -------------------------------------------
-            // أهم الأحداث لكشف المشكلة
-            // -------------------------------------------
-
-            // 1. عند تحميل ملف المانيفست (القائمة)
-            hls.on(window.Hls.Events.MANIFEST_LOADED, (event, data) => {
-                addLog("✅ EVENT: MANIFEST_LOADED. URL reachable.");
+            hls.on(window.Hls.Events.MANIFEST_LOADED, () => {
+                addLog(`✅ MANIFEST_LOADED. Connection successful!`, 'success');
             });
 
-            // 2. عند فك تشفير القائمة وقراءة الجودات
             hls.on(window.Hls.Events.MANIFEST_PARSED, (event, data) => {
-                addLog(`✅ EVENT: MANIFEST_PARSED. Found ${data.levels.length} quality levels.`);
-                // طباعة تفاصيل الجودات
-                data.levels.forEach((lvl, i) => {
-                    addLog(`   - Level ${i}: ${lvl.height}p (Bitrate: ${lvl.bitrate})`);
-                });
-                videoRef.current.play().catch(e => addLog("Autoplay blocked: " + e.message));
+                addLog(`✅ PARSED. Found ${data.levels.length} qualities. Starting playback...`, 'success');
+                videoRef.current.play().catch(e => addLog(`Autoplay blocked: ${e.message}`, 'error'));
             });
 
-            // 3. عند البدء في تحميل قطعة فيديو (Chunk/Fragment)
-            hls.on(window.Hls.Events.FRAG_LOADING, (event, data) => {
-                // addLog(`... Loading fragment: sn=${data.frag.sn}`); // بلاش عشان منزحمش الشاشة
-            });
-
-            // 4. عند نجاح تحميل القطعة (هنا نتأكد ان الفيديو شغال فعلياً)
             hls.on(window.Hls.Events.FRAG_LOADED, (event, data) => {
-                addLog(`✅ EVENT: FRAG_LOADED (Size: ${data.stats.loaded} bytes). Video data is arriving!`);
+                // هذه الرسالة تعني أن الفيديو يعمل فعلياً
+               // addLog(`📦 Chunk Loaded (${data.stats.loaded} bytes)`, 'success');
             });
 
-            // 5. الأخطاء
             hls.on(window.Hls.Events.ERROR, (event, data) => {
-                addLog(`❌ HLS ERROR: Type=${data.type}, Details=${data.details}`);
                 if (data.fatal) {
-                    addLog("   -> Fatal Error! Trying to recover...");
+                    addLog(`❌ FATAL ERROR: ${data.type}`, 'error');
+                    if (data.response && data.response.code) {
+                        addLog(`❌ HTTP Code: ${data.response.code}`, 'error');
+                    }
+                    
                     switch (data.type) {
                         case window.Hls.ErrorTypes.NETWORK_ERROR:
-                            hls.startLoad();
-                            break;
-                        case window.Hls.ErrorTypes.MEDIA_ERROR:
-                            hls.recoverMediaError();
+                            addLog(`Network blocked. Try switching mode.`, 'error');
+                            hls.destroy();
                             break;
                         default:
                             hls.destroy();
                             break;
                     }
                 }
-                // فحص خاص لأخطاء 403/404
-                if (data.response && data.response.code) {
-                    addLog(`   -> HTTP Code: ${data.response.code}`);
-                }
             });
 
-            return () => hls.destroy();
-        } else {
-            addLog("⚠️ HLS not supported in this browser/webview (using native).");
-            videoRef.current.src = streamUrl;
+            hlsRef.current = hls;
         }
+    };
 
-    }, [streamUrl]);
+    // إعادة التشغيل عند تغيير الوضع أو الرابط
+    useEffect(() => {
+        if (originalUrl) {
+            initPlayer();
+        }
+    }, [originalUrl, useProxy]);
 
     return (
-        <div style={{ background: '#222', minHeight: '100vh', color: '#fff', padding: '10px', fontFamily: 'monospace' }}>
+        <div style={{ background: '#111', minHeight: '100vh', color: '#fff', padding: '10px', fontFamily: 'monospace' }}>
             <Head>
-                <title>Debug Player</title>
+                <title>Super Debugger</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <meta name="referrer" content="no-referrer" />
             </Head>
 
-            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="beforeInteractive" />
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
+                onLoad={() => {
+                    addLog('HLS Library Loaded', 'success');
+                    if(originalUrl) initPlayer();
+                }}
+            />
 
-            <h3>Debug Player (Test Mode)</h3>
+            <h3 style={{textAlign: 'center', color: '#38bdf8'}}>Super Debugger</h3>
             
+            {/* أزرار التحكم */}
+            <div style={{display: 'flex', gap: '10px', marginBottom: '10px', justifyContent: 'center'}}>
+                <button 
+                    onClick={() => setUseProxy(false)}
+                    style={{
+                        padding: '10px', background: useProxy ? '#333' : '#ff4444', 
+                        color: 'white', border: 'none', borderRadius: '5px', flex: 1
+                    }}
+                >
+                    1. Test Direct
+                </button>
+                <button 
+                    onClick={() => setUseProxy(true)}
+                    style={{
+                        padding: '10px', background: useProxy ? '#00C851' : '#333', 
+                        color: 'white', border: 'none', borderRadius: '5px', flex: 1
+                    }}
+                >
+                    2. Test Proxy
+                </button>
+            </div>
+
             <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', marginBottom: '10px' }}>
-                <video ref={videoRef} controls playsInline style={{ width: '100%', height: '100%' }} />
+                <video ref={videoRef} controls playsInline muted style={{ width: '100%', height: '100%' }} />
             </div>
 
             {/* شاشة اللوج */}
             <div style={{ 
-                background: '#000', 
-                border: '1px solid #0f0', 
-                height: '300px', 
-                overflowY: 'scroll', 
-                padding: '10px',
-                fontSize: '11px',
-                lineHeight: '1.4'
+                background: '#000', border: '1px solid #333', height: '300px', 
+                overflowY: 'scroll', padding: '10px', fontSize: '11px', lineHeight: '1.5' 
             }}>
-                <div style={{color: '#0f0', fontWeight: 'bold', borderBottom: '1px solid #333', marginBottom: '5px'}}>
-                    DEBUG CONSOLE (Newest First):
+                <div style={{borderBottom: '1px solid #555', paddingBottom: '5px', marginBottom: '5px', color: '#aaa'}}>
+                    LOGS (Newest First):
                 </div>
-                {logs.length === 0 && <p>Waiting for logs...</p>}
                 {logs.map((log, i) => (
-                    <div key={i} style={{ borderBottom: '1px solid #333', padding: '2px 0', color: log.includes('❌') ? '#ff4444' : (log.includes('✅') ? '#00ff00' : '#ccc') }}>
+                    <div key={i} style={{ 
+                        color: log.includes('ERROR') ? '#ff4444' : (log.includes('SUCCESS') ? '#00C851' : (log.includes('WARNING') ? '#ffbb33' : '#ccc')),
+                        borderBottom: '1px solid #222' 
+                    }}>
                         {log}
                     </div>
                 ))}
