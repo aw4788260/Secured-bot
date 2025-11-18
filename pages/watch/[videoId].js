@@ -35,18 +35,21 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
+    // States
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
-    const [loading, setLoading] = useState(true);
+    
+    // تخزين بيانات الفيديو والجودة
+    const [videoData, setVideoData] = useState(null);
+    const [loading, setLoading] = useState(true); // للتحكم في شاشة التحميل الأولية
     
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // --- 1. جلب البيانات وتشغيل المشغل ---
+    // 1. إعداد المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
-        
         const params = new URLSearchParams(window.location.search);
         const urlUserId = params.get("userId");
         if (urlUserId) {
@@ -57,21 +60,19 @@ export default function WatchPage() {
             const u = window.Telegram.WebApp.initDataUnsafe?.user;
             if (u) setupUser(u); else setError("يرجى الفتح من تليجرام.");
         }
+    }, []);
 
-        if (videoId && artRef.current) {
-            // تصفير المشغل القديم لتجنب التداخل
-            if (playerInstance.current) {
-                playerInstance.current.destroy(false);
-                playerInstance.current = null;
-            }
-
+    // 2. جلب البيانات (مفصول عن المشغل)
+    useEffect(() => {
+        if (videoId) {
+            setLoading(true); // بدء التحميل
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
                 .then(data => {
                     let qualities = data.availableQualities || [];
                     if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                     
-                    // ترتيب الجودات (الأعلى أولاً)
+                    // ترتيب الجودات
                     qualities = qualities.sort((a, b) => b.quality - a.quality);
 
                     // تحويل الجودات لتنسيق Artplayer
@@ -81,98 +82,12 @@ export default function WatchPage() {
                         url: q.url,
                     }));
 
-                    // تهيئة Artplayer
-                    const art = new Artplayer({
-                        container: artRef.current,
-                        url: qualityList[0].url,
-                        quality: qualityList,
+                    // حفظ البيانات وإلغاء شاشة التحميل ليظهر الـ Div
+                    setVideoData({
                         title: data.videoTitle || "مشاهدة الدرس",
-                        volume: 0.7,
-                        isLive: false,
-                        muted: false,
-                        autoplay: false, // سنجعل HLS يقوم بالتشغيل
-                        autoSize: true,
-                        autoMini: true,
-                        screenshot: true,
-                        setting: true,
-                        loop: false,
-                        flip: true,
-                        playbackRate: true,
-                        aspectRatio: true,
-                        fullscreen: true,
-                        fullscreenWeb: true,
-                        miniProgressBar: true,
-                        mutex: true,
-                        backdrop: true,
-                        playsInline: true,
-                        theme: '#38bdf8',
-                        lang: 'ar',
-                        
-                        // --- إعدادات HLS المتقدمة (الحل هنا) ---
-                        customType: {
-                            m3u8: function (video, url, art) {
-                                if (art.hls) art.hls.destroy();
-
-                                if (Hls.isSupported()) {
-                                    const hls = new Hls({
-                                        maxBufferLength: 30,
-                                        enableWorker: true,
-                                        // [هام] تخطي مشاكل CORS ومحاكاة إعدادات Plyr
-                                        xhrSetup: function (xhr) { 
-                                            xhr.withCredentials = false; 
-                                            // إضافة هذا السطر ساعد سابقاً
-                                            xhr.setRequestHeader('Referer', 'https://www.youtube.com/'); 
-                                        }
-                                    });
-                                    
-                                    hls.loadSource(url);
-                                    hls.attachMedia(video);
-                                    
-                                    // 1. التشغيل فور الجاهزية
-                                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                                        art.notice.show = `جاري تشغيل جودة ${art.quality.find(q => q.url === url)?.html || 'Auto'}`;
-                                        video.play().catch(() => console.log("Autoplay blocked"));
-                                    });
-
-                                    // 2. معالجة الأخطاء (لمنع التعليق)
-                                    hls.on(Hls.Events.ERROR, (event, data) => {
-                                        if (data.fatal) {
-                                            switch (data.type) {
-                                                case Hls.ErrorTypes.NETWORK_ERROR:
-                                                    // محاولة الإنعاش عند فشل الشبكة
-                                                    console.log("Network error, recovering...");
-                                                    hls.startLoad();
-                                                    break;
-                                                case Hls.ErrorTypes.MEDIA_ERROR:
-                                                    console.log("Media error, recovering...");
-                                                    hls.recoverMediaError();
-                                                    break;
-                                                default:
-                                                    // خطأ قاتل، تدمير وعرض رسالة
-                                                    art.notice.show = 'حدث خطأ في التشغيل، يرجى تغيير الجودة أو التحديث';
-                                                    hls.destroy();
-                                                    break;
-                                            }
-                                        }
-                                    });
-
-                                    art.hls = hls;
-
-                                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                                    video.src = url;
-                                } else {
-                                    art.notice.show = 'المتصفح لا يدعم تشغيل الفيديو';
-                                }
-                            },
-                        },
+                        qualityList: qualityList,
+                        startUrl: qualityList[0].url
                     });
-
-                    // تنظيف الذاكرة عند التدمير
-                    art.on('destroy', () => {
-                        if (art.hls) art.hls.destroy();
-                    });
-
-                    playerInstance.current = art;
                     setLoading(false);
                 })
                 .catch(err => {
@@ -180,20 +95,119 @@ export default function WatchPage() {
                     setLoading(false);
                 });
         }
-
-        return () => {
-            if (playerInstance.current) playerInstance.current.destroy(false);
-        };
     }, [videoId]);
 
-    // تحميل للأندرويد
+    // 3. تشغيل Artplayer (يعمل فقط بعد توفر videoData وظهور الـ Div)
+    useEffect(() => {
+        if (!videoData || !artRef.current) return;
+
+        // تدمير المشغل القديم إذا وجد
+        if (playerInstance.current) {
+            playerInstance.current.destroy(false);
+            playerInstance.current = null;
+        }
+
+        console.log("Initializing Artplayer with:", videoData.startUrl);
+
+        const art = new Artplayer({
+            container: artRef.current,
+            url: videoData.startUrl,
+            quality: videoData.qualityList,
+            title: videoData.title,
+            volume: 0.7,
+            isLive: false,
+            muted: false,
+            autoplay: false,
+            autoSize: true,
+            autoMini: true,
+            screenshot: true,
+            setting: true,
+            loop: false,
+            flip: true,
+            playbackRate: true,
+            aspectRatio: true,
+            fullscreen: true,
+            fullscreenWeb: true,
+            miniProgressBar: true,
+            mutex: true,
+            backdrop: true,
+            playsInline: true,
+            theme: '#38bdf8',
+            lang: 'ar',
+            
+            // إعدادات HLS
+            customType: {
+                m3u8: function (video, url, art) {
+                    if (art.hls) art.hls.destroy();
+
+                    if (Hls.isSupported()) {
+                        const hls = new Hls({
+                            maxBufferLength: 30,
+                            enableWorker: true,
+                            xhrSetup: function (xhr) { 
+                                xhr.withCredentials = false; 
+                                xhr.setRequestHeader('Referer', 'https://www.youtube.com/'); 
+                            }
+                        });
+                        
+                        hls.loadSource(url);
+                        hls.attachMedia(video);
+                        
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                            // art.play().catch(() => {}); // تشغيل تلقائي اختياري
+                        });
+
+                        hls.on(Hls.Events.ERROR, (event, data) => {
+                            if (data.fatal) {
+                                switch (data.type) {
+                                    case Hls.ErrorTypes.NETWORK_ERROR:
+                                        hls.startLoad();
+                                        break;
+                                    case Hls.ErrorTypes.MEDIA_ERROR:
+                                        hls.recoverMediaError();
+                                        break;
+                                    default:
+                                        hls.destroy();
+                                        break;
+                                }
+                            }
+                        });
+
+                        art.hls = hls;
+                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                        video.src = url;
+                    } else {
+                        art.notice.show = 'Format not supported';
+                    }
+                },
+            },
+        });
+
+        // تنظيف HLS عند التدمير
+        art.on('destroy', () => {
+            if (art.hls) art.hls.destroy();
+        });
+
+        playerInstance.current = art;
+
+        // تنظيف عند الخروج من الصفحة
+        return () => {
+            if (playerInstance.current) {
+                playerInstance.current.destroy(false);
+            }
+        };
+    }, [videoData]); // يعتمد على videoData بدلاً من videoId
+
+    // زر التحميل
     const handleDownloadClick = () => {
         if (isNativeAndroid) {
-             alert("التحميل متاح من داخل التطبيق فقط");
+             alert("التحميل متاح من التطبيق فقط");
         }
     };
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
+    
+    // هنا الفرق: إذا كان يحمل نعرض اللودر، وإلا نعرض المشغل
     if (loading) return <div className="center-msg"><h1>جاري التحميل...</h1></div>;
 
     return (
@@ -201,11 +215,11 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                {/* هذا التاج ضروري جداً لروابط جوجل */}
                 <meta name="referrer" content="no-referrer" />
             </Head>
 
             <div className="player-wrapper">
+                {/* الـ ref أصبح متاحاً الآن لأننا خرجنا من شرط loading */}
                 <div ref={artRef} className="artplayer-app"></div>
                 {user && <Watermark user={user} />}
             </div>
