@@ -83,9 +83,7 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // تعطيل النقر الافتراضي للفيديو
-                    // (سنقوم نحن بإدارته يدوياً عبر الطبقة الشفافة)
-                    lock: true, 
+                    lock: true, // مهم لإدارة النقرات يدوياً
 
                     layers: [
                         // 1. طبقة العلامة المائية
@@ -100,16 +98,16 @@ export default function WatchPage() {
                             html: `
                                 <div class="gesture-layer">
                                     <div class="gesture-box left">
-                                        <span class="icon">⏪</span> <span class="text">10s</span>
+                                        <span class="icon">10<<</span>
                                     </div>
                                     <div class="gesture-box right">
-                                        <span class="icon">⏩</span> <span class="text">10s</span>
+                                        <span class="icon">10>></span>
                                     </div>
                                 </div>
                             `,
                             name: 'gestures',
                             style: {
-                                position: 'absolute', top: 0, left: 0, width: '100%', height: '85%', // نترك مساحة للتحكم السفلي
+                                position: 'absolute', top: 0, left: 0, width: '100%', height: '85%', 
                                 zIndex: 10,
                             },
                         }
@@ -140,10 +138,8 @@ export default function WatchPage() {
                     },
                 });
 
-                // --- إخفاء الإشعارات ---
-                art.notice.show = function() {};
+                art.notice.show = function() {}; // إخفاء الإشعارات
 
-                // --- برمجة التقديم/التأخير بالنقر المزدوج ---
                 art.on('ready', () => {
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
@@ -152,41 +148,34 @@ export default function WatchPage() {
                     let clickTimer = null;
                     let lastClickTime = 0;
 
-                    // نضيف المستمع للطبقة الشفافة بدلاً من الفيديو
                     gestureLayer.addEventListener('click', (e) => {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
-                        // إذا كان الفرق أقل من 300ms، فهذا نقر مزدوج
                         if (timeDiff < 300) {
-                            clearTimeout(clickTimer); // إلغاء أمر التشغيل/الإيقاف المعلق
+                            clearTimeout(clickTimer); 
                             
                             const rect = gestureLayer.getBoundingClientRect();
-                            const x = e.clientX - rect.left; // مكان النقر داخل العنصر
+                            const x = e.clientX - rect.left; 
                             const width = rect.width;
 
                             if (x < width * 0.4) {
-                                // المنطقة اليسرى: تأخير
                                 art.backward = 10;
                                 showFeedback(feedbackLeft);
                             } else if (x > width * 0.6) {
-                                // المنطقة اليمنى: تقديم
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } else {
-                                // الوسط: تكبير الشاشة
                                 art.fullscreen = !art.fullscreen;
                             }
                         } else {
-                            // نقر مفرد: ننتظر قليلاً لنرى إن كان سيتحول لمزدوج
                             clickTimer = setTimeout(() => {
-                                art.toggle(); // تشغيل/إيقاف
+                                art.toggle(); 
                             }, 300);
                         }
                         lastClickTime = currentTime;
                     });
 
-                    // دالة لإظهار تأثير بصري بسيط
                     const showFeedback = (el) => {
                         el.style.opacity = '1';
                         el.style.transform = 'scale(1.2)';
@@ -197,7 +186,6 @@ export default function WatchPage() {
                     };
                 });
 
-                // تحريك العلامة المائية
                 const moveWatermark = () => {
                     const layer = art.template.$player.querySelector('.watermark-layer');
                     if (layer) {
@@ -270,7 +258,10 @@ export default function WatchPage() {
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
+                /* إخفاء الإشعارات تماماً عبر CSS */
                 .art-notice { display: none !important; }
+                /* إخفاء زر القفل في شريط التحكم السفلي */
+                .art-control-lock { display: none !important; }
 
                 .watermark-layer {
                     padding: 4px 8px; background: rgba(0, 0, 0, 0.6); color: white; border-radius: 4px;
@@ -278,10 +269,10 @@ export default function WatchPage() {
                     font-size: 12px !important; text-shadow: 0 1px 2px rgba(0,0,0,0.8); opacity: 0.8;
                 }
 
-                /* ستايل تأثيرات اللمس */
+                /* ستايل تأثيرات اللمس (تم إزالة النص '10s') */
                 .gesture-box {
                     position: absolute; top: 50%; transform: translateY(-50%);
-                    background: rgba(0,0,0,0.7); padding: 15px; border-radius: 50%;
+                    background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 50%; /* تصغير الحجم قليلاً */
                     display: flex; flex-direction: column; align-items: center;
                     opacity: 0; transition: opacity 0.2s, transform 0.2s;
                     pointer-events: none; color: white;
@@ -289,7 +280,7 @@ export default function WatchPage() {
                 .gesture-box.left { left: 10%; }
                 .gesture-box.right { right: 10%; }
                 .gesture-box .icon { font-size: 24px; }
-                .gesture-box .text { font-size: 12px; margin-top: 5px; }
+                /* تم إزالة .text */
             `}</style>
         </div>
     );
