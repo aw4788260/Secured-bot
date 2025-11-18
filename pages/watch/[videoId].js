@@ -1,4 +1,3 @@
-
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
@@ -49,18 +48,20 @@ export default function WatchPage() {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // 1. ترتيب الجودات (الأعلى أولاً)
+                // 1. ترتيب الجودات من الأعلى للأقل
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
 
-                // 2. اختيار الجودة المتوسطة لتكون الافتراضية
+                // 2. [تعديل] حساب الجودة المتوسطة
+                // نختار الفهرس الذي يقع في منتصف المصفوفة
                 const middleIndex = Math.floor((qualities.length - 1) / 2);
 
                 const qualityList = qualities.map((q, index) => ({
-                    default: index === middleIndex,
+                    default: index === middleIndex, // جعل الجودة المتوسطة هي الافتراضية
                     html: `${q.quality}p`,
                     url: q.url,
                 }));
                 
+                // تحديد الرابط الذي سنبدأ به
                 const startUrl = qualityList[middleIndex]?.url || qualityList[0].url;
 
                 if (!artRef.current || !window.Artplayer) return;
@@ -68,7 +69,7 @@ export default function WatchPage() {
                 // --- إعداد Artplayer ---
                 const art = new window.Artplayer({
                     container: artRef.current,
-                    url: startUrl, 
+                    url: startUrl, // نبدأ بالجودة المتوسطة
                     quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
@@ -92,8 +93,8 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // تم إزالة lock: true للسماح بالتفاعل الطبيعي عند التمرير
-                    
+                    lock: true, 
+
                     layers: [
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
@@ -101,8 +102,8 @@ export default function WatchPage() {
                                 position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
                             },
                         },
+                        // [تعديل] إزالة الصندوق الأوسط (center box)
                         {
-                            // طبقة اللمس
                             html: `
                                 <div class="gesture-layer">
                                     <div class="gesture-box left">
@@ -148,7 +149,7 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // --- برمجة اللمسات (Gestures Logic) ---
+                // --- برمجة اللمسات ---
                 art.on('ready', () => {
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
@@ -161,7 +162,7 @@ export default function WatchPage() {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
-                        // --- سيناريو النقر المزدوج (Double Tap) ---
+                        // --- [1] النقر المزدوج ---
                         if (timeDiff < 300) {
                             clearTimeout(clickTimer); 
                             
@@ -175,33 +176,22 @@ export default function WatchPage() {
                             } else if (x > width * 0.65) {
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
-                            } 
-                            // تم إزالة خيار الوسط (التشغيل/الإيقاف) لتجنب التعارض
+                            } else {
+                                // [تعديل] تشغيل/إيقاف بدون إظهار أيقونة مخصصة
+                                art.toggle();
+                            }
                         } 
-                        // --- سيناريو النقر المفرد (Single Tap) ---
+                        // --- [2] النقر المفرد ---
                         else {
                             clickTimer = setTimeout(() => {
-                                // [الحل السحري]: تمرير النقرة للمشغل الأصلي
-                                // 1. نخفي طبقة اللمس مؤقتاً
-                                gestureLayer.style.display = 'none';
-                                
-                                // 2. نحدد العنصر الموجود تحت نقطة النقر (واجهة المشغل)
-                                const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                
-                                // 3. نرسل له نقرة حقيقية
-                                if (elementBelow) {
-                                    const event = new MouseEvent('click', {
-                                        view: window,
-                                        bubbles: true,
-                                        cancelable: true,
-                                        clientX: e.clientX,
-                                        clientY: e.clientY
-                                    });
-                                    elementBelow.dispatchEvent(event);
+                                // [تعديل] إظهار/إخفاء التحكم
+                                // نستخدم الطريقة المباشرة لإضافة كلاس الظهور
+                                const playerEl = art.template.$player;
+                                if (playerEl.classList.contains('art-hover')) {
+                                    playerEl.classList.remove('art-hover');
+                                } else {
+                                    playerEl.classList.add('art-hover');
                                 }
-                                
-                                // 4. نعيد إظهار طبقة اللمس
-                                gestureLayer.style.display = 'block';
                             }, 300);
                         }
                         lastClickTime = currentTime;
