@@ -3,11 +3,9 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
-// استدعاء Plyr بدون SSR
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
-// --- مكون العلامة المائية ---
 const Watermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
     useEffect(() => {
@@ -38,7 +36,7 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    // --- States ---
+    // States
     const [videoData, setVideoData] = useState(null); 
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
@@ -47,7 +45,36 @@ export default function WatchPage() {
     const plyrRef = useRef(null);
     const hlsRef = useRef(null);
 
-    // 1. جلب البيانات
+    // دالة إنشاء وتشغيل HLS برابط محدد
+    const createHlsInstance = (url, videoElement) => {
+        // 1. تدمير النسخة القديمة لضمان التبديل النظيف
+        if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+        }
+
+        if (window.Hls && window.Hls.isSupported()) {
+            const hls = new window.Hls({
+                maxBufferLength: 30,
+                enableWorker: true,
+                xhrSetup: function (xhr) { xhr.withCredentials = false; }
+            });
+
+            console.log("🔌 Loading Stream:", url);
+            hls.loadSource(url);
+            hls.attachMedia(videoElement);
+            
+            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                 // يمكن هنا إضافة منطق التشغيل التلقائي لو أردت
+            });
+            
+            hlsRef.current = hls;
+        } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+            videoElement.src = url;
+        }
+    };
+
+    // 1. جلب البيانات وتجهيزها
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         
@@ -66,70 +93,46 @@ export default function WatchPage() {
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
                 .then(data => {
-                    const qualities = data.availableQualities || [];
+                    let qualities = data.availableQualities || [];
                     if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                     
-                    // التأكد من أن الجودات مرتبة من الأعلى للأقل
-                    qualities.sort((a, b) => b.quality - a.quality);
+                    // [هام] ترتيب الجودات تنازلياً (الأعلى أولاً) ليتم اختيارها كافتراضي
+                    qualities = qualities.sort((a, b) => b.quality - a.quality);
 
                     setVideoData({
                         title: data.videoTitle || "مشاهدة الدرس",
                         qualities: qualities,
                         youtubeId: data.youtube_video_id,
-                        // نبدأ بأول جودة (أعلى جودة)
-                        currentUrl: qualities[0].url 
+                        currentUrl: qualities[0].url // نبدأ بأعلى جودة
                     });
                 })
                 .catch(err => setError(err.message));
         }
     }, [videoId]);
 
-    // 2. تهيئة HLS (يعمل مرة واحدة عند التحميل)
+    // 2. تهيئة المشغل لأول مرة
     useEffect(() => {
         if (!videoData) return;
 
-        const initHls = () => {
+        // ننتظر قليلاً حتى يتم رسم عنصر الفيديو في الـ DOM
+        const timer = setTimeout(() => {
             const video = plyrRef.current?.plyr?.media;
-            if (!video) return;
-
-            if (window.Hls && window.Hls.isSupported()) {
-                if (hlsRef.current) hlsRef.current.destroy();
-
-                const hls = new window.Hls({
-                    maxBufferLength: 30,
-                    enableWorker: true,
-                    xhrSetup: function (xhr) { xhr.withCredentials = false; }
-                });
-
-                console.log("🚀 HLS Initialized. Loading URL:", videoData.currentUrl);
-                hls.loadSource(videoData.currentUrl);
-                hls.attachMedia(video);
-                hlsRef.current = hls;
-
-                // تشغيل الفيديو تلقائياً عند الجاهزية
-                hls.once(window.Hls.Events.MANIFEST_PARSED, () => {
-                     // video.play().catch(() => {}); 
-                });
-
-            } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-                video.src = videoData.currentUrl;
+            if (video) {
+                createHlsInstance(videoData.currentUrl, video);
             }
-        };
+        }, 200);
 
-        // تأخير بسيط لضمان وجود Plyr في DOM
-        const timer = setTimeout(initHls, 200);
         return () => {
             clearTimeout(timer);
             if (hlsRef.current) hlsRef.current.destroy();
         };
     }, [videoData]);
 
-    // 3. إعداد خيارات Plyr (بما فيها منطق تغيير الجودة)
+    // 3. إعداد خيارات Plyr (بما فيها منطق تغيير الجودة الصارم)
     const plyrOptions = useMemo(() => {
         if (!videoData) return null;
 
-        // استخراج الأرقام للقائمة
-        const qualityOptions = videoData.qualities.map(q => q.quality);
+        const qualityOptions = videoData.qualities.map(q => q.quality); // [1080, 720, 360...]
 
         return {
             controls: [
@@ -138,47 +141,50 @@ export default function WatchPage() {
             ],
             settings: ["quality", "speed"],
             quality: {
-                default: qualityOptions[0], // الافتراضي
+                default: qualityOptions[0], // اختيار أعلى جودة كافتراضي
                 options: qualityOptions,
-                forced: true, // إجبار Plyr على عرض القائمة
+                forced: true,
                 onChange: (newQuality) => {
-                    console.log(`🎯 User selected quality: ${newQuality}`);
+                    console.log(`🎚 Switching Request to: ${newQuality}p`);
                     
-                    // 1. البحث عن الرابط الخاص بالجودة المختارة
+                    // البحث عن الرابط الجديد
                     const selectedStream = videoData.qualities.find(q => q.quality === newQuality);
+                    const video = plyrRef.current?.plyr?.media;
+                    const player = plyrRef.current?.plyr;
                     
-                    if (selectedStream && hlsRef.current) {
-                        console.log("🔄 Switching stream to:", selectedStream.url);
-                        
-                        // 2. حفظ مكان الفيديو الحالي
-                        const player = plyrRef.current?.plyr;
-                        const currentTime = player?.currentTime || 0;
-                        const isPaused = player?.paused;
+                    if (selectedStream && video && player) {
+                        // 1. حفظ التوقيت وحالة التشغيل
+                        const currentTime = player.currentTime;
+                        const isPaused = player.paused;
 
-                        // 3. تنفيذ التبديل الحقيقي
-                        hlsRef.current.stopLoad(); // إيقاف التحميل القديم فوراً
-                        hlsRef.current.loadSource(selectedStream.url); // تحميل الرابط الجديد
-                        hlsRef.current.startLoad(); // بدء التحميل الجديد
+                        // 2. [Hard Switch] إعادة إنشاء HLS بالرابط الجديد
+                        createHlsInstance(selectedStream.url, video);
 
-                        // 4. استعادة المكان بعد تحميل المانيفست الجديد
-                        hlsRef.current.once(window.Hls.Events.MANIFEST_PARSED, () => {
-                            console.log("✅ Quality switched successfully!");
-                            if (player) {
-                                player.currentTime = currentTime;
-                                if (!isPaused) player.play();
+                        // 3. استعادة التوقيت عند جاهزية الرابط الجديد
+                        // نستخدم مستمع حدث لمرة واحدة (once)
+                        const onParsed = () => {
+                            player.currentTime = currentTime;
+                            if (!isPaused) {
+                                const playPromise = player.play();
+                                if (playPromise) playPromise.catch(() => {});
                             }
-                        });
-                    } else {
-                        console.error("❌ Stream not found or HLS missing");
+                            // إزالة المستمع للتنظيف (hls.once تقوم بذلك تلقائياً لكن للتأكيد)
+                        };
+
+                        if (hlsRef.current) {
+                            hlsRef.current.once(window.Hls.Events.MANIFEST_PARSED, onParsed);
+                        }
                     }
                 },
             },
             i18n: { qualityLabel: { 0: 'Auto' } }
         };
-    }, [videoData]);
+    }, [videoData]); // يعاد الحساب فقط عند تحميل البيانات لأول مرة
 
     // --- الريندر ---
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
+    
+    // لا نظهر المشغل إلا عندما تكون الخيارات جاهزة تماماً
     if (!videoData || !plyrOptions) return <div className="message-container"><h1>جاري تجهيز المشغل...</h1></div>;
 
     return (
@@ -195,7 +201,7 @@ export default function WatchPage() {
                     source={{
                         type: "video",
                         title: videoData.title,
-                        // رابط مبدئي (HLS سيقوم باستبداله، لكن Plyr يحتاجه للتهيئة)
+                        // نمرر المصادر كـ mpegURL ليقبلها Plyr، لكن HLS هو من سيقوم بالعمل
                         sources: [{ src: videoData.currentUrl, type: "application/x-mpegURL" }]
                     }}
                     options={plyrOptions}
