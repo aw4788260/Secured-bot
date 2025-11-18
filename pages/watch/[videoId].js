@@ -11,7 +11,6 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
-    // حالات التحكم
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     
@@ -88,7 +87,14 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // إضافة العلامة المائية كطبقة داخلية
+                    // [هام] إيقاف أي سلوك افتراضي للنقر المزدوج لتفعيل الكود الخاص بنا
+                    // (بعض النسخ تدعم هذا الخيار لتعطيل تكبير الشاشة بالنقر)
+                    moreVideoAttr: {
+                        playsInline: true,
+                        'webkit-playsinline': true,
+                    },
+
+                    // إضافة العلامة المائية
                     layers: [
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
@@ -105,46 +111,69 @@ export default function WatchPage() {
                     customType: {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
-
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
                                     maxBufferLength: 30,
                                     enableWorker: true,
-                                    xhrSetup: function (xhr) { 
-                                        xhr.withCredentials = false; 
-                                    }
+                                    xhrSetup: function (xhr) { xhr.withCredentials = false; }
                                 });
-                                
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
-                                
-                                // [تعديل] لا نعرض أي إشعارات هنا
-                                hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                                     // صامت
-                                });
-
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
                                     if (data.fatal) {
                                         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
                                             hls.destroy();
                                             video.src = url;
-                                            // [تعديل] تم إزالة الإشعار نهائياً
                                         } else {
                                             hls.destroy();
                                         }
                                     }
                                 });
-
                                 art.hls = hls;
-                            } 
-                            else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
-                            } else {
-                                // [تعديل] تم إزالة إشعار الخطأ واستبداله بلوج في الكونسول فقط
-                                console.error('Format not supported');
                             }
                         },
                     },
+                });
+
+                // --- [1] قتل نظام الإشعارات تماماً ---
+                art.notice.show = function() { 
+                    // تم التعطيل: لن يظهر أي إشعار نصي بعد الآن
+                };
+
+                // --- [2] برمجة ميزة النقر المزدوج (YouTube Style) ---
+                art.on('ready', () => {
+                    // نستخدم طبقة "القناع" (Mask) لأنها التي تستقبل النقرات
+                    const mask = art.template.$mask; 
+                    let lastTapTime = 0;
+
+                    mask.addEventListener('touchstart', (e) => {
+                        const currentTime = new Date().getTime();
+                        const tapLength = currentTime - lastTapTime;
+                        
+                        // إذا كان الفرق بين النقرتين أقل من 300 ملي ثانية (نقر مزدوج)
+                        if (tapLength < 300 && tapLength > 0) {
+                            const touchX = e.touches[0].clientX; // مكان النقر
+                            const playerWidth = mask.clientWidth; // عرض المشغل
+
+                            // إذا كان النقر في الثلث الأيسر (تأخير)
+                            if (touchX < playerWidth * 0.35) {
+                                art.backward = 10;
+                                // وميض بسيط للتأكيد (اختياري)
+                                showTapFeedback(art, "Back");
+                            }
+                            // إذا كان النقر في الثلث الأيمن (تقديم)
+                            else if (touchX > playerWidth * 0.65) {
+                                art.forward = 10;
+                                showTapFeedback(art, "Forward");
+                            }
+                            
+                            // منع السلوك الافتراضي (مثل التكبير) عند النقر المزدوج
+                            e.preventDefault();
+                        }
+                        lastTapTime = currentTime;
+                    });
                 });
 
                 // تحريك العلامة المائية
@@ -177,6 +206,13 @@ export default function WatchPage() {
             if (playerInstance.current) playerInstance.current.destroy(false);
         };
     }, [videoId, libsLoaded]); 
+
+    // دالة مساعدة لإظهار تأثير بسيط عند النقر المزدوج (اختياري)
+    const showTapFeedback = (art, type) => {
+        // يمكن إضافة أيقونة تظهر وتختفي هنا مستقبلاً
+        // حالياً نكتفي بتنفيذ الأمر
+        console.log(`Double Tap: ${type} 10s`);
+    };
 
     const handleDownloadClick = () => {
         if (isNativeAndroid) alert("التحميل متاح من داخل التطبيق فقط");
@@ -229,7 +265,12 @@ export default function WatchPage() {
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* [تعديل] تثبيت حجم الخط ليكون صغيراً دائماً */
+                /* إخفاء الإشعارات تماماً عبر CSS كطبقة حماية إضافية */
+                .art-notice {
+                    display: none !important;
+                }
+
+                /* تثبيت حجم العلامة المائية */
                 .watermark-layer {
                     padding: 4px 8px;
                     background: rgba(0, 0, 0, 0.6);
@@ -238,9 +279,9 @@ export default function WatchPage() {
                     font-weight: bold;
                     white-space: nowrap;
                     transition: top 2s ease-in-out, left 2s ease-in-out;
-                    font-size: 12px; /* حجم ثابت وصغير */
+                    font-size: 12px !important; /* ثابت دائماً */
                     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-                    opacity: 0.8; /* شفافية بسيطة لعدم الإزعاج */
+                    opacity: 0.8;
                 }
             `}</style>
         </div>
