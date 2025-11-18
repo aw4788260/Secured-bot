@@ -1,129 +1,217 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
+const Watermark = ({ user }) => {
+    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
+    const watermarkIntervalRef = useRef(null);
+
+    useEffect(() => {
+        if (!user) return;
+        watermarkIntervalRef.current = setInterval(() => {
+            const newTop = Math.floor(Math.random() * 70) + 10;
+            const newLeft = Math.floor(Math.random() * 70) + 10;
+            setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
+        }, 5000);
+        return () => { if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current); };
+    }, [user]);
+
+    return (
+        <div className="watermark" style={{ 
+            position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
+            zIndex: 15, pointerEvents: 'none', padding: '4px 8px', 
+            background: 'rgba(0, 0, 0, 0.7)', color: 'white', 
+            fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
+            fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
+            whiteSpace: 'nowrap'
+        }}>
+            {user.first_name} ({user.id})
+        </div>
+    );
+};
+
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    const [streamUrl, setStreamUrl] = useState(null);
-    const [logs, setLogs] = useState([]); // لتخزين اللوجات
-    const playerWrapperRef = useRef(null);
-    const plyrInstanceRef = useRef(null);
+    const [streamUrl, setStreamUrl] = useState(null); 
+    const [youtubeId, setYoutubeId] = useState(null); 
+    const [user, setUser] = useState(null);
+    const [error, setError] = useState(null);
+    const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
+    const [isNativeAndroid, setIsNativeAndroid] = useState(false);
+    
+    const playerWrapperRef = useRef(null); 
+    const plyrInstanceRef = useRef(null); // مرجع للمشغل
 
-    // دالة مساعدة لإضافة لوج
-    const addLog = (msg) => {
-        const time = new Date().toLocaleTimeString();
-        setLogs(prev => [`[${time}] ${msg}`, ...prev]);
-    };
+    // 1. دالة تهيئة HLS (مع حماية من الكراش)
+    const initializeHls = useCallback(() => {
+        // هل الرابط موجود؟
+        if (!streamUrl) return;
 
-    // 1. جلب الرابط
-    useEffect(() => {
-        if (videoId) {
-            addLog("جاري طلب رابط الفيديو من السيرفر...");
-            fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.streamUrl) {
-                        addLog(`تم جلب الرابط: ${data.streamUrl.substring(0, 50)}...`);
-                        setStreamUrl(data.streamUrl);
-                    } else {
-                        addLog("فشل جلب الرابط من الـ API");
+        // هل المشغل جاهز؟
+        if (!plyrInstanceRef.current || !plyrInstanceRef.current.plyr) {
+            // لم يجهز بعد -> حاول مرة أخرى بعد 200 ملي ثانية (بدون كراش)
+            setTimeout(initializeHls, 200);
+            return;
+        }
+
+        const videoElement = plyrInstanceRef.current.plyr.media;
+
+        // هل مكتبة HLS محملة من الـ CDN؟
+        if (window.Hls) {
+            if (window.Hls.isSupported()) {
+                const hls = new window.Hls({
+                    // إعدادات لتحسين الأداء وتقليل الأخطاء
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 600,
+                    enableWorker: true
+                });
+                
+                hls.loadSource(streamUrl);
+                hls.attachMedia(videoElement);
+                
+                hls.on(window.Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        console.error("HLS Fatal Error:", data.type);
+                        // محاولة التعافي من الخطأ
+                        switch (data.type) {
+                            case window.Hls.ErrorTypes.NETWORK_ERROR:
+                                hls.startLoad();
+                                break;
+                            case window.Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                hls.destroy();
+                                break;
+                        }
                     }
+                });
+
+                console.log("HLS attached successfully.");
+            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                // دعم سفاري الأصلي
+                videoElement.src = streamUrl;
+            }
+        } else {
+            // المكتبة لم تحمل بعد -> انتظر وحاول
+            setTimeout(initializeHls, 500);
+        }
+    }, [streamUrl]);
+
+    // 2. تفعيل المشغل عند وصول الرابط
+    useEffect(() => {
+        if (streamUrl) {
+            initializeHls();
+        }
+    }, [streamUrl, initializeHls]);
+
+    // 3. جلب البيانات (API)
+    useEffect(() => {
+        const setupUser = (foundUser) => {
+            if (foundUser && foundUser.id) setUser(foundUser);
+            else setError("خطأ: لا يمكن التعرف على المستخدم.");
+        };
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlUserId = urlParams.get('userId');
+        const urlFirstName = urlParams.get('firstName');
+
+        if (urlUserId) {
+            setupUser({ id: urlUserId, first_name: urlFirstName ? decodeURIComponent(urlFirstName) : "User" });
+            if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
+        } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+             window.Telegram.WebApp.ready();
+             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+             if(miniAppUser) setupUser(miniAppUser);
+             else setError("يرجى الفتح من تليجرام.");
+        } else {
+             setError('يرجى الفتح من التطبيق المخصص.');
+        }
+
+        if (videoId) {
+            fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
+                .then(res => res.ok ? res.json() : res.json().then(err => { throw new Error(err.message); }))
+                .then(data => {
+                    if (data.message) throw new Error(data.message);
+                    setStreamUrl(data.streamUrl);
+                    setYoutubeId(data.youtube_video_id);
+                    setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                 })
-                .catch(err => addLog(`API Error: ${err.message}`));
+                .catch(err => setError(err.message));
         }
     }, [videoId]);
 
-    // 2. محاولة تشغيل الفيديو بـ HLS ورصد الأخطاء
-    useEffect(() => {
-        if (!streamUrl || !plyrInstanceRef.current) return;
+    const handleDownloadClick = () => {
+        if (!youtubeId) return alert("انتظر..");
+        if (isNativeAndroid) {
+            try { window.Android.downloadVideo(youtubeId, videoTitle); } 
+            catch (e) { alert("خطأ في الاتصال."); }
+        } else { alert("متاح فقط في التطبيق."); }
+    };
 
-        // تحميل hls.js ديناميكياً
-        import('hls.js').then((HlsModule) => {
-            const Hls = HlsModule.default;
-            const videoElement = plyrInstanceRef.current.plyr.media;
+    if (error) return <div className="message-container"><h1>{error}</h1></div>;
+    if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
 
-            if (Hls.isSupported()) {
-                addLog("HLS.js مدعوم. جاري التحميل...");
-                const hls = new Hls({
-                    debug: false, // (ممكن تفعله لو عايز تفاصيل أكتر في الكونسول)
-                    xhrSetup: function (xhr, url) {
-                        // (رصد الطلب قبل خروجه)
-                        addLog(`Requesting Chunk: ...${url.slice(-20)}`);
-                    }
-                });
-
-                hls.loadSource(streamUrl);
-                hls.attachMedia(videoElement);
-
-                // [ 🛑 المصيدة: هنا هنكشف الخطأ ]
-                hls.on(Hls.Events.ERROR, function (event, data) {
-                    if (data.fatal) {
-                         addLog(`❌ FATAL ERROR: ${data.type}`);
-                    }
-                    
-                    if (data.response) {
-                        // هذا هو الدليل القاطع (رقم الخطأ من جوجل)
-                        const status = data.response.code; // 403, 404, etc
-                        const url = data.response.url;
-                        addLog(`⛔ HTTP Error ${status} from Google!`);
-                        addLog(`URL: ${url.substring(0, 40)}...`);
-                        
-                        if (status === 403) {
-                            addLog("✅ الدليل: 403 Forbidden (تم حظر الـ IP)");
-                        }
-                    } else {
-                        addLog(`Error Type: ${data.details}`);
-                    }
-                });
-
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    addLog("تم قراءة ملف المانيفت (القائمة) بنجاح.");
-                    videoElement.play().catch(e => addLog("Autoplay blocked"));
-                });
-
-            } else {
-                addLog("HLS غير مدعوم في هذا المتصفح (Native Mode).");
-                videoElement.src = streamUrl;
-            }
-        });
-
-    }, [streamUrl]);
+    // Plyr Options
+    const plyrSource = {
+        type: 'video',
+        title: videoTitle,
+        sources: [
+            { src: streamUrl, type: 'application/x-mpegURL' } // تعريف النوع كـ HLS
+        ]
+    };
+    
+    const plyrOptions = {
+        controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen', 'settings'],
+        settings: ['quality', 'speed'],
+        fullscreen: { enabled: true, fallback: true, iosNative: true }
+    };
 
     return (
-        <div style={{ padding: '20px', background: '#111', minHeight: '100vh', color: '#fff' }}>
-            <Head><title>صفحة التشخيص (Debug)</title></Head>
-            
-            <h1>🕵️ صفحة تشخيص الأخطاء</h1>
-            
-            <div className="player-wrapper" ref={playerWrapperRef} style={{ maxWidth: '800px', margin: '0 auto' }}>
-                 <Plyr ref={plyrInstanceRef} source={{ type: 'video', sources: [] }} />
+        <div className="page-container">
+            <Head>
+                <title>مشاهدة الدرس</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                {/* استخدام CDN لمكتبة HLS لضمان التحميل */}
+                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
+            </Head>
+
+            <div className="player-wrapper">
+                <Plyr 
+                    ref={plyrInstanceRef} 
+                    source={plyrSource} 
+                    options={plyrOptions} 
+                />
+                <Watermark user={user} />
             </div>
 
-            {/* صندوق اللوجات */}
-            <div style={{ 
-                marginTop: '20px', 
-                padding: '15px', 
-                background: '#222', 
-                border: '1px solid #444', 
-                fontFamily: 'monospace', 
-                fontSize: '12px',
-                height: '300px',
-                overflowY: 'scroll'
-            }}>
-                <h3 style={{color: '#ff5555'}}>سجل الأخطاء (Live Logs):</h3>
-                {logs.map((log, i) => (
-                    <div key={i} style={{ borderBottom: '1px solid #333', padding: '4px 0', color: log.includes('403') ? '#ff5555' : '#ccc' }}>
-                        {log}
-                    </div>
-                ))}
-            </div>
+            {isNativeAndroid && (
+                <button onClick={handleDownloadClick} className="download-button-native">
+                    ⬇️ تحميل الفيديو (أوفلاين)
+                </button>
+            )}
+
+            <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
+              <p>برمجة وتطوير: A7MeD WaLiD</p>
+              <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+            </footer>
+
+            <style jsx global>{`
+                body { margin: 0; background: #111; color: white; font-family: sans-serif; overscroll-behavior: contain; }
+                .page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
+                .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center; }
+                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; margin-bottom: 20px; }
+                .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; }
+                .player-wrapper :global(.plyr--video) { height: 100%; }
+                .player-wrapper:fullscreen { max-width: none; width: 100%; height: 100%; }
+            `}</style>
         </div>
     );
 }
