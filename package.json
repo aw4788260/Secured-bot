@@ -13,7 +13,7 @@
     "@supabase/supabase-js": "^2.43.4",
     "axios": "^1.7.2",
     "next": "14.2.3",
-    "plyr": "^3.7.8",
+    "plyr": "^3.8.3",
     "plyr-react": "^5.3.0",
     "react": "^18",
     "react-dom": "^18",
