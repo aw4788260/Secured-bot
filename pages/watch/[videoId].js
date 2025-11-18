@@ -83,10 +83,10 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    lock: true, // لتفعيل التحكم اليدوي باللمس
+                    lock: true, // القفل مفعل لإدارة النقرات يدوياً
 
                     layers: [
-                        // طبقة العلامة المائية
+                        // طبقة العلامة المائية (داخل المشغل)
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
                             style: {
@@ -159,22 +159,19 @@ export default function WatchPage() {
                         
                         // --- [1] النقر المزدوج (Double Tap) ---
                         if (timeDiff < 300) {
-                            clearTimeout(clickTimer); // إلغاء النقر المفرد
+                            clearTimeout(clickTimer); 
                             
                             const rect = gestureLayer.getBoundingClientRect();
                             const x = e.clientX - rect.left; 
                             const width = rect.width;
 
                             if (x < width * 0.35) {
-                                // يسار: تأخير
                                 art.backward = 10;
                                 showFeedback(feedbackLeft);
                             } else if (x > width * 0.65) {
-                                // يمين: تقديم
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } else {
-                                // منتصف: تشغيل / إيقاف
                                 art.toggle();
                                 showFeedback(feedbackCenter);
                             }
@@ -182,9 +179,8 @@ export default function WatchPage() {
                         // --- [2] النقر المفرد (Single Tap) ---
                         else {
                             clickTimer = setTimeout(() => {
-                                // التعديل هنا: تبديل ظهور شريط التحكم بدلاً من art.toggle()
-                                // الكلاس 'artplayer-hover' هو المسؤول عن إظهار التحكم
-                                art.template.$player.classList.toggle('artplayer-hover');
+                                // [تصحيح هام]: الكلاس الصحيح هو 'art-hover' وليس 'artplayer-hover'
+                                art.template.$player.classList.toggle('art-hover');
                             }, 300);
                         }
                         lastClickTime = currentTime;
@@ -273,7 +269,7 @@ export default function WatchPage() {
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
                 .art-notice { display: none !important; }
-                /* إخفاء القفل */
+                /* إخفاء القفل تماماً */
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
                 .watermark-layer {
@@ -292,9 +288,7 @@ export default function WatchPage() {
                 .gesture-box.left { left: 15%; }
                 .gesture-box.right { right: 15%; }
                 .gesture-box.center { left: 50%; transform: translate(-50%, -50%); }
-                .gesture-box .icon { 
-                    font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px;
-                }
+                .gesture-box .icon { font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px; }
             `}</style>
         </div>
     );
