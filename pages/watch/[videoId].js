@@ -3,18 +3,17 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
-// استدعاء Plyr بدون SSR لتجنب مشاكل التوافق
+// استدعاء Plyr بدون SSR
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // --- مكون العلامة المائية ---
 const Watermark = ({ user }) => {
-    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
-    
+    const [pos, setPos] = useState({ top: '10%', left: '10%' });
     useEffect(() => {
         if (!user) return;
         const interval = setInterval(() => {
-            setWatermarkPos({ 
+            setPos({ 
                 top: `${Math.floor(Math.random() * 80) + 10}%`, 
                 left: `${Math.floor(Math.random() * 80) + 10}%` 
             });
@@ -23,8 +22,8 @@ const Watermark = ({ user }) => {
     }, [user]);
 
     return (
-        <div className="watermark" style={{ 
-            position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
+        <div style={{ 
+            position: 'absolute', top: pos.top, left: pos.left,
             zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
             background: 'rgba(0, 0, 0, 0.6)', color: 'white', 
             fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
@@ -40,7 +39,6 @@ export default function WatchPage() {
     const { videoId } = router.query;
     
     // --- States ---
-    // نخزن كل بيانات الفيديو (بما فيها الجودات) في كائن واحد
     const [videoData, setVideoData] = useState(null); 
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
@@ -49,11 +47,10 @@ export default function WatchPage() {
     const plyrRef = useRef(null);
     const hlsRef = useRef(null);
 
-    // 1. جلب البيانات (لن يتم عرض المشغل حتى تنجح هذه الخطوة)
+    // 1. جلب البيانات
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         
-        // التحقق من المستخدم (Telegram / URL)
         const params = new URLSearchParams(window.location.search);
         const urlUserId = params.get("userId");
         if (urlUserId) {
@@ -72,21 +69,24 @@ export default function WatchPage() {
                     const qualities = data.availableQualities || [];
                     if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                     
-                    // حفظ البيانات (هذا سيسمح للمشغل بالظهور الآن)
+                    // التأكد من أن الجودات مرتبة من الأعلى للأقل
+                    qualities.sort((a, b) => b.quality - a.quality);
+
                     setVideoData({
                         title: data.videoTitle || "مشاهدة الدرس",
-                        qualities: qualities, // المصفوفة القادمة من البايثون
+                        qualities: qualities,
                         youtubeId: data.youtube_video_id,
-                        currentUrl: qualities[0].url // نبدأ بأعلى جودة افتراضياً
+                        // نبدأ بأول جودة (أعلى جودة)
+                        currentUrl: qualities[0].url 
                     });
                 })
                 .catch(err => setError(err.message));
         }
     }, [videoId]);
 
-    // 2. تهيئة HLS (يعمل فقط بعد ظهور المشغل)
+    // 2. تهيئة HLS (يعمل مرة واحدة عند التحميل)
     useEffect(() => {
-        if (!videoData) return; // لا تفعل شيئاً حتى تجهز البيانات
+        if (!videoData) return;
 
         const initHls = () => {
             const video = plyrRef.current?.plyr?.media;
@@ -101,29 +101,34 @@ export default function WatchPage() {
                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
                 });
 
+                console.log("🚀 HLS Initialized. Loading URL:", videoData.currentUrl);
                 hls.loadSource(videoData.currentUrl);
                 hls.attachMedia(video);
                 hlsRef.current = hls;
+
+                // تشغيل الفيديو تلقائياً عند الجاهزية
+                hls.once(window.Hls.Events.MANIFEST_PARSED, () => {
+                     // video.play().catch(() => {}); 
+                });
 
             } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
                 video.src = videoData.currentUrl;
             }
         };
 
-        // تأخير بسيط لضمان وجود عنصر الفيديو في DOM
-        const timer = setTimeout(initHls, 100);
+        // تأخير بسيط لضمان وجود Plyr في DOM
+        const timer = setTimeout(initHls, 200);
         return () => {
             clearTimeout(timer);
             if (hlsRef.current) hlsRef.current.destroy();
         };
-    }, [videoData]); // يعيد التشغيل فقط إذا تم تحميل بيانات الفيديو لأول مرة
+    }, [videoData]);
 
-    // 3. إعداد خيارات Plyr (يتم حسابها قبل الريندر)
-    // هذا هو الجزء المسؤول عن ظهور زر الجودة
+    // 3. إعداد خيارات Plyr (بما فيها منطق تغيير الجودة)
     const plyrOptions = useMemo(() => {
         if (!videoData) return null;
 
-        // استخراج قائمة الأرقام للجودة (مثلاً: [1080, 720, 360])
+        // استخراج الأرقام للقائمة
         const qualityOptions = videoData.qualities.map(q => q.quality);
 
         return {
@@ -133,30 +138,38 @@ export default function WatchPage() {
             ],
             settings: ["quality", "speed"],
             quality: {
-                default: qualityOptions[0], // افتراضياً أعلى جودة
+                default: qualityOptions[0], // الافتراضي
                 options: qualityOptions,
-                forced: true,
+                forced: true, // إجبار Plyr على عرض القائمة
                 onChange: (newQuality) => {
-                    // عند تغيير الجودة، نبحث عن الرابط المقابل
-                    const selected = videoData.qualities.find(q => q.quality === newQuality);
-                    if (selected && hlsRef.current) {
-                        console.log(`Switching quality to: ${newQuality}p`);
+                    console.log(`🎯 User selected quality: ${newQuality}`);
+                    
+                    // 1. البحث عن الرابط الخاص بالجودة المختارة
+                    const selectedStream = videoData.qualities.find(q => q.quality === newQuality);
+                    
+                    if (selectedStream && hlsRef.current) {
+                        console.log("🔄 Switching stream to:", selectedStream.url);
                         
-                        // نحفظ الوقت الحالي
+                        // 2. حفظ مكان الفيديو الحالي
                         const player = plyrRef.current?.plyr;
                         const currentTime = player?.currentTime || 0;
                         const isPaused = player?.paused;
 
-                        // نحمل الرابط الجديد
-                        hlsRef.current.loadSource(selected.url);
-                        
-                        // نستعيد الوقت
+                        // 3. تنفيذ التبديل الحقيقي
+                        hlsRef.current.stopLoad(); // إيقاف التحميل القديم فوراً
+                        hlsRef.current.loadSource(selectedStream.url); // تحميل الرابط الجديد
+                        hlsRef.current.startLoad(); // بدء التحميل الجديد
+
+                        // 4. استعادة المكان بعد تحميل المانيفست الجديد
                         hlsRef.current.once(window.Hls.Events.MANIFEST_PARSED, () => {
+                            console.log("✅ Quality switched successfully!");
                             if (player) {
                                 player.currentTime = currentTime;
                                 if (!isPaused) player.play();
                             }
                         });
+                    } else {
+                        console.error("❌ Stream not found or HLS missing");
                     }
                 },
             },
@@ -166,8 +179,6 @@ export default function WatchPage() {
 
     // --- الريندر ---
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
-    
-    // [هام] هنا السر: لا نعرض المشغل إلا إذا كانت plyrOptions جاهزة
     if (!videoData || !plyrOptions) return <div className="message-container"><h1>جاري تجهيز المشغل...</h1></div>;
 
     return (
@@ -184,10 +195,10 @@ export default function WatchPage() {
                     source={{
                         type: "video",
                         title: videoData.title,
-                        // نضع الرابط المبدئي هنا، لكن HLS سيقوم بالعمل الفعلي
+                        // رابط مبدئي (HLS سيقوم باستبداله، لكن Plyr يحتاجه للتهيئة)
                         sources: [{ src: videoData.currentUrl, type: "application/x-mpegURL" }]
                     }}
-                    options={plyrOptions} // الخيارات هنا تحتوي على الجودات بالفعل
+                    options={plyrOptions}
                 />
                 <Watermark user={user} />
             </div>
