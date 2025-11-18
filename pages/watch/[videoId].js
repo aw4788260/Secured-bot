@@ -2,7 +2,6 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// مكون العلامة المائية (لم يتغير)
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -44,38 +43,32 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
-    // مرجع للـ Div الذي سنضع فيه البلاير
     const artRef = useRef(null);
-    // مرجع للاحتفاظ بنسخة البلاير لتدميرها عند الخروج
     const playerInstance = useRef(null);
 
     // ##############################
-    //   تهيئة البلاير باستخدام CDN
+    //   تهيئة البلاير (Artplayer + Hls.js)
     // ##############################
     useEffect(() => {
-        // 1. التأكد من وجود الرابط والعنصر ونافذة المتصفح
         if (!streamUrl || !artRef.current || typeof window === 'undefined') return;
 
-        // 2. دالة لانتظار تحميل سكربت Artplayer من الـ CDN
         const initPlayer = () => {
+            // التأكد من تحميل المكتبات من CDN
             if (!window.Artplayer || !window.Hls) {
-                // إذا لم يتم تحميل المكتبة بعد، ننتظر قليلاً ونحاول مرة أخرى
                 setTimeout(initPlayer, 100); 
                 return;
             }
 
-            // إذا كان هناك بلاير سابق، نقوم بتدميره أولاً
             if (playerInstance.current) {
                 playerInstance.current.destroy(false);
             }
 
-            // 3. إنشاء البلاير
             const art = new window.Artplayer({
                 container: artRef.current,
                 url: streamUrl,
                 title: videoTitle,
                 volume: 0.7,
-                isLive: false,
+                isLive: false, // تأكد أنها false للفيديوهات المسجلة
                 muted: false,
                 autoplay: false,
                 pip: true,
@@ -98,17 +91,26 @@ export default function WatchPage() {
                 theme: '#38bdf8',
                 lang: 'ar',
                 
-                // إعدادات HLS
+                // إعدادات HLS المتقدمة
                 type: 'm3u8',
                 customType: {
-                    m3u8: function (video, url) {
+                    m3u8: function (video, url, art) {
                         if (window.Hls.isSupported()) {
-                            const hls = new window.Hls();
+                            // إعدادات Hls لتحسين الاستقرار
+                            const hlsConfig = {
+                                debug: false,
+                                enableWorker: true,
+                                maxBufferLength: 30,
+                                maxMaxBufferLength: 600,
+                            };
+                            
+                            const hls = new window.Hls(hlsConfig);
                             hls.loadSource(url);
                             hls.attachMedia(video);
                             
-                            // بناء قائمة الجودة
+                            // 1. عند جاهزية المانيفست، ابنِ الجودات
                             hls.on(window.Hls.Events.MANIFEST_PARSED, function (event, data) {
+                                console.log("Manifest Parsed, levels:", data.levels.length);
                                 const qualities = data.levels.map((level, index) => {
                                     return {
                                         default: false,
@@ -126,9 +128,35 @@ export default function WatchPage() {
                                 });
 
                                 art.quality = qualities;
+                                // تشغيل الفيديو تلقائياً إذا أردت، أو تركه للمستخدم
+                                // art.play(); 
                             });
 
-                            // ربط الاختيار بـ HLS
+                            // 2. معالجة الأخطاء (مهم جداً لحل مشكلة التعليق)
+                            hls.on(window.Hls.Events.ERROR, function (event, data) {
+                                if (data.fatal) {
+                                    console.warn("HLS Fatal Error:", data.type);
+                                    switch (data.type) {
+                                        case window.Hls.ErrorTypes.NETWORK_ERROR:
+                                            // خطأ شبكة، نحاول التحميل مرة أخرى
+                                            console.log("Network error, recovering...");
+                                            hls.startLoad();
+                                            break;
+                                        case window.Hls.ErrorTypes.MEDIA_ERROR:
+                                            console.log("Media error, recovering...");
+                                            hls.recoverMediaError();
+                                            break;
+                                        default:
+                                            // خطأ لا يمكن إصلاحه
+                                            console.error("Unrecoverable error");
+                                            art.notice.show = 'حدث خطأ في تشغيل الفيديو: ' + data.type;
+                                            hls.destroy();
+                                            break;
+                                    }
+                                }
+                            });
+
+                            // ربط تغيير الجودة
                             art.on('video:quality', (newQuality) => {
                                 hls.currentLevel = newQuality.levelIndex;
                             });
@@ -136,28 +164,27 @@ export default function WatchPage() {
                             art.on('destroy', () => hls.destroy());
 
                         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            // Safari IOS
                             video.src = url;
                         } else {
-                            art.notice.show = 'نسق غير مدعوم';
+                            art.notice.show = 'نسق الفيديو غير مدعوم في هذا المتصفح';
                         }
                     },
                 },
             });
 
-            // حفظ نسخة البلاير
             playerInstance.current = art;
         };
 
         initPlayer();
 
-        // تنظيف عند الخروج من الصفحة
         return () => {
             if (playerInstance.current) {
                 playerInstance.current.destroy(false);
                 playerInstance.current = null;
             }
         };
-    }, [streamUrl, videoTitle]); // إعادة التشغيل عند تغير الرابط
+    }, [streamUrl, videoTitle]); 
 
 
     // ##############################
@@ -188,7 +215,6 @@ export default function WatchPage() {
         }
 
         if (videoId) {
-            // تدمير البلاير القديم قبل جلب الجديد لتجنب التداخل
             if (playerInstance.current) {
                 playerInstance.current.destroy(false);
                 playerInstance.current = null;
@@ -225,13 +251,12 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                {/* استدعاء المكتبات من الـ CDN */}
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+                {/* استخدام نسخ مستقرة ومتوافقة من CDN */}
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.8/hls.min.js"></script>
                 <script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js"></script>
             </Head>
 
             <div className="player-wrapper">
-                {/* هذا الـ Div هو الحاوية التي سيعمل بداخلها البلاير */}
                 <div ref={artRef} className="artplayer-container"></div>
                 <Watermark user={user} />
             </div>
