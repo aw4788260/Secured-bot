@@ -1,10 +1,9 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 
-const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
+// استيراد ستايل Plyr فقط (سنستدعي الـ JS من الـ CDN لضمان عدم التعارض)
 import 'plyr/dist/plyr.css';
 
 const Watermark = ({ user }) => {
@@ -26,7 +25,7 @@ const Watermark = ({ user }) => {
     return (
         <div className="watermark" style={{ 
             position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-            zIndex: 15, pointerEvents: 'none', padding: '4px 8px', 
+            zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
             background: 'rgba(0, 0, 0, 0.7)', color: 'white', 
             fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
             fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
@@ -48,123 +47,124 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
-    const plyrRef = useRef(null);
-    const hlsRef = useRef(null);
+    // مراجع للعناصر
+    const videoRef = useRef(null);
+    const plyrInstance = useRef(null);
+    const hlsInstance = useRef(null);
 
-    // ##############################
-    //        تفعيل الجودة (HLS)
-    // ##############################
-    const initHLSPlayer = useCallback(() => {
-        if (!streamUrl) return;
-
-        const video = plyrRef.current?.plyr?.media;
-        const player = plyrRef.current?.plyr;
-
-        if (!video || !player) {
-            setTimeout(initHLSPlayer, 200);
-            return;
-        }
-
-        if (window.Hls && window.Hls.isSupported()) {
-            const hls = new window.Hls({
-                maxBufferLength: 30,
-                maxMaxBufferLength: 600,
-                enableWorker: true,
-            });
-
-            hlsRef.current = hls;
-            hls.loadSource(streamUrl);
-            hls.attachMedia(video);
-
-            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                // 1. استخراج الجودات
-                const availableQualities = hls.levels.map((l) => l.height);
-                // إضافة خيار Auto (0)
-                availableQualities.unshift(0);
-
-                // 2. [تعديل] ضبط إعدادات الجودة في Plyr
-                // يجب تعريف دالة التغيير (onChange) لربط Plyr بـ HLS
-                player.config.quality = {
-                    default: 0,
-                    options: availableQualities,
-                    forced: true, // يجبر القائمة على الظهور
-                    onChange: (newQuality) => {
-                        if (newQuality === 0) {
-                            hls.currentLevel = -1; // Auto
-                        } else {
-                            hls.levels.forEach((level, levelIndex) => {
-                                if (level.height === newQuality) {
-                                    hls.currentLevel = levelIndex;
-                                }
-                            });
-                        }
-                    },
-                };
-
-                // 3. تسمية خيار Auto
-                player.config.i18n = { 
-                    ...player.config.i18n, 
-                    qualityLabel: { 0: 'Auto' } 
-                };
-
-                // 4. [هام جداً] إجبار Plyr على تحديث الواجهة لإظهار الزر
-                // نقوم بتعيين الجودة الحالية لتفعيل المستمعين
-                player.quality = 0;
-            });
-
-            hls.on(window.Hls.Events.ERROR, function (event, data) {
-                if (data.fatal) {
-                    switch (data.type) {
-                        case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-                        case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
-                        default: hls.destroy(); break;
-                    }
-                }
-            });
-
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            // دعم سفاري (iOS)
-            video.src = streamUrl;
-            // ملاحظة: سفاري يدير الجودة بنفسه، ولا يسمح عادة بالتحكم اليدوي عبر JS بسهولة
-        }
-    }, [streamUrl]);
-
+    // 1. منطق التشغيل (HLS + Plyr) - الطريقة اليدوية المضمونة
     useEffect(() => {
-        if (streamUrl) initHLSPlayer();
-        
-        // تنظيف HLS عند الخروج
-        return () => {
-            if (hlsRef.current) {
-                hlsRef.current.destroy();
+        if (!streamUrl || !videoRef.current) return;
+
+        const initPlayer = () => {
+            const video = videoRef.current;
+            
+            // إعدادات Plyr الافتراضية
+            const defaultOptions = {
+                controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
+                settings: ['quality', 'speed'],
+                quality: { default: 0, options: [0], forced: true, onChange: (e) => updateQuality(e) }
+            };
+
+            if (window.Hls && window.Hls.isSupported()) {
+                const hls = new window.Hls();
+                hlsInstance.current = hls;
+
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+
+                hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                    // استخراج الجودات من HLS
+                    const availableQualities = hls.levels.map((l) => l.height);
+                    // إضافة خيار Auto (0)
+                    availableQualities.unshift(0);
+
+                    // تحديث خيارات Plyr بالجودات الحقيقية
+                    defaultOptions.quality = {
+                        default: 0,
+                        options: availableQualities,
+                        forced: true,
+                        onChange: (newQuality) => {
+                            if (newQuality === 0) {
+                                hls.currentLevel = -1; // Auto
+                            } else {
+                                hls.levels.forEach((level, levelIndex) => {
+                                    if (level.height === newQuality) {
+                                        hls.currentLevel = levelIndex;
+                                    }
+                                });
+                            }
+                        }
+                    };
+                    
+                    // تشغيل Plyr الآن (بعد تجهيز الجودات)
+                    if (!plyrInstance.current) {
+                        // @ts-ignore
+                        const Plyr = window.Plyr;
+                        const player = new Plyr(video, defaultOptions);
+                        
+                        // تسمية Auto
+                        player.config.i18n.qualityLabel = { 0: 'Auto' };
+                        
+                        plyrInstance.current = player;
+                    }
+                });
+
+                hls.on(window.Hls.Events.ERROR, function (event, data) {
+                   if (data.fatal) {
+                      switch (data.type) {
+                         case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+                         case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+                         default: hls.destroy(); break;
+                      }
+                   }
+                });
+
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // دعم سفاري
+                video.src = streamUrl;
+                // @ts-ignore
+                const Plyr = window.Plyr;
+                plyrInstance.current = new Plyr(video, defaultOptions);
             }
         };
-    }, [streamUrl, initHLSPlayer]);
+
+        // تحميل مكتبة Plyr و HLS من الـ CDN إذا لم تكن موجودة
+        if (!window.Plyr || !window.Hls) {
+             // ننتظر قليلاً حتى يتم تحميل السكربتات من الـ Head
+             setTimeout(initPlayer, 500);
+        } else {
+             initPlayer();
+        }
+
+        // تنظيف عند الخروج
+        return () => {
+            if (hlsInstance.current) hlsInstance.current.destroy();
+            if (plyrInstance.current) plyrInstance.current.destroy();
+        };
+
+    }, [streamUrl]);
 
 
-    // ##############################
-    //        جلب البيانات
-    // ##############################
+    // 2. جلب البيانات (نفس الكود السابق)
     useEffect(() => {
         const setupUser = (u) => {
             if (u && u.id) setUser(u);
             else setError("خطأ: لا يمكن التعرف على المستخدم.");
         };
-
+        
         const params = new URLSearchParams(window.location.search);
         const urlUserId = params.get("userId");
         const urlFirstName = params.get("firstName");
 
         if (urlUserId) {
             setupUser({ id: urlUserId, first_name: urlFirstName || "User" });
-            if (window.Android) setIsNativeAndroid(true);
-        } 
-        else if (window.Telegram?.WebApp) {
+            if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
+        } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             const u = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (u) setupUser(u);
-            else setError("يرجى الفتح من تليجرام.");
-        } 
-        else {
+            if(u) setupUser(u); else setError("يرجى الفتح من تليجرام.");
+        } else {
             setError("يرجى الفتح من التطبيق المخصص.");
         }
 
@@ -186,46 +186,33 @@ export default function WatchPage() {
         if (isNativeAndroid) {
             try { window.Android.downloadVideo(youtubeId, videoTitle); } 
             catch { alert("خطأ في الاتصال."); }
-        } else {
-            alert("متاح فقط في التطبيق.");
-        }
+        } else { alert("متاح فقط في التطبيق."); }
     };
 
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
     if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
-
-    const plyrSource = {
-        type: "video",
-        title: videoTitle,
-        sources: [{ src: streamUrl, type: "application/x-mpegURL" }]
-    };
-
-    const plyrOptions = {
-        controls: [
-            "play-large","play","progress","current-time",
-            "mute","volume","settings","fullscreen"
-        ],
-        // [تعديل] التأكد من وجود quality في القائمة المبدئية
-        settings: ["quality", "speed"],
-        fullscreen: { enabled: true, fallback: true, iosNative: true },
-        // [تعديل] وضع قيم مبدئية للجودة "لحجز المكان" في القائمة
-        quality: { default: 0, options: [0], forced: true, onChange: () => {} }
-    };
 
     return (
         <div className="page-container">
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                {/* تحميل المكتبات من CDN لضمان العمل */}
                 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
+                <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+                <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
             </Head>
 
             <div className="player-wrapper">
-                <Plyr 
-                    ref={plyrRef}
-                    source={plyrSource}
-                    options={plyrOptions}
-                />
+                {/* عنصر الفيديو الخام */}
+                <video 
+                    ref={videoRef} 
+                    className="plyr-video" 
+                    crossOrigin="anonymous" 
+                    playsInline 
+                    controls
+                >
+                </video>
                 <Watermark user={user} />
             </div>
 
@@ -244,49 +231,30 @@ export default function WatchPage() {
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 
                 .page-container { 
-                    display: flex; 
-                    flex-direction: column; 
-                    align-items: center; 
-                    justify-content: center; 
-                    min-height: 100vh; 
-                    padding: 10px; 
+                    display: flex; flex-direction: column; align-items: center; 
+                    justify-content: center; min-height: 100vh; padding: 10px; 
                     position: relative; 
                 }
-                
                 .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
                 
                 .player-wrapper { 
-                    width: 100%; 
-                    max-width: 900px; 
-                    aspect-ratio: 16/9; 
-                    background: #000; 
-                    position: relative; 
-                    margin-bottom: 0; 
-                    border-radius: 8px; 
-                    overflow: hidden;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                    width: 100%; max-width: 900px; aspect-ratio: 16/9; 
+                    background: #000; position: relative; margin: 0;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-radius: 8px; overflow: hidden;
                 }
                 
+                /* جعل الفيديو يملأ الحاوية */
+                video { width: 100%; height: 100%; }
+
                 .download-button-native { 
-                    width: 100%; 
-                    max-width: 900px; 
-                    padding: 15px; 
-                    background: #38bdf8; 
-                    border: none; 
-                    border-radius: 8px; 
-                    font-weight: bold; 
-                    cursor: pointer; 
-                    color: #111; 
-                    margin-top: 20px; 
+                    width: 100%; max-width: 900px; padding: 15px; 
+                    background: #38bdf8; border: none; border-radius: 8px; 
+                    font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; 
                 }
 
                 .developer-info {
-                    position: absolute;
-                    bottom: 10px;
-                    width: 100%;
-                    text-align: center;
-                    font-size: 0.85rem;
-                    color: #777;
+                    position: absolute; bottom: 10px; width: 100%; 
+                    text-align: center; font-size: 0.85rem; color: #777;
                 }
                 .developer-info a { color: #38bdf8; text-decoration: none; }
                 
