@@ -7,178 +7,132 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
+    const [statusMessage, setStatusMessage] = useState("Initializing...");
     const [originalUrl, setOriginalUrl] = useState(null);
-    const [useProxy, setUseProxy] = useState(false); 
-    const [statusMessage, setStatusMessage] = useState("Waiting for action..."); // رسالة بسيطة للمستخدم
-    
     const videoRef = useRef(null);
     const hlsRef = useRef(null);
+    
+    // --- نظام اللوجات المتطور (Batching) ---
+    const logBuffer = useRef([]); // مخزن مؤقت للوجات
 
-    // ---------------------------------------------------------
-    // دالة الإرسال إلى Vercel Logs
-    // ---------------------------------------------------------
-    const logToVercel = (message, type = 'info', details = null) => {
-        // تحديث الرسالة الظاهرة للمستخدم فقط
-        setStatusMessage(message);
-
-        // إرسال التفاصيل الكاملة للسيرفر
-        try {
-            fetch('/api/debug-log', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, type, details })
-            });
-        } catch (e) {
-            console.error("Failed to send log", e);
-        }
+    // دالة الإضافة للمخزن
+    const queueLog = (message, type = 'info', details = null) => {
+        const time = new Date().toLocaleTimeString();
+        logBuffer.current.push({ time, message, type, details });
+        setStatusMessage(`${type.toUpperCase()}: ${message}`); // تحديث واجهة المستخدم
     };
 
-    // 1. جلب تفاصيل الفيديو
+    // دالة الإرسال للسيرفر (تُستدعى كل 3 ثواني)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (logBuffer.current.length > 0) {
+                // إرسال نسخة من المخزن وتفريغه
+                const logsToSend = [...logBuffer.current];
+                logBuffer.current = []; 
+
+                fetch('/api/debug-log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ logs: logsToSend })
+                }).catch(e => console.error("Log send failed", e));
+            }
+        }, 3000); // كل 3 ثواني
+
+        return () => clearInterval(interval);
+    }, []);
+
+    // --- جلب الفيديو ---
     useEffect(() => {
         if (videoId) {
-            logToVercel(`Page Loaded. Fetching ID: ${videoId}`, 'info');
-            
+            queueLog(`Fetching Video ID: ${videoId}`, 'info');
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.streamUrl) {
                         setOriginalUrl(data.streamUrl.trim());
-                        logToVercel(`API Success. URL found.`, 'info');
+                        queueLog(`API Success. URL obtained.`, 'success');
                     } else {
-                        logToVercel(`API Error. Stream URL empty.`, 'error', data);
+                        queueLog(`API returned empty URL`, 'error', data);
                     }
                 })
-                .catch(err => logToVercel(`API Fetch Error: ${err.message}`, 'error'));
+                .catch(err => queueLog(`API Fetch Error`, 'error', err.message));
         }
     }, [videoId]);
 
-    // 2. تشغيل المشغل
-    const initPlayer = () => {
+    // --- تشغيل المشغل عبر البروكسي ---
+    useEffect(() => {
         if (!originalUrl || !videoRef.current || !window.Hls) return;
 
-        if (hlsRef.current) {
-            hlsRef.current.destroy();
-            hlsRef.current = null;
-        }
+        // تدمير القديم
+        if (hlsRef.current) hlsRef.current.destroy();
 
-        // تحديد الرابط
-        let playUrl = originalUrl;
-        const mode = useProxy ? "PROXY" : "DIRECT";
+        // استخدام البروكسي إجبارياً (لحل مشكلة IP Lock & CORS)
+        const proxyUrl = `/api/proxy-m3u8?url=${encodeURIComponent(originalUrl)}`;
         
-        if (useProxy) {
-            playUrl = `/api/proxy-m3u8?url=${encodeURIComponent(originalUrl)}`;
-        }
-
-        logToVercel(`Starting Player. Mode: ${mode}`, 'info', { playUrl });
+        queueLog(`Starting HLS with PROXY`, 'info', { proxyUrl });
 
         if (window.Hls.isSupported()) {
             const hls = new window.Hls({
-                debug: false, // نغلق الديباج الداخلي عشان منزحمش اللوج
+                debug: false,
                 enableWorker: true,
-                xhrSetup: function (xhr, url) {
-                    xhr.withCredentials = false;
+                xhrSetup: function (xhr) { xhr.withCredentials = false; }
+            });
+
+            hls.loadSource(proxyUrl);
+            hls.attachMedia(videoRef.current);
+
+            // الأحداث
+            hls.on(window.Hls.Events.MANIFEST_LOADED, () => {
+                queueLog(`✅ MANIFEST_LOADED. Proxy connection established.`, 'success');
+            });
+
+            hls.on(window.Hls.Events.MANIFEST_PARSED, (e, data) => {
+                queueLog(`✅ MANIFEST_PARSED. Qualities found: ${data.levels.length}`, 'success');
+                videoRef.current.play().catch(e => queueLog(`Autoplay blocked`, 'warn', e.message));
+            });
+
+            hls.on(window.Hls.Events.FRAG_LOADED, (e, data) => {
+                // سنرسل لوج واحد فقط عند تحميل أول قطعة فيديو للتأكد من النجاح
+                if (data.frag.sn === 0 || data.frag.sn === 1) {
+                    queueLog(`🎉 FRAG_LOADED (SN: ${data.frag.sn}). Video data is flowing!`, 'success');
                 }
             });
 
-            hls.loadSource(playUrl);
-            hls.attachMedia(videoRef.current);
-
-            // ---- الأحداث ----
-
-            hls.on(window.Hls.Events.MANIFEST_LOADED, () => {
-                logToVercel(`✅ MANIFEST_LOADED (${mode}) - Connection Successful`, 'success');
-            });
-
-            hls.on(window.Hls.Events.MANIFEST_PARSED, (event, data) => {
-                logToVercel(`✅ MANIFEST_PARSED. Levels: ${data.levels.length}`, 'success');
-                videoRef.current.play().catch(e => logToVercel(`Autoplay prevented: ${e.message}`, 'warn'));
-            });
-
-            // لن نرسل هذا الحدث للسيرفر لتوفير الموارد إلا لو أردت التأكد
-             hls.on(window.Hls.Events.FRAG_LOADED, (event, data) => {
-                 // logToVercel(`Fragment Loaded (SN: ${data.frag.sn})`, 'info');
-             });
-
             hls.on(window.Hls.Events.ERROR, (event, data) => {
-                // نرسل الأخطاء فقط
                 if (data.fatal) {
-                    logToVercel(`❌ FATAL ERROR (${mode}): ${data.type}`, 'error', {
-                        details: data.details,
-                        responseCode: data.response?.code
+                    queueLog(`❌ FATAL ERROR: ${data.type}`, 'error', { 
+                        details: data.details, 
+                        responseCode: data.response?.code,
+                        url: data.response?.url 
                     });
-
-                    switch (data.type) {
-                        case window.Hls.ErrorTypes.NETWORK_ERROR:
-                            hls.destroy();
-                            break;
-                        default:
-                            hls.destroy();
-                            break;
+                    
+                    // محاولة أخيرة للإنعاش
+                    if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                         hls.startLoad();
+                    } else {
+                        hls.destroy();
                     }
-                } else {
-                     // الأخطاء غير القاتلة (Non-fatal)
-                     // logToVercel(`⚠️ Non-fatal error: ${data.details}`, 'warn');
                 }
             });
 
             hlsRef.current = hls;
         }
-    };
-
-    // إعادة التشغيل عند تغيير الزر
-    useEffect(() => {
-        if (originalUrl) {
-            // تأخير بسيط للتأكد من جاهزية الحالة
-            setTimeout(initPlayer, 500);
-        }
-    }, [useProxy, originalUrl]);
+    }, [originalUrl]);
 
     return (
-        <div style={{ background: '#111', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ background: '#000', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
             <Head>
-                <title>Remote Debugger</title>
+                <title>Test Player</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <meta name="referrer" content="no-referrer" />
             </Head>
-
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" />
 
-            <h3>Remote Logger Active</h3>
-            <p style={{color: '#888', fontSize: '12px'}}>Logs are being sent to Vercel Dashboard</p>
-            
-            {/* حالة النظام الحالية تظهر للمستخدم */}
-            <div style={{
-                padding: '10px', background: '#222', borderRadius: '5px', 
-                marginBottom: '20px', width: '100%', maxWidth: '600px', textAlign: 'center',
-                border: '1px solid #444', color: '#38bdf8'
-            }}>
+            <div style={{ width: '100%', maxWidth: '800px', aspectRatio: '16/9', background: '#111', border: '1px solid #333' }}>
+                <video ref={videoRef} controls playsInline style={{ width: '100%', height: '100%' }} />
+            </div>
+
+            <div style={{ marginTop: '20px', padding: '10px', background: '#222', borderRadius: '5px', fontFamily: 'monospace', fontSize: '12px', color: '#0f0' }}>
                 STATUS: {statusMessage}
-            </div>
-
-            {/* أزرار التحكم */}
-            <div style={{display: 'flex', gap: '15px', marginBottom: '20px', width: '100%', maxWidth: '600px'}}>
-                <button 
-                    onClick={() => setUseProxy(false)}
-                    style={{
-                        padding: '15px', background: !useProxy ? '#ff4444' : '#333', 
-                        color: 'white', border: 'none', borderRadius: '8px', flex: 1, fontWeight: 'bold'
-                    }}
-                >
-                    1. Test Direct
-                </button>
-                <button 
-                    onClick={() => setUseProxy(true)}
-                    style={{
-                        padding: '15px', background: useProxy ? '#00C851' : '#333', 
-                        color: 'white', border: 'none', borderRadius: '8px', flex: 1, fontWeight: 'bold'
-                    }}
-                >
-                    2. Test Proxy
-                </button>
-            </div>
-
-            <div style={{ position: 'relative', width: '100%', maxWidth: '600px', aspectRatio: '16/9', background: '#000', borderRadius: '10px', overflow: 'hidden' }}>
-                <video ref={videoRef} controls playsInline muted style={{ width: '100%', height: '100%' }} />
             </div>
         </div>
     );
