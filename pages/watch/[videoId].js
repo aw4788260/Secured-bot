@@ -35,14 +35,10 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    // States
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
-    
-    // تخزين بيانات الفيديو والجودة
-    const [videoData, setVideoData] = useState(null);
-    const [loading, setLoading] = useState(true); // للتحكم في شاشة التحميل الأولية
+    const [loading, setLoading] = useState(true);
     
     const artRef = useRef(null);
     const playerInstance = useRef(null);
@@ -50,6 +46,7 @@ export default function WatchPage() {
     // 1. إعداد المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
+        
         const params = new URLSearchParams(window.location.search);
         const urlUserId = params.get("userId");
         if (urlUserId) {
@@ -62,152 +59,155 @@ export default function WatchPage() {
         }
     }, []);
 
-    // 2. جلب البيانات (مفصول عن المشغل)
+    // 2. جلب البيانات وتشغيل المشغل
     useEffect(() => {
-        if (videoId) {
-            setLoading(true); // بدء التحميل
-            fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
-                .then(data => {
-                    let qualities = data.availableQualities || [];
-                    if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
-                    
-                    // ترتيب الجودات
-                    qualities = qualities.sort((a, b) => b.quality - a.quality);
+        if (!videoId || !artRef.current) return;
 
-                    // تحويل الجودات لتنسيق Artplayer
-                    const qualityList = qualities.map((q, index) => ({
-                        default: index === 0,
-                        html: `${q.quality}p`,
-                        url: q.url,
-                    }));
-
-                    // حفظ البيانات وإلغاء شاشة التحميل ليظهر الـ Div
-                    setVideoData({
-                        title: data.videoTitle || "مشاهدة الدرس",
-                        qualityList: qualityList,
-                        startUrl: qualityList[0].url
-                    });
-                    setLoading(false);
-                })
-                .catch(err => {
-                    setError(err.message);
-                    setLoading(false);
-                });
-        }
-    }, [videoId]);
-
-    // 3. تشغيل Artplayer (يعمل فقط بعد توفر videoData وظهور الـ Div)
-    useEffect(() => {
-        if (!videoData || !artRef.current) return;
-
-        // تدمير المشغل القديم إذا وجد
+        // تنظيف المشغل القديم
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
         }
 
-        console.log("Initializing Artplayer with:", videoData.startUrl);
+        setLoading(true);
 
-        const art = new Artplayer({
-            container: artRef.current,
-            url: videoData.startUrl,
-            quality: videoData.qualityList,
-            title: videoData.title,
-            volume: 0.7,
-            isLive: false,
-            muted: false,
-            autoplay: false,
-            autoSize: true,
-            autoMini: true,
-            screenshot: true,
-            setting: true,
-            loop: false,
-            flip: true,
-            playbackRate: true,
-            aspectRatio: true,
-            fullscreen: true,
-            fullscreenWeb: true,
-            miniProgressBar: true,
-            mutex: true,
-            backdrop: true,
-            playsInline: true,
-            theme: '#38bdf8',
-            lang: 'ar',
-            
-            // إعدادات HLS
-            customType: {
-                m3u8: function (video, url, art) {
+        // استخدام API الخاص بك لجلب الروابط من Python
+        fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
+            .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
+            .then(data => {
+                let qualities = data.availableQualities || [];
+                if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
+                
+                // ترتيب الجودات (الأعلى أولاً)
+                qualities = qualities.sort((a, b) => b.quality - a.quality);
+
+                // تحويل الجودات لتنسيق Artplayer الرسمي
+                // التنسيق: { default: boolean, html: string, url: string }
+                const qualityList = qualities.map((q, index) => ({
+                    default: index === 0, // أول واحد هو الافتراضي
+                    html: `${q.quality}p`,
+                    url: q.url,
+                }));
+
+                // تهيئة Artplayer
+                const art = new Artplayer({
+                    container: artRef.current,
+                    url: qualityList[0].url, // الرابط المبدئي
+                    quality: qualityList,    // قائمة الجودة (ستظهر زر الإعدادات تلقائياً)
+                    title: data.videoTitle || "مشاهدة الدرس",
+                    volume: 0.7,
+                    isLive: false,
+                    muted: false,
+                    autoplay: false,
+                    autoSize: true,
+                    autoMini: true,
+                    screenshot: true,
+                    setting: true,
+                    loop: false,
+                    flip: true,
+                    playbackRate: true,
+                    aspectRatio: true,
+                    fullscreen: true,
+                    fullscreenWeb: true,
+                    miniProgressBar: true,
+                    mutex: true,
+                    backdrop: true,
+                    playsInline: true,
+                    theme: '#23ade5',
+                    lang: 'ar',
+                    
+                    // [هام] إعدادات HLS المخصصة لضمان العمل وعدم التعليق
+                    customType: {
+                        m3u8: function (video, url, art) {
+                            // 1. تنظيف HLS القديم (ضروري جداً عند تغيير الجودة)
+                            if (art.hls) {
+                                art.hls.destroy();
+                                art.hls = null;
+                            }
+
+                            // 2. إنشاء HLS جديد
+                            if (Hls.isSupported()) {
+                                const hls = new Hls({
+                                    maxBufferLength: 30,
+                                    enableWorker: true,
+                                    // إعدادات لتخطي مشاكل CORS
+                                    xhrSetup: function (xhr) { 
+                                        xhr.withCredentials = false; 
+                                    }
+                                });
+                                
+                                hls.loadSource(url);
+                                hls.attachMedia(video);
+                                
+                                // حفظ المرجع داخل كائن art للوصول إليه لاحقاً
+                                art.hls = hls;
+                                
+                                // عند نجاح التحميل
+                                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                                    console.log('Manifest loaded, ready to play');
+                                    // art.play(); // يمكن تفعيلها للتشغيل التلقائي
+                                });
+
+                                // معالجة الأخطاء لمنع التعليق
+                                hls.on(Hls.Events.ERROR, (event, data) => {
+                                    if (data.fatal) {
+                                        switch (data.type) {
+                                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                                hls.startLoad(); // إعادة المحاولة
+                                                break;
+                                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                                hls.recoverMediaError(); // محاولة الإصلاح
+                                                break;
+                                            default:
+                                                hls.destroy();
+                                                break;
+                                        }
+                                    }
+                                });
+                            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                                video.src = url;
+                            } else {
+                                art.notice.show = 'صيغة الفيديو غير مدعومة';
+                            }
+                        },
+                    },
+                });
+
+                // تنظيف الذاكرة عند تدمير المشغل
+                art.on('destroy', () => {
                     if (art.hls) art.hls.destroy();
+                });
 
-                    if (Hls.isSupported()) {
-                        const hls = new Hls({
-                            maxBufferLength: 30,
-                            enableWorker: true,
-                            xhrSetup: function (xhr) { 
-                                xhr.withCredentials = false; 
-                                xhr.setRequestHeader('Referer', 'https://www.youtube.com/'); 
-                            }
-                        });
-                        
-                        hls.loadSource(url);
-                        hls.attachMedia(video);
-                        
-                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                            // art.play().catch(() => {}); // تشغيل تلقائي اختياري
-                        });
+                // حدث عند تغيير الجودة (للتأكد من التبديل)
+                art.on('video:quality', (newQuality) => {
+                    console.log('Switching quality to:', newQuality.html);
+                    // Artplayer سيقوم تلقائياً باستدعاء customType بالرابط الجديد
+                });
 
-                        hls.on(Hls.Events.ERROR, (event, data) => {
-                            if (data.fatal) {
-                                switch (data.type) {
-                                    case Hls.ErrorTypes.NETWORK_ERROR:
-                                        hls.startLoad();
-                                        break;
-                                    case Hls.ErrorTypes.MEDIA_ERROR:
-                                        hls.recoverMediaError();
-                                        break;
-                                    default:
-                                        hls.destroy();
-                                        break;
-                                }
-                            }
-                        });
+                playerInstance.current = art;
+                setLoading(false);
+            })
+            .catch(err => {
+                setError(err.message);
+                setLoading(false);
+            });
 
-                        art.hls = hls;
-                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        video.src = url;
-                    } else {
-                        art.notice.show = 'Format not supported';
-                    }
-                },
-            },
-        });
-
-        // تنظيف HLS عند التدمير
-        art.on('destroy', () => {
-            if (art.hls) art.hls.destroy();
-        });
-
-        playerInstance.current = art;
-
-        // تنظيف عند الخروج من الصفحة
+        // تنظيف نهائي عند الخروج من الصفحة
         return () => {
             if (playerInstance.current) {
                 playerInstance.current.destroy(false);
             }
         };
-    }, [videoData]); // يعتمد على videoData بدلاً من videoId
+    }, [videoId]);
 
-    // زر التحميل
+    // زر التحميل (Android Only)
     const handleDownloadClick = () => {
         if (isNativeAndroid) {
-             alert("التحميل متاح من التطبيق فقط");
+             alert("التحميل متاح من داخل التطبيق فقط");
         }
     };
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
-    
-    // هنا الفرق: إذا كان يحمل نعرض اللودر، وإلا نعرض المشغل
     if (loading) return <div className="center-msg"><h1>جاري التحميل...</h1></div>;
 
     return (
@@ -219,7 +219,7 @@ export default function WatchPage() {
             </Head>
 
             <div className="player-wrapper">
-                {/* الـ ref أصبح متاحاً الآن لأننا خرجنا من شرط loading */}
+                {/* حاوية المشغل */}
                 <div ref={artRef} className="artplayer-app"></div>
                 {user && <Watermark user={user} />}
             </div>
@@ -237,7 +237,7 @@ export default function WatchPage() {
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
-                .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white; }
                 .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
                 .artplayer-app { width: 100%; height: 100%; }
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
