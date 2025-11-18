@@ -7,7 +7,6 @@ import dynamic from 'next/dynamic';
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
-// مكون العلامة المائية كما هو
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -48,8 +47,6 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
-    
-    // [جديد] حالة للتحكم في ظهور البلاير بعد تحميل الجودات
     const [isReady, setIsReady] = useState(false);
     
     const plyrRef = useRef(null);
@@ -65,13 +62,11 @@ export default function WatchPage() {
         const player = plyrRef.current?.plyr;
 
         if (!video || !player) {
-            // محاولة أخرى إذا لم يكن البلاير جاهزاً
             setTimeout(initHLSPlayer, 200);
             return;
         }
 
         if (window.Hls && window.Hls.isSupported()) {
-            // إذا كان هناك HLS سابق، نقوم بتدميره لمنع التداخل
             if (hlsRef.current) {
                 hlsRef.current.destroy();
             }
@@ -83,22 +78,19 @@ export default function WatchPage() {
             });
 
             hlsRef.current = hls;
-            hls.loadSource(streamUrl);
-            hls.attachMedia(video);
 
+            // 1. أولاً: نضبط المستمع للحدث (قبل تحميل المصدر)
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                // 1. استخراج الجودات
                 const availableQualities = hls.levels.map((l) => l.height);
-                availableQualities.unshift(0); // إضافة Auto
+                availableQualities.unshift(0); 
 
-                // 2. إعداد الكونفيج
                 player.config.quality = {
                     default: 0,
                     options: availableQualities,
                     forced: true,
                     onChange: (newQuality) => {
                         if (newQuality === 0) {
-                            hls.currentLevel = -1; // Auto
+                            hls.currentLevel = -1; 
                         } else {
                             hls.levels.forEach((level, levelIndex) => {
                                 if (level.height === newQuality) {
@@ -109,31 +101,33 @@ export default function WatchPage() {
                     },
                 };
 
-                // 3. ضبط التسميات
                 player.config.i18n = { 
                     ...player.config.i18n, 
                     qualityLabel: { 0: 'Auto' } 
                 };
 
-                // 4. تفعيل الجودة يدوياً لتحديث الواجهة
                 player.quality = 0; 
-
-                // [جديد] الآن أصبح كل شيء جاهزاً، نظهر البلاير
+                
+                // تم التحميل بنجاح، نظهر البلاير
                 setIsReady(true);
             });
 
-            // معالجة الأخطاء
             hls.on(window.Hls.Events.ERROR, function (event, data) {
                 if (data.fatal) {
-                   // في حالة الخطأ القاتل، نظهر البلاير على أي حال حتى لا يعلق المستخدم
+                   // في حالة الخطأ القاتل، نظهر البلاير
+                   console.error("HLS Fatal Error", data);
                    setIsReady(true);
                 }
             });
 
+            // 2. ثانياً: نربط الفيديو ونحمل الرابط (الترتيب مهم جداً هنا)
+            hls.attachMedia(video);
+            hls.loadSource(streamUrl);
+
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            // Safari IOS
+            // Safari
             video.src = streamUrl;
-            setIsReady(true); // نظهر البلاير مباشرة في سفاري
+            setIsReady(true);
         } else {
              // Fallback
              setIsReady(true);
@@ -141,16 +135,27 @@ export default function WatchPage() {
     }, [streamUrl]);
 
     useEffect(() => {
-        // عند تغيير الرابط، نعيد حالة الجاهزية للصفر
         setIsReady(false);
-        if (streamUrl) initHLSPlayer();
+        if (streamUrl) {
+            initHLSPlayer();
+
+            // [إضافة هامة جداً]
+            // مؤقت أمان: إذا لم يتم تجهيز الجودات خلال 4 ثوانٍ، اظهر الفيديو قسراً
+            // هذا يمنع التعليق في شاشة التحميل
+            const safetyTimer = setTimeout(() => {
+                setIsReady((prev) => {
+                    if (!prev) return true;
+                    return prev;
+                });
+            }, 4000);
+
+            return () => clearTimeout(safetyTimer);
+        }
         
-        // تنظيف عند الخروج
         return () => {
             if (hlsRef.current) hlsRef.current.destroy();
         };
     }, [streamUrl, initHLSPlayer]);
-
 
     // ##############################
     //        جلب البيانات
@@ -180,8 +185,8 @@ export default function WatchPage() {
         }
 
         if (videoId) {
-            setStreamUrl(null); // تصفير الرابط القديم
-            setIsReady(false); // إخفاء البلاير
+            setStreamUrl(null);
+            setIsReady(false);
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
                 .then(data => {
@@ -193,7 +198,6 @@ export default function WatchPage() {
                 .catch(err => setError(err.message));
         }
     }, [videoId]);
-
 
     const handleDownloadClick = () => {
         if (!youtubeId) return alert("انتظر..");
@@ -208,7 +212,6 @@ export default function WatchPage() {
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
     if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
 
-
     const plyrSource = {
         type: "video",
         title: videoTitle,
@@ -220,7 +223,6 @@ export default function WatchPage() {
             "play-large","play","progress","current-time",
             "mute","volume","settings","fullscreen"
         ],
-        // [تعديل] إضافة quality هنا ضروري حتى لو فارغ ليحجز مكاناً في القائمة
         settings: ["quality", "speed"], 
         fullscreen: { enabled: true, fallback: true, iosNative: true }
     };
@@ -234,7 +236,7 @@ export default function WatchPage() {
             </Head>
 
             <div className="player-wrapper">
-                {/* [جديد] شاشة تحميل تظهر فوق البلاير حتى تجهز الجودات */}
+                {/* اللودر يختفي إذا أصبح جاهزاً */}
                 {!isReady && (
                     <div className="player-loader">
                         <div className="spinner"></div>
@@ -242,7 +244,6 @@ export default function WatchPage() {
                     </div>
                 )}
 
-                {/* البلاير موجود في DOM دائماً لكي يعمل HLS لكن قد يكون مخفياً خلف اللودر */}
                 <Plyr 
                     ref={plyrRef}
                     source={plyrSource}
@@ -289,7 +290,6 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
                 }
 
-                /* [جديد] تصميم شاشة انتظار الجودة */
                 .player-loader {
                     position: absolute;
                     top: 0;
@@ -297,7 +297,7 @@ export default function WatchPage() {
                     width: 100%;
                     height: 100%;
                     background: #000;
-                    z-index: 20; /* أعلى من البلاير والعلامة المائية */
+                    z-index: 20; 
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
