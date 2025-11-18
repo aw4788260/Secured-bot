@@ -19,7 +19,6 @@ export default function WatchPage() {
     // 1. إعداد المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
-        
         const params = new URLSearchParams(window.location.search);
         const urlUserId = params.get("userId");
         if (urlUserId) {
@@ -84,24 +83,25 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // تفعيل القفل (لتعطيل نقرات المشغل الافتراضية)
-                    // سنقوم بإخفاء أيقونته بالـ CSS بالأسفل
+                    // قفل التحكم الافتراضي لنستخدم التحكم الخاص بنا
                     lock: true, 
 
                     layers: [
-                        // 1. طبقة العلامة المائية
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
                             style: {
                                 position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
                             },
                         },
-                        // 2. طبقة اللمس (Gesture Layer) - تغطي الفيديو
                         {
+                            // طبقة اللمس: تغطي 85% من الشاشة وتترك 15% بالأسفل لشريط التحكم
                             html: `
                                 <div class="gesture-layer">
                                     <div class="gesture-box left">
                                         <span class="icon">10&lt;&lt;</span>
+                                    </div>
+                                    <div class="gesture-box center">
+                                        <span class="icon">⏯</span>
                                     </div>
                                     <div class="gesture-box right">
                                         <span class="icon">&gt;&gt;10</span>
@@ -141,13 +141,14 @@ export default function WatchPage() {
                     },
                 });
 
-                // إخفاء الإشعارات برمجياً أيضاً
                 art.notice.show = function() {}; 
 
+                // --- برمجة اللمسات (Gestures Logic) ---
                 art.on('ready', () => {
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
+                    const feedbackCenter = gestureLayer.querySelector('.gesture-box.center');
                     
                     let clickTimer = null;
                     let lastClickTime = 0;
@@ -156,25 +157,38 @@ export default function WatchPage() {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
+                        // --- سيناريو النقر المزدوج (Double Tap) ---
                         if (timeDiff < 300) {
-                            clearTimeout(clickTimer); 
+                            clearTimeout(clickTimer); // إلغاء النقر المفرد
                             
                             const rect = gestureLayer.getBoundingClientRect();
                             const x = e.clientX - rect.left; 
                             const width = rect.width;
 
-                            if (x < width * 0.4) {
+                            if (x < width * 0.35) {
+                                // يسار: تأخير 10 ثواني
                                 art.backward = 10;
                                 showFeedback(feedbackLeft);
-                            } else if (x > width * 0.6) {
+                            } else if (x > width * 0.65) {
+                                // يمين: تقديم 10 ثواني
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } else {
-                                art.fullscreen = !art.fullscreen;
+                                // منتصف (نقر مزدوج): تشغيل / إيقاف
+                                art.toggle();
+                                showFeedback(feedbackCenter);
                             }
-                        } else {
+                        } 
+                        // --- سيناريو النقر المفرد (Single Tap) ---
+                        else {
                             clickTimer = setTimeout(() => {
-                                art.toggle(); 
+                                // تبديل ظهور عناصر التحكم (Toggle Controls)
+                                const playerEl = art.template.$player;
+                                if (playerEl.classList.contains('artplayer-hover')) {
+                                    playerEl.classList.remove('artplayer-hover'); // إخفاء
+                                } else {
+                                    playerEl.classList.add('artplayer-hover'); // إظهار
+                                }
                             }, 300);
                         }
                         lastClickTime = currentTime;
@@ -262,15 +276,9 @@ export default function WatchPage() {
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* إخفاء الإشعارات تماماً */
                 .art-notice { display: none !important; }
-
-                /* إخفاء جميع أيقونات القفل في المشغل */
-                .art-control-lock, 
-                .art-layer-lock,
-                div[data-art-control="lock"] { 
-                    display: none !important; 
-                }
+                /* إخفاء القفل تماماً */
+                .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
                 .watermark-layer {
                     padding: 4px 8px; background: rgba(0, 0, 0, 0.6); color: white; border-radius: 4px;
@@ -278,22 +286,17 @@ export default function WatchPage() {
                     font-size: 12px !important; text-shadow: 0 1px 2px rgba(0,0,0,0.8); opacity: 0.8;
                 }
 
-                /* ستايل تأثيرات اللمس الجديدة */
                 .gesture-box {
                     position: absolute; top: 50%; transform: translateY(-50%);
-                    background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 50px; /* شكل كبسولة */
+                    background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 50px;
                     display: flex; align-items: center; justify-content: center;
                     opacity: 0; transition: opacity 0.2s, transform 0.2s;
                     pointer-events: none; color: white;
                 }
                 .gesture-box.left { left: 15%; }
                 .gesture-box.right { right: 15%; }
-                .gesture-box .icon { 
-                    font-size: 18px; 
-                    font-weight: bold; 
-                    font-family: monospace;
-                    letter-spacing: -1px;
-                }
+                .gesture-box.center { left: 50%; transform: translate(-50%, -50%); }
+                .gesture-box .icon { font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px; }
             `}</style>
         </div>
     );
