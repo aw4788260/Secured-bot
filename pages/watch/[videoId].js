@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 
-// (كومبوننت العلامة المائية)
+// كومبوننت العلامة المائية
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -22,10 +22,10 @@ const Watermark = ({ user }) => {
         <div className="watermark" style={{ 
             position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
             zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
-            background: 'rgba(0, 0, 0, 0.5)', color: 'white', 
-            fontSize: 'clamp(12px, 2.5vw, 14px)', borderRadius: '4px',
+            background: 'rgba(0, 0, 0, 0.6)', color: 'white', 
+            fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
             fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
-            whiteSpace: 'nowrap', textShadow: '1px 1px 2px black'
+            whiteSpace: 'nowrap'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -46,12 +46,11 @@ export default function WatchPage() {
     const videoNode = useRef(null);
     const playerRef = useRef(null);
 
-    // 1. تهيئة Video.js
+    // تهيئة Video.js
     useEffect(() => {
-        // لا نبدأ إلا إذا توفر الرابط وتوفرت المكتبة
         if (!streamUrl || !window.videojs) return;
 
-        // إذا كان المشغل موجوداً بالفعل، قم بتحديث المصدر فقط
+        // إذا كان المشغل موجوداً، نحدث المصدر فقط
         if (playerRef.current) {
             playerRef.current.src({ src: streamUrl, type: 'application/x-mpegURL' });
             return;
@@ -68,40 +67,39 @@ export default function WatchPage() {
                 type: 'application/x-mpegURL'
             }],
             html5: {
-                vhs: {
-                    overrideNative: true, // إجبار استخدام VHS لضمان عمل اختيار الجودة
+                hls: {
+                    overrideNative: true, // مهم جداً لعمل زر الجودة
+                    enableLowInitialPlaylist: true,
+                    smoothQualityChange: true,
                 },
                 nativeAudioTracks: false,
-                nativeVideoTracks: false,
+                nativeVideoTracks: false
             }
         };
 
-        // إنشاء المشغل
         const player = window.videojs(videoNode.current, options, function onPlayerReady() {
             console.log('Video.js Ready');
             
-            // تفعيل إضافة اختيار الجودة (إذا تم تحميلها)
+            // تفعيل إضافة الجودة
+            // نتحقق أولاً أن الإضافة تم تحميلها
             if (this.hlsQualitySelector) {
                 this.hlsQualitySelector({
                     displayCurrentQuality: true,
                 });
-            } else {
-                console.warn("hlsQualitySelector plugin not loaded");
             }
         });
 
         playerRef.current = player;
 
-        // تنظيف المشغل عند الخروج
         return () => {
-            if (player) {
+            if (player && !player.isDisposed()) {
                 player.dispose();
                 playerRef.current = null;
             }
         };
-    }, [streamUrl]); // يعتمد على streamUrl
+    }, [streamUrl]);
 
-    // 2. جلب البيانات (نفس المنطق السابق)
+    // جلب البيانات
     useEffect(() => {
         const setupUser = (foundUser) => {
             if (foundUser && foundUser.id) setUser(foundUser);
@@ -154,11 +152,11 @@ export default function WatchPage() {
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
                 
-                {/* 1. ستايل Video.js الأساسي */}
-                <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+                {/* 1. ملفات الستايل */}
+                <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
                 
-                {/* 2. مكتبة Video.js الأساسية */}
-                <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+                {/* 2. مكتبة Video.js */}
+                <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
                 
                 {/* 3. إضافات الجودة (Quality Levels + Selector) */}
                 <script src="https://unpkg.com/videojs-contrib-quality-levels@2.1.0/dist/videojs-contrib-quality-levels.min.js"></script>
@@ -183,72 +181,45 @@ export default function WatchPage() {
             )}
 
             <footer className="developer-info">
-                <p>برمجة وتطوير: A7MeD WaLiD</p>
-                <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank">اضغط هنا</a></p>
+              <p>برمجة وتطوير: A7MeD WaLiD</p>
+              <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank">اضغط هنا</a></p>
             </footer>
 
             <style jsx global>{`
-                body { margin: 0; background: #111; color: white; font-family: sans-serif; }
+                body { margin: 0; background: #111; color: white; font-family: sans-serif; overscroll-behavior: contain; }
                 
                 .page-container { 
-                    display: flex; 
-                    flex-direction: column; 
-                    align-items: center; 
-                    justify-content: center; 
-                    min-height: 100vh; 
-                    padding: 10px; 
-                    position: relative;
+                    display: flex; flex-direction: column; align-items: center; 
+                    justify-content: center; min-height: 100vh; padding: 10px; 
+                    position: relative; 
                 }
-                
                 .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
                 
                 .player-wrapper { 
-                    width: 100%; 
-                    max-width: 900px; 
-                    position: relative; 
-                    margin: 0;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-                    border-radius: 8px;
-                    overflow: hidden;
+                    width: 100%; max-width: 900px; aspect-ratio: 16/9; 
+                    background: #000; position: relative; margin: 0;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-radius: 8px; overflow: hidden;
                 }
 
-                /* تنسيقات خاصة بـ Video.js لتظهر بشكل جميل */
-                .video-js {
-                    width: 100%;
-                    height: auto;
-                    aspect-ratio: 16/9;
-                }
+                /* تنسيقات Video.js */
+                .video-js { width: 100%; height: 100%; }
                 
-                /* تحسين شكل قائمة الجودة */
-                .vjs-menu-button-popup .vjs-menu {
-                    width: 10em;
-                    left: -3em;
-                }
-                .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
-                    background-color: rgba(43, 51, 63, 0.9);
+                /* إصلاح مكان أيقونة الجودة */
+                .vjs-menu-button-popup .vjs-menu { width: 10em; left: -3em; }
+                .vjs-menu-button-popup .vjs-menu .vjs-menu-content { 
+                    background-color: rgba(43, 51, 63, 0.9); 
                     max-height: 15em;
                 }
-                
+
                 .download-button-native { 
-                    width: 100%; 
-                    max-width: 900px; 
-                    padding: 15px; 
-                    background: #38bdf8; 
-                    border: none; 
-                    border-radius: 8px; 
-                    font-weight: bold; 
-                    cursor: pointer; 
-                    color: #111; 
-                    margin-top: 20px; 
+                    width: 100%; max-width: 900px; padding: 15px; 
+                    background: #38bdf8; border: none; border-radius: 8px; 
+                    font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; 
                 }
 
                 .developer-info {
-                    position: absolute;
-                    bottom: 10px;
-                    width: 100%;
-                    text-align: center;
-                    font-size: 0.85rem;
-                    color: #777;
+                    position: absolute; bottom: 10px; width: 100%; 
+                    text-align: center; font-size: 0.85rem; color: #777;
                 }
                 .developer-info a { color: #38bdf8; text-decoration: none; }
             `}</style>
