@@ -3,174 +3,240 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
-export default function DebugPage() {
+// --- مكون العلامة المائية ---
+const Watermark = ({ user }) => {
+    const [pos, setPos] = useState({ top: '10%', left: '10%' });
+    useEffect(() => {
+        if (!user) return;
+        const interval = setInterval(() => {
+            setPos({ 
+                top: `${Math.floor(Math.random() * 80) + 10}%`, 
+                left: `${Math.floor(Math.random() * 80) + 10}%` 
+            });
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [user]);
+
+    return (
+        <div style={{ 
+            position: 'absolute', top: pos.top, left: pos.left,
+            zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
+            background: 'rgba(0, 0, 0, 0.6)', color: 'white', 
+            fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
+            fontWeight: 'bold', transition: 'all 2s ease', whiteSpace: 'nowrap'
+        }}>
+            {user.first_name} ({user.id})
+        </div>
+    );
+};
+
+export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    const [logs, setLogs] = useState([]);
-    const [streamUrl, setStreamUrl] = useState('');
+    const [user, setUser] = useState(null);
+    const [error, setError] = useState(null);
+    const [isNativeAndroid, setIsNativeAndroid] = useState(false);
+    
+    // حالات التحكم
+    const [loading, setLoading] = useState(true);      
+    const [libsLoaded, setLibsLoaded] = useState(false); 
+    
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // دالة لإضافة السجلات للشاشة
-    const addLog = (msg, type = 'info') => {
-        const time = new Date().toLocaleTimeString();
-        setLogs(prev => [`[${time}] [${type}] ${msg}`, ...prev]);
-        console.log(`[${type}] ${msg}`);
-    };
+    // 1. إعداد المستخدم
+    useEffect(() => {
+        const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
+        
+        const params = new URLSearchParams(window.location.search);
+        const urlUserId = params.get("userId");
+        if (urlUserId) {
+            setupUser({ id: urlUserId, first_name: params.get("firstName") || "User" });
+            if (window.Android) setIsNativeAndroid(true);
+        } else if (window.Telegram?.WebApp) {
+            window.Telegram.WebApp.ready();
+            const u = window.Telegram.WebApp.initDataUnsafe?.user;
+            if (u) setupUser(u); else setError("يرجى الفتح من تليجرام.");
+        }
+    }, []);
 
-    // 1. دالة تشغيل Artplayer
-    const initPlayer = (url) => {
-        if (!window.Artplayer || !window.Hls) {
-            addLog("المكتبات لم يتم تحميلها بعد!", "error");
-            return;
+    // 2. تشغيل المشغل
+    useEffect(() => {
+        if (!videoId || !libsLoaded) return;
+
+        // تنظيف القديم
+        if (playerInstance.current) {
+            playerInstance.current.destroy(false);
+            playerInstance.current = null;
         }
 
-        if (playerInstance.current) playerInstance.current.destroy(false);
+        setLoading(true);
 
-        addLog(`محاولة تشغيل الرابط: ${url.substring(0, 50)}...`, "warn");
-
-        const art = new window.Artplayer({
-            container: artRef.current,
-            url: url,
-            type: 'm3u8',
-            volume: 0.5,
-            isLive: false,
-            autoplay: true,
-            customType: {
-                m3u8: function (video, url, art) {
-                    if (window.Hls.isSupported()) {
-                        const hls = new window.Hls({
-                            debug: true, // تفعيل وضع الديباج الداخلي لـ HLS
-                            xhrSetup: function (xhr) {
-                                // محاولة خداع السيرفر
-                                xhr.withCredentials = false; 
-                            }
-                        });
-                        
-                        hls.loadSource(url);
-                        hls.attachMedia(video);
-                        
-                        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                            addLog("✅ نجح: تم قراءة ملف المانيفست (MANIFEST_PARSED)", "success");
-                            video.play().catch(e => addLog(`تنبيه التشغيل التلقائي: ${e.message}`, "warn"));
-                        });
-
-                        hls.on(window.Hls.Events.ERROR, (event, data) => {
-                            if (data.fatal) {
-                                addLog(`❌ خطأ قاتل: ${data.type} - ${data.details}`, "error");
-                                switch (data.type) {
-                                    case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                        addLog("⚠️ خطأ شبكة (قد يكون CORS أو 403 Forbidden)", "error");
-                                        hls.startLoad();
-                                        break;
-                                    case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                        addLog("⚠️ خطأ في فك تشفير الفيديو", "error");
-                                        hls.recoverMediaError();
-                                        break;
-                                    default:
-                                        hls.destroy();
-                                        break;
-                                }
-                            } else {
-                                addLog(`تنبيه HLS: ${data.details}`, "info");
-                            }
-                        });
-                        
-                        art.hls = hls;
-                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        video.src = url;
-                        addLog("تشغيل عبر المشغل الأصلي (Safari/Native)", "info");
-                    } else {
-                        addLog("المتصفح لا يدعم HLS", "error");
-                    }
-                }
-            }
-        });
-
-        playerInstance.current = art;
-    };
-
-    // 2. جلب الرابط من السيرفر
-    const fetchAndPlay = () => {
-        if (!videoId) return addLog("لا يوجد Video ID", "error");
-        
-        addLog(`جاري الاتصال بالسيرفر لجلب ID: ${videoId}...`, "info");
-        
         fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-            .then(res => res.json())
+            .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
-                if (data.message) {
-                    addLog(`خطأ من الـ API: ${data.message}`, "error");
-                    return;
-                }
+                let qualities = data.availableQualities || [];
+                if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // البحث عن الجودات
-                const qualities = data.availableQualities || [];
-                if (qualities.length > 0) {
-                    const firstUrl = qualities[0].url;
-                    addLog(`تم العثور على ${qualities.length} جودة. تشغيل الأولى.`, "success");
-                    setStreamUrl(firstUrl);
-                    initPlayer(firstUrl);
-                } else if (data.streamUrl) {
-                    addLog("تم العثور على رابط Stream مباشر.", "success");
-                    setStreamUrl(data.streamUrl);
-                    initPlayer(data.streamUrl);
-                } else {
-                    addLog("الرد لا يحتوي على روابط صالحة!", "error");
-                    addLog(JSON.stringify(data), "info");
-                }
+                // ترتيب الجودات (الأعلى أولاً)
+                qualities = qualities.sort((a, b) => b.quality - a.quality);
+
+                // تحويل الجودات
+                const qualityList = qualities.map((q, index) => ({
+                    default: index === 0,
+                    html: `${q.quality}p`,
+                    url: q.url,
+                }));
+
+                if (!artRef.current || !window.Artplayer) return;
+
+                // --- إعداد Artplayer ---
+                const art = new window.Artplayer({
+                    container: artRef.current,
+                    url: qualityList[0].url,
+                    quality: qualityList,
+                    title: data.videoTitle || "مشاهدة الدرس",
+                    volume: 0.7,
+                    isLive: false,
+                    muted: false,
+                    autoplay: false,
+                    autoSize: true,
+                    autoMini: true,
+                    screenshot: true,
+                    setting: true,
+                    loop: false,
+                    flip: true,
+                    playbackRate: true,
+                    aspectRatio: true,
+                    fullscreen: true,
+                    fullscreenWeb: true,
+                    miniProgressBar: true,
+                    mutex: true,
+                    backdrop: true,
+                    playsInline: true,
+                    theme: '#38bdf8',
+                    lang: 'ar',
+                    
+                    // --- أهم جزء: تكامل HLS مع حلول الحظر ---
+                    customType: {
+                        m3u8: function (video, url, art) {
+                            if (art.hls) art.hls.destroy();
+
+                            // الخطة أ: محاولة استخدام hls.js (لأنه يدعم الجودة والتحكم)
+                            if (window.Hls && window.Hls.isSupported()) {
+                                const hls = new window.Hls({
+                                    maxBufferLength: 30,
+                                    enableWorker: true,
+                                    // [هام جداً] هذا السطر يمنع إرسال الكوكيز والمصدر الحقيقي
+                                    xhrSetup: function (xhr) { 
+                                        xhr.withCredentials = false; 
+                                    }
+                                });
+                                
+                                hls.loadSource(url);
+                                hls.attachMedia(video);
+                                
+                                hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                                    // art.play(); // اختياري: التشغيل التلقائي
+                                });
+
+                                // [هام] معالجة الأخطاء والتحويل للوضع الأصلي (Native) عند الفشل
+                                hls.on(window.Hls.Events.ERROR, (event, data) => {
+                                    if (data.fatal) {
+                                        console.warn("HLS Fatal Error:", data.type);
+                                        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                                            // إذا فشل hls.js بسبب الشبكة (403)، نجرب الطريقة الأصلية (زي Plyr)
+                                            console.log("Switching to Native HLS fallback...");
+                                            hls.destroy();
+                                            video.src = url;
+                                            art.notice.show = 'تم التحويل للمشغل الأصلي لتجاوز الحظر';
+                                        } else {
+                                            hls.destroy();
+                                        }
+                                    }
+                                });
+
+                                art.hls = hls;
+                            } 
+                            // الخطة ب: استخدام المشغل الأصلي (Native Playback) مباشرة (للآيفون وبعض أندرويد)
+                            else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                                video.src = url;
+                            } else {
+                                art.notice.show = 'المتصفح لا يدعم هذا الفيديو';
+                            }
+                        },
+                    },
+                });
+
+                art.on('destroy', () => {
+                    if (art.hls) art.hls.destroy();
+                });
+
+                playerInstance.current = art;
+                setLoading(false);
             })
-            .catch(err => addLog(`فشل الاتصال بالكامل: ${err.message}`, "error"));
+            .catch(err => {
+                setError(err.message);
+                setLoading(false);
+            });
+
+        return () => {
+            if (playerInstance.current) playerInstance.current.destroy(false);
+        };
+    }, [videoId, libsLoaded]);
+
+    const handleDownloadClick = () => {
+        if (isNativeAndroid) alert("التحميل متاح من داخل التطبيق فقط");
     };
 
-    // تشغيل فيديو اختبار عام
-    const playTestVideo = () => {
-        const testUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
-        addLog("بدء اختبار برابط خارجي مضمون...", "info");
-        initPlayer(testUrl);
-    };
+    if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
     return (
-        <div style={{ padding: '20px', fontFamily: 'monospace', background: '#111', color: '#eee', minHeight: '100vh' }}>
+        <div className="page-container">
             <Head>
-                <title>Debug Player</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                {/* هذا التاج مهم جداً لحل مشاكل جوجل */}
+                <title>مشاهدة الدرس</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                
+                {/* ✅✅✅ هذا السطر هو الأهم على الإطلاق لحل مشكلة جوجل ✅✅✅ */}
                 <meta name="referrer" content="no-referrer" />
             </Head>
 
-            {/* تحميل المكتبات */}
-            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" />
-            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" onLoad={() => addLog("المكتبات جاهزة.", "success")} />
+            {/* تحميل المكتبات من CDN */}
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
+                strategy="afterInteractive"
+                onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }}
+            />
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" 
+                strategy="afterInteractive"
+                onLoad={() => { if (window.Hls) setLibsLoaded(true); }}
+            />
 
-            <h3>🔍 وضع التشخيص (Debug Mode)</h3>
-            
-            <div style={{ marginBottom: '10px' }}>
-                <button onClick={fetchAndPlay} style={{ padding: '10px', marginRight: '10px', background: '#38bdf8', border: 'none', borderRadius: '4px' }}>
-                    1. جلب وتشغيل الفيديو الأصلي
-                </button>
-                <button onClick={playTestVideo} style={{ padding: '10px', background: '#4caf50', color: 'white', border: 'none', borderRadius: '4px' }}>
-                    2. تجربة فيديو اختبار (Test Stream)
-                </button>
+            {loading && <div className="loading-overlay">جاري التحميل...</div>}
+
+            <div className="player-wrapper">
+                <div ref={artRef} className="artplayer-app"></div>
+                {user && <Watermark user={user} />}
             </div>
 
-            {/* المشغل */}
-            <div ref={artRef} style={{ width: '100%', height: '300px', background: '#000', marginBottom: '20px' }}></div>
+            {isNativeAndroid && (
+                <button onClick={handleDownloadClick} className="download-button-native">
+                    ⬇️ تحميل الفيديو (أوفلاين)
+                </button>
+            )}
 
-            {/* شاشة اللوج */}
-            <div style={{ background: '#222', border: '1px solid #444', padding: '10px', height: '300px', overflowY: 'scroll' }}>
-                <strong>سجل الأحداث:</strong>
-                {logs.map((log, i) => (
-                    <div key={i} style={{ 
-                        borderBottom: '1px solid #333', 
-                        padding: '2px', 
-                        color: log.includes('error') ? '#ff6b6b' : log.includes('success') ? '#51cf66' : log.includes('warn') ? '#fcc419' : '#ccc' 
-                    }}>
-                        {log}
-                    </div>
-                ))}
-            </div>
+            <style jsx global>{`
+                body { margin: 0; background: #111; color: white; font-family: sans-serif; }
+                .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
+                .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
+                .loading-overlay { position: absolute; z-index: 50; background: rgba(0,0,0,0.8); width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.2rem; }
+                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+                .artplayer-app { width: 100%; height: 100%; }
+                .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
+                .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
+            `}</style>
         </div>
     );
 }
