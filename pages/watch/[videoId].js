@@ -18,16 +18,19 @@ const Watermark = ({ user }) => {
             const newLeft = Math.floor(Math.random() * 70) + 10;
             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         }, 5000);
-        return () => watermarkIntervalRef.current && clearInterval(watermarkIntervalRef.current);
+        return () => { 
+            if (watermarkIntervalRef.current) clearInterval(watermarkIntervalRef.current); 
+        };
     }, [user]);
 
     return (
-        <div className="watermark" style={{
+        <div className="watermark" style={{ 
             position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-            zIndex: 15, pointerEvents: 'none', padding: '4px 8px',
-            background: 'rgba(0,0,0,0.7)', color: 'white',
+            zIndex: 15, pointerEvents: 'none', padding: '4px 8px', 
+            background: 'rgba(0, 0, 0, 0.7)', color: 'white', 
             fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
-            fontWeight: 'bold', transition: 'top 2s, left 2s', whiteSpace: 'nowrap'
+            fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
+            whiteSpace: 'nowrap'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -37,44 +40,20 @@ const Watermark = ({ user }) => {
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
-
-    const [streamUrl, setStreamUrl] = useState(null);
-    const [qualities, setQualities] = useState([]);  // NEW
-    const [youtubeId, setYoutubeId] = useState(null);
+    
+    const [streamUrl, setStreamUrl] = useState(null); 
+    const [youtubeId, setYoutubeId] = useState(null); 
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
-
+    
     const plyrRef = useRef(null);
     const hlsRef = useRef(null);
 
-    // ---------------------------
-    // 1. قراءة ملف m3u8 لجلب الجودات
-    // ---------------------------
-    const parseM3U8 = useCallback(async (url) => {
-        try {
-            const res = await fetch(url);
-            const text = await res.text();
-
-            const pattern = /#EXT-X-STREAM-INF:.*?RESOLUTION=(\d+x\d+).*?\n(.*\.m3u8)/g;
-            const found = [...text.matchAll(pattern)];
-
-            const q = found.map(m => ({
-                resolution: m[1],
-                url: new URL(m[2], url).toString(),
-                height: parseInt(m[1].split("x")[1])
-            })).sort((a, b) => b.height - a.height);
-
-            setQualities(q);
-        } catch (e) {
-            console.log("Quality parse error", e);
-        }
-    }, []);
-
-    // ---------------------------
-    // 2. تشغيل HLS + إضافة الجودات
-    // ---------------------------
+    // ##############################
+    //        تفعيل الجودة
+    // ##############################
     const initHLSPlayer = useCallback(() => {
         if (!streamUrl) return;
 
@@ -86,9 +65,9 @@ export default function WatchPage() {
 
         if (window.Hls && window.Hls.isSupported()) {
             const hls = new window.Hls({
-                enableWorker: true,
                 maxBufferLength: 30,
-                maxMaxBufferLength: 600
+                maxMaxBufferLength: 600,
+                enableWorker: true,
             });
 
             hlsRef.current = hls;
@@ -97,18 +76,22 @@ export default function WatchPage() {
             hls.attachMedia(video);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                const availableQualities = hls.levels.map(l => l.height).sort((a, b) => b - a);
+                const qualities = hls.levels.map(l => l.height).sort((a, b) => b - a);
 
-                plyrRef.current.plyr.options.quality = {
-                    default: availableQualities[0],
-                    options: availableQualities,
+                const plyr = plyrRef.current.plyr;
+
+                plyr.options.quality = {
+                    default: qualities[0],
+                    options: qualities,
                     forced: true,
-                    onChange: (newQuality) => {
-                        hls.levels.forEach((lvl, i) => {
-                            if (lvl.height === newQuality) hls.currentLevel = i;
-                        });
+                    onChange: (q) => {
+                        const levelIdx = hls.levels.findIndex(l => l.height === q);
+                        hls.currentLevel = levelIdx;
                     }
                 };
+
+                // 🔥 دي أهم خطوة بتظهر زر الجودة
+                plyr.update();
             });
 
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -116,51 +99,70 @@ export default function WatchPage() {
         }
     }, [streamUrl]);
 
-    // ---------------------------
-    // 3. Call init when ready
-    // ---------------------------
     useEffect(() => {
-        if (streamUrl) setTimeout(initHLSPlayer, 300);
+        if (streamUrl) initHLSPlayer();
     }, [streamUrl, initHLSPlayer]);
 
 
-    // ---------------------------
-    // 4. Load API Data
-    // ---------------------------
+    // ##############################
+    //       جلب البيانات
+    // ##############################
     useEffect(() => {
         const setupUser = (u) => {
-            if (u?.id) setUser(u);
+            if (u && u.id) setUser(u);
             else setError("خطأ: لا يمكن التعرف على المستخدم.");
         };
 
         const params = new URLSearchParams(window.location.search);
-        const uid = params.get("userId");
-        const fn = params.get("firstName");
+        const urlUserId = params.get("userId");
+        const urlFirstName = params.get("firstName");
 
-        if (uid) {
-            setupUser({ id: uid, first_name: fn || "User" });
+        if (urlUserId) {
+            setupUser({ id: urlUserId, first_name: urlFirstName || "User" });
             if (window.Android) setIsNativeAndroid(true);
-        } else if (window.Telegram?.WebApp) {
+        } 
+        else if (window.Telegram?.WebApp) {
             window.Telegram.WebApp.ready();
             const u = window.Telegram.WebApp.initDataUnsafe?.user;
-            setupUser(u);
-        } else setError("يرجى الفتح من التطبيق.");
+            if (u) setupUser(u);
+            else setError("يرجى الفتح من تليجرام.");
+        } 
+        else {
+            setError("يرجى الفتح من التطبيق المخصص.");
+        }
 
         if (videoId) {
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
-                .then(r => r.ok ? r.json() : r.json().then(err => { throw new Error(err.message); }))
+                .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
                 .then(data => {
+                    if (data.message) throw new Error(data.message);
                     setStreamUrl(data.streamUrl);
                     setYoutubeId(data.youtube_video_id);
                     setVideoTitle(data.videoTitle || "مشاهدة الدرس");
-                    parseM3U8(data.streamUrl); // NEW
                 })
-                .catch(e => setError(e.message));
+                .catch(err => setError(err.message));
         }
-    }, [videoId, parseM3U8]);
+    }, [videoId]);
 
 
-    const plyrSrc = {
+    // ##############################
+    //      تحميل الفيديو
+    // ##############################
+    const handleDownloadClick = () => {
+        if (!youtubeId) return alert("انتظر..");
+        if (isNativeAndroid) {
+            try { window.Android.downloadVideo(youtubeId, videoTitle); } 
+            catch { alert("خطأ في الاتصال."); }
+        } else {
+            alert("متاح فقط في التطبيق.");
+        }
+    };
+
+    if (error) return <div className="message-container"><h1>{error}</h1></div>;
+    if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
+
+
+    const plyrSource = {
         type: "video",
         title: videoTitle,
         sources: [{ src: streamUrl, type: "application/x-mpegURL" }]
@@ -168,48 +170,47 @@ export default function WatchPage() {
 
     const plyrOptions = {
         controls: [
-            "play-large", "play", "progress",
-            "current-time", "mute", "volume",
-            "settings", "fullscreen"
+            "play-large","play","progress","current-time",
+            "mute","volume","settings","fullscreen"
         ],
-        settings: ["quality", "speed"],
-        quality: { default: 720, options: [] }
+        settings: ["quality","speed"],
+        quality: { default: 720 }, 
     };
-
-    const handleDownload = () => {
-        if (!youtubeId) return alert("انتظر..");
-        if (isNativeAndroid) {
-            try { window.Android.downloadVideo(youtubeId, videoTitle); }
-            catch { alert("خطأ في الاتصال."); }
-        } else alert("متاح فقط داخل التطبيق.");
-    };
-
-    if (error) return <div className="message-container"><h1>{error}</h1></div>;
-    if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
 
     return (
         <div className="page-container">
             <Head>
                 <title>مشاهدة الدرس</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
                 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
             </Head>
 
             <div className="player-wrapper">
-                <Plyr ref={plyrRef} source={plyrSrc} options={plyrOptions} />
+                <Plyr 
+                    ref={plyrRef}
+                    source={plyrSource}
+                    options={plyrOptions}
+                />
                 <Watermark user={user} />
             </div>
 
             {isNativeAndroid && (
-                <button onClick={handleDownload} className="download-button-native">
-                    ⬇️ تحميل الفيديو
+                <button onClick={handleDownloadClick} className="download-button-native">
+                    ⬇️ تحميل الفيديو (أوفلاين)
                 </button>
             )}
 
+            <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
+                <p>برمجة وتطوير: A7MeD WaLiD</p>
+                <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank">اضغط هنا</a></p>
+            </footer>
+
             <style jsx global>{`
-                body { margin: 0; background: #111; color: white; }
-                .page-container { padding: 10px; }
-                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; position: relative; }
-                .message-container { height: 100vh; display: flex; justify-content: center; align-items: center; }
+                body { margin: 0; background: #111; color: white; font-family: sans-serif; }
+                .page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
+                .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; margin-bottom: 20px; }
+                .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; }
             `}</style>
         </div>
     );
