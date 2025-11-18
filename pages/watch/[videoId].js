@@ -58,7 +58,7 @@ export default function WatchPage() {
         if (!streamUrl) return;
 
         const video = plyrRef.current?.plyr?.media;
-        const player = plyrRef.current?.plyr; // [✅] مرجع للمشغل
+        const player = plyrRef.current?.plyr;
 
         if (!video || !player) {
             setTimeout(initHLSPlayer, 200);
@@ -79,14 +79,15 @@ export default function WatchPage() {
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
                 // 1. استخراج الجودات
                 const availableQualities = hls.levels.map((l) => l.height);
-                // 2. إضافة خيار Auto (نرمز له بـ 0)
+                // إضافة خيار Auto (0)
                 availableQualities.unshift(0);
 
-                // 3. [✅] إضافة الجودات لإعدادات المشغل ديناميكياً
+                // 2. [تعديل] ضبط إعدادات الجودة في Plyr
+                // يجب تعريف دالة التغيير (onChange) لربط Plyr بـ HLS
                 player.config.quality = {
                     default: 0,
                     options: availableQualities,
-                    forced: true,
+                    forced: true, // يجبر القائمة على الظهور
                     onChange: (newQuality) => {
                         if (newQuality === 0) {
                             hls.currentLevel = -1; // Auto
@@ -100,23 +101,43 @@ export default function WatchPage() {
                     },
                 };
 
-                // 4. تسمية خيار 0 بـ "Auto"
-                player.config.i18n = {
-                    ...player.config.i18n,
-                    qualityLabel: { 0: 'Auto' },
+                // 3. تسمية خيار Auto
+                player.config.i18n = { 
+                    ...player.config.i18n, 
+                    qualityLabel: { 0: 'Auto' } 
                 };
-                
-                // [✅] تفعيل القائمة (مهم جداً)
+
+                // 4. [هام جداً] إجبار Plyr على تحديث الواجهة لإظهار الزر
+                // نقوم بتعيين الجودة الحالية لتفعيل المستمعين
                 player.quality = 0;
             });
 
+            hls.on(window.Hls.Events.ERROR, function (event, data) {
+                if (data.fatal) {
+                    switch (data.type) {
+                        case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+                        case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+                        default: hls.destroy(); break;
+                    }
+                }
+            });
+
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            // دعم سفاري (iOS)
             video.src = streamUrl;
+            // ملاحظة: سفاري يدير الجودة بنفسه، ولا يسمح عادة بالتحكم اليدوي عبر JS بسهولة
         }
     }, [streamUrl]);
 
     useEffect(() => {
         if (streamUrl) initHLSPlayer();
+        
+        // تنظيف HLS عند الخروج
+        return () => {
+            if (hlsRef.current) {
+                hlsRef.current.destroy();
+            }
+        };
     }, [streamUrl, initHLSPlayer]);
 
 
@@ -160,9 +181,6 @@ export default function WatchPage() {
         }
     }, [videoId]);
 
-    // ##############################
-    //       تحميل الفيديو
-    // ##############################
     const handleDownloadClick = () => {
         if (!youtubeId) return alert("انتظر..");
         if (isNativeAndroid) {
@@ -176,7 +194,6 @@ export default function WatchPage() {
     if (error) return <div className="message-container"><h1>{error}</h1></div>;
     if (!user || !streamUrl) return <div className="message-container"><h1>جاري التحميل...</h1></div>;
 
-
     const plyrSource = {
         type: "video",
         title: videoTitle,
@@ -188,8 +205,11 @@ export default function WatchPage() {
             "play-large","play","progress","current-time",
             "mute","volume","settings","fullscreen"
         ],
-        settings: ["quality","speed"],
-        fullscreen: { enabled: true, fallback: true, iosNative: true }
+        // [تعديل] التأكد من وجود quality في القائمة المبدئية
+        settings: ["quality", "speed"],
+        fullscreen: { enabled: true, fallback: true, iosNative: true },
+        // [تعديل] وضع قيم مبدئية للجودة "لحجز المكان" في القائمة
+        quality: { default: 0, options: [0], forced: true, onChange: () => {} }
     };
 
     return (
@@ -223,12 +243,11 @@ export default function WatchPage() {
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 
-                /* [✅] تعديل التوسط */
                 .page-container { 
                     display: flex; 
                     flex-direction: column; 
                     align-items: center; 
-                    justify-content: center; /* يوسط رأسياً */
+                    justify-content: center; 
                     min-height: 100vh; 
                     padding: 10px; 
                     position: relative; 
@@ -242,10 +261,10 @@ export default function WatchPage() {
                     aspect-ratio: 16/9; 
                     background: #000; 
                     position: relative; 
-                    /* إزالة المارجن السفلي لضمان التوسط */
                     margin-bottom: 0; 
                     border-radius: 8px; 
                     overflow: hidden;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
                 }
                 
                 .download-button-native { 
@@ -261,7 +280,6 @@ export default function WatchPage() {
                     margin-top: 20px; 
                 }
 
-                /* [✅] الفوتر ثابت بالأسفل */
                 .developer-info {
                     position: absolute;
                     bottom: 10px;
