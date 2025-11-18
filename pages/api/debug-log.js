@@ -1,21 +1,16 @@
-// pages/api/debug-log.js
-
 export default function handler(req, res) {
     if (req.method === 'POST') {
-        const { message, type, details } = req.body;
+        const { logs } = req.body; // نستقبل مصفوفة logs
         
-        // طباعة الوقت
-        const time = new Date().toISOString();
-        
-        // هذه الرسالة ستظهر في Vercel Logs
-        // سنضع علامة مميزة [CLIENT-DEBUG] عشان تلاقيها بسهولة
-        if (type === 'error') {
-            console.error(`❌ [CLIENT-DEBUG] ${time} - ${message}`, details || '');
-        } else {
-            console.log(`✅ [CLIENT-DEBUG] ${time} - ${message}`, details || '');
+        if (Array.isArray(logs) && logs.length > 0) {
+            console.log("\n--- 📥 INCOMING LOG BATCH ---");
+            logs.forEach(log => {
+                const icon = log.type === 'error' ? '❌' : (log.type === 'success' ? '✅' : 'ℹ️');
+                console.log(`${icon} [${log.time}] ${log.message}`, log.details ? JSON.stringify(log.details) : '');
+            });
+            console.log("-----------------------------\n");
         }
-
-        res.status(200).json({ status: 'logged' });
+        res.status(200).json({ status: 'ok' });
     } else {
         res.status(405).end();
     }
