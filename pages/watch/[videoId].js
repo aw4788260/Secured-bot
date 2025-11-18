@@ -29,15 +29,13 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
-    // States
     const [streamUrl, setStreamUrl] = useState(null);
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     
-    // Player States
-    const [qualities, setQualities] = useState([]); // قائمة الجودات المتاحة
-    const [currentQuality, setCurrentQuality] = useState(0); // الجودة الحالية (الارتفاع بالبكسل)
+    const [qualities, setQualities] = useState([]);
+    const [currentQuality, setCurrentQuality] = useState(0); 
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     
     const videoRef = useRef(null);
@@ -47,13 +45,13 @@ export default function WatchPage() {
     // نظام تسجيل الأخطاء (LOGGING)
     // ##############################
     const logBuffer = useRef([]); 
-    const queueLog = (message, type = 'info', details = null) => {
+    const queueLog = useCallback((message, type = 'info', details = null) => {
         const time = new Date().toLocaleTimeString();
         logBuffer.current.push({ time, message, type, details });
         if (type === 'error' || type === 'warn') sendLogsNow();
-    };
+    }, []);
 
-    const sendLogsNow = () => {
+    const sendLogsNow = useCallback(() => {
         if (logBuffer.current.length === 0) return;
         const logsToSend = [...logBuffer.current];
         logBuffer.current = []; 
@@ -62,16 +60,16 @@ export default function WatchPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ logs: logsToSend })
         }).catch(e => console.error("Log send failed", e));
-    };
+    }, []);
 
     useEffect(() => {
         const interval = setInterval(sendLogsNow, 3000); 
         return () => clearInterval(interval);
-    }, []);
+    }, [sendLogsNow]);
     
 
     // ##############################
-    // 1. تشغيل الفيديو (Direct HLS)
+    // 1. وظيفة تحميل بث HLS
     // ##############################
     const loadHLSStream = useCallback((url, qualityHeight) => {
         if (!videoRef.current || !window.Hls) {
@@ -82,7 +80,6 @@ export default function WatchPage() {
         const video = videoRef.current;
         let hls = null;
 
-        // تدمير النسخة القديمة فقط عند تبديل الرابط
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
@@ -92,7 +89,6 @@ export default function WatchPage() {
             hls = new window.Hls({
                 maxBufferLength: 30,
                 enableWorker: true,
-                // إعدادات تخفيف قيود الـ CORS 
                 xhrSetup: function (xhr, url) {
                     xhr.withCredentials = false;
                     xhr.setRequestHeader('Referer', 'https://www.youtube.com/'); 
@@ -103,7 +99,6 @@ export default function WatchPage() {
             hls.attachMedia(video);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                // في هذا السيناريو، لا نحتاج لتحليل الجودة لأننا نعرفها مسبقاً من الـ API
                 setCurrentQuality(qualityHeight);
                 queueLog(`✅ Stream loaded for ${qualityHeight}p`, 'success');
                 video.play().catch(() => queueLog("Autoplay prevented", 'warn'));
@@ -127,25 +122,17 @@ export default function WatchPage() {
             hlsRef.current = hls;
 
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // دعم Safari IOS
             video.src = url;
             setCurrentQuality(qualityHeight);
             queueLog(`Running on Native HLS (iOS) for ${qualityHeight}p.`, 'info');
         }
-    }, [queueLog]); // إضافة queueLog كـ dependency
+    }, [queueLog]); 
 
     // ##############################
-    // 2. تغيير الجودة (باستخدام الروابط المنفصلة)
+    // 2. تغيير الجودة
     // ##############################
     const changeQuality = (newQuality) => {
-        if (currentQuality === newQuality) {
-            setShowQualityMenu(false);
-            return;
-        }
-        
-        // إذا اختار المستخدم Auto (في هذا السيناريو، نختار أعلى جودة)
         const targetQuality = newQuality === -1 ? qualities[0].quality : newQuality;
-        
         const selectedStream = qualities.find(q => q.quality === targetQuality);
 
         if (selectedStream) {
@@ -157,7 +144,7 @@ export default function WatchPage() {
     };
 
     // ##############################
-    // 3. جلب البيانات (يستخدم availableQualities)
+    // 3. جلب البيانات (يستخدم Next.js API)
     // ##############################
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
@@ -169,12 +156,37 @@ export default function WatchPage() {
         else if (window.Telegram?.WebApp) { window.Telegram.WebApp.ready(); const u = window.Telegram.WebApp.initDataUnsafe?.user; if (u) setupUser(u); } 
         
         if (videoId) {
-            queueLog(`Fetching video links for ID: ${videoId}`, 'info');
-            fetch(`/api/get-hls-playlist?youtubeId=${videoId}`) // [تعديل] استخدام API الصحيح
-                .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
-                .then(data => {
-                    if (data.message) throw new Error(data.message);
+            queueLog(`Fetching video links for ID: ${videoId} from Next.js API`, 'info');
+            
+            // [التعديل الأهم] الاتصال بالـ Next.js API Route المحلي
+            const fetchUrl = `/api/secure/get-video-id?lessonId=${videoId}`;
+            
+            fetch(fetchUrl)
+                .then(async res => {
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        queueLog(`API returned error status: ${res.status}`, 'error', { 
+                            responseStatus: res.status, 
+                            responseText: errorText.substring(0, 150)
+                        });
+                        throw new Error(`API failed with status ${res.status}. Check Vercel Logs for details.`);
+                    }
                     
+                    try {
+                        return res.json();
+                    } catch (e) {
+                        const rawText = await res.text();
+                        queueLog(`Failed to parse API response as JSON.`, 'error', { rawText: rawText.substring(0, 150) });
+                        throw new Error("Invalid JSON response from API. See Vercel logs.");
+                    }
+                })
+                .then(data => {
+                    if (data.message && data.message.includes("Failed to get separate HLS streams")) {
+                        setError(`خطأ من الخادم: ${data.message}`);
+                        queueLog(`Server returned HLS failure: ${data.message}`, 'error');
+                        return;
+                    }
+
                     const availableQualities = data.availableQualities || [];
                     setVideoTitle(data.videoTitle || "مشاهدة الدرس");
 
@@ -185,8 +197,6 @@ export default function WatchPage() {
                     }
                     
                     setQualities(availableQualities);
-                    
-                    // اختيار أعلى جودة للتشغيل الأولي (أول عنصر)
                     const initialQuality = availableQualities[0];
                     setStreamUrl(initialQuality.url); 
                     setCurrentQuality(initialQuality.quality);
@@ -195,12 +205,10 @@ export default function WatchPage() {
                 })
                 .catch(err => {
                     setError(err.message);
-                    queueLog(`API Fetch Error: ${err.message}`, 'error');
+                    queueLog(`Final Catch Error: ${err.message}`, 'error');
                 });
-        }
     }, [videoId, queueLog]);
 
-    // يبدأ التشغيل بعد أن يتوفر streamUrl
     useEffect(() => {
         if (streamUrl && currentQuality > 0) {
             loadHLSStream(streamUrl, currentQuality);
@@ -242,7 +250,6 @@ export default function WatchPage() {
                         
                         {showQualityMenu && (
                             <div className="quality-menu">
-                                {/* خيار Auto (يختار أعلى جودة متاحة) */}
                                 <div 
                                     className={`quality-item ${currentQuality === qualities[0].quality ? 'active' : ''}`}
                                     onClick={() => changeQuality(qualities[0].quality)}
