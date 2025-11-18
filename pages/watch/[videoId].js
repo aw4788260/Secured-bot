@@ -36,9 +36,8 @@ export default function WatchPage() {
 
     // 2. تشغيل المشغل
     useEffect(() => {
-        if (!videoId || !libsLoaded || !user) return; // تأكدنا من وجود user للعلامة المائية
+        if (!videoId || !libsLoaded || !user) return; 
 
-        // تنظيف القديم
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -89,8 +88,7 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // [تعديل] إضافة العلامة المائية كطبقة داخلية (Layer)
-                    // هذا يضمن ظهورها وتكبيرها في وضع ملء الشاشة
+                    // إضافة العلامة المائية كطبقة داخلية
                     layers: [
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
@@ -120,8 +118,9 @@ export default function WatchPage() {
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
                                 
+                                // [تعديل] لا نعرض أي إشعارات هنا
                                 hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                                    // [تعديل] تم إزالة الإشعار هنا (art.notice.show)
+                                     // صامت
                                 });
 
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
@@ -129,8 +128,7 @@ export default function WatchPage() {
                                         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
                                             hls.destroy();
                                             video.src = url;
-                                            // [تعديل] تم إزالة إشعار التحويل للمشغل الأصلي
-                                            // art.notice.show = '...'; 
+                                            // [تعديل] تم إزالة الإشعار نهائياً
                                         } else {
                                             hls.destroy();
                                         }
@@ -142,13 +140,14 @@ export default function WatchPage() {
                             else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
                             } else {
-                                art.notice.show = 'المتصفح لا يدعم هذا الفيديو';
+                                // [تعديل] تم إزالة إشعار الخطأ واستبداله بلوج في الكونسول فقط
+                                console.error('Format not supported');
                             }
                         },
                     },
                 });
 
-                // تحريك العلامة المائية عشوائياً
+                // تحريك العلامة المائية
                 const moveWatermark = () => {
                     const layer = art.template.$player.querySelector('.watermark-layer');
                     if (layer) {
@@ -159,7 +158,6 @@ export default function WatchPage() {
                     }
                 };
                 
-                // تشغيل التحريك كل 5 ثواني
                 const watermarkInterval = setInterval(moveWatermark, 5000);
 
                 art.on('destroy', () => {
@@ -178,7 +176,7 @@ export default function WatchPage() {
         return () => {
             if (playerInstance.current) playerInstance.current.destroy(false);
         };
-    }, [videoId, libsLoaded]); // حذفنا user من الـ dependencies لتجنب إعادة التشغيل، لكن تأكدنا منه في الشرط الأول
+    }, [videoId, libsLoaded]); 
 
     const handleDownloadClick = () => {
         if (isNativeAndroid) alert("التحميل متاح من داخل التطبيق فقط");
@@ -209,7 +207,6 @@ export default function WatchPage() {
 
             <div className="player-wrapper">
                 <div ref={artRef} className="artplayer-app"></div>
-                {/* [تعديل] تم إزالة العلامة المائية من هنا لأننا وضعناها داخل المشغل مباشرة */}
             </div>
 
             {isNativeAndroid && (
@@ -232,18 +229,18 @@ export default function WatchPage() {
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* [تعديل] ستايل العلامة المائية الجديدة داخل المشغل */
+                /* [تعديل] تثبيت حجم الخط ليكون صغيراً دائماً */
                 .watermark-layer {
-                    padding: 6px 12px;
+                    padding: 4px 8px;
                     background: rgba(0, 0, 0, 0.6);
                     color: white;
-                    border-radius: 6px;
+                    border-radius: 4px;
                     font-weight: bold;
                     white-space: nowrap;
                     transition: top 2s ease-in-out, left 2s ease-in-out;
-                    /* تكبير الخط تلقائياً بناءً على عرض المشغل */
-                    font-size: clamp(12px, 3vw, 30px);
-                    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+                    font-size: 12px; /* حجم ثابت وصغير */
+                    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+                    opacity: 0.8; /* شفافية بسيطة لعدم الإزعاج */
                 }
             `}</style>
         </div>
