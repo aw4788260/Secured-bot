@@ -3,33 +3,6 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
-// --- مكون العلامة المائية ---
-const Watermark = ({ user }) => {
-    const [pos, setPos] = useState({ top: '10%', left: '10%' });
-    useEffect(() => {
-        if (!user) return;
-        const interval = setInterval(() => {
-            setPos({ 
-                top: `${Math.floor(Math.random() * 80) + 10}%`, 
-                left: `${Math.floor(Math.random() * 80) + 10}%` 
-            });
-        }, 5000);
-        return () => clearInterval(interval);
-    }, [user]);
-
-    return (
-        <div style={{ 
-            position: 'absolute', top: pos.top, left: pos.left,
-            zIndex: 20, pointerEvents: 'none', padding: '4px 8px', 
-            background: 'rgba(0, 0, 0, 0.6)', color: 'white', 
-            fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
-            fontWeight: 'bold', transition: 'all 2s ease', whiteSpace: 'nowrap'
-        }}>
-            {user.first_name} ({user.id})
-        </div>
-    );
-};
-
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
@@ -63,7 +36,7 @@ export default function WatchPage() {
 
     // 2. تشغيل المشغل
     useEffect(() => {
-        if (!videoId || !libsLoaded) return;
+        if (!videoId || !libsLoaded || !user) return; // تأكدنا من وجود user للعلامة المائية
 
         // تنظيف القديم
         if (playerInstance.current) {
@@ -79,10 +52,8 @@ export default function WatchPage() {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // ترتيب الجودات (الأعلى أولاً)
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
 
-                // تحويل الجودات
                 const qualityList = qualities.map((q, index) => ({
                     default: index === 0,
                     html: `${q.quality}p`,
@@ -118,17 +89,29 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // --- أهم جزء: تكامل HLS مع حلول الحظر ---
+                    // [تعديل] إضافة العلامة المائية كطبقة داخلية (Layer)
+                    // هذا يضمن ظهورها وتكبيرها في وضع ملء الشاشة
+                    layers: [
+                        {
+                            html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
+                            style: {
+                                position: 'absolute',
+                                top: '10%',
+                                left: '10%',
+                                pointerEvents: 'none',
+                                zIndex: 20,
+                            },
+                        }
+                    ],
+                    
                     customType: {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
 
-                            // الخطة أ: محاولة استخدام hls.js (لأنه يدعم الجودة والتحكم)
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
                                     maxBufferLength: 30,
                                     enableWorker: true,
-                                    // [هام جداً] هذا السطر يمنع إرسال الكوكيز والمصدر الحقيقي
                                     xhrSetup: function (xhr) { 
                                         xhr.withCredentials = false; 
                                     }
@@ -138,19 +121,16 @@ export default function WatchPage() {
                                 hls.attachMedia(video);
                                 
                                 hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                                    // art.play(); // اختياري: التشغيل التلقائي
+                                    // [تعديل] تم إزالة الإشعار هنا (art.notice.show)
                                 });
 
-                                // [هام] معالجة الأخطاء والتحويل للوضع الأصلي (Native) عند الفشل
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
                                     if (data.fatal) {
-                                        console.warn("HLS Fatal Error:", data.type);
                                         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                                            // إذا فشل hls.js بسبب الشبكة (403)، نجرب الطريقة الأصلية (زي Plyr)
-                                            console.log("Switching to Native HLS fallback...");
                                             hls.destroy();
                                             video.src = url;
-                                            art.notice.show = 'تم التحويل للمشغل الأصلي لتجاوز الحظر';
+                                            // [تعديل] تم إزالة إشعار التحويل للمشغل الأصلي
+                                            // art.notice.show = '...'; 
                                         } else {
                                             hls.destroy();
                                         }
@@ -159,7 +139,6 @@ export default function WatchPage() {
 
                                 art.hls = hls;
                             } 
-                            // الخطة ب: استخدام المشغل الأصلي (Native Playback) مباشرة (للآيفون وبعض أندرويد)
                             else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
                             } else {
@@ -169,8 +148,23 @@ export default function WatchPage() {
                     },
                 });
 
+                // تحريك العلامة المائية عشوائياً
+                const moveWatermark = () => {
+                    const layer = art.template.$player.querySelector('.watermark-layer');
+                    if (layer) {
+                        const newTop = Math.floor(Math.random() * 80) + 10;
+                        const newLeft = Math.floor(Math.random() * 80) + 10;
+                        layer.style.top = `${newTop}%`;
+                        layer.style.left = `${newLeft}%`;
+                    }
+                };
+                
+                // تشغيل التحريك كل 5 ثواني
+                const watermarkInterval = setInterval(moveWatermark, 5000);
+
                 art.on('destroy', () => {
                     if (art.hls) art.hls.destroy();
+                    clearInterval(watermarkInterval);
                 });
 
                 playerInstance.current = art;
@@ -184,7 +178,7 @@ export default function WatchPage() {
         return () => {
             if (playerInstance.current) playerInstance.current.destroy(false);
         };
-    }, [videoId, libsLoaded]);
+    }, [videoId, libsLoaded]); // حذفنا user من الـ dependencies لتجنب إعادة التشغيل، لكن تأكدنا منه في الشرط الأول
 
     const handleDownloadClick = () => {
         if (isNativeAndroid) alert("التحميل متاح من داخل التطبيق فقط");
@@ -197,12 +191,9 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                
-                {/* ✅✅✅ هذا السطر هو الأهم على الإطلاق لحل مشكلة جوجل ✅✅✅ */}
                 <meta name="referrer" content="no-referrer" />
             </Head>
 
-            {/* تحميل المكتبات من CDN */}
             <Script 
                 src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
                 strategy="afterInteractive"
@@ -218,7 +209,7 @@ export default function WatchPage() {
 
             <div className="player-wrapper">
                 <div ref={artRef} className="artplayer-app"></div>
-                {user && <Watermark user={user} />}
+                {/* [تعديل] تم إزالة العلامة المائية من هنا لأننا وضعناها داخل المشغل مباشرة */}
             </div>
 
             {isNativeAndroid && (
@@ -226,6 +217,10 @@ export default function WatchPage() {
                     ⬇️ تحميل الفيديو (أوفلاين)
                 </button>
             )}
+
+            <footer className="developer-info">
+                <p>برمجة وتطوير: A7MeD WaLiD</p>
+            </footer>
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
@@ -236,6 +231,20 @@ export default function WatchPage() {
                 .artplayer-app { width: 100%; height: 100%; }
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
+
+                /* [تعديل] ستايل العلامة المائية الجديدة داخل المشغل */
+                .watermark-layer {
+                    padding: 6px 12px;
+                    background: rgba(0, 0, 0, 0.6);
+                    color: white;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    white-space: nowrap;
+                    transition: top 2s ease-in-out, left 2s ease-in-out;
+                    /* تكبير الخط تلقائياً بناءً على عرض المشغل */
+                    font-size: clamp(12px, 3vw, 30px);
+                    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+                }
             `}</style>
         </div>
     );
