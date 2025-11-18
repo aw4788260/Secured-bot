@@ -1,38 +1,8 @@
-// pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 
-// استيراد Artplayer بشكل ديناميكي لأنه يعتمد على window
-const Artplayer = dynamic(() => import('artplayer'), { ssr: false });
-
-// دالة مساعدة لتشغيل Artplayer داخل React
-const Player = ({ option, getInstance, ...rest }) => {
-    const artRef = useRef();
-
-    useEffect(() => {
-        if (!artRef.current) return;
-        
-        // تهيئة البلاير
-        const art = new (require('artplayer'))({
-            ...option,
-            container: artRef.current,
-        });
-
-        if (getInstance && typeof getInstance === 'function') {
-            getInstance(art);
-        }
-
-        return () => {
-            if (art) art.destroy(false);
-        };
-    }, []);
-
-    return <div ref={artRef} {...rest}></div>;
-};
-
-// مكون العلامة المائية
+// مكون العلامة المائية (لم يتغير)
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
     const watermarkIntervalRef = useRef(null);
@@ -74,6 +44,122 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
+    // مرجع للـ Div الذي سنضع فيه البلاير
+    const artRef = useRef(null);
+    // مرجع للاحتفاظ بنسخة البلاير لتدميرها عند الخروج
+    const playerInstance = useRef(null);
+
+    // ##############################
+    //   تهيئة البلاير باستخدام CDN
+    // ##############################
+    useEffect(() => {
+        // 1. التأكد من وجود الرابط والعنصر ونافذة المتصفح
+        if (!streamUrl || !artRef.current || typeof window === 'undefined') return;
+
+        // 2. دالة لانتظار تحميل سكربت Artplayer من الـ CDN
+        const initPlayer = () => {
+            if (!window.Artplayer || !window.Hls) {
+                // إذا لم يتم تحميل المكتبة بعد، ننتظر قليلاً ونحاول مرة أخرى
+                setTimeout(initPlayer, 100); 
+                return;
+            }
+
+            // إذا كان هناك بلاير سابق، نقوم بتدميره أولاً
+            if (playerInstance.current) {
+                playerInstance.current.destroy(false);
+            }
+
+            // 3. إنشاء البلاير
+            const art = new window.Artplayer({
+                container: artRef.current,
+                url: streamUrl,
+                title: videoTitle,
+                volume: 0.7,
+                isLive: false,
+                muted: false,
+                autoplay: false,
+                pip: true,
+                autoSize: false,
+                autoMini: true,
+                screenshot: true,
+                setting: true,
+                loop: false,
+                flip: true,
+                playbackRate: true,
+                aspectRatio: true,
+                fullscreen: true,
+                fullscreenWeb: true,
+                miniProgressBar: true,
+                mutex: true,
+                backdrop: true,
+                playsInline: true,
+                autoPlayback: true,
+                airplay: true,
+                theme: '#38bdf8',
+                lang: 'ar',
+                
+                // إعدادات HLS
+                type: 'm3u8',
+                customType: {
+                    m3u8: function (video, url) {
+                        if (window.Hls.isSupported()) {
+                            const hls = new window.Hls();
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                            
+                            // بناء قائمة الجودة
+                            hls.on(window.Hls.Events.MANIFEST_PARSED, function (event, data) {
+                                const qualities = data.levels.map((level, index) => {
+                                    return {
+                                        default: false,
+                                        html: level.height + 'p',
+                                        url: url,
+                                        levelIndex: index
+                                    };
+                                });
+
+                                qualities.unshift({
+                                    default: true,
+                                    html: 'Auto',
+                                    url: url,
+                                    levelIndex: -1
+                                });
+
+                                art.quality = qualities;
+                            });
+
+                            // ربط الاختيار بـ HLS
+                            art.on('video:quality', (newQuality) => {
+                                hls.currentLevel = newQuality.levelIndex;
+                            });
+
+                            art.on('destroy', () => hls.destroy());
+
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = url;
+                        } else {
+                            art.notice.show = 'نسق غير مدعوم';
+                        }
+                    },
+                },
+            });
+
+            // حفظ نسخة البلاير
+            playerInstance.current = art;
+        };
+
+        initPlayer();
+
+        // تنظيف عند الخروج من الصفحة
+        return () => {
+            if (playerInstance.current) {
+                playerInstance.current.destroy(false);
+                playerInstance.current = null;
+            }
+        };
+    }, [streamUrl, videoTitle]); // إعادة التشغيل عند تغير الرابط
+
+
     // ##############################
     //        جلب البيانات
     // ##############################
@@ -102,7 +188,13 @@ export default function WatchPage() {
         }
 
         if (videoId) {
+            // تدمير البلاير القديم قبل جلب الجديد لتجنب التداخل
+            if (playerInstance.current) {
+                playerInstance.current.destroy(false);
+                playerInstance.current = null;
+            }
             setStreamUrl(null);
+            
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
                 .then(data => {
@@ -133,92 +225,14 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8"></script>
+                {/* استدعاء المكتبات من الـ CDN */}
+                <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js"></script>
             </Head>
 
             <div className="player-wrapper">
-                <Player
-                    option={{
-                        url: streamUrl,
-                        title: videoTitle,
-                        volume: 0.7,
-                        isLive: false,
-                        muted: false,
-                        autoplay: false,
-                        pip: true,
-                        autoSize: false, // مهم عشان نتحكم احنا في الحجم بال CSS
-                        autoMini: true,
-                        screenshot: true,
-                        setting: true, // تفعيل قائمة الإعدادات
-                        loop: false,
-                        flip: true,
-                        playbackRate: true,
-                        aspectRatio: true,
-                        fullscreen: true,
-                        fullscreenWeb: true,
-                        subtitleOffset: true,
-                        miniProgressBar: true,
-                        mutex: true,
-                        backdrop: true,
-                        playsInline: true,
-                        autoPlayback: true,
-                        airplay: true,
-                        theme: '#38bdf8', // لون الثيم
-                        lang: 'ar', // اللغة العربية
-                        
-                        // إعدادات مخصصة لـ HLS
-                        type: 'm3u8',
-                        customType: {
-                            m3u8: function (video, url, art) {
-                                if (window.Hls && window.Hls.isSupported()) {
-                                    const hls = new window.Hls();
-                                    hls.loadSource(url);
-                                    hls.attachMedia(video);
-                                    
-                                    // عند جاهزية المانيفست، نبني قائمة الجودات
-                                    hls.on(window.Hls.Events.MANIFEST_PARSED, function (event, data) {
-                                        const qualities = data.levels.map((level, index) => {
-                                            return {
-                                                default: false,
-                                                html: level.height + 'p',
-                                                url: url, // الرابط لا يتغير في الماستر
-                                                levelIndex: index // نحتفظ بالرقم لنستخدمه لاحقاً
-                                            };
-                                        });
-
-                                        // إضافة خيار Auto في البداية
-                                        qualities.unshift({
-                                            default: true,
-                                            html: 'Auto',
-                                            url: url,
-                                            levelIndex: -1
-                                        });
-
-                                        // تحديث قائمة الجودة في Artplayer
-                                        art.quality = qualities;
-                                    });
-
-                                    // ربط اختيار المستخدم بتغيير الجودة الفعلي في HLS
-                                    art.on('video:quality', (newQuality) => {
-                                        hls.currentLevel = newQuality.levelIndex;
-                                    });
-
-                                    // تنظيف الذاكرة عند تدمير البلاير
-                                    art.on('destroy', () => hls.destroy());
-
-                                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                                    video.src = url;
-                                } else {
-                                    art.notice.show = 'نسق غير مدعوم';
-                                }
-                            },
-                        },
-                    }}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                    }}
-                />
+                {/* هذا الـ Div هو الحاوية التي سيعمل بداخلها البلاير */}
+                <div ref={artRef} className="artplayer-container"></div>
                 <Watermark user={user} />
             </div>
 
@@ -258,6 +272,11 @@ export default function WatchPage() {
                     border-radius: 8px;
                     overflow: hidden;
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                }
+
+                .artplayer-container {
+                    width: 100%;
+                    height: 100%;
                 }
 
                 .download-button-native { 
