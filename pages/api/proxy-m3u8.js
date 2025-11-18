@@ -1,33 +1,46 @@
-// pages/api/proxy-m3u8.js
 import axios from 'axios';
 
 export default async function handler(req, res) {
     const { url } = req.query;
-
-    if (!url) {
-        return res.status(400).json({ error: 'URL is required' });
-    }
+    if (!url) return res.status(400).json({ error: 'URL missing' });
 
     try {
-        // 1. السيرفر بيطلب الملف من جوجل (السيرفر مفيهوش قيود CORS)
+        // هل هذا طلب لملف مانيفست (قائمة) أم فيديو فعلي؟
+        const isManifest = url.includes('.m3u8') || url.includes('manifest');
+
         const response = await axios.get(url, {
-            responseType: 'text', // نطلب الملف كنص
+            responseType: isManifest ? 'text' : 'stream', 
             headers: {
-                // محاولة خداع السيرفر كأننا متصفح عادي
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            }
+            },
+            validateStatus: false 
         });
 
-        // 2. السماح للمشغل بتاعك بقراءة الرد (CORS Headers)
+        // إعداد الـ CORS
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET');
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
 
-        // 3. إرسال محتوى ملف الـ m3u8 للمشغل
-        res.status(200).send(response.data);
+        if (isManifest && typeof response.data === 'string') {
+            // --- حالة المانيفست: نعدل الروابط داخله ---
+            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+
+            const originalM3u8 = response.data;
+            // البحث عن أي رابط يبدأ بـ http واستبداله برابط البروكسي
+            const modifiedM3u8 = originalM3u8.replace(
+                /(https?:\/\/[^\s]+)/g, 
+                (match) => {
+                    return `/api/proxy-m3u8?url=${encodeURIComponent(match)}`;
+                }
+            );
+            res.status(200).send(modifiedM3u8);
+
+        } else {
+            // --- حالة الفيديو: نمرر البيانات كما هي (يستهلك باندويث) ---
+            res.setHeader('Content-Type', 'video/mp2t'); // أو video/mp4 حسب النوع
+            response.data.pipe(res);
+        }
 
     } catch (error) {
-        console.error("Proxy Error:", error.message);
-        res.status(500).json({ error: 'Failed to fetch m3u8' });
+        res.status(500).end();
     }
 }
