@@ -47,7 +47,7 @@ export default function WatchPage() {
     const playerInstance = useRef(null);
 
     // ##############################
-    // 1. جلب البيانات (مع المحافظة على كودك)
+    // 1. جلب البيانات
     // ##############################
     useEffect(() => {
         const setupUser = (u) => {
@@ -82,11 +82,7 @@ export default function WatchPage() {
                 .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
                 .then(data => {
                     if (data.message) throw new Error(data.message);
-                    
-                    // تنظيف الرابط من أي مسافات زائدة قد تسبب مشاكل
-                    const cleanUrl = data.streamUrl ? data.streamUrl.trim() : null;
-                    
-                    setStreamUrl(cleanUrl);
+                    setStreamUrl(data.streamUrl);
                     setYoutubeId(data.youtube_video_id);
                     setVideoTitle(data.videoTitle || "مشاهدة الدرس");
                 })
@@ -96,7 +92,7 @@ export default function WatchPage() {
 
 
     // ##############################
-    // 2. تشغيل الفيديو (Artplayer Configured for Google Video)
+    // 2. تشغيل الفيديو (النسخة المبسطة)
     // ##############################
     useEffect(() => {
         if (!streamUrl || !artRef.current || typeof window === 'undefined') return;
@@ -139,30 +135,19 @@ export default function WatchPage() {
                 theme: '#38bdf8',
                 lang: 'ar',
                 
+                // هنا السر: تعريف النوع مخصص بشكل بسيط جداً
                 type: 'm3u8',
                 customType: {
                     m3u8: function (video, url, art) {
                         if (window.Hls.isSupported()) {
-                            const hlsConfig = {
-                                debug: false, // غيرها لـ true لو عاوز تشوف اللوج
-                                enableWorker: true,
-                                // إعدادات هامة لروابط جوجل
-                                xhrSetup: function (xhr, url) {
-                                    xhr.withCredentials = false; // منع إرسال الكوكيز لتجنب مشاكل CORS
-                                }
-                            };
+                            // 1. إعداد بسيط جداً بدون تعقيدات
+                            const hls = new window.Hls();
                             
-                            const hls = new window.Hls(hlsConfig);
-                            
+                            hls.loadSource(url);
                             hls.attachMedia(video);
-                            hls.on(window.Hls.Events.MEDIA_ATTACHED, function () {
-                                hls.loadSource(url);
-                            });
 
+                            // 2. عند قراءة المانيفست، قم ببناء القائمة وتحديث الواجهة
                             hls.on(window.Hls.Events.MANIFEST_PARSED, function (event, data) {
-                                // إخفاء اللودر فوراً عند نجاح قراءة الرابط
-                                art.loading.show = false;
-
                                 const qualities = data.levels.map((level, index) => {
                                     return {
                                         default: false,
@@ -171,60 +156,43 @@ export default function WatchPage() {
                                         levelIndex: index
                                     };
                                 });
-                                qualities.unshift({ default: true, html: 'Auto', url: url, levelIndex: -1 });
-                                art.quality = qualities;
-                            });
-
-                            // معالجة الأخطاء الشاملة
-                            hls.on(window.Hls.Events.ERROR, function (event, data) {
-                                // في حالة أي خطأ، نخفي اللودر حتى لا يعلق المشغل
-                                if(data.fatal) {
-                                     art.loading.show = false;
-                                }
-
-                                if (data.fatal) {
-                                    switch (data.type) {
-                                        case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                            console.error("Network Error: Possibly IP Block or CORS", data);
-                                            // محاولة أخيرة للإنعاش
-                                            hls.startLoad(); 
-                                            break;
-                                        case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                            console.error("Media Error", data);
-                                            hls.recoverMediaError();
-                                            break;
-                                        default:
-                                            console.error("Fatal Error", data);
-                                            hls.destroy();
-                                            // إظهار رسالة للمستخدم داخل المشغل
-                                            art.notice.show = 'فشل تحميل الفيديو. قد يكون الرابط محظوراً أو منتهي الصلاحية.';
-                                            break;
-                                    }
-                                }
                                 
-                                // فحص خاص لخطأ 403 (Forbidden)
-                                if (data.response && data.response.code === 403) {
-                                    art.notice.show = 'خطأ 403: الرابط مرتبط بـ IP السيرفر ولا يعمل عند المستخدم.';
-                                    hls.destroy();
-                                }
+                                // إضافة Auto
+                                qualities.unshift({
+                                    default: true,
+                                    html: 'Auto',
+                                    url: url,
+                                    levelIndex: -1
+                                });
+
+                                // تحديث القائمة في Artplayer
+                                art.quality = qualities;
+                                
+                                // إخبار البلاير أن الفيديو جاهز (لإخفاء اللودر)
+                                art.emit('ready');
                             });
 
+                            // 3. ربط زر الجودة بـ Hls
                             art.on('video:quality', (newQuality) => {
                                 hls.currentLevel = newQuality.levelIndex;
                             });
 
+                            // 4. تنظيف الذاكرة
                             art.on('destroy', () => hls.destroy());
 
                         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            // Safari
                             video.src = url;
-                            video.addEventListener('loadedmetadata', () => { art.loading.show = false; });
-                            video.addEventListener('error', () => { art.loading.show = false; });
                         } else {
-                            art.loading.show = false;
-                            art.notice.show = 'المتصفح لا يدعم هذا الفيديو';
+                            art.notice.show = 'Unsupported playback format';
                         }
                     },
                 },
+            });
+            
+            // إضافة مستمع للأخطاء لفرض التشغيل إذا توقف
+            art.on('ready', () => {
+                art.loading.show = false;
             });
 
             playerInstance.current = art;
@@ -259,8 +227,7 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                
-                {/* هذا التاج مهم جداً لروابط جوجل فيديو */}
+                {/* الـ Referrer مهم جداً مع Google Video */}
                 <meta name="referrer" content="no-referrer" />
                 
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.8/hls.min.js"></script>
