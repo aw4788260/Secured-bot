@@ -83,28 +83,28 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // قفل التحكم الافتراضي لنستخدم التحكم الخاص بنا
-                    lock: true, 
+                    lock: true, // لتفعيل التحكم اليدوي باللمس
 
                     layers: [
+                        // طبقة العلامة المائية
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
                             style: {
                                 position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
                             },
                         },
+                        // طبقة اللمس (Gesture Layer)
                         {
-                            // طبقة اللمس: تغطي 85% من الشاشة وتترك 15% بالأسفل لشريط التحكم
                             html: `
                                 <div class="gesture-layer">
                                     <div class="gesture-box left">
                                         <span class="icon">10&lt;&lt;</span>
                                     </div>
-                                    <div class="gesture-box center">
-                                        <span class="icon">⏯</span>
-                                    </div>
                                     <div class="gesture-box right">
                                         <span class="icon">&gt;&gt;10</span>
+                                    </div>
+                                    <div class="gesture-box center">
+                                        <span class="icon">⏯</span>
                                     </div>
                                 </div>
                             `,
@@ -143,7 +143,7 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // --- برمجة اللمسات (Gestures Logic) ---
+                // --- برمجة اللمسات ---
                 art.on('ready', () => {
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
@@ -157,7 +157,7 @@ export default function WatchPage() {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
-                        // --- سيناريو النقر المزدوج (Double Tap) ---
+                        // --- [1] النقر المزدوج (Double Tap) ---
                         if (timeDiff < 300) {
                             clearTimeout(clickTimer); // إلغاء النقر المفرد
                             
@@ -166,29 +166,25 @@ export default function WatchPage() {
                             const width = rect.width;
 
                             if (x < width * 0.35) {
-                                // يسار: تأخير 10 ثواني
+                                // يسار: تأخير
                                 art.backward = 10;
                                 showFeedback(feedbackLeft);
                             } else if (x > width * 0.65) {
-                                // يمين: تقديم 10 ثواني
+                                // يمين: تقديم
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } else {
-                                // منتصف (نقر مزدوج): تشغيل / إيقاف
+                                // منتصف: تشغيل / إيقاف
                                 art.toggle();
                                 showFeedback(feedbackCenter);
                             }
                         } 
-                        // --- سيناريو النقر المفرد (Single Tap) ---
+                        // --- [2] النقر المفرد (Single Tap) ---
                         else {
                             clickTimer = setTimeout(() => {
-                                // تبديل ظهور عناصر التحكم (Toggle Controls)
-                                const playerEl = art.template.$player;
-                                if (playerEl.classList.contains('artplayer-hover')) {
-                                    playerEl.classList.remove('artplayer-hover'); // إخفاء
-                                } else {
-                                    playerEl.classList.add('artplayer-hover'); // إظهار
-                                }
+                                // التعديل هنا: تبديل ظهور شريط التحكم بدلاً من art.toggle()
+                                // الكلاس 'artplayer-hover' هو المسؤول عن إظهار التحكم
+                                art.template.$player.classList.toggle('artplayer-hover');
                             }, 300);
                         }
                         lastClickTime = currentTime;
@@ -277,7 +273,7 @@ export default function WatchPage() {
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
                 .art-notice { display: none !important; }
-                /* إخفاء القفل تماماً */
+                /* إخفاء القفل */
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
                 .watermark-layer {
@@ -296,7 +292,9 @@ export default function WatchPage() {
                 .gesture-box.left { left: 15%; }
                 .gesture-box.right { right: 15%; }
                 .gesture-box.center { left: 50%; transform: translate(-50%, -50%); }
-                .gesture-box .icon { font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px; }
+                .gesture-box .icon { 
+                    font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px;
+                }
             `}</style>
         </div>
     );
