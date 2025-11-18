@@ -48,20 +48,24 @@ export default function WatchPage() {
     const [videoTitle, setVideoTitle] = useState("جاري التحميل...");
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     
+    const playerWrapperRef = useRef(null); 
     const plyrRef = useRef(null);
     const hlsRef = useRef(null);
 
     // ##############################
-    //        تفعيل الجودة
+    //        تفعيل الجودة (HLS)
     // ##############################
     const initHLSPlayer = useCallback(() => {
         if (!streamUrl) return;
 
-        const video = plyrRef.current?.plyr?.media;
-        if (!video) {
+        // التأكد من أن المشغل جاهز
+        if (!plyrRef.current || !plyrRef.current.plyr) {
             setTimeout(initHLSPlayer, 200);
             return;
         }
+
+        const video = plyrRef.current.plyr.media;
+        const player = plyrRef.current.plyr;
 
         if (window.Hls && window.Hls.isSupported()) {
             const hls = new window.Hls({
@@ -71,30 +75,56 @@ export default function WatchPage() {
             });
 
             hlsRef.current = hls;
-
             hls.loadSource(streamUrl);
             hls.attachMedia(video);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                const qualities = hls.levels.map(l => l.height).sort((a, b) => b - a);
+                // 1. استخراج الجودات
+                const availableQualities = hls.levels.map((l) => l.height);
+                // 2. إضافة خيار Auto (نرمز له بـ 0)
+                availableQualities.unshift(0);
 
-                const plyr = plyrRef.current.plyr;
-
-                plyr.options.quality = {
-                    default: qualities[0],
-                    options: qualities,
+                // 3. تحديث إعدادات Plyr (استخدام config بدلاً من options)
+                player.config.quality = {
+                    default: 0, // افتراضياً Auto
+                    options: availableQualities,
                     forced: true,
-                    onChange: (q) => {
-                        const levelIdx = hls.levels.findIndex(l => l.height === q);
-                        hls.currentLevel = levelIdx;
-                    }
+                    onChange: (newQuality) => {
+                        if (newQuality === 0) {
+                            hls.currentLevel = -1; // وضع Auto
+                        } else {
+                            hls.levels.forEach((level, levelIndex) => {
+                                if (level.height === newQuality) {
+                                    hls.currentLevel = levelIndex;
+                                }
+                            });
+                        }
+                    },
+                };
+                
+                // 4. تسمية خيار 0 بـ "Auto"
+                player.config.i18n = {
+                    ...player.config.i18n,
+                    qualityLabel: { 0: 'Auto' },
                 };
 
-                // 🔥 دي أهم خطوة بتظهر زر الجودة
-                plyr.update();
+                // تفعيل التحديثات
+                player.quality = 0; 
+            });
+
+            // معالجة الأخطاء
+            hls.on(window.Hls.Events.ERROR, function (event, data) {
+                if (data.fatal) {
+                    switch (data.type) {
+                        case window.Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+                        case window.Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+                        default: hls.destroy(); break;
+                    }
+                }
             });
 
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            // دعم سفاري
             video.src = streamUrl;
         }
     }, [streamUrl]);
@@ -105,7 +135,7 @@ export default function WatchPage() {
 
 
     // ##############################
-    //       جلب البيانات
+    //        جلب البيانات
     // ##############################
     useEffect(() => {
         const setupUser = (u) => {
@@ -146,7 +176,7 @@ export default function WatchPage() {
 
 
     // ##############################
-    //      تحميل الفيديو
+    //       تحميل الفيديو
     // ##############################
     const handleDownloadClick = () => {
         if (!youtubeId) return alert("انتظر..");
@@ -174,7 +204,8 @@ export default function WatchPage() {
             "mute","volume","settings","fullscreen"
         ],
         settings: ["quality","speed"],
-        quality: { default: 720 }, 
+        fullscreen: { enabled: true, fallback: true, iosNative: true },
+        // (هام) لا نضع quality هنا لأننا نضبطه ديناميكياً في دالة initHLSPlayer
     };
 
     return (
@@ -200,17 +231,66 @@ export default function WatchPage() {
                 </button>
             )}
 
-            <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
+            <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
                 <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank">اضغط هنا</a></p>
             </footer>
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
-                .page-container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
+                
+                /* [✅ تعديل التوسط] */
+                .page-container { 
+                    display: flex; 
+                    flex-direction: column; 
+                    align-items: center; 
+                    justify-content: center; /* توسيط عمودي */
+                    min-height: 100vh; 
+                    padding: 10px; 
+                    position: relative; 
+                }
+                
                 .message-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
-                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; margin-bottom: 20px; }
-                .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; }
+                
+                .player-wrapper { 
+                    width: 100%; 
+                    max-width: 900px; 
+                    aspect-ratio: 16/9; 
+                    background: #000; 
+                    position: relative; 
+                    border-radius: 8px;
+                    overflow: hidden;
+                    /* إزالة المارجن الكبير عشان التوسط يظبط */
+                    margin: 0;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                }
+                
+                .download-button-native { 
+                    width: 100%; 
+                    max-width: 900px; 
+                    padding: 15px; 
+                    background: #38bdf8; 
+                    border: none; 
+                    border-radius: 8px; 
+                    font-weight: bold; 
+                    cursor: pointer; 
+                    color: #111; 
+                    margin-top: 20px; 
+                }
+
+                /* [✅ الفوتر ثابت في الأسفل] */
+                .developer-info {
+                    position: absolute;
+                    bottom: 10px;
+                    width: 100%;
+                    text-align: center;
+                    font-size: 0.85rem;
+                    color: #777;
+                }
+                .developer-info a { color: #38bdf8; text-decoration: none; }
+                
+                .player-wrapper :global(.plyr--video) { height: 100%; }
+                .player-wrapper:fullscreen { max-width: none; width: 100%; height: 100%; }
             `}</style>
         </div>
     );
