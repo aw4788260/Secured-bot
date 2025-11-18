@@ -47,19 +47,29 @@ export default function WatchPage() {
             .then(data => {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
+                
+                // 1. ترتيب الجودات من الأعلى للأقل
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
+
+                // 2. [تعديل] حساب الجودة المتوسطة
+                // نختار الفهرس الذي يقع في منتصف المصفوفة
+                const middleIndex = Math.floor((qualities.length - 1) / 2);
+
                 const qualityList = qualities.map((q, index) => ({
-                    default: index === 0,
+                    default: index === middleIndex, // جعل الجودة المتوسطة هي الافتراضية
                     html: `${q.quality}p`,
                     url: q.url,
                 }));
+                
+                // تحديد الرابط الذي سنبدأ به
+                const startUrl = qualityList[middleIndex]?.url || qualityList[0].url;
 
                 if (!artRef.current || !window.Artplayer) return;
 
                 // --- إعداد Artplayer ---
                 const art = new window.Artplayer({
                     container: artRef.current,
-                    url: qualityList[0].url,
+                    url: startUrl, // نبدأ بالجودة المتوسطة
                     quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
@@ -83,17 +93,16 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    lock: true, // القفل مفعل لإدارة النقرات يدوياً
+                    lock: true, 
 
                     layers: [
-                        // طبقة العلامة المائية (داخل المشغل)
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
                             style: {
                                 position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
                             },
                         },
-                        // طبقة اللمس (Gesture Layer)
+                        // [تعديل] إزالة الصندوق الأوسط (center box)
                         {
                             html: `
                                 <div class="gesture-layer">
@@ -102,9 +111,6 @@ export default function WatchPage() {
                                     </div>
                                     <div class="gesture-box right">
                                         <span class="icon">&gt;&gt;10</span>
-                                    </div>
-                                    <div class="gesture-box center">
-                                        <span class="icon">⏯</span>
                                     </div>
                                 </div>
                             `,
@@ -148,7 +154,6 @@ export default function WatchPage() {
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
-                    const feedbackCenter = gestureLayer.querySelector('.gesture-box.center');
                     
                     let clickTimer = null;
                     let lastClickTime = 0;
@@ -157,7 +162,7 @@ export default function WatchPage() {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
-                        // --- [1] النقر المزدوج (Double Tap) ---
+                        // --- [1] النقر المزدوج ---
                         if (timeDiff < 300) {
                             clearTimeout(clickTimer); 
                             
@@ -172,21 +177,28 @@ export default function WatchPage() {
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } else {
+                                // [تعديل] تشغيل/إيقاف بدون إظهار أيقونة مخصصة
                                 art.toggle();
-                                showFeedback(feedbackCenter);
                             }
                         } 
-                        // --- [2] النقر المفرد (Single Tap) ---
+                        // --- [2] النقر المفرد ---
                         else {
                             clickTimer = setTimeout(() => {
-                                // [تصحيح هام]: الكلاس الصحيح هو 'art-hover' وليس 'artplayer-hover'
-                                art.template.$player.classList.toggle('art-hover');
+                                // [تعديل] إظهار/إخفاء التحكم
+                                // نستخدم الطريقة المباشرة لإضافة كلاس الظهور
+                                const playerEl = art.template.$player;
+                                if (playerEl.classList.contains('art-hover')) {
+                                    playerEl.classList.remove('art-hover');
+                                } else {
+                                    playerEl.classList.add('art-hover');
+                                }
                             }, 300);
                         }
                         lastClickTime = currentTime;
                     });
 
                     const showFeedback = (el) => {
+                        if (!el) return;
                         el.style.opacity = '1';
                         el.style.transform = 'scale(1.2)';
                         setTimeout(() => {
@@ -269,7 +281,6 @@ export default function WatchPage() {
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
                 .art-notice { display: none !important; }
-                /* إخفاء القفل تماماً */
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
                 .watermark-layer {
@@ -287,8 +298,9 @@ export default function WatchPage() {
                 }
                 .gesture-box.left { left: 15%; }
                 .gesture-box.right { right: 15%; }
-                .gesture-box.center { left: 50%; transform: translate(-50%, -50%); }
-                .gesture-box .icon { font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px; }
+                .gesture-box .icon { 
+                    font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px;
+                }
             `}</style>
         </div>
     );
