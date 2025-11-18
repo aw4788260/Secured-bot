@@ -19,6 +19,7 @@ export default function WatchPage() {
     // 1. إعداد المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
+        
         const params = new URLSearchParams(window.location.search);
         const urlUserId = params.get("userId");
         if (urlUserId) {
@@ -83,7 +84,9 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    lock: true, // مهم لإدارة النقرات يدوياً
+                    // تفعيل القفل (لتعطيل نقرات المشغل الافتراضية)
+                    // سنقوم بإخفاء أيقونته بالـ CSS بالأسفل
+                    lock: true, 
 
                     layers: [
                         // 1. طبقة العلامة المائية
@@ -98,10 +101,10 @@ export default function WatchPage() {
                             html: `
                                 <div class="gesture-layer">
                                     <div class="gesture-box left">
-                                        <span class="icon">10<<</span>
+                                        <span class="icon">10&lt;&lt;</span>
                                     </div>
                                     <div class="gesture-box right">
-                                        <span class="icon">10>></span>
+                                        <span class="icon">&gt;&gt;10</span>
                                     </div>
                                 </div>
                             `,
@@ -138,7 +141,8 @@ export default function WatchPage() {
                     },
                 });
 
-                art.notice.show = function() {}; // إخفاء الإشعارات
+                // إخفاء الإشعارات برمجياً أيضاً
+                art.notice.show = function() {}; 
 
                 art.on('ready', () => {
                     const gestureLayer = art.layers.gestures;
@@ -258,10 +262,15 @@ export default function WatchPage() {
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* إخفاء الإشعارات تماماً عبر CSS */
+                /* إخفاء الإشعارات تماماً */
                 .art-notice { display: none !important; }
-                /* إخفاء زر القفل في شريط التحكم السفلي */
-                .art-control-lock { display: none !important; }
+
+                /* إخفاء جميع أيقونات القفل في المشغل */
+                .art-control-lock, 
+                .art-layer-lock,
+                div[data-art-control="lock"] { 
+                    display: none !important; 
+                }
 
                 .watermark-layer {
                     padding: 4px 8px; background: rgba(0, 0, 0, 0.6); color: white; border-radius: 4px;
@@ -269,18 +278,22 @@ export default function WatchPage() {
                     font-size: 12px !important; text-shadow: 0 1px 2px rgba(0,0,0,0.8); opacity: 0.8;
                 }
 
-                /* ستايل تأثيرات اللمس (تم إزالة النص '10s') */
+                /* ستايل تأثيرات اللمس الجديدة */
                 .gesture-box {
                     position: absolute; top: 50%; transform: translateY(-50%);
-                    background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 50%; /* تصغير الحجم قليلاً */
-                    display: flex; flex-direction: column; align-items: center;
+                    background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 50px; /* شكل كبسولة */
+                    display: flex; align-items: center; justify-content: center;
                     opacity: 0; transition: opacity 0.2s, transform 0.2s;
                     pointer-events: none; color: white;
                 }
-                .gesture-box.left { left: 10%; }
-                .gesture-box.right { right: 10%; }
-                .gesture-box .icon { font-size: 24px; }
-                /* تم إزالة .text */
+                .gesture-box.left { left: 15%; }
+                .gesture-box.right { right: 15%; }
+                .gesture-box .icon { 
+                    font-size: 18px; 
+                    font-weight: bold; 
+                    font-family: monospace;
+                    letter-spacing: -1px;
+                }
             `}</style>
         </div>
     );
