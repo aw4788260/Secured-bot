@@ -8,58 +8,72 @@ export default function WatchPage() {
     const { videoId } = router.query;
     
     const [originalUrl, setOriginalUrl] = useState(null);
-    const [logs, setLogs] = useState([]);
-    const [useProxy, setUseProxy] = useState(false); // حالة التبديل بين البروكسي والمباشر
+    const [useProxy, setUseProxy] = useState(false); 
+    const [statusMessage, setStatusMessage] = useState("Waiting for action..."); // رسالة بسيطة للمستخدم
+    
     const videoRef = useRef(null);
     const hlsRef = useRef(null);
 
-    // دالة اللوج
-    const addLog = (msg, type = 'info') => {
-        const time = new Date().toLocaleTimeString().split(' ')[0];
-        setLogs(prev => [`[${time}] [${type.toUpperCase()}] ${msg}`, ...prev].slice(0, 50));
+    // ---------------------------------------------------------
+    // دالة الإرسال إلى Vercel Logs
+    // ---------------------------------------------------------
+    const logToVercel = (message, type = 'info', details = null) => {
+        // تحديث الرسالة الظاهرة للمستخدم فقط
+        setStatusMessage(message);
+
+        // إرسال التفاصيل الكاملة للسيرفر
+        try {
+            fetch('/api/debug-log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, type, details })
+            });
+        } catch (e) {
+            console.error("Failed to send log", e);
+        }
     };
 
-    // 1. جلب الرابط الأصلي فقط
+    // 1. جلب تفاصيل الفيديو
     useEffect(() => {
         if (videoId) {
-            addLog(`Fetching details for ID: ${videoId}`, 'info');
+            logToVercel(`Page Loaded. Fetching ID: ${videoId}`, 'info');
+            
             fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.streamUrl) {
-                        const url = data.streamUrl.trim();
-                        setOriginalUrl(url);
-                        addLog(`Original URL found.`, 'success');
+                        setOriginalUrl(data.streamUrl.trim());
+                        logToVercel(`API Success. URL found.`, 'info');
                     } else {
-                        addLog('Stream URL is empty!', 'error');
+                        logToVercel(`API Error. Stream URL empty.`, 'error', data);
                     }
                 })
-                .catch(err => addLog(`API Error: ${err.message}`, 'error'));
+                .catch(err => logToVercel(`API Fetch Error: ${err.message}`, 'error'));
         }
     }, [videoId]);
 
-    // 2. دالة تشغيل HLS
+    // 2. تشغيل المشغل
     const initPlayer = () => {
         if (!originalUrl || !videoRef.current || !window.Hls) return;
 
-        // تدمير النسخة السابقة
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
         }
 
-        // تحديد الرابط بناءً على الوضع المختار
+        // تحديد الرابط
         let playUrl = originalUrl;
+        const mode = useProxy ? "PROXY" : "DIRECT";
+        
         if (useProxy) {
             playUrl = `/api/proxy-m3u8?url=${encodeURIComponent(originalUrl)}`;
-            addLog(`🔄 Mode: PROXY. Connecting to local API...`, 'warning');
-        } else {
-            addLog(`DIRECT Mode. Connecting to Google directly...`, 'warning');
         }
+
+        logToVercel(`Starting Player. Mode: ${mode}`, 'info', { playUrl });
 
         if (window.Hls.isSupported()) {
             const hls = new window.Hls({
-                debug: false,
+                debug: false, // نغلق الديباج الداخلي عشان منزحمش اللوج
                 enableWorker: true,
                 xhrSetup: function (xhr, url) {
                     xhr.withCredentials = false;
@@ -69,36 +83,41 @@ export default function WatchPage() {
             hls.loadSource(playUrl);
             hls.attachMedia(videoRef.current);
 
+            // ---- الأحداث ----
+
             hls.on(window.Hls.Events.MANIFEST_LOADED, () => {
-                addLog(`✅ MANIFEST_LOADED. Connection successful!`, 'success');
+                logToVercel(`✅ MANIFEST_LOADED (${mode}) - Connection Successful`, 'success');
             });
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, (event, data) => {
-                addLog(`✅ PARSED. Found ${data.levels.length} qualities. Starting playback...`, 'success');
-                videoRef.current.play().catch(e => addLog(`Autoplay blocked: ${e.message}`, 'error'));
+                logToVercel(`✅ MANIFEST_PARSED. Levels: ${data.levels.length}`, 'success');
+                videoRef.current.play().catch(e => logToVercel(`Autoplay prevented: ${e.message}`, 'warn'));
             });
 
-            hls.on(window.Hls.Events.FRAG_LOADED, (event, data) => {
-                // هذه الرسالة تعني أن الفيديو يعمل فعلياً
-               // addLog(`📦 Chunk Loaded (${data.stats.loaded} bytes)`, 'success');
-            });
+            // لن نرسل هذا الحدث للسيرفر لتوفير الموارد إلا لو أردت التأكد
+             hls.on(window.Hls.Events.FRAG_LOADED, (event, data) => {
+                 // logToVercel(`Fragment Loaded (SN: ${data.frag.sn})`, 'info');
+             });
 
             hls.on(window.Hls.Events.ERROR, (event, data) => {
+                // نرسل الأخطاء فقط
                 if (data.fatal) {
-                    addLog(`❌ FATAL ERROR: ${data.type}`, 'error');
-                    if (data.response && data.response.code) {
-                        addLog(`❌ HTTP Code: ${data.response.code}`, 'error');
-                    }
-                    
+                    logToVercel(`❌ FATAL ERROR (${mode}): ${data.type}`, 'error', {
+                        details: data.details,
+                        responseCode: data.response?.code
+                    });
+
                     switch (data.type) {
                         case window.Hls.ErrorTypes.NETWORK_ERROR:
-                            addLog(`Network blocked. Try switching mode.`, 'error');
                             hls.destroy();
                             break;
                         default:
                             hls.destroy();
                             break;
                     }
+                } else {
+                     // الأخطاء غير القاتلة (Non-fatal)
+                     // logToVercel(`⚠️ Non-fatal error: ${data.details}`, 'warn');
                 }
             });
 
@@ -106,38 +125,43 @@ export default function WatchPage() {
         }
     };
 
-    // إعادة التشغيل عند تغيير الوضع أو الرابط
+    // إعادة التشغيل عند تغيير الزر
     useEffect(() => {
         if (originalUrl) {
-            initPlayer();
+            // تأخير بسيط للتأكد من جاهزية الحالة
+            setTimeout(initPlayer, 500);
         }
-    }, [originalUrl, useProxy]);
+    }, [useProxy, originalUrl]);
 
     return (
-        <div style={{ background: '#111', minHeight: '100vh', color: '#fff', padding: '10px', fontFamily: 'monospace' }}>
+        <div style={{ background: '#111', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Head>
-                <title>Super Debugger</title>
+                <title>Remote Debugger</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <meta name="referrer" content="no-referrer" />
             </Head>
 
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
-                onLoad={() => {
-                    addLog('HLS Library Loaded', 'success');
-                    if(originalUrl) initPlayer();
-                }}
-            />
+            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" />
 
-            <h3 style={{textAlign: 'center', color: '#38bdf8'}}>Super Debugger</h3>
+            <h3>Remote Logger Active</h3>
+            <p style={{color: '#888', fontSize: '12px'}}>Logs are being sent to Vercel Dashboard</p>
             
+            {/* حالة النظام الحالية تظهر للمستخدم */}
+            <div style={{
+                padding: '10px', background: '#222', borderRadius: '5px', 
+                marginBottom: '20px', width: '100%', maxWidth: '600px', textAlign: 'center',
+                border: '1px solid #444', color: '#38bdf8'
+            }}>
+                STATUS: {statusMessage}
+            </div>
+
             {/* أزرار التحكم */}
-            <div style={{display: 'flex', gap: '10px', marginBottom: '10px', justifyContent: 'center'}}>
+            <div style={{display: 'flex', gap: '15px', marginBottom: '20px', width: '100%', maxWidth: '600px'}}>
                 <button 
                     onClick={() => setUseProxy(false)}
                     style={{
-                        padding: '10px', background: useProxy ? '#333' : '#ff4444', 
-                        color: 'white', border: 'none', borderRadius: '5px', flex: 1
+                        padding: '15px', background: !useProxy ? '#ff4444' : '#333', 
+                        color: 'white', border: 'none', borderRadius: '8px', flex: 1, fontWeight: 'bold'
                     }}
                 >
                     1. Test Direct
@@ -145,34 +169,16 @@ export default function WatchPage() {
                 <button 
                     onClick={() => setUseProxy(true)}
                     style={{
-                        padding: '10px', background: useProxy ? '#00C851' : '#333', 
-                        color: 'white', border: 'none', borderRadius: '5px', flex: 1
+                        padding: '15px', background: useProxy ? '#00C851' : '#333', 
+                        color: 'white', border: 'none', borderRadius: '8px', flex: 1, fontWeight: 'bold'
                     }}
                 >
                     2. Test Proxy
                 </button>
             </div>
 
-            <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', marginBottom: '10px' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '600px', aspectRatio: '16/9', background: '#000', borderRadius: '10px', overflow: 'hidden' }}>
                 <video ref={videoRef} controls playsInline muted style={{ width: '100%', height: '100%' }} />
-            </div>
-
-            {/* شاشة اللوج */}
-            <div style={{ 
-                background: '#000', border: '1px solid #333', height: '300px', 
-                overflowY: 'scroll', padding: '10px', fontSize: '11px', lineHeight: '1.5' 
-            }}>
-                <div style={{borderBottom: '1px solid #555', paddingBottom: '5px', marginBottom: '5px', color: '#aaa'}}>
-                    LOGS (Newest First):
-                </div>
-                {logs.map((log, i) => (
-                    <div key={i} style={{ 
-                        color: log.includes('ERROR') ? '#ff4444' : (log.includes('SUCCESS') ? '#00C851' : (log.includes('WARNING') ? '#ffbb33' : '#ccc')),
-                        borderBottom: '1px solid #222' 
-                    }}>
-                        {log}
-                    </div>
-                ))}
             </div>
         </div>
     );
