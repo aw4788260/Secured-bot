@@ -254,23 +254,30 @@ export default function WatchPage() {
             // نتأكد أن البيانات موجودة
             if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
                 try {
-                    // نستخدم youtube_video_id أو youtubeId حسب ما يرجع من الـ API
+                    // 1. تجهيز البيانات
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
-                    // ✅✅✅ نرسل 3 متغيرات: الآيدي، العنوان، ورابط السيرفر
-                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL);
+                    // 2. ✅✅ جلب المدة من المشغل الأونلاين (بالثواني)
+                    // نتأكد أن المشغل موجود، وإلا نرسل "0"
+                    let duration = "0";
+                    if (playerInstance.current && playerInstance.current.duration) {
+                        duration = playerInstance.current.duration.toString(); // تحويل لنص (مثلاً "350.5")
+                    }
+
+                    // 3. ✅✅ إرسال 4 متغيرات (تمت إضافة duration كمتغير رابع)
+                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
+                    
                 } catch (e) {
                     alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
                 }
             } else {
                 alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
             }
-            } else {
+        } else {
             alert("التحميل متاح من داخل التطبيق فقط.");
         }
-    };
-            
+    };  
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
