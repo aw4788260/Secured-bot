@@ -6,7 +6,8 @@ import Script from 'next/script';
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
-    
+
+    const [videoDuration, setVideoDuration] = useState(0);
     const [videoData, setVideoData] = useState(null);
     const RAILWAY_PROXY_URL = "https://web-production-3a04a.up.railway.app";
     const [user, setUser] = useState(null);
@@ -48,6 +49,9 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
+                if (data.duration) {
+                    setVideoDuration(data.duration); 
+                }
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
@@ -259,7 +263,7 @@ export default function WatchPage() {
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
                     // ✅✅✅ نرسل 3 متغيرات: الآيدي، العنوان، ورابط السيرفر
-                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL);
+                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, String(videoDuration));
                 } catch (e) {
                     alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
                 }
