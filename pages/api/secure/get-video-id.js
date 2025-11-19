@@ -24,14 +24,27 @@ export default async (req, res) => {
 
             // 2. طلب قائمة الجودات من سيرفر Flask
             const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`; 
-            console.log(`[Debug] Requesting HLS for ${youtubeId} from proxy...`);
+            
+            // (تم حذف اللوج القديم لتقليل الزحمة، سنكتفي باللوج الجديد)
             
             const proxyResponse = await axios.get(hls_endpoint, { params: { youtubeId } });
             
-            // 3. [التعديل الهام] ندمج البيانات من Flask (والتي تحتوي على availableQualities و videoTitle)
-            // ونضيف عليها youtube_video_id
             const flaskData = proxyResponse.data;
 
+            // ✅✅✅ [ التعديل الجديد: طباعة المدة في Vercel Logs ] ✅✅✅
+            // ابحث عن هذه الرسالة في تبويب Logs في Vercel Dashboard
+            if (flaskData.duration) {
+                console.log(`--------------------------------------------------`);
+                console.log(`🔍 [DEBUG] Video ID: ${youtubeId}`);
+                console.log(`⏱️ [DEBUG] Duration Value: ${flaskData.duration}`);
+                console.log(`TYPE [DEBUG] Duration Type: ${typeof flaskData.duration}`);
+                console.log(`--------------------------------------------------`);
+            } else {
+                console.log(`⚠️ [DEBUG] No duration returned for ${youtubeId}`);
+            }
+            // -------------------------------------------------------
+
+            // 3. دمج البيانات وإرسال الرد
             res.status(200).json({ 
                 ...flaskData, 
                 youtube_video_id: youtubeId 
@@ -39,7 +52,6 @@ export default async (req, res) => {
 
         } catch (err) {
             console.error("Server fetch failed:", err.message);
-            // إذا فشل Axios، قد يكون الرد غير JSON، نرسل خطأ 500 للمشاهد
             res.status(500).json({ message: "Failed to fetch video details from Python Proxy." });
         }
     } else {
