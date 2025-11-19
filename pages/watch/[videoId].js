@@ -248,7 +248,22 @@ export default function WatchPage() {
     }, [videoId, libsLoaded]); 
 
     const handleDownloadClick = () => {
-        if (isNativeAndroid) alert("التحميل متاح من داخل التطبيق فقط");
+        // التحقق من وجود كائن الأندرويد
+        if (window.Android && window.Android.downloadVideo) {
+            if (videoData && videoData.youtubeId) {
+                try {
+                    // استدعاء الدالة في تطبيق الأندرويد
+                    window.Android.downloadVideo(videoData.youtubeId, videoData.title);
+                } catch (e) {
+                    alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
+                }
+            } else {
+                alert("بيانات الفيديو غير مكتملة للتحميل.");
+            }
+        } else {
+            // رسالة تظهر فقط إذا لم يكن التطبيق مفتوحاً
+            alert("التحميل متاح من داخل التطبيق فقط (window.Android not found).");
+        }
     };
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
@@ -270,6 +285,7 @@ export default function WatchPage() {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
 
+            {/* نظهر الزر فقط إذا اكتشفنا بيئة الأندرويد */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -279,6 +295,7 @@ export default function WatchPage() {
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
             </footer>
+    
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
