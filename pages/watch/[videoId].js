@@ -7,9 +7,12 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
 
-    const [videoDuration, setVideoDuration] = useState(0);
+    // ✅ تهيئة المدة بـ "0" كنص
+    const [videoDuration, setVideoDuration] = useState("0");
     const [videoData, setVideoData] = useState(null);
+    
     const RAILWAY_PROXY_URL = "https://web-production-3a04a.up.railway.app";
+    
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
@@ -49,9 +52,9 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
-                if (data.duration) {
-                    setVideoDuration(data.duration); 
-                }
+                
+                // (لم نعد نعتمد على data.duration هنا لأن البروكسي لا يرسلها لملفات m3u8)
+
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
@@ -78,7 +81,7 @@ export default function WatchPage() {
                     quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
-                    isLive: false,
+                    isLive: false, // ✅ مهم جداً لحساب الوقت
                     muted: false,
                     autoplay: false,
                     autoSize: true,
@@ -97,8 +100,6 @@ export default function WatchPage() {
                     playsInline: true,
                     theme: '#38bdf8',
                     lang: 'ar',
-                    
-                    // تم إزالة lock: true للسماح بالتفاعل الطبيعي عند التمرير
                     
                     layers: [
                         {
@@ -154,8 +155,24 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // --- برمجة اللمسات (Gestures Logic) ---
+                // --- برمجة اللمسات واستخراج المدة ---
                 art.on('ready', () => {
+                    // ✅✅✅ [تعديل هام] استخراج المدة من المشغل وتحديث الـ State
+                    const updateDuration = () => {
+                        if (art.duration && art.duration > 0 && art.duration !== Infinity) {
+                            console.log("⏱️ Duration detected:", art.duration);
+                            setVideoDuration(String(art.duration));
+                        }
+                    };
+                    
+                    // محاولة فورية
+                    updateDuration();
+                    
+                    // استماع لتغير المدة (لأن HLS قد يتأخر قليلاً في جلب الميتاداتا)
+                    art.on('video:durationchange', updateDuration);
+                    art.on('video:loadedmetadata', updateDuration);
+
+                    // --- منطق اللمسات (Gestures) ---
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
@@ -167,10 +184,9 @@ export default function WatchPage() {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
-                        // --- سيناريو النقر المزدوج (Double Tap) ---
+                        // النقر المزدوج
                         if (timeDiff < 300) {
                             clearTimeout(clickTimer); 
-                            
                             const rect = gestureLayer.getBoundingClientRect();
                             const x = e.clientX - rect.left; 
                             const width = rect.width;
@@ -182,31 +198,18 @@ export default function WatchPage() {
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } 
-                            // تم إزالة خيار الوسط (التشغيل/الإيقاف) لتجنب التعارض
                         } 
-                        // --- سيناريو النقر المفرد (Single Tap) ---
+                        // النقر المفرد
                         else {
                             clickTimer = setTimeout(() => {
-                                // [الحل السحري]: تمرير النقرة للمشغل الأصلي
-                                // 1. نخفي طبقة اللمس مؤقتاً
                                 gestureLayer.style.display = 'none';
-                                
-                                // 2. نحدد العنصر الموجود تحت نقطة النقر (واجهة المشغل)
                                 const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                
-                                // 3. نرسل له نقرة حقيقية
                                 if (elementBelow) {
                                     const event = new MouseEvent('click', {
-                                        view: window,
-                                        bubbles: true,
-                                        cancelable: true,
-                                        clientX: e.clientX,
-                                        clientY: e.clientY
+                                        view: window, bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY
                                     });
                                     elementBelow.dispatchEvent(event);
                                 }
-                                
-                                // 4. نعيد إظهار طبقة اللمس
                                 gestureLayer.style.display = 'block';
                             }, 300);
                         }
@@ -253,28 +256,27 @@ export default function WatchPage() {
         };
     }, [videoId, libsLoaded]); 
 
+    // ✅ دالة التحميل المحدثة
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
-            // نتأكد أن البيانات موجودة
             if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
                 try {
-                    // نستخدم youtube_video_id أو youtubeId حسب ما يرجع من الـ API
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
-                    // ✅✅✅ نرسل 3 متغيرات: الآيدي، العنوان، ورابط السيرفر
+                    // ✅✅✅ إرسال المدة (videoDuration) كمتغير رابع
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, String(videoDuration));
+                    
                 } catch (e) {
                     alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
                 }
             } else {
                 alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
             }
-            } else {
+        } else {
             alert("التحميل متاح من داخل التطبيق فقط.");
         }
     };
-            
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
@@ -295,7 +297,6 @@ export default function WatchPage() {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
 
-            {/* نظهر الزر فقط إذا اكتشفنا بيئة الأندرويد */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -305,7 +306,6 @@ export default function WatchPage() {
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
             </footer>
-    
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
