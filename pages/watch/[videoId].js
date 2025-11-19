@@ -7,8 +7,8 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
 
-    // ✅ تهيئة المدة بـ "0" كنص
-    const [videoDuration, setVideoDuration] = useState("0");
+    // ✅✅ 1. جعلناها رقماً (Number) لضمان الدقة العشرية
+    const [videoDuration, setVideoDuration] = useState(0);
     const [videoData, setVideoData] = useState(null);
     
     const RAILWAY_PROXY_URL = "https://web-production-3a04a.up.railway.app";
@@ -53,15 +53,12 @@ export default function WatchPage() {
             .then(data => {
                 setVideoData(data);
                 
-                // (لم نعد نعتمد على data.duration هنا لأن البروكسي لا يرسلها لملفات m3u8)
+                // (ملاحظة: المدة لا تأتي من البروكسي لـ m3u8، سنأخذها من المشغل)
 
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // 1. ترتيب الجودات (الأعلى أولاً)
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
-
-                // 2. اختيار الجودة المتوسطة لتكون الافتراضية
                 const middleIndex = Math.floor((qualities.length - 1) / 2);
 
                 const qualityList = qualities.map((q, index) => ({
@@ -81,7 +78,7 @@ export default function WatchPage() {
                     quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
-                    isLive: false, // ✅ مهم جداً لحساب الوقت
+                    isLive: false, // ضروري لحساب الوقت
                     muted: false,
                     autoplay: false,
                     autoSize: true,
@@ -104,27 +101,18 @@ export default function WatchPage() {
                     layers: [
                         {
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
-                            style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
-                            },
+                            style: { position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20 },
                         },
                         {
                             // طبقة اللمس
                             html: `
                                 <div class="gesture-layer">
-                                    <div class="gesture-box left">
-                                        <span class="icon">10&lt;&lt;</span>
-                                    </div>
-                                    <div class="gesture-box right">
-                                        <span class="icon">&gt;&gt;10</span>
-                                    </div>
+                                    <div class="gesture-box left"><span class="icon">10&lt;&lt;</span></div>
+                                    <div class="gesture-box right"><span class="icon">&gt;&gt;10</span></div>
                                 </div>
                             `,
                             name: 'gestures',
-                            style: {
-                                position: 'absolute', top: 0, left: 0, width: '100%', height: '85%', 
-                                zIndex: 10,
-                            },
+                            style: { position: 'absolute', top: 0, left: 0, width: '100%', height: '85%', zIndex: 10 },
                         }
                     ],
                     
@@ -138,13 +126,6 @@ export default function WatchPage() {
                                 });
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
-                                hls.on(window.Hls.Events.ERROR, (event, data) => {
-                                    if (data.fatal) {
-                                        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                                            hls.destroy(); video.src = url;
-                                        } else { hls.destroy(); }
-                                    }
-                                });
                                 art.hls = hls;
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
@@ -155,93 +136,58 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // --- برمجة اللمسات واستخراج المدة ---
+                // ✅✅✅ استخراج المدة كرقم عشري (Float)
                 art.on('ready', () => {
-                    // ✅✅✅ [تعديل هام] استخراج المدة من المشغل وتحديث الـ State
                     const updateDuration = () => {
+                        // art.duration هنا تعود كرقم عشري (مثل 120.543)
                         if (art.duration && art.duration > 0 && art.duration !== Infinity) {
-                            console.log("⏱️ Duration detected:", art.duration);
-                            setVideoDuration(String(art.duration));
+                            console.log("⏱️ Duration Float:", art.duration); // تأكد من هنا في الكونسول
+                            setVideoDuration(art.duration); // تخزين الرقم كما هو
                         }
                     };
                     
-                    // محاولة فورية
                     updateDuration();
-                    
-                    // استماع لتغير المدة (لأن HLS قد يتأخر قليلاً في جلب الميتاداتا)
                     art.on('video:durationchange', updateDuration);
                     art.on('video:loadedmetadata', updateDuration);
 
-                    // --- منطق اللمسات (Gestures) ---
+                    // (كود اللمسات والعلامة المائية - كما هو)
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
-                    
                     let clickTimer = null;
                     let lastClickTime = 0;
 
                     gestureLayer.addEventListener('click', (e) => {
                         const currentTime = new Date().getTime();
-                        const timeDiff = currentTime - lastClickTime;
-                        
-                        // النقر المزدوج
-                        if (timeDiff < 300) {
+                        if (currentTime - lastClickTime < 300) {
                             clearTimeout(clickTimer); 
                             const rect = gestureLayer.getBoundingClientRect();
                             const x = e.clientX - rect.left; 
-                            const width = rect.width;
-
-                            if (x < width * 0.35) {
-                                art.backward = 10;
-                                showFeedback(feedbackLeft);
-                            } else if (x > width * 0.65) {
-                                art.forward = 10;
-                                showFeedback(feedbackRight);
-                            } 
-                        } 
-                        // النقر المفرد
-                        else {
+                            if (x < rect.width * 0.35) { art.backward = 10; showFeedback(feedbackLeft); } 
+                            else if (x > rect.width * 0.65) { art.forward = 10; showFeedback(feedbackRight); } 
+                        } else {
                             clickTimer = setTimeout(() => {
                                 gestureLayer.style.display = 'none';
-                                const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                if (elementBelow) {
-                                    const event = new MouseEvent('click', {
-                                        view: window, bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY
-                                    });
-                                    elementBelow.dispatchEvent(event);
-                                }
+                                const el = document.elementFromPoint(e.clientX, e.clientY);
+                                if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: e.clientX, clientY: e.clientY }));
                                 gestureLayer.style.display = 'block';
                             }, 300);
                         }
                         lastClickTime = currentTime;
                     });
 
-                    const showFeedback = (el) => {
-                        if (!el) return;
-                        el.style.opacity = '1';
-                        el.style.transform = 'scale(1.2)';
-                        setTimeout(() => {
-                            el.style.opacity = '0';
-                            el.style.transform = 'scale(1)';
-                        }, 500);
-                    };
+                    const showFeedback = (el) => { if (!el) return; el.style.opacity = '1'; el.style.transform = 'scale(1.2)'; setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'scale(1)'; }, 500); };
                 });
 
                 const moveWatermark = () => {
                     const layer = art.template.$player.querySelector('.watermark-layer');
                     if (layer) {
-                        const newTop = Math.floor(Math.random() * 80) + 10;
-                        const newLeft = Math.floor(Math.random() * 80) + 10;
-                        layer.style.top = `${newTop}%`;
-                        layer.style.left = `${newLeft}%`;
+                        layer.style.top = `${Math.floor(Math.random() * 80) + 10}%`;
+                        layer.style.left = `${Math.floor(Math.random() * 80) + 10}%`;
                     }
                 };
-                const watermarkInterval = setInterval(moveWatermark, 5000);
-
-                art.on('destroy', () => {
-                    if (art.hls) art.hls.destroy();
-                    clearInterval(watermarkInterval);
-                });
+                const interval = setInterval(moveWatermark, 5000);
+                art.on('destroy', () => { if (art.hls) art.hls.destroy(); clearInterval(interval); });
 
                 playerInstance.current = art;
                 setLoading(false);
@@ -251,12 +197,10 @@ export default function WatchPage() {
                 setLoading(false);
             });
 
-        return () => {
-            if (playerInstance.current) playerInstance.current.destroy(false);
-        };
+        return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
     }, [videoId, libsLoaded]); 
 
-    // ✅ دالة التحميل المحدثة
+    // ✅ دالة التحميل
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
             if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
@@ -264,17 +208,20 @@ export default function WatchPage() {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
-                    // ✅✅✅ إرسال المدة (videoDuration) كمتغير رابع
-                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, String(videoDuration));
+                    // ✅✅✅ التحويل لنص هنا يحفظ الكسور العشرية (String(120.5) -> "120.5")
+                    const durationStr = String(videoDuration);
                     
+                    console.log("📤 Sending Duration to Android:", durationStr); // للتحقق
+                    
+                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, durationStr);
                 } catch (e) {
-                    alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
+                    alert("حدث خطأ: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
+                alert("جاري تحميل البيانات...");
             }
         } else {
-            alert("التحميل متاح من داخل التطبيق فقط.");
+            alert("التحميل متاح فقط من داخل التطبيق.");
         }
     };
 
@@ -285,7 +232,6 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <meta name="referrer" content="no-referrer" />
             </Head>
 
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
@@ -303,10 +249,8 @@ export default function WatchPage() {
                 </button>
             )}
 
-            <footer className="developer-info">
-                <p>برمجة وتطوير: A7MeD WaLiD</p>
-            </footer>
-
+            <footer className="developer-info"><p>برمجة وتطوير: A7MeD WaLiD</p></footer>
+            
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
@@ -316,28 +260,9 @@ export default function WatchPage() {
                 .artplayer-app { width: 100%; height: 100%; }
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
-
-                .art-notice { display: none !important; }
-                .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
-
-                .watermark-layer {
-                    padding: 4px 8px; background: rgba(0, 0, 0, 0.6); color: white; border-radius: 4px;
-                    font-weight: bold; white-space: nowrap; transition: top 2s ease-in-out, left 2s ease-in-out;
-                    font-size: 12px !important; text-shadow: 0 1px 2px rgba(0,0,0,0.8); opacity: 0.8;
-                }
-
-                .gesture-box {
-                    position: absolute; top: 50%; transform: translateY(-50%);
-                    background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 50px;
-                    display: flex; align-items: center; justify-content: center;
-                    opacity: 0; transition: opacity 0.2s, transform 0.2s;
-                    pointer-events: none; color: white;
-                }
-                .gesture-box.left { left: 15%; }
-                .gesture-box.right { right: 15%; }
-                .gesture-box .icon { 
-                    font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px;
-                }
+                .watermark-layer { padding: 4px 8px; background: rgba(0,0,0,0.6); color: white; border-radius: 4px; font-weight: bold; font-size: 12px; transition: top 2s, left 2s; }
+                .gesture-box { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 50px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; color: white; }
+                .gesture-box.left { left: 15%; } .gesture-box.right { right: 15%; } .gesture-box .icon { font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px; }
             `}</style>
         </div>
     );
