@@ -1,4 +1,3 @@
-
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
@@ -8,6 +7,8 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
+    const [videoData, setVideoData] = useState(null);
+    const RAILWAY_PROXY_URL = "https://web-production-3a04a.up.railway.app";
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
@@ -46,6 +47,7 @@ export default function WatchPage() {
         fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
+                setVideoData(data);
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
@@ -248,23 +250,27 @@ export default function WatchPage() {
     }, [videoId, libsLoaded]); 
 
     const handleDownloadClick = () => {
-        // التحقق من وجود كائن الأندرويد
         if (window.Android && window.Android.downloadVideo) {
-            if (videoData && videoData.youtubeId) {
+            // نتأكد أن البيانات موجودة
+            if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
                 try {
-                    // استدعاء الدالة في تطبيق الأندرويد
-                    window.Android.downloadVideo(videoData.youtubeId, videoData.title);
+                    // نستخدم youtube_video_id أو youtubeId حسب ما يرجع من الـ API
+                    const yId = videoData.youtube_video_id || videoData.youtubeId;
+                    const vTitle = videoData.videoTitle || videoData.title || "Video";
+                    
+                    // ✅✅✅ نرسل 3 متغيرات: الآيدي، العنوان، ورابط السيرفر
+                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL);
                 } catch (e) {
                     alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو غير مكتملة للتحميل.");
+                alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
             }
-        } else {
-            // رسالة تظهر فقط إذا لم يكن التطبيق مفتوحاً
-            alert("التحميل متاح من داخل التطبيق فقط (window.Android not found).");
+            } else {
+            alert("التحميل متاح من داخل التطبيق فقط.");
         }
     };
+            
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
