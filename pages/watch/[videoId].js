@@ -7,10 +7,10 @@ export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
 
-    // ✅✅ 1. جعلناها رقماً (Number) لضمان الدقة العشرية
+    // ✅✅ 1. تهيئة المتغير كرقم (Number) للحفاظ على الدقة
     const [videoDuration, setVideoDuration] = useState(0);
-    const [videoData, setVideoData] = useState(null);
     
+    const [videoData, setVideoData] = useState(null);
     const RAILWAY_PROXY_URL = "https://web-production-3a04a.up.railway.app";
     
     const [user, setUser] = useState(null);
@@ -53,8 +53,6 @@ export default function WatchPage() {
             .then(data => {
                 setVideoData(data);
                 
-                // (ملاحظة: المدة لا تأتي من البروكسي لـ m3u8، سنأخذها من المشغل)
-
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
@@ -78,7 +76,7 @@ export default function WatchPage() {
                     quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
-                    isLive: false, // ضروري لحساب الوقت
+                    isLive: false, // ✅ ضروري لحساب الوقت
                     muted: false,
                     autoplay: false,
                     autoSize: true,
@@ -136,13 +134,13 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // ✅✅✅ استخراج المدة كرقم عشري (Float)
+                // ✅✅✅ 2. استخراج وتحديث المدة من المشغل
                 art.on('ready', () => {
                     const updateDuration = () => {
-                        // art.duration هنا تعود كرقم عشري (مثل 120.543)
+                        // art.duration تعود كرقم (Number) دقيق
                         if (art.duration && art.duration > 0 && art.duration !== Infinity) {
-                            console.log("⏱️ Duration Float:", art.duration); // تأكد من هنا في الكونسول
-                            setVideoDuration(art.duration); // تخزين الرقم كما هو
+                            console.log("⏱️ Duration detected (Float):", art.duration);
+                            setVideoDuration(art.duration); 
                         }
                     };
                     
@@ -150,7 +148,7 @@ export default function WatchPage() {
                     art.on('video:durationchange', updateDuration);
                     art.on('video:loadedmetadata', updateDuration);
 
-                    // (كود اللمسات والعلامة المائية - كما هو)
+                    // (كود اللمسات - كما هو)
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
@@ -182,8 +180,10 @@ export default function WatchPage() {
                 const moveWatermark = () => {
                     const layer = art.template.$player.querySelector('.watermark-layer');
                     if (layer) {
-                        layer.style.top = `${Math.floor(Math.random() * 80) + 10}%`;
-                        layer.style.left = `${Math.floor(Math.random() * 80) + 10}%`;
+                        const newTop = Math.floor(Math.random() * 80) + 10;
+                        const newLeft = Math.floor(Math.random() * 80) + 10;
+                        layer.style.top = `${newTop}%`;
+                        layer.style.left = `${newLeft}%`;
                     }
                 };
                 const interval = setInterval(moveWatermark, 5000);
@@ -208,17 +208,16 @@ export default function WatchPage() {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
-                    // ✅✅✅ التحويل لنص هنا يحفظ الكسور العشرية (String(120.5) -> "120.5")
+                    // ✅✅✅ 3. تحويل الرقم لنص (String) هنا فقط عند الإرسال
+                    // (هذا يضمن إرسال "120.5" بدقة وليس 120)
                     const durationStr = String(videoDuration);
-                    
-                    console.log("📤 Sending Duration to Android:", durationStr); // للتحقق
                     
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, durationStr);
                 } catch (e) {
                     alert("حدث خطأ: " + e.message);
                 }
             } else {
-                alert("جاري تحميل البيانات...");
+                alert("جاري تحميل البيانات، انتظر قليلاً...");
             }
         } else {
             alert("التحميل متاح فقط من داخل التطبيق.");
