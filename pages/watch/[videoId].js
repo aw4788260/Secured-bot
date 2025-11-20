@@ -1,3 +1,4 @@
+.js]
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
@@ -18,7 +19,7 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // دالة لتوحيد أرقام الجودة
+    // دالة تقريب الجودة للأرقام القياسية
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -74,7 +75,7 @@ export default function WatchPage() {
 
                 const qualityList = qualities.map((q, index) => ({
                     default: index === middleIndex,
-                    html: normalizeQuality(q.quality),
+                    html: normalizeQuality(q.quality), 
                     url: q.url,
                 }));
                 
@@ -113,13 +114,10 @@ export default function WatchPage() {
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', 
-                                top: '10%', 
-                                left: '10%', 
-                                pointerEvents: 'none', 
-                                zIndex: 25,
-                                // ✅✅ الإصلاح: وضع الترانزيشن هنا (على الحاوية التي تتحرك)
-                                transition: 'top 5s linear, left 5s linear'
+                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
+                                // ✅ التعديل 1: تسريع الحركة (1.5 ثانية)
+                                // استخدام ease-in-out لجعل الحركة ناعمة عند البدء والتوقف
+                                transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                             },
                         },
                         {
@@ -169,22 +167,24 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // --- 1. تحريك العلامة المائية ---
+                    // --- تحريك العلامة المائية ---
                     const watermarkLayer = art.layers.watermark;
                     
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
 
-                        // الكشف عن الوضع (تليجرام + عمودي)
                         const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
                         const isPortrait = window.innerHeight > window.innerWidth;
                         
+                        // الحدود الافتراضية (أفقي / متصفح عادي)
                         let minTop = 5, maxTop = 80; 
 
-                        // تقييد الحركة في المنتصف إذا كان تليجرام وعمودي
+                        // ✅ التعديل 2: تقييد الحركة لنسبة 16:7 في الوضع العمودي
+                        // 16:7 فيديو "قصير" ارتفاعاً، لذا يجب تضييق الحدود الرأسية جداً
                         if (isTelegram && isPortrait) {
-                             minTop = 30;
-                             maxTop = 60;
+                             // نحصرها بين 35% و 55% فقط (شريط ضيق في المنتصف)
+                             minTop = 38;
+                             maxTop = 58;
                         }
 
                         const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
@@ -195,9 +195,13 @@ export default function WatchPage() {
                     };
                     
                     moveWatermark();
-                    const watermarkInterval = setInterval(moveWatermark, 5000);
+                    
+                    // ✅ التعديل 3: المؤقت 4 ثواني
+                    // (1.5 ثانية حركة + 2.5 ثانية ثبات = 4 ثواني)
+                    const watermarkInterval = setInterval(moveWatermark, 4000);
 
-                    // --- 2. اللمس المقسوم ---
+
+                    // --- اللمس المقسوم ---
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const leftZone = wrapper.querySelector('.gesture-zone.left');
                     const rightZone = wrapper.querySelector('.gesture-zone.right');
@@ -339,10 +343,9 @@ export default function WatchPage() {
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    /* (أزلنا الترانزيشن من هنا لأنه مطبق على الحاوية أعلاه) */
+                    /* تم التعديل في الجافاسكريبت مباشرة (style) لضمان العمل */
                 }
 
-                /* اللمس المقسوم */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
                     display: flex; justify-content: space-between;
