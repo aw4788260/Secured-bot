@@ -114,27 +114,27 @@ export default function WatchPage() {
                             },
                         },
                         {
-                            name: 'gestures',
-                            html: `
-                                <div class="gesture-wrapper">
-                                    <div class="gesture-zone left" data-action="backward">
-                                        <span class="icon">10 <span style="font-size:1.2em">«</span></span>
-                                    </div>
-                                    
-                                    <div class="gesture-zone center" data-action="toggle">
-                                    </div>
+                            
+        name: 'gestures',
+        html: `
+            <div class="gesture-wrapper">
+                <div class="gesture-zone left" data-action="backward">
+                    <span class="icon">10 <span style="font-size:1.2em">«</span></span>
+                </div>
+                
+                <div class="gesture-zone center" data-action="toggle"></div>
 
-                                    <div class="gesture-zone right" data-action="forward">
-                                        <span class="icon">10 <span style="font-size:1.2em">»</span></span>
-                                    </div>
-                                </div>
-                            `,
-                            style: {
-                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                                zIndex: 20, pointerEvents: 'none',
-                            },
-                        }
-                    ],
+                <div class="gesture-zone right" data-action="forward">
+                    <span class="icon">10 <span style="font-size:1.2em">»</span></span>
+                </div>
+            </div>
+        `,
+        style: {
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
+            zIndex: 20, pointerEvents: 'none',
+        },
+    }
+],
                     
                     customType: {
                         m3u8: function (video, url, art) {
