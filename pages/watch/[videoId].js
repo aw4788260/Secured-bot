@@ -51,10 +51,10 @@ export default function WatchPage() {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // 1. ترتيب الجودات (الأعلى أولاً)
+                // ترتيب الجودات (الأعلى أولاً)
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
 
-                // 2. اختيار الجودة المتوسطة لتكون الافتراضية
+                // اختيار الجودة المتوسطة كبداية لتسريع التحميل
                 const middleIndex = Math.floor((qualities.length - 1) / 2);
 
                 const qualityList = qualities.map((q, index) => ({
@@ -96,8 +96,9 @@ export default function WatchPage() {
                     
                     layers: [
                         {
-                            // ✅ تم تعديل الكلاس هنا ليأخذ التنسيقات الجديدة
-                            html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
+                            // ✅ إضافة اسم للطبقة للوصول إليها برمجياً
+                            name: 'watermark',
+                            html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
                                 position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
                             },
@@ -127,18 +128,37 @@ export default function WatchPage() {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
-                                    maxBufferLength: 30, enableWorker: true,
+                                    // ✅ تحسينات الشبكة لمنع التعليق
+                                    maxBufferLength: 30, 
+                                    enableWorker: true,
+                                    manifestLoadingTimeOut: 20000, // زيادة مهلة الانتظار
+                                    fragLoadingTimeOut: 20000,
+                                    levelLoadingTimeOut: 20000,
                                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
                                 });
+                                
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
+
+                                // ✅ نظام التعافي من الأخطاء (Auto Recovery)
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
                                     if (data.fatal) {
-                                        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                                            hls.destroy(); video.src = url;
-                                        } else { hls.destroy(); }
+                                        switch (data.type) {
+                                            case window.Hls.ErrorTypes.NETWORK_ERROR:
+                                                console.log("Network error, trying to recover...");
+                                                hls.startLoad();
+                                                break;
+                                            case window.Hls.ErrorTypes.MEDIA_ERROR:
+                                                console.log("Media error, trying to recover...");
+                                                hls.recoverMediaError();
+                                                break;
+                                            default:
+                                                hls.destroy();
+                                                break;
+                                        }
                                     }
                                 });
+
                                 art.hls = hls;
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
@@ -150,27 +170,26 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // --- 1. منطق تحريك العلامة المائية (Random Movement) ---
+                    // --- 1. منطق تحريك العلامة المائية (المحسن) ---
+                    const watermarkLayer = art.layers.watermark; // ✅ الوصول المباشر للطبقة
+                    
                     const moveWatermark = () => {
-                        const layer = art.template.$player.querySelector('.watermark-layer');
-                        if (layer) {
-                            // توليد إحداثيات عشوائية بين 5% و 85% لضمان بقائها داخل الشاشة
-                            const newTop = Math.random() * 80 + 5;
-                            const newLeft = Math.random() * 80 + 5;
-                            layer.style.top = `${newTop}%`;
-                            layer.style.left = `${newLeft}%`;
+                        if (watermarkLayer) {
+                            // نضمن أن العلامة تبقى داخل الحدود (بين 5% و 80%)
+                            const newTop = Math.floor(Math.random() * 75) + 5;
+                            const newLeft = Math.floor(Math.random() * 75) + 5;
+                            
+                            watermarkLayer.style.top = `${newTop}%`;
+                            watermarkLayer.style.left = `${newLeft}%`;
                         }
                     };
 
-                    // تحريكها فوراً
+                    // التحريك الفوري
                     moveWatermark();
-                    // تحريكها كل 4 ثواني
-                    const watermarkInterval = setInterval(moveWatermark, 4000);
+                    // التحريك الدوري (كل 3.5 ثانية)
+                    const watermarkInterval = setInterval(moveWatermark, 3500);
 
-                    // تنظيف المؤقت عند تدمير المشغل
-                    art.on('destroy', () => clearInterval(watermarkInterval));
-
-
+                    
                     // --- 2. منطق اللمسات (Gestures Logic) ---
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
@@ -183,10 +202,8 @@ export default function WatchPage() {
                         const currentTime = new Date().getTime();
                         const timeDiff = currentTime - lastClickTime;
                         
-                        // --- سيناريو النقر المزدوج (Double Tap) ---
                         if (timeDiff < 300) {
                             clearTimeout(clickTimer); 
-                            
                             const rect = gestureLayer.getBoundingClientRect();
                             const x = e.clientX - rect.left; 
                             const width = rect.width;
@@ -198,9 +215,7 @@ export default function WatchPage() {
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } 
-                        } 
-                        // --- سيناريو النقر المفرد (Single Tap) ---
-                        else {
+                        } else {
                             clickTimer = setTimeout(() => {
                                 gestureLayer.style.display = 'none';
                                 const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
@@ -226,6 +241,9 @@ export default function WatchPage() {
                             el.style.transform = 'scale(1)';
                         }, 500);
                     };
+
+                    // تنظيف عند التدمير
+                    art.on('destroy', () => clearInterval(watermarkInterval));
                 });
 
                 art.on('destroy', () => {
@@ -313,18 +331,18 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* ✅✅ تم تحديث تنسيق العلامة المائية لتكون أصغر وأكثر شفافية ✅✅ */
-                .watermark-layer {
-                    padding: 3px 6px; 
-                    background: rgba(0, 0, 0, 0.4); 
-                    color: rgba(255, 255, 255, 0.6); 
-                    border-radius: 3px;
+                /* ✅✅ تنسيق العلامة المائية الجديد (أوضح + حجم مناسب) ✅✅ */
+                .watermark-content {
+                    padding: 6px 10px; 
+                    background: rgba(0, 0, 0, 0.5); /* خلفية أغمق قليلاً للوضوح */
+                    color: rgba(255, 255, 255, 0.9); /* نص أبيض شبه كامل الوضوح */
+                    border-radius: 5px;
                     white-space: nowrap; 
-                    transition: top 3s ease-in-out, left 3s ease-in-out;
-                    font-size: 9px !important; 
-                    text-shadow: none; 
-                    opacity: 0.6;
+                    font-size: 12px !important; /* حجم خط مقروء */
+                    font-weight: bold;
+                    text-shadow: 1px 1px 2px black;
                     pointer-events: none;
+                    transition: top 1s ease-in-out, left 1s ease-in-out; /* حركة ناعمة */
                 }
 
                 .gesture-box {
