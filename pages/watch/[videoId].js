@@ -94,10 +94,9 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // تم إزالة lock: true للسماح بالتفاعل الطبيعي عند التمرير
-                    
                     layers: [
                         {
+                            // ✅ تم تعديل الكلاس هنا ليأخذ التنسيقات الجديدة
                             html: `<div class="watermark-layer">${user.first_name} (${user.id})</div>`,
                             style: {
                                 position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
@@ -150,8 +149,29 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // --- برمجة اللمسات (Gestures Logic) ---
                 art.on('ready', () => {
+                    // --- 1. منطق تحريك العلامة المائية (Random Movement) ---
+                    const moveWatermark = () => {
+                        const layer = art.template.$player.querySelector('.watermark-layer');
+                        if (layer) {
+                            // توليد إحداثيات عشوائية بين 5% و 85% لضمان بقائها داخل الشاشة
+                            const newTop = Math.random() * 80 + 5;
+                            const newLeft = Math.random() * 80 + 5;
+                            layer.style.top = `${newTop}%`;
+                            layer.style.left = `${newLeft}%`;
+                        }
+                    };
+
+                    // تحريكها فوراً
+                    moveWatermark();
+                    // تحريكها كل 4 ثواني
+                    const watermarkInterval = setInterval(moveWatermark, 4000);
+
+                    // تنظيف المؤقت عند تدمير المشغل
+                    art.on('destroy', () => clearInterval(watermarkInterval));
+
+
+                    // --- 2. منطق اللمسات (Gestures Logic) ---
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
@@ -178,31 +198,19 @@ export default function WatchPage() {
                                 art.forward = 10;
                                 showFeedback(feedbackRight);
                             } 
-                            // تم إزالة خيار الوسط (التشغيل/الإيقاف) لتجنب التعارض
                         } 
                         // --- سيناريو النقر المفرد (Single Tap) ---
                         else {
                             clickTimer = setTimeout(() => {
-                                // [الحل السحري]: تمرير النقرة للمشغل الأصلي
-                                // 1. نخفي طبقة اللمس مؤقتاً
                                 gestureLayer.style.display = 'none';
-                                
-                                // 2. نحدد العنصر الموجود تحت نقطة النقر (واجهة المشغل)
                                 const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                
-                                // 3. نرسل له نقرة حقيقية
                                 if (elementBelow) {
                                     const event = new MouseEvent('click', {
-                                        view: window,
-                                        bubbles: true,
-                                        cancelable: true,
-                                        clientX: e.clientX,
-                                        clientY: e.clientY
+                                        view: window, bubbles: true, cancelable: true,
+                                        clientX: e.clientX, clientY: e.clientY
                                     });
                                     elementBelow.dispatchEvent(event);
                                 }
-                                
-                                // 4. نعيد إظهار طبقة اللمس
                                 gestureLayer.style.display = 'block';
                             }, 300);
                         }
@@ -220,20 +228,8 @@ export default function WatchPage() {
                     };
                 });
 
-                const moveWatermark = () => {
-                    const layer = art.template.$player.querySelector('.watermark-layer');
-                    if (layer) {
-                        const newTop = Math.floor(Math.random() * 80) + 10;
-                        const newLeft = Math.floor(Math.random() * 80) + 10;
-                        layer.style.top = `${newTop}%`;
-                        layer.style.left = `${newLeft}%`;
-                    }
-                };
-                const watermarkInterval = setInterval(moveWatermark, 5000);
-
                 art.on('destroy', () => {
                     if (art.hls) art.hls.destroy();
-                    clearInterval(watermarkInterval);
                 });
 
                 playerInstance.current = art;
@@ -251,21 +247,16 @@ export default function WatchPage() {
 
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
-            // نتأكد أن البيانات موجودة
             if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
                 try {
-                    // 1. تجهيز البيانات
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
-                    // 2. ✅✅ جلب المدة من المشغل الأونلاين (بالثواني)
-                    // نتأكد أن المشغل موجود، وإلا نرسل "0"
                     let duration = "0";
                     if (playerInstance.current && playerInstance.current.duration) {
-                        duration = playerInstance.current.duration.toString(); // تحويل لنص (مثلاً "350.5")
+                        duration = playerInstance.current.duration.toString(); 
                     }
 
-                    // 3. ✅✅ إرسال 4 متغيرات (تمت إضافة duration كمتغير رابع)
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
                     
                 } catch (e) {
@@ -298,7 +289,6 @@ export default function WatchPage() {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
 
-            {/* نظهر الزر فقط إذا اكتشفنا بيئة الأندرويد */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -323,10 +313,18 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
+                /* ✅✅ تم تحديث تنسيق العلامة المائية لتكون أصغر وأكثر شفافية ✅✅ */
                 .watermark-layer {
-                    padding: 4px 8px; background: rgba(0, 0, 0, 0.6); color: white; border-radius: 4px;
-                    font-weight: bold; white-space: nowrap; transition: top 2s ease-in-out, left 2s ease-in-out;
-                    font-size: 12px !important; text-shadow: 0 1px 2px rgba(0,0,0,0.8); opacity: 0.8;
+                    padding: 3px 6px; 
+                    background: rgba(0, 0, 0, 0.4); 
+                    color: rgba(255, 255, 255, 0.6); 
+                    border-radius: 3px;
+                    white-space: nowrap; 
+                    transition: top 3s ease-in-out, left 3s ease-in-out;
+                    font-size: 9px !important; 
+                    text-shadow: none; 
+                    opacity: 0.6;
+                    pointer-events: none;
                 }
 
                 .gesture-box {
