@@ -104,17 +104,15 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
+                    // قفل التحكم الافتراضي لمنع التعارض
+                    lock: true, 
+
                     layers: [
                         {
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', 
-                                top: '10%', 
-                                left: '10%', 
-                                pointerEvents: 'none', 
-                                zIndex: 25,
-                                // ✅ التعديل: وقت الانتقال 1.5 ثانية (سريع وناعم)
+                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
                                 transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                             },
                         },
@@ -125,6 +123,11 @@ export default function WatchPage() {
                                     <div class="gesture-zone left" data-action="backward">
                                         <span class="icon">10 <span style="font-size:1.2em">«</span></span>
                                     </div>
+                                    
+                                    <div class="gesture-zone center" data-action="toggle">
+                                        <span class="icon play-icon">⏯</span>
+                                    </div>
+
                                     <div class="gesture-zone right" data-action="forward">
                                         <span class="icon">10 <span style="font-size:1.2em">»</span></span>
                                     </div>
@@ -132,7 +135,7 @@ export default function WatchPage() {
                             `,
                             style: {
                                 position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                                zIndex: 10, pointerEvents: 'none',
+                                zIndex: 20, pointerEvents: 'none',
                             },
                         }
                     ],
@@ -162,55 +165,66 @@ export default function WatchPage() {
                     },
                 });
 
+                // إخفاء القفل الافتراضي لأنه يتعارض مع طبقتنا
                 art.notice.show = function() {}; 
+                art.controls.remove('lock');
 
                 art.on('ready', () => {
+                    // 1. العلامة المائية
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
-
                         const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
                         const isPortrait = window.innerHeight > window.innerWidth;
-                        
                         let minTop = 5, maxTop = 80; 
-
-                        if (isTelegram && isPortrait) {
-                             minTop = 38;
-                             maxTop = 58;
-                        }
-
+                        if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
                         const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
                         const newLeft = Math.floor(Math.random() * 80) + 5;
-                        
                         watermarkLayer.style.top = `${newTop}%`;
                         watermarkLayer.style.left = `${newLeft}%`;
                     };
-                    
                     moveWatermark();
-                    // ✅ التعديل: 1.5s حركة + 4s ثبات = 5.5s (5500ms)
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
+                    // 2. ✅ منطق اللمس المتقدم (3 مناطق)
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
-                    const leftZone = wrapper.querySelector('.gesture-zone.left');
-                    const rightZone = wrapper.querySelector('.gesture-zone.right');
+                    const zones = wrapper.querySelectorAll('.gesture-zone');
 
-                    [leftZone, rightZone].forEach(zone => {
+                    zones.forEach(zone => {
                         zone.addEventListener('click', (e) => {
                             const now = new Date().getTime();
-                            const lastTouch = zone.getAttribute('data-last-touch') || 0;
+                            const lastTouch = parseInt(zone.getAttribute('data-last-touch') || '0');
                             const diff = now - lastTouch;
+                            const action = zone.getAttribute('data-action');
 
                             if (diff < 300) {
-                                const action = zone.getAttribute('data-action');
+                                // --- Double Tap ---
                                 if (action === 'backward') {
                                     art.backward = 10;
                                     showFeedback(zone.querySelector('.icon'));
-                                } else {
+                                } else if (action === 'forward') {
                                     art.forward = 10;
+                                    showFeedback(zone.querySelector('.icon'));
+                                } else if (action === 'toggle') {
+                                    art.toggle(); // تشغيل/إيقاف
                                     showFeedback(zone.querySelector('.icon'));
                                 }
                             } else {
-                                art.toggle(); 
+                                // --- Single Tap (Always toggle UI) ---
+                                // ننتظر قليلاً للتأكد أنه ليس نقراً مزدوجاً (اختياري، لكن الأفضل للتجربة)
+                                setTimeout(() => {
+                                    const currentLastTouch = parseInt(zone.getAttribute('data-last-touch') || '0');
+                                    if (new Date().getTime() - currentLastTouch >= 300) {
+                                        // التبديل اليدوي لكلاس ظهور التحكم
+                                        if (art.template.$player.classList.contains('art-hover')) {
+                                            art.template.$player.classList.remove('art-hover');
+                                            art.emit('hover', false);
+                                        } else {
+                                            art.template.$player.classList.add('art-hover');
+                                            art.emit('hover', true);
+                                        }
+                                    }
+                                }, 310);
                             }
                             zone.setAttribute('data-last-touch', now);
                         });
@@ -219,7 +233,7 @@ export default function WatchPage() {
                     const showFeedback = (el) => {
                         if (!el) return;
                         el.style.opacity = '1';
-                        el.style.transform = 'scale(1.2)'; // تكبير خفيف
+                        el.style.transform = 'scale(1.2)';
                         setTimeout(() => {
                             el.style.opacity = '0';
                             el.style.transform = 'scale(1)';
@@ -252,12 +266,10 @@ export default function WatchPage() {
                 try {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
-                    
                     let duration = "0";
                     if (playerInstance.current && playerInstance.current.duration) {
                         duration = playerInstance.current.duration.toString(); 
                     }
-
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
                 } catch (e) {
                     alert("حدث خطأ: " + e.message);
@@ -277,19 +289,10 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <meta name="referrer" content="no-referrer" />
             </Head>
 
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
-                strategy="afterInteractive" 
-                onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} 
-            />
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" 
-                strategy="afterInteractive" 
-                onLoad={() => { if (window.Hls) setLibsLoaded(true); }} 
-            />
+            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
+            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
@@ -318,11 +321,10 @@ export default function WatchPage() {
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
                 .art-notice { display: none !important; }
+                /* إخفاء القفل تماماً */
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* ✅✅ تنسيق العلامة المائية (مدمج ومضغوط) ✅✅ */
                 .watermark-content {
-                    /* تقليل الطول الرأسي عن طريق تقليل الـ padding */
                     padding: 2px 10px; 
                     background: rgba(0, 0, 0, 0.5); 
                     color: rgba(255, 255, 255, 0.9); 
@@ -332,31 +334,44 @@ export default function WatchPage() {
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    /* لا نضع الترانزيشن هنا لأنها مطبقة على الحاوية (inline style) */
                 }
 
-                /* ✅✅ تنسيق اللمس الجديد (شفاف وبدون خلفية) ✅✅ */
+                /* تقسيم الشاشة لـ 3 مناطق */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
-                    display: flex; justify-content: space-between;
+                    display: flex;
                 }
-                .gesture-zone {
-                    width: 40%; height: 100%;
+                
+                /* المناطق الجانبية (30% لكل جهة) */
+                .gesture-zone.left, .gesture-zone.right {
+                    width: 30%; 
+                    height: 100%;
                     display: flex; align-items: center; justify-content: center;
                     pointer-events: auto;
                 }
+
+                /* المنطقة الوسطى (40% - المسؤولة عن التشغيل/الإيقاف) */
+                .gesture-zone.center {
+                    width: 40%;
+                    height: 100%;
+                    display: flex; align-items: center; justify-content: center;
+                    pointer-events: auto;
+                }
+
                 .gesture-zone .icon { 
-                    font-size: 18px; /* تصغير الحجم قليلاً */
-                    font-weight: bold; 
-                    font-family: sans-serif; 
+                    font-size: 18px; font-weight: bold; font-family: sans-serif; 
                     color: rgba(255, 255, 255, 0.9);
                     opacity: 0; 
                     transition: opacity 0.2s, transform 0.2s;
-                    /* ✅ إزالة الخلفية السوداء */
                     background: transparent; 
                     padding: 10px; 
-                    text-shadow: 0 2px 4px rgba(0,0,0,0.8); /* ظل للنص ليظهر بوضوح */
+                    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
                     pointer-events: none;
+                }
+                
+                /* أيقونة التشغيل في الوسط تكون أكبر قليلاً */
+                .gesture-zone.center .icon {
+                    font-size: 30px;
                 }
             `}</style>
         </div>
