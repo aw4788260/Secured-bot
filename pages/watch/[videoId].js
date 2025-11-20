@@ -141,13 +141,9 @@ export default function WatchPage() {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
-                                    // ✅✅✅ تعديل إعدادات التخزين المؤقت (Buffering) ✅✅✅
-                                    maxBufferLength: 300,     // يحاول تحميل 300 ثانية (5 دقائق) مقدماً
-                                    maxMaxBufferLength: 360,  // الحد الأقصى قبل التوقف (6 دقائق)
+                                    // ✅✅ تم التعديل هنا: التحميل المسبق 300 ثانية
+                                    maxBufferLength: 300, 
                                     enableWorker: true,
-                                    manifestLoadingTimeOut: 20000,
-                                    fragLoadingTimeOut: 20000,
-                                    levelLoadingTimeOut: 20000,
                                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
                                 });
                                 hls.loadSource(url);
@@ -170,7 +166,6 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // 1. العلامة المائية
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
@@ -186,9 +181,10 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
-                    // 2. منطق اللمس
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const zones = wrapper.querySelectorAll('.gesture-zone');
+                    
+                    let clickTimer = null;
 
                     zones.forEach(zone => {
                         zone.addEventListener('click', (e) => {
@@ -198,6 +194,7 @@ export default function WatchPage() {
                             const action = zone.getAttribute('data-action');
 
                             if (diff < 300) {
+                                clearTimeout(clickTimer);
                                 if (action === 'backward') {
                                     art.backward = 10;
                                     showFeedback(zone.querySelector('.icon'));
@@ -208,20 +205,19 @@ export default function WatchPage() {
                                     art.toggle(); 
                                 }
                             } else {
-                                setTimeout(() => {
-                                    const currentLastTouch = parseInt(zone.getAttribute('data-last-touch') || '0');
-                                    if (new Date().getTime() - currentLastTouch >= 300) {
-                                        // إظهار/إخفاء التحكم يدوياً
-                                        const isHover = art.template.$player.classList.contains('art-hover');
-                                        if (isHover) {
-                                            art.template.$player.classList.remove('art-hover');
-                                            art.emit('hover', false);
-                                        } else {
-                                            art.template.$player.classList.add('art-hover');
-                                            art.emit('hover', true);
-                                        }
+                                clickTimer = setTimeout(() => {
+                                    const gestureLayer = art.layers.gestures;
+                                    gestureLayer.style.display = 'none';
+                                    const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+                                    if (elementBelow) {
+                                        const clickEvent = new MouseEvent('click', {
+                                            view: window, bubbles: true, cancelable: true,
+                                            clientX: e.clientX, clientY: e.clientY
+                                        });
+                                        elementBelow.dispatchEvent(clickEvent);
                                     }
-                                }, 310);
+                                    gestureLayer.style.display = 'block';
+                                }, 300);
                             }
                             zone.setAttribute('data-last-touch', now);
                         });
@@ -286,6 +282,7 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                <meta name="referrer" content="no-referrer" />
             </Head>
 
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
@@ -318,7 +315,6 @@ export default function WatchPage() {
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
                 .art-notice { display: none !important; }
-                /* إخفاء القفل */
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
                 .watermark-content {
