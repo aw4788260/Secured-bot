@@ -116,18 +116,18 @@ export default function WatchPage() {
                         {
                             name: 'gestures',
                             html: `
-                                <div class="gesture-wrapper">
-                                    <div class="gesture-zone left" data-action="backward">
-                                        <span class="icon">10</span>
-                                    </div>
-                                    
-                                    <div class="gesture-zone center" data-action="toggle"></div>
+    <div class="gesture-wrapper">
+        <div class="gesture-zone left" data-action="backward">
+            <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
+        </div>
+        
+        <div class="gesture-zone center" data-action="toggle"></div>
 
-                                    <div class="gesture-zone right" data-action="forward">
-                                        <span class="icon">10</span>
-                                    </div>
-                                </div>
-                            `,
+        <div class="gesture-zone right" data-action="forward">
+            <span class="icon">10 <span style="font-size:1.2em">»</span></span>
+        </div>
+    </div>
+`,
                             style: {
                                 position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
                                 zIndex: 20, pointerEvents: 'none',
@@ -226,33 +226,38 @@ export default function WatchPage() {
                                     clickCount = 0;
                                 }, 250);
                             } else {
-                                // نقرتين أو أكثر (2, 3, 4...)
-                                // الحساب: (عدد النقرات - 1) * 10
-                                // 2 taps -> 10s, 3 taps -> 20s, 4 taps -> 30s
-                                const seconds = (clickCount - 1) * 10;
-                                const icon = zone.querySelector('.icon');
-                                
-                                // تحديث الرقم في الأيقونة
-                                icon.innerHTML = `${seconds} <span style="font-size:1.2em">${action === 'forward' ? '»' : '«'}</span>`;
-                                
-                                // إظهار الأيقونة وتثبيتها
-                                showFeedback(icon, true);
+    // نقرتين أو أكثر
+    const seconds = (clickCount - 1) * 10;
+    const icon = zone.querySelector('.icon');
+    const isForward = action === 'forward';
+    
+    // تنسيق النص بناءً على الاتجاه
+    // إذا تقديم: الرقم ثم السهم | إذا تأخير: السهم ثم الرقم
+    if (isForward) {
+        icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
+    } else {
+        icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
+    }
+    
+    showFeedback(icon, true);
 
-                                // انتظار التوقف عن النقر لتنفيذ الأمر (Debounce)
-                                accumulateTimer = setTimeout(() => {
-                                    if (action === 'forward') art.forward = seconds;
-                                    else art.backward = seconds;
-                                    
-                                    // إخفاء الأيقونة وإعادة تعيين العداد
-                                    hideFeedback(icon);
-                                    clickCount = 0;
-                                    
-                                    // إعادة النص للأصل (10) بعد الاختفاء
-                                    setTimeout(() => {
-                                        icon.innerHTML = `10 <span style="font-size:1.2em">${action === 'forward' ? '»' : '«'}</span>`;
-                                    }, 300);
-                                }, 600); // تنفيذ بعد 600ms من آخر نقرة
-                            }
+    accumulateTimer = setTimeout(() => {
+        if (isForward) art.forward = seconds;
+        else art.backward = seconds;
+        
+        hideFeedback(icon);
+        clickCount = 0;
+        
+        // إعادة الرقم للأصل (10) بنفس التنسيق
+        setTimeout(() => {
+            if (isForward) {
+                icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`;
+            } else {
+                icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`;
+            }
+        }, 300);
+    }, 600);
+}
                         });
                     });
 
