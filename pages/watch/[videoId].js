@@ -18,7 +18,6 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // دالة تقريب الجودة للأرقام القياسية
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -29,14 +28,12 @@ export default function WatchPage() {
         return closest.toString();
     };
 
-    // 1. فحص فوري للمكتبات
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
         }
     }, []);
 
-    // 2. إعداد المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -51,7 +48,6 @@ export default function WatchPage() {
         }
     }, []);
 
-    // 3. تشغيل المشغل
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
@@ -74,7 +70,7 @@ export default function WatchPage() {
 
                 const qualityList = qualities.map((q, index) => ({
                     default: index === middleIndex,
-                    html: normalizeQuality(q.quality), 
+                    html: normalizeQuality(q.quality),
                     url: q.url,
                 }));
                 
@@ -113,9 +109,12 @@ export default function WatchPage() {
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
-                                // ✅ التعديل 1: تسريع الحركة (1.5 ثانية)
-                                // استخدام ease-in-out لجعل الحركة ناعمة عند البدء والتوقف
+                                position: 'absolute', 
+                                top: '10%', 
+                                left: '10%', 
+                                pointerEvents: 'none', 
+                                zIndex: 25,
+                                // ✅ التعديل: وقت الانتقال 1.5 ثانية (سريع وناعم)
                                 transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                             },
                         },
@@ -124,10 +123,10 @@ export default function WatchPage() {
                             html: `
                                 <div class="gesture-wrapper">
                                     <div class="gesture-zone left" data-action="backward">
-                                        <span class="icon">10&lt;&lt;</span>
+                                        <span class="icon">10 <span style="font-size:1.2em">«</span></span>
                                     </div>
                                     <div class="gesture-zone right" data-action="forward">
-                                        <span class="icon">&gt;&gt;10</span>
+                                        <span class="icon">10 <span style="font-size:1.2em">»</span></span>
                                     </div>
                                 </div>
                             `,
@@ -166,22 +165,16 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // --- تحريك العلامة المائية ---
                     const watermarkLayer = art.layers.watermark;
-                    
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
 
                         const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
                         const isPortrait = window.innerHeight > window.innerWidth;
                         
-                        // الحدود الافتراضية (أفقي / متصفح عادي)
                         let minTop = 5, maxTop = 80; 
 
-                        // ✅ التعديل 2: تقييد الحركة لنسبة 16:7 في الوضع العمودي
-                        // 16:7 فيديو "قصير" ارتفاعاً، لذا يجب تضييق الحدود الرأسية جداً
                         if (isTelegram && isPortrait) {
-                             // نحصرها بين 35% و 55% فقط (شريط ضيق في المنتصف)
                              minTop = 38;
                              maxTop = 58;
                         }
@@ -194,13 +187,9 @@ export default function WatchPage() {
                     };
                     
                     moveWatermark();
-                    
-                    // ✅ التعديل 3: المؤقت 4 ثواني
-                    // (1.5 ثانية حركة + 2.5 ثانية ثبات = 4 ثواني)
-                    const watermarkInterval = setInterval(moveWatermark, 4000);
+                    // ✅ التعديل: 1.5s حركة + 4s ثبات = 5.5s (5500ms)
+                    const watermarkInterval = setInterval(moveWatermark, 5500);
 
-
-                    // --- اللمس المقسوم ---
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const leftZone = wrapper.querySelector('.gesture-zone.left');
                     const rightZone = wrapper.querySelector('.gesture-zone.right');
@@ -230,11 +219,11 @@ export default function WatchPage() {
                     const showFeedback = (el) => {
                         if (!el) return;
                         el.style.opacity = '1';
-                        el.style.transform = 'scale(1.5)';
+                        el.style.transform = 'scale(1.2)'; // تكبير خفيف
                         setTimeout(() => {
                             el.style.opacity = '0';
                             el.style.transform = 'scale(1)';
-                        }, 500);
+                        }, 400);
                     };
 
                     art.on('destroy', () => clearInterval(watermarkInterval));
@@ -331,20 +320,22 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* العلامة المائية */
+                /* ✅✅ تنسيق العلامة المائية (مدمج ومضغوط) ✅✅ */
                 .watermark-content {
-                    padding: 6px 10px; 
-                    background: rgba(0, 0, 0, 0.4); 
-                    color: rgba(255, 255, 255, 0.8); 
-                    border-radius: 5px;
+                    /* تقليل الطول الرأسي عن طريق تقليل الـ padding */
+                    padding: 2px 10px; 
+                    background: rgba(0, 0, 0, 0.5); 
+                    color: rgba(255, 255, 255, 0.9); 
+                    border-radius: 4px;
                     white-space: nowrap; 
                     font-size: 11px !important; 
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    /* تم التعديل في الجافاسكريبت مباشرة (style) لضمان العمل */
+                    /* لا نضع الترانزيشن هنا لأنها مطبقة على الحاوية (inline style) */
                 }
 
+                /* ✅✅ تنسيق اللمس الجديد (شفاف وبدون خلفية) ✅✅ */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
                     display: flex; justify-content: space-between;
@@ -355,9 +346,16 @@ export default function WatchPage() {
                     pointer-events: auto;
                 }
                 .gesture-zone .icon { 
-                    font-size: 24px; font-weight: bold; font-family: monospace; 
-                    color: white; opacity: 0; transition: opacity 0.2s, transform 0.2s;
-                    background: rgba(0,0,0,0.5); padding: 15px; border-radius: 50%;
+                    font-size: 18px; /* تصغير الحجم قليلاً */
+                    font-weight: bold; 
+                    font-family: sans-serif; 
+                    color: rgba(255, 255, 255, 0.9);
+                    opacity: 0; 
+                    transition: opacity 0.2s, transform 0.2s;
+                    /* ✅ إزالة الخلفية السوداء */
+                    background: transparent; 
+                    padding: 10px; 
+                    text-shadow: 0 2px 4px rgba(0,0,0,0.8); /* ظل للنص ليظهر بوضوح */
                     pointer-events: none;
                 }
             `}</style>
