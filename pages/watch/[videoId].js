@@ -18,9 +18,8 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // ✅✅ 1. إصلاح مشكلة التعليق (فحص المكتبات فوراً)
+    // 1. إصلاح مشكلة التعليق عند الرجوع (فحص فوري للمكتبات)
     useEffect(() => {
-        // إذا كانت المكتبات محملة مسبقاً في الذاكرة (من زيارة سابقة)، نعتبرها جاهزة فوراً
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
         }
@@ -42,10 +41,10 @@ export default function WatchPage() {
     }, []);
 
     // 3. تشغيل المشغل
-    // ✅ تمت إضافة [user] للمصفوفة لضمان التحديث
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
+        // تنظيف المشغل القديم إن وجد
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -101,27 +100,30 @@ export default function WatchPage() {
                     
                     layers: [
                         {
+                            // طبقة العلامة المائية
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 20,
+                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
                             },
                         },
                         {
+                            // ✅✅ طبقة اللمس الجديدة (مقسومة لجزئين) ✅✅
+                            // نترك المنتصف فارغاً تماماً لكي يعمل زر التشغيل الأصلي بدون مشاكل
+                            name: 'gestures',
                             html: `
-                                <div class="gesture-layer">
-                                    <div class="gesture-box left">
+                                <div class="gesture-wrapper">
+                                    <div class="gesture-zone left" data-action="backward">
                                         <span class="icon">10&lt;&lt;</span>
                                     </div>
-                                    <div class="gesture-box right">
+                                    <div class="gesture-zone right" data-action="forward">
                                         <span class="icon">&gt;&gt;10</span>
                                     </div>
                                 </div>
                             `,
-                            name: 'gestures',
                             style: {
-                                position: 'absolute', top: 0, left: 0, width: '100%', height: '85%', 
-                                zIndex: 10,
+                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
+                                zIndex: 10, pointerEvents: 'none', // الحاوية لا تمنع اللمس
                             },
                         }
                     ],
@@ -138,10 +140,8 @@ export default function WatchPage() {
                                     levelLoadingTimeOut: 20000,
                                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
                                 });
-                                
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
-
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
                                     if (data.fatal) {
                                         switch (data.type) {
@@ -157,7 +157,6 @@ export default function WatchPage() {
                                         }
                                     }
                                 });
-
                                 art.hls = hls;
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
@@ -169,7 +168,7 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // تحريك العلامة المائية
+                    // 1. تحريك العلامة المائية
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (watermarkLayer) {
@@ -180,54 +179,46 @@ export default function WatchPage() {
                         }
                     };
                     moveWatermark();
-                    const watermarkInterval = setInterval(moveWatermark, 3500);
+                    const watermarkInterval = setInterval(moveWatermark, 4000);
 
-                    // اللمسات
-                    const gestureLayer = art.layers.gestures;
-                    const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
-                    const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
-                    
-                    let clickTimer = null;
-                    let lastClickTime = 0;
+                    // 2. منطق اللمس (المحسن والمبسط)
+                    const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
+                    const leftZone = wrapper.querySelector('.gesture-zone.left');
+                    const rightZone = wrapper.querySelector('.gesture-zone.right');
 
-                    gestureLayer.addEventListener('click', (e) => {
-                        const currentTime = new Date().getTime();
-                        const timeDiff = currentTime - lastClickTime;
-                        
-                        if (timeDiff < 300) {
-                            clearTimeout(clickTimer); 
-                            const rect = gestureLayer.getBoundingClientRect();
-                            const x = e.clientX - rect.left; 
-                            const width = rect.width;
+                    // إضافة مستمعي الأحداث للمناطق النشطة فقط
+                    [leftZone, rightZone].forEach(zone => {
+                        zone.addEventListener('click', (e) => {
+                            // لأن المناطق الآن منفصلة، يمكننا استخدام النقر المباشر
+                            // نستخدم منطق "النقر المزدوج" اليدوي لأننا نريد فصله عن النقر المفرد
+                            const now = new Date().getTime();
+                            const lastTouch = zone.getAttribute('data-last-touch') || 0;
+                            const diff = now - lastTouch;
 
-                            if (x < width * 0.35) {
-                                art.backward = 10;
-                                showFeedback(feedbackLeft);
-                            } else if (x > width * 0.65) {
-                                art.forward = 10;
-                                showFeedback(feedbackRight);
-                            } 
-                        } else {
-                            clickTimer = setTimeout(() => {
-                                gestureLayer.style.display = 'none';
-                                const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                if (elementBelow) {
-                                    const event = new MouseEvent('click', {
-                                        view: window, bubbles: true, cancelable: true,
-                                        clientX: e.clientX, clientY: e.clientY
-                                    });
-                                    elementBelow.dispatchEvent(event);
+                            if (diff < 300) {
+                                // Double Tap detected!
+                                const action = zone.getAttribute('data-action');
+                                if (action === 'backward') {
+                                    art.backward = 10;
+                                    showFeedback(zone.querySelector('.icon'));
+                                } else {
+                                    art.forward = 10;
+                                    showFeedback(zone.querySelector('.icon'));
                                 }
-                                gestureLayer.style.display = 'block';
-                            }, 300);
-                        }
-                        lastClickTime = currentTime;
+                            } else {
+                                // Single tap: نتركها تمر أو نقوم بتبديل التشغيل/الإيقاف إذا أردنا
+                                // في هذا التصميم، النقر المفرد على الجوانب قد لا يفعل شيئاً، 
+                                // أو يمكننا جعله يخفي/يظهر التحكم
+                                art.toggle(); 
+                            }
+                            zone.setAttribute('data-last-touch', now);
+                        });
                     });
 
                     const showFeedback = (el) => {
                         if (!el) return;
                         el.style.opacity = '1';
-                        el.style.transform = 'scale(1.2)';
+                        el.style.transform = 'scale(1.5)';
                         setTimeout(() => {
                             el.style.opacity = '0';
                             el.style.transform = 'scale(1)';
@@ -252,7 +243,7 @@ export default function WatchPage() {
         return () => {
             if (playerInstance.current) playerInstance.current.destroy(false);
         };
-    }, [videoId, libsLoaded, user]); // ✅ تمت إضافة user للمصفوفة
+    }, [videoId, libsLoaded, user]); 
 
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
@@ -267,15 +258,14 @@ export default function WatchPage() {
                     }
 
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
-                    
                 } catch (e) {
-                    alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
+                    alert("حدث خطأ: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
+                alert("بيانات الفيديو غير مكتملة.");
             }
         } else {
-            alert("التحميل متاح من داخل التطبيق فقط.");
+            alert("التحميل متاح من التطبيق فقط.");
         }
     };  
 
@@ -286,10 +276,8 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <meta name="referrer" content="no-referrer" />
             </Head>
 
-            {/* ✅ إعادة التحقق عند انتهاء تحميل السكريبت */}
             <Script 
                 src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
                 strategy="afterInteractive" 
@@ -316,7 +304,6 @@ export default function WatchPage() {
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
             </footer>
-    
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
@@ -331,31 +318,50 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* تنسيق العلامة المائية */
+                /* العلامة المائية */
                 .watermark-content {
-                    padding: 6px 10px; 
-                    background: rgba(0, 0, 0, 0.5); 
-                    color: rgba(255, 255, 255, 0.9); 
-                    border-radius: 5px;
+                    padding: 4px 8px; 
+                    background: rgba(0, 0, 0, 0.3); /* شفافية أقل */
+                    color: rgba(255, 255, 255, 0.5); /* وضوح أعلى قليلاً */
+                    border-radius: 4px;
                     white-space: nowrap; 
-                    font-size: 12px !important; 
+                    font-size: 11px !important; 
                     font-weight: bold;
-                    text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    transition: top 1s ease-in-out, left 1s ease-in-out;
+                    transition: top 2s ease-in-out, left 2s ease-in-out;
                 }
 
-                .gesture-box {
-                    position: absolute; top: 50%; transform: translateY(-50%);
-                    background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 50px;
-                    display: flex; align-items: center; justify-content: center;
-                    opacity: 0; transition: opacity 0.2s, transform 0.2s;
-                    pointer-events: none; color: white;
+                /* تقسيم المناطق لتجنب المنتصف */
+                .gesture-wrapper {
+                    width: 100%; height: 100%;
+                    display: flex;
+                    justify-content: space-between; /* يباعد بين اليمين واليسار */
                 }
-                .gesture-box.left { left: 15%; }
-                .gesture-box.right { right: 15%; }
-                .gesture-box .icon { 
-                    font-size: 18px; font-weight: bold; font-family: monospace; letter-spacing: -1px;
+                
+                .gesture-zone {
+                    width: 40%; /* الجوانب تأخذ 40% لكل منها */
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: auto; /* هذه المناطق فقط تقبل اللمس */
+                    /* background: rgba(255,0,0,0.1); للتجربة فقط */
+                }
+                
+                /* المنطقة الوسطى (20%) تبقى فارغة وغير قابلة للمس من هذه الطبقة */
+
+                .gesture-zone .icon { 
+                    font-size: 24px; 
+                    font-weight: bold; 
+                    font-family: monospace; 
+                    letter-spacing: -1px;
+                    color: white;
+                    opacity: 0; /* مخفي افتراضياً */
+                    transition: opacity 0.2s, transform 0.2s;
+                    background: rgba(0,0,0,0.5);
+                    padding: 15px;
+                    border-radius: 50%;
+                    pointer-events: none;
                 }
             `}</style>
         </div>
