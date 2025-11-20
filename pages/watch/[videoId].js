@@ -18,7 +18,23 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // 1. فحص فوري للمكتبات (لحل مشكلة الرجوع)
+    // دالة "تقريب" الجودة للأرقام المشهورة
+    const normalizeQuality = (val) => {
+        const num = parseInt(val);
+        if (isNaN(num)) return val;
+        
+        // قائمة الجودات القياسية التي تريد عرضها
+        const standards = [144, 240, 360, 480, 720, 1080];
+        
+        // البحث عن أقرب رقم قياسي للرقم القادم من السيرفر
+        const closest = standards.reduce((prev, curr) => {
+            return (Math.abs(curr - num) < Math.abs(prev - num) ? curr : prev);
+        });
+
+        return closest.toString();
+    };
+
+    // 1. فحص فوري للمكتبات
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
@@ -40,7 +56,7 @@ export default function WatchPage() {
         }
     }, []);
 
-    // 3. تشغيل المشغل (باستخدام منطق الكود الخاص بك + التصميم الجديد)
+    // 3. تشغيل المشغل
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
@@ -64,7 +80,8 @@ export default function WatchPage() {
 
                 const qualityList = qualities.map((q, index) => ({
                     default: index === middleIndex,
-                    html: `${q.quality}p`,
+                    // ✅ استخدام دالة التقريب لعرض أرقام نظيفة (720, 1080)
+                    html: normalizeQuality(q.quality), 
                     url: q.url,
                 }));
                 
@@ -72,7 +89,6 @@ export default function WatchPage() {
 
                 if (!artRef.current || !window.Artplayer) return;
 
-                // --- إعداد Artplayer (مدمج) ---
                 const art = new window.Artplayer({
                     container: artRef.current,
                     url: startUrl, 
@@ -99,7 +115,6 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // [تحسين] طبقات التصميم الجديد (علامة مائية متحركة + لمس مقسوم)
                     layers: [
                         {
                             name: 'watermark',
@@ -127,7 +142,6 @@ export default function WatchPage() {
                         }
                     ],
                     
-                    // [استرجاع] إعدادات HLS البسيطة والمستقرة (من كودك)
                     customType: {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
@@ -155,22 +169,28 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
-                // [تحسين] منطق الحركة واللمس الجديد
                 art.on('ready', () => {
-                    // 1. تحريك العلامة المائية
+                    // --- 1. تحريك العلامة المائية (بنعومة تامة - Linear) ---
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (watermarkLayer) {
-                            const newTop = Math.floor(Math.random() * 75) + 5;
-                            const newLeft = Math.floor(Math.random() * 75) + 5;
+                            // أرقام عشوائية للحركة
+                            const newTop = Math.floor(Math.random() * 80) + 5;
+                            const newLeft = Math.floor(Math.random() * 80) + 5;
+                            
                             watermarkLayer.style.top = `${newTop}%`;
                             watermarkLayer.style.left = `${newLeft}%`;
                         }
                     };
+                    
+                    // تحريك مبدئي
                     moveWatermark();
-                    const watermarkInterval = setInterval(moveWatermark, 4000);
+                    
+                    // ✅✅ جعلنا الوقت 5000ms ليطابق الـ CSS transition تماماً
+                    // هذا يضمن حركة مستمرة انسيابية (Gliding)
+                    const watermarkInterval = setInterval(moveWatermark, 5000);
 
-                    // 2. اللمس المقسوم (Split Gestures)
+                    // --- 2. اللمس المقسوم ---
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const leftZone = wrapper.querySelector('.gesture-zone.left');
                     const rightZone = wrapper.querySelector('.gesture-zone.right');
@@ -227,7 +247,6 @@ export default function WatchPage() {
         };
     }, [videoId, libsLoaded, user]); 
 
-    // [استرجاع] دالة التحميل (من كودك)
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
             if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
@@ -240,17 +259,15 @@ export default function WatchPage() {
                         duration = playerInstance.current.duration.toString(); 
                     }
 
-                    // استخدام RAILWAY_PROXY_URL كما في كودك
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
-                    
                 } catch (e) {
-                    alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
+                    alert("حدث خطأ: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
+                alert("بيانات الفيديو غير مكتملة.");
             }
         } else {
-            alert("التحميل متاح من داخل التطبيق فقط.");
+            alert("التحميل متاح من التطبيق فقط.");
         }
     };  
 
@@ -261,11 +278,18 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <meta name="referrer" content="no-referrer" />
             </Head>
 
-            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
-            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
+                strategy="afterInteractive" 
+                onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} 
+            />
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" 
+                strategy="afterInteractive" 
+                onLoad={() => { if (window.Hls) setLibsLoaded(true); }} 
+            />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
@@ -282,7 +306,6 @@ export default function WatchPage() {
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
             </footer>
-    
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
@@ -297,21 +320,21 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* تنسيق العلامة المائية */
+                /* ✅✅ تنسيق العلامة المائية الجديد (حركة ناعمة) ✅✅ */
                 .watermark-content {
                     padding: 6px 10px; 
-                    background: rgba(0, 0, 0, 0.5); 
-                    color: rgba(255, 255, 255, 0.9); 
+                    background: rgba(0, 0, 0, 0.4); /* شفافية متوسطة */
+                    color: rgba(255, 255, 255, 0.8); /* وضوح جيد */
                     border-radius: 5px;
                     white-space: nowrap; 
-                    font-size: 12px !important; 
+                    font-size: 11px !important; 
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    transition: top 1s ease-in-out, left 1s ease-in-out;
+                    /* استخدام linear يجعل الحركة مستمرة وبسرعة ثابتة دون تسارع أو تباطؤ */
+                    transition: top 5s linear, left 5s linear;
                 }
 
-                /* تنسيق اللمس المقسوم */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
                     display: flex; justify-content: space-between;
