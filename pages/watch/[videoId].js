@@ -18,7 +18,15 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // 1. إعداد المستخدم
+    // ✅✅ 1. إصلاح مشكلة التعليق (فحص المكتبات فوراً)
+    useEffect(() => {
+        // إذا كانت المكتبات محملة مسبقاً في الذاكرة (من زيارة سابقة)، نعتبرها جاهزة فوراً
+        if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
+            setLibsLoaded(true);
+        }
+    }, []);
+
+    // 2. إعداد المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -33,7 +41,8 @@ export default function WatchPage() {
         }
     }, []);
 
-    // 2. تشغيل المشغل
+    // 3. تشغيل المشغل
+    // ✅ تمت إضافة [user] للمصفوفة لضمان التحديث
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
@@ -51,10 +60,7 @@ export default function WatchPage() {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // ترتيب الجودات (الأعلى أولاً)
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
-
-                // اختيار الجودة المتوسطة كبداية لتسريع التحميل
                 const middleIndex = Math.floor((qualities.length - 1) / 2);
 
                 const qualityList = qualities.map((q, index) => ({
@@ -67,7 +73,6 @@ export default function WatchPage() {
 
                 if (!artRef.current || !window.Artplayer) return;
 
-                // --- إعداد Artplayer ---
                 const art = new window.Artplayer({
                     container: artRef.current,
                     url: startUrl, 
@@ -96,7 +101,6 @@ export default function WatchPage() {
                     
                     layers: [
                         {
-                            // ✅ إضافة اسم للطبقة للوصول إليها برمجياً
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
@@ -104,7 +108,6 @@ export default function WatchPage() {
                             },
                         },
                         {
-                            // طبقة اللمس
                             html: `
                                 <div class="gesture-layer">
                                     <div class="gesture-box left">
@@ -128,10 +131,9 @@ export default function WatchPage() {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
-                                    // ✅ تحسينات الشبكة لمنع التعليق
                                     maxBufferLength: 30, 
                                     enableWorker: true,
-                                    manifestLoadingTimeOut: 20000, // زيادة مهلة الانتظار
+                                    manifestLoadingTimeOut: 20000,
                                     fragLoadingTimeOut: 20000,
                                     levelLoadingTimeOut: 20000,
                                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
@@ -140,16 +142,13 @@ export default function WatchPage() {
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
 
-                                // ✅ نظام التعافي من الأخطاء (Auto Recovery)
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
                                     if (data.fatal) {
                                         switch (data.type) {
                                             case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                                console.log("Network error, trying to recover...");
                                                 hls.startLoad();
                                                 break;
                                             case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                                console.log("Media error, trying to recover...");
                                                 hls.recoverMediaError();
                                                 break;
                                             default:
@@ -170,27 +169,20 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // --- 1. منطق تحريك العلامة المائية (المحسن) ---
-                    const watermarkLayer = art.layers.watermark; // ✅ الوصول المباشر للطبقة
-                    
+                    // تحريك العلامة المائية
+                    const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (watermarkLayer) {
-                            // نضمن أن العلامة تبقى داخل الحدود (بين 5% و 80%)
                             const newTop = Math.floor(Math.random() * 75) + 5;
                             const newLeft = Math.floor(Math.random() * 75) + 5;
-                            
                             watermarkLayer.style.top = `${newTop}%`;
                             watermarkLayer.style.left = `${newLeft}%`;
                         }
                     };
-
-                    // التحريك الفوري
                     moveWatermark();
-                    // التحريك الدوري (كل 3.5 ثانية)
                     const watermarkInterval = setInterval(moveWatermark, 3500);
 
-                    
-                    // --- 2. منطق اللمسات (Gestures Logic) ---
+                    // اللمسات
                     const gestureLayer = art.layers.gestures;
                     const feedbackLeft = gestureLayer.querySelector('.gesture-box.left');
                     const feedbackRight = gestureLayer.querySelector('.gesture-box.right');
@@ -242,7 +234,6 @@ export default function WatchPage() {
                         }, 500);
                     };
 
-                    // تنظيف عند التدمير
                     art.on('destroy', () => clearInterval(watermarkInterval));
                 });
 
@@ -261,7 +252,7 @@ export default function WatchPage() {
         return () => {
             if (playerInstance.current) playerInstance.current.destroy(false);
         };
-    }, [videoId, libsLoaded]); 
+    }, [videoId, libsLoaded, user]); // ✅ تمت إضافة user للمصفوفة
 
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
@@ -298,8 +289,17 @@ export default function WatchPage() {
                 <meta name="referrer" content="no-referrer" />
             </Head>
 
-            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
-            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
+            {/* ✅ إعادة التحقق عند انتهاء تحميل السكريبت */}
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
+                strategy="afterInteractive" 
+                onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} 
+            />
+            <Script 
+                src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" 
+                strategy="afterInteractive" 
+                onLoad={() => { if (window.Hls) setLibsLoaded(true); }} 
+            />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
@@ -331,18 +331,18 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* ✅✅ تنسيق العلامة المائية الجديد (أوضح + حجم مناسب) ✅✅ */
+                /* تنسيق العلامة المائية */
                 .watermark-content {
                     padding: 6px 10px; 
-                    background: rgba(0, 0, 0, 0.5); /* خلفية أغمق قليلاً للوضوح */
-                    color: rgba(255, 255, 255, 0.9); /* نص أبيض شبه كامل الوضوح */
+                    background: rgba(0, 0, 0, 0.5); 
+                    color: rgba(255, 255, 255, 0.9); 
                     border-radius: 5px;
                     white-space: nowrap; 
-                    font-size: 12px !important; /* حجم خط مقروء */
+                    font-size: 12px !important; 
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    transition: top 1s ease-in-out, left 1s ease-in-out; /* حركة ناعمة */
+                    transition: top 1s ease-in-out, left 1s ease-in-out;
                 }
 
                 .gesture-box {
