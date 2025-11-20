@@ -1,3 +1,4 @@
+.js]
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
@@ -18,11 +19,10 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // دالة لتوحيد أرقام الجودة (لتظهر 144, 240, 360... بدلاً من الأرقام العشوائية)
+    // دالة لتوحيد أرقام الجودة
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
-        // قائمة الجودات القياسية التي نريد التقريب إليها
         const standards = [144, 240, 360, 480, 720, 1080];
         const closest = standards.reduce((prev, curr) => {
             return (Math.abs(curr - num) < Math.abs(prev - num) ? curr : prev);
@@ -70,13 +70,12 @@ export default function WatchPage() {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
-                // ترتيب الجودات
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
                 const middleIndex = Math.floor((qualities.length - 1) / 2);
 
                 const qualityList = qualities.map((q, index) => ({
                     default: index === middleIndex,
-                    html: normalizeQuality(q.quality), // ✅ استخدام الأرقام القياسية
+                    html: normalizeQuality(q.quality),
                     url: q.url,
                 }));
                 
@@ -115,7 +114,13 @@ export default function WatchPage() {
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
+                                position: 'absolute', 
+                                top: '10%', 
+                                left: '10%', 
+                                pointerEvents: 'none', 
+                                zIndex: 25,
+                                // ✅✅ الإصلاح: وضع الترانزيشن هنا (على الحاوية التي تتحرك)
+                                transition: 'top 5s linear, left 5s linear'
                             },
                         },
                         {
@@ -165,7 +170,7 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // --- 1. تحريك العلامة المائية (ذكي وانسيابي) ---
+                    // --- 1. تحريك العلامة المائية ---
                     const watermarkLayer = art.layers.watermark;
                     
                     const moveWatermark = () => {
@@ -175,27 +180,22 @@ export default function WatchPage() {
                         const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
                         const isPortrait = window.innerHeight > window.innerWidth;
                         
-                        let minTop = 5, maxTop = 80; // الحدود الافتراضية (أفقي / متصفح عادي)
+                        let minTop = 5, maxTop = 80; 
 
-                        // ✅ الشرط الخاص: تليجرام + عمودي = تقييد الحركة لمحاكاة 16:9 في المنتصف
+                        // تقييد الحركة في المنتصف إذا كان تليجرام وعمودي
                         if (isTelegram && isPortrait) {
-                             // نحصرها في المنطقة الوسطى (بين 30% و 60% رأسياً)
-                             // لضمان ظهورها فوق الفيديو وعدم اختفائها في الأشرطة السوداء
                              minTop = 30;
                              maxTop = 60;
                         }
 
-                        // توليد إحداثيات عشوائية بناءً على الحدود المحسوبة
                         const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
-                        const newLeft = Math.floor(Math.random() * 80) + 5; // اليسار دائماً حر نسبياً
+                        const newLeft = Math.floor(Math.random() * 80) + 5;
                         
                         watermarkLayer.style.top = `${newTop}%`;
                         watermarkLayer.style.left = `${newLeft}%`;
                     };
                     
                     moveWatermark();
-                    
-                    // التحديث كل 5 ثواني (مطابق لوقت الترانزيشن في CSS) لحركة مستمرة
                     const watermarkInterval = setInterval(moveWatermark, 5000);
 
                     // --- 2. اللمس المقسوم ---
@@ -329,7 +329,7 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* ✅✅ تنسيق العلامة المائية للحركة الانسيابية (Linear) ✅✅ */
+                /* العلامة المائية */
                 .watermark-content {
                     padding: 6px 10px; 
                     background: rgba(0, 0, 0, 0.4); 
@@ -340,10 +340,10 @@ export default function WatchPage() {
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    /* استخدام linear يجعل الحركة مستمرة بسرعة ثابتة دون تباطؤ في البداية أو النهاية */
-                    transition: top 5s linear, left 5s linear;
+                    /* (أزلنا الترانزيشن من هنا لأنه مطبق على الحاوية أعلاه) */
                 }
 
+                /* اللمس المقسوم */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
                     display: flex; justify-content: space-between;
