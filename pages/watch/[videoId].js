@@ -118,13 +118,13 @@ export default function WatchPage() {
                             html: `
                                 <div class="gesture-wrapper">
                                     <div class="gesture-zone left" data-action="backward">
-                                        <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
+                                        <span class="icon">10</span>
                                     </div>
                                     
                                     <div class="gesture-zone center" data-action="toggle"></div>
 
                                     <div class="gesture-zone right" data-action="forward">
-                                        <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
+                                        <span class="icon">10</span>
                                     </div>
                                 </div>
                             `,
