@@ -1,3 +1,4 @@
+.js]
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
@@ -114,34 +115,32 @@ export default function WatchPage() {
                             },
                         },
                         {
-                            
-        name: 'gestures',
-        html: `
-            <div class="gesture-wrapper">
-                <div class="gesture-zone left" data-action="backward">
-                    <span class="icon">10 <span style="font-size:1.2em">«</span></span>
-                </div>
-                
-                <div class="gesture-zone center" data-action="toggle"></div>
+                            name: 'gestures',
+                            html: `
+                                <div class="gesture-wrapper">
+                                    <div class="gesture-zone left" data-action="backward">
+                                        <span class="icon">10 <span style="font-size:1.2em">«</span></span>
+                                    </div>
+                                    
+                                    <div class="gesture-zone center" data-action="toggle"></div>
 
-                <div class="gesture-zone right" data-action="forward">
-                    <span class="icon">10 <span style="font-size:1.2em">»</span></span>
-                </div>
-            </div>
-        `,
-        style: {
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-            zIndex: 20, pointerEvents: 'none',
-        },
-    }
-],
+                                    <div class="gesture-zone right" data-action="forward">
+                                        <span class="icon">10 <span style="font-size:1.2em">»</span></span>
+                                    </div>
+                                </div>
+                            `,
+                            style: {
+                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
+                                zIndex: 20, pointerEvents: 'none',
+                            },
+                        }
+                    ],
                     
                     customType: {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
-                                    // ✅✅ تم التعديل هنا: التحميل المسبق 300 ثانية
                                     maxBufferLength: 300, 
                                     enableWorker: true,
                                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
@@ -166,6 +165,7 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
+                    // 1. العلامة المائية
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
@@ -181,56 +181,109 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
+                    // 2. منطق اللمس المتقدم (التراكمي)
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const zones = wrapper.querySelectorAll('.gesture-zone');
                     
-                    let clickTimer = null;
+                    // متغيرات للتحكم في النقر المتعدد
+                    let clickCount = 0;
+                    let singleTapTimer = null;
+                    let accumulateTimer = null;
 
                     zones.forEach(zone => {
                         zone.addEventListener('click', (e) => {
-                            const now = new Date().getTime();
-                            const lastTouch = parseInt(zone.getAttribute('data-last-touch') || '0');
-                            const diff = now - lastTouch;
                             const action = zone.getAttribute('data-action');
-
-                            if (diff < 300) {
-                                clearTimeout(clickTimer);
-                                if (action === 'backward') {
-                                    art.backward = 10;
-                                    showFeedback(zone.querySelector('.icon'));
-                                } else if (action === 'forward') {
-                                    art.forward = 10;
-                                    showFeedback(zone.querySelector('.icon'));
-                                } else if (action === 'toggle') {
-                                    art.toggle(); 
+                            
+                            // --- التعامل مع المنطقة الوسطى (تشغيل/إيقاف) ---
+                            if (action === 'toggle') {
+                                clickCount++;
+                                clearTimeout(singleTapTimer);
+                                
+                                if (clickCount === 1) {
+                                    singleTapTimer = setTimeout(() => {
+                                        // نقرة واحدة: إظهار/إخفاء الواجهة
+                                        simulateSingleTap(e);
+                                        clickCount = 0;
+                                    }, 300);
+                                } else {
+                                    // نقرتين: تشغيل/إيقاف
+                                    art.toggle();
+                                    clickCount = 0;
                                 }
-                            } else {
-                                clickTimer = setTimeout(() => {
-                                    const gestureLayer = art.layers.gestures;
-                                    gestureLayer.style.display = 'none';
-                                    const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                    if (elementBelow) {
-                                        const clickEvent = new MouseEvent('click', {
-                                            view: window, bubbles: true, cancelable: true,
-                                            clientX: e.clientX, clientY: e.clientY
-                                        });
-                                        elementBelow.dispatchEvent(clickEvent);
-                                    }
-                                    gestureLayer.style.display = 'block';
-                                }, 300);
+                                return;
                             }
-                            zone.setAttribute('data-last-touch', now);
+
+                            // --- التعامل مع الجوانب (تقديم/تأخير تراكمي) ---
+                            // (يمين أو يسار)
+                            clickCount++;
+                            clearTimeout(singleTapTimer);
+                            clearTimeout(accumulateTimer); // إعادة ضبط مؤقت التنفيذ
+
+                            if (clickCount === 1) {
+                                // انتظار قليل لاحتمالية نقرة ثانية
+                                singleTapTimer = setTimeout(() => {
+                                    // لم تأتِ نقرة ثانية -> تصرف كنقرة مفردة (إظهار واجهة)
+                                    simulateSingleTap(e);
+                                    clickCount = 0;
+                                }, 250);
+                            } else {
+                                // نقرتين أو أكثر (2, 3, 4...)
+                                // الحساب: (عدد النقرات - 1) * 10
+                                // 2 taps -> 10s, 3 taps -> 20s, 4 taps -> 30s
+                                const seconds = (clickCount - 1) * 10;
+                                const icon = zone.querySelector('.icon');
+                                
+                                // تحديث الرقم في الأيقونة
+                                icon.innerHTML = `${seconds} <span style="font-size:1.2em">${action === 'forward' ? '»' : '«'}</span>`;
+                                
+                                // إظهار الأيقونة وتثبيتها
+                                showFeedback(icon, true);
+
+                                // انتظار التوقف عن النقر لتنفيذ الأمر (Debounce)
+                                accumulateTimer = setTimeout(() => {
+                                    if (action === 'forward') art.forward = seconds;
+                                    else art.backward = seconds;
+                                    
+                                    // إخفاء الأيقونة وإعادة تعيين العداد
+                                    hideFeedback(icon);
+                                    clickCount = 0;
+                                    
+                                    // إعادة النص للأصل (10) بعد الاختفاء
+                                    setTimeout(() => {
+                                        icon.innerHTML = `10 <span style="font-size:1.2em">${action === 'forward' ? '»' : '«'}</span>`;
+                                    }, 300);
+                                }, 600); // تنفيذ بعد 600ms من آخر نقرة
+                            }
                         });
                     });
 
-                    const showFeedback = (el) => {
+                    const simulateSingleTap = (e) => {
+                        const gestureLayer = art.layers.gestures;
+                        gestureLayer.style.display = 'none';
+                        const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+                        if (elementBelow) {
+                            const clickEvent = new MouseEvent('click', {
+                                view: window, bubbles: true, cancelable: true,
+                                clientX: e.clientX, clientY: e.clientY
+                            });
+                            elementBelow.dispatchEvent(clickEvent);
+                        }
+                        gestureLayer.style.display = 'block';
+                    };
+
+                    const showFeedback = (el, stayVisible = false) => {
                         if (!el) return;
                         el.style.opacity = '1';
                         el.style.transform = 'scale(1.2)';
-                        setTimeout(() => {
-                            el.style.opacity = '0';
-                            el.style.transform = 'scale(1)';
-                        }, 400);
+                        
+                        // إذا لم يكن "stayVisible"، نخفيه فوراً (للنقرات العادية)
+                        // لكن في حالتنا التراكمية، نحن نتحكم في الإخفاء يدوياً في accumulateTimer
+                    };
+
+                    const hideFeedback = (el) => {
+                        if (!el) return;
+                        el.style.opacity = '0';
+                        el.style.transform = 'scale(1)';
                     };
 
                     art.on('destroy', () => clearInterval(watermarkInterval));
@@ -354,7 +407,7 @@ export default function WatchPage() {
                     padding: 10px; 
                     text-shadow: 0 2px 4px rgba(0,0,0,0.8);
                     pointer-events: none;
-                    direction: ltr;
+                    direction: ltr; 
                 }
                 
                 .gesture-zone.center .icon {
