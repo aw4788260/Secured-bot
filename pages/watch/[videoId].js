@@ -124,7 +124,7 @@ export default function WatchPage() {
                                     <div class="gesture-zone center" data-action="toggle"></div>
 
                                     <div class="gesture-zone right" data-action="forward">
-                                        <span class="icon">10 <span style="font-size:1.2em">»</span></span>
+                                        <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
                                     </div>
                                 </div>
                             `,
