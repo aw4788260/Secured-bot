@@ -104,9 +104,8 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // قفل التحكم الافتراضي لمنع التعارض
-                    lock: true, 
-
+                    // ✅ تم إزالة lock: true لتجنب الخطأ
+                    
                     layers: [
                         {
                             name: 'watermark',
@@ -165,9 +164,8 @@ export default function WatchPage() {
                     },
                 });
 
-                // إخفاء القفل الافتراضي لأنه يتعارض مع طبقتنا
                 art.notice.show = function() {}; 
-                art.controls.remove('lock');
+                // ✅ تم إزالة السطر المسبب للخطأ (art.controls.remove('lock'))
 
                 art.on('ready', () => {
                     // 1. العلامة المائية
@@ -186,7 +184,7 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
-                    // 2. ✅ منطق اللمس المتقدم (3 مناطق)
+                    // 2. منطق اللمس (المناطق الثلاث)
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const zones = wrapper.querySelectorAll('.gesture-zone');
 
@@ -206,16 +204,15 @@ export default function WatchPage() {
                                     art.forward = 10;
                                     showFeedback(zone.querySelector('.icon'));
                                 } else if (action === 'toggle') {
-                                    art.toggle(); // تشغيل/إيقاف
+                                    art.toggle(); 
                                     showFeedback(zone.querySelector('.icon'));
                                 }
                             } else {
-                                // --- Single Tap (Always toggle UI) ---
-                                // ننتظر قليلاً للتأكد أنه ليس نقراً مزدوجاً (اختياري، لكن الأفضل للتجربة)
+                                // --- Single Tap (إظهار/إخفاء التحكم) ---
                                 setTimeout(() => {
                                     const currentLastTouch = parseInt(zone.getAttribute('data-last-touch') || '0');
+                                    // نتأكد أنه لم يحدث نقر مزدوج خلال الـ 300ms الماضية
                                     if (new Date().getTime() - currentLastTouch >= 300) {
-                                        // التبديل اليدوي لكلاس ظهور التحكم
                                         if (art.template.$player.classList.contains('art-hover')) {
                                             art.template.$player.classList.remove('art-hover');
                                             art.emit('hover', false);
@@ -321,7 +318,7 @@ export default function WatchPage() {
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
                 .art-notice { display: none !important; }
-                /* إخفاء القفل تماماً */
+                /* إخفاء القفل والطبقات المتعارضة */
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
                 .watermark-content {
@@ -336,7 +333,6 @@ export default function WatchPage() {
                     pointer-events: none;
                 }
 
-                /* تقسيم الشاشة لـ 3 مناطق */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
                     display: flex;
@@ -350,7 +346,7 @@ export default function WatchPage() {
                     pointer-events: auto;
                 }
 
-                /* المنطقة الوسطى (40% - المسؤولة عن التشغيل/الإيقاف) */
+                /* المنطقة الوسطى (40%) */
                 .gesture-zone.center {
                     width: 40%;
                     height: 100%;
@@ -369,7 +365,6 @@ export default function WatchPage() {
                     pointer-events: none;
                 }
                 
-                /* أيقونة التشغيل في الوسط تكون أكبر قليلاً */
                 .gesture-zone.center .icon {
                     font-size: 30px;
                 }
