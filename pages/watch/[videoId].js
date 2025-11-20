@@ -18,7 +18,7 @@ export default function WatchPage() {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // 1. إصلاح مشكلة التعليق عند الرجوع (فحص فوري للمكتبات)
+    // 1. فحص فوري للمكتبات (لحل مشكلة الرجوع)
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
@@ -40,11 +40,10 @@ export default function WatchPage() {
         }
     }, []);
 
-    // 3. تشغيل المشغل
+    // 3. تشغيل المشغل (باستخدام منطق الكود الخاص بك + التصميم الجديد)
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
-        // تنظيف المشغل القديم إن وجد
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -59,6 +58,7 @@ export default function WatchPage() {
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
+                // ترتيب الجودات
                 qualities = qualities.sort((a, b) => b.quality - a.quality);
                 const middleIndex = Math.floor((qualities.length - 1) / 2);
 
@@ -72,6 +72,7 @@ export default function WatchPage() {
 
                 if (!artRef.current || !window.Artplayer) return;
 
+                // --- إعداد Artplayer (مدمج) ---
                 const art = new window.Artplayer({
                     container: artRef.current,
                     url: startUrl, 
@@ -98,9 +99,9 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
+                    // [تحسين] طبقات التصميم الجديد (علامة مائية متحركة + لمس مقسوم)
                     layers: [
                         {
-                            // طبقة العلامة المائية
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
@@ -108,8 +109,6 @@ export default function WatchPage() {
                             },
                         },
                         {
-                            // ✅✅ طبقة اللمس الجديدة (مقسومة لجزئين) ✅✅
-                            // نترك المنتصف فارغاً تماماً لكي يعمل زر التشغيل الأصلي بدون مشاكل
                             name: 'gestures',
                             html: `
                                 <div class="gesture-wrapper">
@@ -123,38 +122,27 @@ export default function WatchPage() {
                             `,
                             style: {
                                 position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                                zIndex: 10, pointerEvents: 'none', // الحاوية لا تمنع اللمس
+                                zIndex: 10, pointerEvents: 'none',
                             },
                         }
                     ],
                     
+                    // [استرجاع] إعدادات HLS البسيطة والمستقرة (من كودك)
                     customType: {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
                                 const hls = new window.Hls({
-                                    maxBufferLength: 30, 
-                                    enableWorker: true,
-                                    manifestLoadingTimeOut: 20000,
-                                    fragLoadingTimeOut: 20000,
-                                    levelLoadingTimeOut: 20000,
+                                    maxBufferLength: 30, enableWorker: true,
                                     xhrSetup: function (xhr) { xhr.withCredentials = false; }
                                 });
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
                                 hls.on(window.Hls.Events.ERROR, (event, data) => {
                                     if (data.fatal) {
-                                        switch (data.type) {
-                                            case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                                hls.startLoad();
-                                                break;
-                                            case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                                hls.recoverMediaError();
-                                                break;
-                                            default:
-                                                hls.destroy();
-                                                break;
-                                        }
+                                        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                                            hls.destroy(); video.src = url;
+                                        } else { hls.destroy(); }
                                     }
                                 });
                                 art.hls = hls;
@@ -167,6 +155,7 @@ export default function WatchPage() {
 
                 art.notice.show = function() {}; 
 
+                // [تحسين] منطق الحركة واللمس الجديد
                 art.on('ready', () => {
                     // 1. تحريك العلامة المائية
                     const watermarkLayer = art.layers.watermark;
@@ -181,22 +170,18 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 4000);
 
-                    // 2. منطق اللمس (المحسن والمبسط)
+                    // 2. اللمس المقسوم (Split Gestures)
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const leftZone = wrapper.querySelector('.gesture-zone.left');
                     const rightZone = wrapper.querySelector('.gesture-zone.right');
 
-                    // إضافة مستمعي الأحداث للمناطق النشطة فقط
                     [leftZone, rightZone].forEach(zone => {
                         zone.addEventListener('click', (e) => {
-                            // لأن المناطق الآن منفصلة، يمكننا استخدام النقر المباشر
-                            // نستخدم منطق "النقر المزدوج" اليدوي لأننا نريد فصله عن النقر المفرد
                             const now = new Date().getTime();
                             const lastTouch = zone.getAttribute('data-last-touch') || 0;
                             const diff = now - lastTouch;
 
                             if (diff < 300) {
-                                // Double Tap detected!
                                 const action = zone.getAttribute('data-action');
                                 if (action === 'backward') {
                                     art.backward = 10;
@@ -206,9 +191,6 @@ export default function WatchPage() {
                                     showFeedback(zone.querySelector('.icon'));
                                 }
                             } else {
-                                // Single tap: نتركها تمر أو نقوم بتبديل التشغيل/الإيقاف إذا أردنا
-                                // في هذا التصميم، النقر المفرد على الجوانب قد لا يفعل شيئاً، 
-                                // أو يمكننا جعله يخفي/يظهر التحكم
                                 art.toggle(); 
                             }
                             zone.setAttribute('data-last-touch', now);
@@ -245,6 +227,7 @@ export default function WatchPage() {
         };
     }, [videoId, libsLoaded, user]); 
 
+    // [استرجاع] دالة التحميل (من كودك)
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideo) {
             if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
@@ -257,15 +240,17 @@ export default function WatchPage() {
                         duration = playerInstance.current.duration.toString(); 
                     }
 
+                    // استخدام RAILWAY_PROXY_URL كما في كودك
                     window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
+                    
                 } catch (e) {
-                    alert("حدث خطأ: " + e.message);
+                    alert("حدث خطأ أثناء الاتصال بالتطبيق: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو غير مكتملة.");
+                alert("بيانات الفيديو لم تكتمل بعد، يرجى الانتظار.");
             }
         } else {
-            alert("التحميل متاح من التطبيق فقط.");
+            alert("التحميل متاح من داخل التطبيق فقط.");
         }
     };  
 
@@ -276,18 +261,11 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                <meta name="referrer" content="no-referrer" />
             </Head>
 
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
-                strategy="afterInteractive" 
-                onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} 
-            />
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" 
-                strategy="afterInteractive" 
-                onLoad={() => { if (window.Hls) setLibsLoaded(true); }} 
-            />
+            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
+            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
@@ -304,6 +282,7 @@ export default function WatchPage() {
             <footer className="developer-info">
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
             </footer>
+    
 
             <style jsx global>{`
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
@@ -318,49 +297,34 @@ export default function WatchPage() {
                 .art-notice { display: none !important; }
                 .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* العلامة المائية */
+                /* تنسيق العلامة المائية */
                 .watermark-content {
-                    padding: 4px 8px; 
-                    background: rgba(0, 0, 0, 0.3); /* شفافية أقل */
-                    color: rgba(255, 255, 255, 0.5); /* وضوح أعلى قليلاً */
-                    border-radius: 4px;
+                    padding: 6px 10px; 
+                    background: rgba(0, 0, 0, 0.5); 
+                    color: rgba(255, 255, 255, 0.9); 
+                    border-radius: 5px;
                     white-space: nowrap; 
-                    font-size: 11px !important; 
+                    font-size: 12px !important; 
                     font-weight: bold;
+                    text-shadow: 1px 1px 2px black;
                     pointer-events: none;
-                    transition: top 2s ease-in-out, left 2s ease-in-out;
+                    transition: top 1s ease-in-out, left 1s ease-in-out;
                 }
 
-                /* تقسيم المناطق لتجنب المنتصف */
+                /* تنسيق اللمس المقسوم */
                 .gesture-wrapper {
                     width: 100%; height: 100%;
-                    display: flex;
-                    justify-content: space-between; /* يباعد بين اليمين واليسار */
+                    display: flex; justify-content: space-between;
                 }
-                
                 .gesture-zone {
-                    width: 40%; /* الجوانب تأخذ 40% لكل منها */
-                    height: 100%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    pointer-events: auto; /* هذه المناطق فقط تقبل اللمس */
-                    /* background: rgba(255,0,0,0.1); للتجربة فقط */
+                    width: 40%; height: 100%;
+                    display: flex; align-items: center; justify-content: center;
+                    pointer-events: auto;
                 }
-                
-                /* المنطقة الوسطى (20%) تبقى فارغة وغير قابلة للمس من هذه الطبقة */
-
                 .gesture-zone .icon { 
-                    font-size: 24px; 
-                    font-weight: bold; 
-                    font-family: monospace; 
-                    letter-spacing: -1px;
-                    color: white;
-                    opacity: 0; /* مخفي افتراضياً */
-                    transition: opacity 0.2s, transform 0.2s;
-                    background: rgba(0,0,0,0.5);
-                    padding: 15px;
-                    border-radius: 50%;
+                    font-size: 24px; font-weight: bold; font-family: monospace; 
+                    color: white; opacity: 0; transition: opacity 0.2s, transform 0.2s;
+                    background: rgba(0,0,0,0.5); padding: 15px; border-radius: 50%;
                     pointer-events: none;
                 }
             `}</style>
