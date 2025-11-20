@@ -104,8 +104,6 @@ export default function WatchPage() {
                     theme: '#38bdf8',
                     lang: 'ar',
                     
-                    // ✅ تم إزالة lock: true لتجنب الخطأ
-                    
                     layers: [
                         {
                             name: 'watermark',
@@ -124,7 +122,6 @@ export default function WatchPage() {
                                     </div>
                                     
                                     <div class="gesture-zone center" data-action="toggle">
-                                        <span class="icon play-icon">⏯</span>
                                     </div>
 
                                     <div class="gesture-zone right" data-action="forward">
@@ -165,7 +162,6 @@ export default function WatchPage() {
                 });
 
                 art.notice.show = function() {}; 
-                // ✅ تم إزالة السطر المسبب للخطأ (art.controls.remove('lock'))
 
                 art.on('ready', () => {
                     // 1. العلامة المائية
@@ -184,9 +180,12 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
-                    // 2. منطق اللمس (المناطق الثلاث)
-                    const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
+                    // 2. منطق اللمس المتقدم
+                    const gestureLayer = art.layers.gestures; // الطبقة الرئيسية
+                    const wrapper = gestureLayer.querySelector('.gesture-wrapper');
                     const zones = wrapper.querySelectorAll('.gesture-zone');
+                    
+                    let clickTimer = null;
 
                     zones.forEach(zone => {
                         zone.addEventListener('click', (e) => {
@@ -195,8 +194,10 @@ export default function WatchPage() {
                             const diff = now - lastTouch;
                             const action = zone.getAttribute('data-action');
 
+                            // --- Double Tap ---
                             if (diff < 300) {
-                                // --- Double Tap ---
+                                clearTimeout(clickTimer); // إلغاء النقر المفرد
+                                
                                 if (action === 'backward') {
                                     art.backward = 10;
                                     showFeedback(zone.querySelector('.icon'));
@@ -204,24 +205,36 @@ export default function WatchPage() {
                                     art.forward = 10;
                                     showFeedback(zone.querySelector('.icon'));
                                 } else if (action === 'toggle') {
-                                    art.toggle(); 
-                                    showFeedback(zone.querySelector('.icon'));
+                                    art.toggle(); // تشغيل/إيقاف
+                                    // لا نعرض أي أيقونة هنا كما طلبت
                                 }
-                            } else {
-                                // --- Single Tap (إظهار/إخفاء التحكم) ---
-                                setTimeout(() => {
-                                    const currentLastTouch = parseInt(zone.getAttribute('data-last-touch') || '0');
-                                    // نتأكد أنه لم يحدث نقر مزدوج خلال الـ 300ms الماضية
-                                    if (new Date().getTime() - currentLastTouch >= 300) {
-                                        if (art.template.$player.classList.contains('art-hover')) {
-                                            art.template.$player.classList.remove('art-hover');
-                                            art.emit('hover', false);
-                                        } else {
-                                            art.template.$player.classList.add('art-hover');
-                                            art.emit('hover', true);
-                                        }
+                            } 
+                            // --- Single Tap ---
+                            else {
+                                clickTimer = setTimeout(() => {
+                                    // ✅✅ تمرير النقرة للمشغل الأصلي
+                                    // 1. نخفي طبقة اللمس مؤقتاً لكي لا تستقبل النقرة
+                                    gestureLayer.style.display = 'none';
+                                    
+                                    // 2. نحدد العنصر الموجود تحت مكان الضغط بالضبط (واجهة المشغل)
+                                    const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+                                    
+                                    // 3. نرسل له نقرة حقيقية
+                                    if (elementBelow) {
+                                        // محاكاة نقرة كاملة (Mousedown -> Mouseup -> Click) لضمان الاستجابة
+                                        const clickEvent = new MouseEvent('click', {
+                                            view: window,
+                                            bubbles: true,
+                                            cancelable: true,
+                                            clientX: e.clientX,
+                                            clientY: e.clientY
+                                        });
+                                        elementBelow.dispatchEvent(clickEvent);
                                     }
-                                }, 310);
+                                    
+                                    // 4. نعيد إظهار طبقة اللمس فوراً
+                                    gestureLayer.style.display = 'block';
+                                }, 300);
                             }
                             zone.setAttribute('data-last-touch', now);
                         });
@@ -286,6 +299,7 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                <meta name="referrer" content="no-referrer" />
             </Head>
 
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
@@ -363,10 +377,6 @@ export default function WatchPage() {
                     padding: 10px; 
                     text-shadow: 0 2px 4px rgba(0,0,0,0.8);
                     pointer-events: none;
-                }
-                
-                .gesture-zone.center .icon {
-                    font-size: 30px;
                 }
             `}</style>
         </div>
