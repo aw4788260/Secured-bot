@@ -8,10 +8,19 @@ export default async (req, res) => {
         const { lessonId } = req.query;
         
         try {
-            // 1. جلب الـ youtubeId من قاعدة البيانات
+            // 1. [تعديل] جلب تفاصيل الفيديو مع الشابتر والمادة
             const { data, error: supabaseError } = await supabase
                 .from('videos')
-                .select('youtube_video_id')
+                .select(`
+                    youtube_video_id,
+                    title,
+                    chapters (
+                        title,
+                        subjects (
+                            title
+                        )
+                    )
+                `)
                 .eq('id', lessonId)
                 .single();
 
@@ -21,38 +30,30 @@ export default async (req, res) => {
             }
 
             const youtubeId = data.youtube_video_id;
+            
+            // [جديد] استخراج الأسماء
+            const chapterName = data.chapters?.title || "General";
+            const subjectName = data.chapters?.subjects?.title || "General";
+            const dbTitle = data.title;
 
-            // 2. طلب قائمة الجودات من سيرفر Flask
+            // 2. طلب قائمة الجودات من البروكسي
             const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`; 
-            
-            // (تم حذف اللوج القديم لتقليل الزحمة، سنكتفي باللوج الجديد)
-            
             const proxyResponse = await axios.get(hls_endpoint, { params: { youtubeId } });
-            
             const flaskData = proxyResponse.data;
 
-            // ✅✅✅ [ التعديل الجديد: طباعة المدة في Vercel Logs ] ✅✅✅
-            // ابحث عن هذه الرسالة في تبويب Logs في Vercel Dashboard
-            if (flaskData.duration) {
-                console.log(`--------------------------------------------------`);
-                console.log(`🔍 [DEBUG] Video ID: ${youtubeId}`);
-                console.log(`⏱️ [DEBUG] Duration Value: ${flaskData.duration}`);
-                console.log(`TYPE [DEBUG] Duration Type: ${typeof flaskData.duration}`);
-                console.log(`--------------------------------------------------`);
-            } else {
-                console.log(`⚠️ [DEBUG] No duration returned for ${youtubeId}`);
-            }
-            // -------------------------------------------------------
-
-            // 3. دمج البيانات وإرسال الرد
+            // 3. دمج البيانات وإرسالها
             res.status(200).json({ 
                 ...flaskData, 
-                youtube_video_id: youtubeId 
+                youtube_video_id: youtubeId,
+                // [جديد] إرسال البيانات الهيكلية للواجهة
+                db_video_title: dbTitle,
+                subject_name: subjectName,
+                chapter_name: chapterName
             });
 
         } catch (err) {
             console.error("Server fetch failed:", err.message);
-            res.status(500).json({ message: "Failed to fetch video details from Python Proxy." });
+            res.status(500).json({ message: "Failed to fetch video details." });
         }
     } else {
         res.status(400).json({ message: "Missing lessonId" });
