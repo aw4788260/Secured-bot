@@ -311,27 +311,48 @@ export default function WatchPage() {
     }, [videoId, libsLoaded, user]); 
 
     const handleDownloadClick = () => {
-        if (window.Android && window.Android.downloadVideo) {
-            if (videoData && (videoData.youtube_video_id || videoData.youtubeId)) {
+    const handleDownloadClick = () => {
+        // التحقق من وجود الدالة الجديدة في الأندرويد
+        if (window.Android && window.Android.downloadVideoWithQualities) {
+            
+            // التأكد من أن البيانات محملة بالكامل
+            if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
                     const vTitle = videoData.videoTitle || videoData.title || "Video";
+                    
+                    // محاولة جلب المدة الدقيقة من المشغل، أو استخدام القيمة القادمة من السيرفر
                     let duration = "0";
                     if (playerInstance.current && playerInstance.current.duration) {
                         duration = playerInstance.current.duration.toString(); 
+                    } else if (videoData.duration) {
+                        duration = videoData.duration.toString();
                     }
-                    window.Android.downloadVideo(yId, vTitle, RAILWAY_PROXY_URL, duration);
+
+                    // [هام] تجهيز مصفوفة الجودات والروابط فقط
+                    const qualitiesPayload = videoData.availableQualities.map(q => ({
+                        quality: q.quality, // الرقم (مثلاً 720)
+                        url: q.url          // الرابط المباشر
+                    }));
+
+                    // تحويلها لنص JSON
+                    const qualitiesJson = JSON.stringify(qualitiesPayload);
+
+                    // استدعاء دالة الأندرويد وتمرير البيانات الجاهزة
+                    window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson);
+
                 } catch (e) {
-                    alert("حدث خطأ: " + e.message);
+                    alert("حدث خطأ أثناء تحضير التحميل: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو غير مكتملة.");
+                alert("بيانات الفيديو أو الجودات غير مكتملة بعد. انتظر قليلاً وحاول مرة أخرى.");
             }
         } else {
-            alert("التحميل متاح من التطبيق فقط.");
+            // رسالة للمستخدمين القدامى الذين لم يحدثوا التطبيق
+            alert("يرجى تحديث التطبيق لأحدث نسخة لاستخدام ميزة التحميل.");
         }
-    };  
-
+    };
+        
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
     return (
