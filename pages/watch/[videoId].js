@@ -312,16 +312,20 @@ export default function WatchPage() {
 
     
     const handleDownloadClick = () => {
-        // التحقق من وجود الدالة الجديدة في الأندرويد
+        // التحقق من الدالة (لاحظ زيادة عدد المتغيرات)
         if (window.Android && window.Android.downloadVideoWithQualities) {
             
-            // التأكد من أن البيانات محملة بالكامل
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
-                    const vTitle = videoData.videoTitle || videoData.title || "Video";
                     
-                    // محاولة جلب المدة الدقيقة من المشغل، أو استخدام القيمة القادمة من السيرفر
+                    // [تعديل] استخدام العنوان القادم من قاعدة البيانات
+                    const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
+                    
+                    // [جديد] جلب أسماء المجلدات من الرد الجديد
+                    const subjectName = videoData.subject_name || "Unknown Subject";
+                    const chapterName = videoData.chapter_name || "Unknown Chapter";
+
                     let duration = "0";
                     if (playerInstance.current && playerInstance.current.duration) {
                         duration = playerInstance.current.duration.toString(); 
@@ -329,27 +333,23 @@ export default function WatchPage() {
                         duration = videoData.duration.toString();
                     }
 
-                    // [هام] تجهيز مصفوفة الجودات والروابط فقط
                     const qualitiesPayload = videoData.availableQualities.map(q => ({
-                        quality: q.quality, // الرقم (مثلاً 720)
-                        url: q.url          // الرابط المباشر
+                        quality: q.quality,
+                        url: q.url
                     }));
-
-                    // تحويلها لنص JSON
                     const qualitiesJson = JSON.stringify(qualitiesPayload);
 
-                    // استدعاء دالة الأندرويد وتمرير البيانات الجاهزة
-                    window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson);
+                    // [تعديل] تمرير المتغيرات الجديدة (6 متغيرات)
+                    window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
 
                 } catch (e) {
-                    alert("حدث خطأ أثناء تحضير التحميل: " + e.message);
+                    alert("حدث خطأ: " + e.message);
                 }
             } else {
-                alert("بيانات الفيديو أو الجودات غير مكتملة بعد. انتظر قليلاً وحاول مرة أخرى.");
+                alert("بيانات الفيديو غير مكتملة.");
             }
         } else {
-            // رسالة للمستخدمين القدامى الذين لم يحدثوا التطبيق
-            alert("يرجى تحديث التطبيق لأحدث نسخة لاستخدام ميزة التحميل.");
+            alert("يرجى تحديث التطبيق.");
         }
     };
         
