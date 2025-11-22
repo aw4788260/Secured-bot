@@ -310,7 +310,7 @@ export default function WatchPage() {
         };
     }, [videoId, libsLoaded, user]); 
 
-    const handleDownloadClick = () => {
+    
     const handleDownloadClick = () => {
         // التحقق من وجود الدالة الجديدة في الأندرويد
         if (window.Android && window.Android.downloadVideoWithQualities) {
