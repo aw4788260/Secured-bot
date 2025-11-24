@@ -1,5 +1,7 @@
+// pages/api/secure/get-video-id.js
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
+import { checkUserAccess } from '../../../lib/authHelper';
 
 const PYTHON_PROXY_BASE_URL = 'https://web-production-3a04a.up.railway.app';
 
@@ -11,8 +13,15 @@ export default async (req, res) => {
     }
         
     try {
-        // 1. استعلام واحد ذكي لجلب الفيديو وكل بياناته الهرمية (شابتر -> مادة -> كورس)
-        const { data: videoData, error: dbError } = await supabase
+        // 1. التحقق الأمني (باستخدام الكود المضمون)
+        const hasAccess = await checkUserAccess(userId, lessonId, null, null);
+
+        if (!hasAccess) {
+             return res.status(403).json({ message: "Access Denied: You do not have permission to view this video." });
+        }
+
+        // 2. جلب تفاصيل الفيديو (الاستعلام الأصلي الذي يعمل بدقة)
+        const { data, error: supabaseError } = await supabase
             .from('videos')
             .select(`
                 youtube_video_id,
@@ -20,65 +29,27 @@ export default async (req, res) => {
                 chapters (
                     title,
                     subjects (
-                        id,
-                        title,
-                        course_id
+                        title
                     )
                 )
             `)
             .eq('id', lessonId)
             .single();
 
-        if (dbError || !videoData) {
-            return res.status(404).json({ message: "Video not found." });
+        if (supabaseError || !data) {
+            return res.status(404).json({ message: "Video ID not found in database." });
         }
 
-        // استخراج المعرفات للتحقق من الصلاحية
-        const subjectData = videoData.chapters?.subjects;
-        const courseId = subjectData?.course_id;
-        const subjectId = subjectData?.id;
+        const youtubeId = data.youtube_video_id;
+        const dbTitle = data.title;
+        const chapterName = data.chapters?.title || "General";
+        const subjectName = data.chapters?.subjects?.title || "General";
 
-        // 2. التحقق من الصلاحية (بأقل عدد استعلامات)
-        let hasAccess = false;
-
-        // أولوية 1: هل يملك الكورس كاملاً؟
-        if (courseId) {
-            const { data: courseAccess } = await supabase
-                .from('user_course_access')
-                .select('id')
-                .eq('user_id', userId)
-                .eq('course_id', courseId)
-                .maybeSingle();
-            
-            if (courseAccess) hasAccess = true;
-        }
-
-        // أولوية 2: إذا لم يملك الكورس، هل يملك المادة؟
-        if (!hasAccess && subjectId) {
-            const { data: subjectAccess } = await supabase
-                .from('user_subject_access')
-                .select('id')
-                .eq('user_id', userId)
-                .eq('subject_id', subjectId)
-                .maybeSingle();
-
-            if (subjectAccess) hasAccess = true;
-        }
-
-        // النتيجة النهائية للتحقق
-        if (!hasAccess) {
-             return res.status(403).json({ message: "Access Denied" });
-        }
-
-        // 3. جلب بيانات التشغيل من البروكسي (فقط بعد التأكد من الصلاحية)
-        const youtubeId = videoData.youtube_video_id;
-        const dbTitle = videoData.title;
-        const chapterName = videoData.chapters?.title || "General";
-        const subjectName = subjectData?.title || "General";
-
+        // 3. طلب البروكسي
         const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`; 
         const proxyResponse = await axios.get(hls_endpoint, { params: { youtubeId } });
         
+        // 4. الرد بالبيانات
         res.status(200).json({ 
             ...proxyResponse.data, 
             youtube_video_id: youtubeId,
