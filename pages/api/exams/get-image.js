@@ -1,20 +1,17 @@
 // pages/api/exams/get-image.js
 import axios from 'axios';
+import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // استيراد دالة التحقق
 
-/**
- * هذا الـ API يعمل كبروكسي آمن وموفر للباقة.
- * بدلاً من تحميل الصورة على Vercel ثم إرسالها للمستخدم (استهلاك مزدوج للباقة)،
- * نقوم بطلب "رابط تحميل مؤقت" من تليجرام، ثم نقوم بعمل "إعادة توجيه" (Redirect) للمستخدم.
- * هذا يجعل جهاز المستخدم يقوم بتحميل الصورة مباشرة من خوادم تليجرام.
- */
 export default async (req, res) => {
-  const { file_id } = req.query;
+  // 1. استقبال userId بالإضافة لـ file_id
+  const { file_id, userId } = req.query;
 
-  if (!file_id) {
-    return res.status(400).json({ error: 'Missing file_id' });
+  if (!file_id || !userId) {
+    return res.status(400).json({ error: 'Missing file_id or userId' });
   }
 
-  // 1. جلب التوكن بأمان
+  // التحقق من إعدادات السيرفر
   const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TOKEN) {
     console.error("TELEGRAM_BOT_TOKEN is not set!");
@@ -22,7 +19,28 @@ export default async (req, res) => {
   }
 
   try {
-    // 2. طلب "مسار" الملف من تليجرام
+    // 2. [🔒 حماية] البحث عن الامتحان الذي تتبع له هذه الصورة
+    // نبحث في جدول الأسئلة (questions) لأن الصور مخزنة هناك
+    const { data: questionData, error: qError } = await supabase
+        .from('questions')
+        .select('exam_id')
+        .eq('image_file_id', file_id)
+        .limit(1)
+        .single();
+
+    if (qError || !questionData) {
+        // إذا لم نجد الصورة في القاعدة، نرفض الطلب
+        return res.status(404).json({ error: 'Image context not found in database' });
+    }
+
+    // 3. [🔒 حماية] التحقق من صلاحية المستخدم لهذا الامتحان
+    // نمرر examId كمعامل رابع للدالة
+    const hasAccess = await checkUserAccess(userId, null, null, questionData.exam_id);
+    if (!hasAccess) {
+        return res.status(403).json({ error: 'Access Denied: You do not have permission to view this image.' });
+    }
+
+    // 4. طلب مسار الملف من تليجرام (الكود الأصلي)
     const getFileUrl = `https://api.telegram.org/bot${TOKEN}/getFile?file_id=${file_id}`;
     const fileInfoResponse = await axios.get(getFileUrl);
 
@@ -32,11 +50,8 @@ export default async (req, res) => {
 
     const file_path = fileInfoResponse.data.result.file_path;
 
-    // 3. بناء رابط التحميل المباشر
+    // 5. بناء رابط التحميل المباشر وتوجيه المستخدم (الكود الأصلي)
     const downloadUrl = `https://api.telegram.org/file/bot${TOKEN}/${file_path}`;
-
-    // 4. [ ✅ الأهم ] إرسال "إعادة توجيه مؤقت" (307)
-    // هذا يخبر متصفح المستخدم: "اذهب وجلب الصورة من هذا الرابط"
     res.redirect(307, downloadUrl);
 
   } catch (err) {
