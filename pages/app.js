@@ -366,8 +366,8 @@ export default function App() {
                 let href = '';
                 // 4. [✅ تذكير] هنا أيضاً يمكن تمرير deviceId للامتحانات إذا أردت حمايتها بنفس الطريقة
                 // حالياً سنكتفي بالمعلمات الأساسية، ويمكنك إضافته هنا لو عدلت ملف الامتحانات
-                const baseParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}`;
-
+                // ✅ إضافة &deviceId=${deviceId}
+const baseParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}&deviceId=${deviceId}`;
                 if (!exam.is_completed) {
                     href = `/exam/${exam.id}${baseParams}`;
                 } else {
