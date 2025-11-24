@@ -312,11 +312,11 @@ export default function ExamPage() {
                     {q.image_file_id && (
                         <div className="question-image-container">
                             <img 
-                                src={`/api/exams/get-image?file_id=${q.image_file_id}`} 
-                                alt="Question Image" 
-                                className="question-image"
-                                loading="lazy" 
-                            />
+    src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}`} 
+    alt="Question Image" 
+    className="question-image"
+    loading="lazy" 
+/>
                         </div>
                     )}
                     
