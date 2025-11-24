@@ -51,6 +51,9 @@ export default function WatchPage() {
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
+        const params = new URLSearchParams(window.location.search);
+        const currentDeviceId = params.get('deviceId');
+        
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -58,7 +61,7 @@ export default function WatchPage() {
 
         setLoading(true);
 
-       fetch(`/api/secure/get-video-id?lessonId=${videoId}&userId=${user.id}`)
+       fetch(`/api/secure/get-video-id?lessonId=${videoId}&userId=${user.id}&deviceId=${currentDeviceId}`)
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
