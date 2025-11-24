@@ -1,12 +1,11 @@
-// pages/results/[attemptId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 
 export default function ResultsPage() {
     const router = useRouter();
-    // (جلب المتغيرات من الرابط)
-    const { attemptId, userId, firstName, subjectId } = router.query;
+    // 1. [✅ تعديل] استخراج deviceId من الرابط
+    const { attemptId, userId, firstName, subjectId, deviceId } = router.query;
     
     const [results, setResults] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -37,7 +36,7 @@ export default function ResultsPage() {
         }
         
         // (جلب النتائج)
-        fetch(`/api/exams/get-results?attemptId=${attemptId}`)
+        fetch(`/api/exams/get-results?attemptId=${attemptId}&userId=${effectiveUserId}`)
             .then(res => res.json())
             .then(data => {
                 if(data.error) throw new Error(data.error);
@@ -101,12 +100,13 @@ export default function ResultsPage() {
                         {/* [ ✅✅ جديد: عرض الصورة إن وجدت ] */}
                         {q.image_file_id && (
                             <div className="question-image-container">
+                                {/* 2. [✅ تعديل] تمرير deviceId لرابط الصورة لتفتح بنجاح */}
                                 <img 
-    src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}`} 
-    alt="Question Image" 
-    className="question-image"
-    loading="lazy"
-/>
+                                    src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}&deviceId=${deviceId}`} 
+                                    alt="Question Image" 
+                                    className="question-image"
+                                    loading="lazy"
+                                />
                             </div>
                         )}
 
@@ -149,7 +149,8 @@ export default function ResultsPage() {
             <button 
                 className="button-link" 
                 style={{marginTop: '20px'}} 
-                onClick={() => router.push(`/app?userId=${userId || ''}&firstName=${firstName || ''}`)}
+                // 3. [✅ تعديل] تمرير deviceId عند العودة للقائمة الرئيسية
+                onClick={() => router.push(`/app?userId=${userId || ''}&firstName=${firstName || ''}&deviceId=${deviceId || ''}`)}
             >
                 العودة للقائمة الرئيسية
             </button>
