@@ -1,12 +1,11 @@
-// pages/exam/[examId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 
 export default function ExamPage() {
     const router = useRouter();
-    // (جلب البيانات من الرابط)
-    const { examId, userId, firstName } = router.query;
+    // 1. [✅ تعديل] استخراج deviceId من الرابط
+    const { examId, userId, firstName, deviceId } = router.query;
     
     // (حالات لواجهة المستخدم)
     const [examDetails, setExamDetails] = useState(null); // تفاصيل الامتحان (قبل البدء)
@@ -17,8 +16,6 @@ export default function ExamPage() {
     const [error, setError] = useState(null);
     const [studentName, setStudentName] = useState(""); 
     
-    // (تم حذف حالة isTelegramWebApp لأنها لم تعد مطلوبة)
-
     // (حالات تقنية)
     const attemptIdRef = useRef(null); // لتخزين ID المحاولة
     const timerIntervalRef = useRef(null); // للتحكم بالعداد
@@ -33,10 +30,14 @@ export default function ExamPage() {
     }, [answers]);
 
 
-    // (التحقق من المستخدم)
+    // (التحقق من المستخدم والجهاز)
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
+        
+        // [✅ جديد] محاولة جلب deviceId من الرابط المباشر إذا لم يكن في الـ query
+        const effectiveDeviceId = deviceId || urlParams.get('deviceId');
+
         let effectiveUserId = null;
 
         if (urlUserId && urlUserId.trim() !== '') {
@@ -46,7 +47,6 @@ export default function ExamPage() {
             const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
             if (miniAppUser && miniAppUser.id) {
                 effectiveUserId = miniAppUser.id.toString();
-                // (تم حذف setIsTelegramWebApp)
             }
         }
 
@@ -57,7 +57,8 @@ export default function ExamPage() {
         }
         
         // (جلب تفاصيل الامتحان)
-        fetch(`/api/exams/get-details?examId=${examId}&userId=${effectiveUserId}`)
+        // [✅ تعديل] نمرر deviceId أيضاً إذا كان الـ API يحتاجه (للتأكد)
+        fetch(`/api/exams/get-details?examId=${examId}&userId=${effectiveUserId}&deviceId=${effectiveDeviceId}`)
             .then(res => res.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -69,7 +70,7 @@ export default function ExamPage() {
                 setError(err.message);
                 setIsLoading(false);
             });
-    }, [examId, userId]); // (يعتمد على examId و userId)
+    }, [examId, userId, deviceId]); // (يعتمد على examId و userId و deviceId)
 
 
     // (العداد التنازلي)
@@ -100,12 +101,20 @@ export default function ExamPage() {
         
         const urlParams = new URLSearchParams(window.location.search);
         const currentUserId = urlParams.get('userId') || window.Telegram.WebApp.initDataUnsafe?.user?.id.toString();
+        // [✅ تعديل] جلب البصمة
+        const currentDeviceId = deviceId || urlParams.get('deviceId');
 
         try {
             const res = await fetch(`/api/exams/start-attempt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ examId, userId: currentUserId, studentName: studentName.trim() })
+                // [✅ تعديل] إرسال deviceId في الـ body
+                body: JSON.stringify({ 
+                    examId, 
+                    userId: currentUserId, 
+                    deviceId: currentDeviceId,
+                    studentName: studentName.trim() 
+                })
             });
             const data = await res.json();
             if (data.error) throw new Error(data.error);
@@ -126,9 +135,16 @@ export default function ExamPage() {
         console.log("Exit detected. Force submitting answers via sendBeacon...");
         isSubmittingRef.current = true;
         
+        // جلب البيانات الحالية
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentUserId = urlParams.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
+        const currentDeviceId = urlParams.get('deviceId'); // [✅ جديد]
+
         const data = {
             attemptId: attemptIdRef.current,
-            answers: answersRef.current 
+            answers: answersRef.current,
+            userId: currentUserId,
+            deviceId: currentDeviceId // [✅ جديد] إرسال البصمة
         };
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         
@@ -143,9 +159,7 @@ export default function ExamPage() {
                 "هل أنت متأكد من الخروج؟ سيتم تسليم إجاباتك الحالية وإنهاء الامتحان.", 
                 (isConfirmed) => {
                     if (isConfirmed) {
-                        // (1. قم بالتسليم)
                         handleExitSubmit();
-                        // (2. قم بالإغلاق)
                         window.Telegram.WebApp.close();
                     }
                 }
@@ -157,21 +171,17 @@ export default function ExamPage() {
     // (Effect لتفعيل رصد الخروج)
     useEffect(() => {
         if (questions && timer > 0) {
-            
             // --- 1. رصد زر الرجوع (تليجرام فقط) ---
             if (window.Telegram && window.Telegram.WebApp) {
                 const twaBackButton = window.Telegram.WebApp.BackButton;
                 twaBackButton.show();
                 twaBackButton.onClick(handleBackButtonConfirm); 
             }
-            
-            // --- 2. رصد إغلاق الصفحة/التحديث (للمتصفح + الأندرويد) ---
+            // --- 2. رصد إغلاق الصفحة/التحديث ---
             window.addEventListener('beforeunload', handleExitSubmit);
-
-            // --- 3. رصد الرجوع (داخل المتصفح - Next.js) ---
+            // --- 3. رصد الرجوع (Next.js) ---
             router.events.on('routeChangeStart', handleExitSubmit);
 
-            // --- [ دالة التنظيف ] ---
             return () => {
                 if (window.Telegram && window.Telegram.WebApp) {
                     window.Telegram.WebApp.BackButton.offClick(handleBackButtonConfirm);
@@ -197,7 +207,6 @@ export default function ExamPage() {
         if (isSubmittingRef.current) return;
         isSubmittingRef.current = true;
         
-        // (إزالة كل المستمعين يدوياً)
         if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.BackButton.offClick(handleBackButtonConfirm);
             window.Telegram.WebApp.BackButton.hide();
@@ -206,17 +215,28 @@ export default function ExamPage() {
         router.events.off('routeChangeStart', handleExitSubmit);
         
         setIsLoading(true);
-        setTimer(null); // (إيقاف العداد)
+        setTimer(null);
+
+        // جلب البيانات للإرسال
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentUserId = urlParams.get('userId') || window.Telegram.WebApp.initDataUnsafe?.user?.id.toString();
+        const currentDeviceId = deviceId || urlParams.get('deviceId'); // [✅ جديد]
 
         try {
             await fetch(`/api/exams/submit-attempt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ attemptId: attemptIdRef.current, answers })
+                body: JSON.stringify({ 
+                    attemptId: attemptIdRef.current, 
+                    answers,
+                    userId: currentUserId, // [✅]
+                    deviceId: currentDeviceId // [✅]
+                })
             });
             
-            // (الانتقال لصفحة النتائج)
-            router.push(`/results/${attemptIdRef.current}?userId=${userId}&firstName=${encodeURIComponent(firstName || "")}`);
+            // (الانتقال لصفحة النتائج مع تمرير deviceId)
+            // [✅ تعديل] إضافة deviceId للرابط
+            router.push(`/results/${attemptIdRef.current}?userId=${userId}&firstName=${encodeURIComponent(firstName || "")}&deviceId=${currentDeviceId}`);
 
         } catch (err) {
             setError("حدث خطأ أثناء إرسال الإجابات.");
@@ -225,7 +245,6 @@ export default function ExamPage() {
         }
     };
 
-    // (تخزين الإجابات عند الاختيار)
     const handleAnswerChange = (questionId, optionId) => {
         setAnswers(prev => ({ ...prev, [questionId]: optionId }));
     };
@@ -254,8 +273,7 @@ export default function ExamPage() {
         );
     }
 
-    // (الحالة 1: عرض تفاصيل الامتحان - قبل البدء)
-    // --- [ ✅✅ معدل: لإظهار التحذير دائماً ] ---
+    // (الحالة 1: قبل البدء)
     if (!questions) {
         return (
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -275,9 +293,8 @@ export default function ExamPage() {
                         />
                     )}
 
-                    {/* --- [ ✅✅ هذا هو التحذير الدائم ] --- */}
                     <p style={{ 
-                        color: '#f39c12', // (لون برتقالي للتحذير)
+                        color: '#f39c12', 
                         fontWeight: 'bold', 
                         marginTop: '15px',
                         fontSize: '0.95em',
@@ -285,7 +302,6 @@ export default function ExamPage() {
                     }}>
                         ⚠️ تنبيه: بمجرد بدء الامتحان، الضغط على زر الرجوع سيؤدي إلى تسليم الامتحان فوراً.
                     </p>
-                    {/* --- [ نهاية التحذير ] --- */}
                     
                 </div>
                 <button className="button-link" onClick={startExam} style={{width: '90%', maxWidth: '400px', marginTop: '20px'}}>
@@ -295,7 +311,7 @@ export default function ExamPage() {
         );
     }
     
-    // (الحالة 2: عرض أسئلة الامتحان - بعد البدء)
+    // (الحالة 2: أثناء الامتحان)
     const allAnswered = questions ? Object.keys(answers).length === questions.length : false;
 
     return (
@@ -311,12 +327,13 @@ export default function ExamPage() {
                     
                     {q.image_file_id && (
                         <div className="question-image-container">
+                            {/* [✅✅ تعديل هام] تمرير deviceId لرابط الصورة لتفتح بنجاح */}
                             <img 
-    src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}`} 
-    alt="Question Image" 
-    className="question-image"
-    loading="lazy" 
-/>
+                                src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}&deviceId=${deviceId}`} 
+                                alt="Question Image" 
+                                className="question-image"
+                                loading="lazy" 
+                            />
                         </div>
                     )}
                     
