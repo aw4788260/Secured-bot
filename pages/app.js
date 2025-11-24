@@ -11,6 +11,9 @@ export default function App() {
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState(null); 
+  
+  // 1. [✅ جديد] حالة لتخزين بصمة الجهاز لاستخدامها في الروابط
+  const [deviceId, setDeviceId] = useState(null);
 
   // (دالة جلب المواد - تبقى كما هي)
   const fetchSubjects = (userIdString, foundUser, urlSubjectId = null, urlMode = null) => {
@@ -76,8 +79,8 @@ export default function App() {
     });
   };
   
-  // (دالة فحص الاشتراك والجهاز - تبقى كما هي)
-  const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, deviceId = null, urlSubjectId, urlMode) => {
+  // (دالة فحص الاشتراك والجهاز - المعدلة)
+  const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, androidId = null, urlSubjectId, urlMode) => {
     fetch('/api/auth/check-subscription', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -90,8 +93,10 @@ export default function App() {
         return;
       }
 
+      // 2. [✅ تعديل] حفظ البصمة في الحالة وتمريرها للتحقق
       if (isAndroidApk) {
-        checkDeviceApi(foundUser.id, deviceId, foundUser, true, urlSubjectId, urlMode); 
+        setDeviceId(androidId); // حفظ بصمة الأندرويد
+        checkDeviceApi(foundUser.id, androidId, foundUser, true, urlSubjectId, urlMode); 
       } else {
         const loadBrowserFingerprint = async () => {
           try {
@@ -105,6 +110,7 @@ export default function App() {
           }
         };
         loadBrowserFingerprint().then(fingerprint => {
+            setDeviceId(fingerprint); // حفظ بصمة المتصفح
             checkDeviceApi(foundUser.id, fingerprint, foundUser, false, urlSubjectId, urlMode); 
         });
       }
@@ -118,7 +124,6 @@ export default function App() {
 
   useEffect(() => {
     try {
-      // --- [ ✅✅ هذا هو الإصلاح الجوهري ] ---
       const urlParams = new URLSearchParams(window.location.search);
       const urlSubjectId = urlParams.get('subjectId');
       const urlMode = urlParams.get('mode');
@@ -138,8 +143,6 @@ export default function App() {
         console.log("Running as navigated user (from results)");
         const navigatedUser = { id: genericUserId, first_name: "User" }; 
         
-        // --- [ ✅✅ هذا هو الكود الجديد ] ---
-        // (نتخطى فحص الجهاز ونفحص الاشتراك فقط)
         fetch('/api/auth/check-subscription', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -151,14 +154,14 @@ export default function App() {
                 setError('أنت غير مشترك أو ليس لديك صلاحية لأي مادة.');
                 return;
             }
-            // (تم التحقق من الاشتراك -> اذهب مباشرة لجلب المواد)
+            // هنا نفترض أن البصمة موجودة بالفعل أو سيتم التحقق منها لاحقاً في الطلبات
+            // ولكن للأمان في التصفح، نعتمد على الاشتراك فقط للعودة للقائمة
             fetchSubjects(navigatedUser.id.toString(), navigatedUser, urlSubjectId, urlMode);
         })
         .catch(err => {
            setError('حدث خطأ أثناء التحقق من الاشتراك.');
            console.error("Error checking subscription:", err);
         });
-        // --- [ نهاية الكود الجديد ] ---
 
       // (الحالة 3: مستخدم تليجرام ميني آب)
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
@@ -205,9 +208,8 @@ export default function App() {
       setError(`خطأ فادح: ${e.message}`);
     }
 
-  }, []); // نهاية useEffect
+  }, []); 
 
-  // (شاشة التحميل والخطأ - تبقى كما هي)
   if (error) {
     return <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
   }
@@ -221,7 +223,7 @@ export default function App() {
     );
   }
 
-  // --- [ ✅✅ تعديل: المستوى 3 - عرض الفيديوهات والملفات ] ---
+  // --- [ المستوى 3 - عرض الفيديوهات والملفات ] ---
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
@@ -234,27 +236,28 @@ export default function App() {
           {selectedChapter.videos.length > 0 ? (
             selectedChapter.videos.map(video => {
               
-              // --- [ بداية المنطق الجديد ] ---
+              // 3. [✅ هام جداً] إضافة deviceId لكل الروابط
               let href = '';
-              let linkClassName = 'button-link';
-              let icon = '▶️'; // (افتراضي ليوتيوب)
+              // إعداد الباراميترات الأساسية (userId + deviceId)
+              const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${deviceId}`;
               
-              // (تحديد المسار والأيقونة بناءً على النوع)
+              let linkClassName = 'button-link';
+              let icon = '▶️'; 
+              
               if (video.type === 'telegram-video') {
-                  href = `/stream/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`;
+                  href = `/stream/${video.id}${queryParams}`; // ✅ تمرير البصمة
                   linkClassName += ' video-link';
-                  icon = '🎥'; // (أيقونة فيديو تليجرام)
+                  icon = '🎥'; 
               
               } else if (video.type === 'pdf') {
-                  href = `/view/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`;
-                  icon = '📄'; // (أيقونة PDF)
+                  href = `/view/${video.id}${queryParams}`;   // ✅ تمرير البصمة
+                  icon = '📄'; 
 
               } else {
-                  // (الافتراضي هو يوتيوب)
-                  href = `/watch/${video.id}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}`;
+                  // يوتيوب
+                  href = `/watch/${video.id}${queryParams}`;  // ✅ تمرير البصمة
                   linkClassName += ' video-link';
               }
-              // --- [ نهاية المنطق الجديد ] ---
 
               return (
                 <li key={video.id}>
@@ -316,7 +319,6 @@ export default function App() {
     }
     
     // --- [ الحالة 2ب: المستخدم اختار "الشرح" (lectures) ] ---
-    // (تم تعديل بسيط في النصوص لتعميم كلمة "فيديو")
     if (mode === 'lectures') {
       return (
         <div className="app-container">
@@ -361,8 +363,9 @@ export default function App() {
             {exams.length > 0 ? (
               exams.map(exam => {
                 
-                // (إضافة subjectId للرابط)
                 let href = '';
+                // 4. [✅ تذكير] هنا أيضاً يمكن تمرير deviceId للامتحانات إذا أردت حمايتها بنفس الطريقة
+                // حالياً سنكتفي بالمعلمات الأساسية، ويمكنك إضافته هنا لو عدلت ملف الامتحانات
                 const baseParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}`;
 
                 if (!exam.is_completed) {
@@ -372,7 +375,6 @@ export default function App() {
                 }
                   
                 const examTitle = `✏️ ${exam.title} ${exam.is_completed ? '✅' : ''}`;
-                // --- [ نهاية التعديل ] ---
 
                 return (
                   <li key={exam.id}>
@@ -397,7 +399,6 @@ export default function App() {
     }
   }
 
-
   // (المستوى 1: عرض المواد - يبقى كما هي)
   return (
     <div className="app-container">
@@ -409,7 +410,7 @@ export default function App() {
             <li key={subject.id}>
               <button className="button-link" onClick={() => {
                   setSelectedSubject(subject);
-                  setMode(null); // (إعادة تعيين الوضع عند اختيار مادة جديدة)
+                  setMode(null); 
               }}>
                 📚 {subject.title} 
                 <span>({subject.chapters.length} شابتر)</span>
