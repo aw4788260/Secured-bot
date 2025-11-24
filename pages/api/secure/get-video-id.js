@@ -1,11 +1,20 @@
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
-
-const PYTHON_PROXY_BASE_URL = 'https://web-production-3a04a.up.railway.app';
+import { checkUserAccess } from '../../../lib/authHelper'; // استيراد
 
 export default async (req, res) => {
-    if (req.query.lessonId) {
-        const { lessonId } = req.query;
+    const { lessonId, userId } = req.query; // ✅ طلب userId
+
+    if (!lessonId || !userId) {
+        return res.status(400).json({ message: "Missing lessonId or userId" });
+    }
+
+    try {
+        // 1. ✅ التحقق الأمني
+        const hasAccess = await checkUserAccess(userId, lessonId, null, null);
+        if (!hasAccess) {
+            return res.status(403).json({ message: 'Access Denied' });
+        }
         
         try {
             // 1. [تعديل] جلب تفاصيل الفيديو مع الشابتر والمادة
