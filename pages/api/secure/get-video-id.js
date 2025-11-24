@@ -6,11 +6,11 @@ import { checkUserAccess } from '../../../lib/authHelper';
 const PYTHON_PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 
 export default async (req, res) => {
-    const { lessonId, userId } = req.query;
-
-    if (!lessonId || !userId) {
-        return res.status(400).json({ message: "Missing lessonId or userId" });
-    }
+  // ✅ استقبال deviceId
+  const { lessonId, userId, deviceId } = req.query;
+  
+  if (!lessonId || !userId || !deviceId) return res.status(400).json({ error: 'Missing data' });
+}
 
     // التحقق من وجود رابط البروكسي في الإعدادات
     if (!PYTHON_PROXY_BASE_URL) {
@@ -20,7 +20,7 @@ export default async (req, res) => {
         
     try {
         // 1. التحقق الأمني
-        const hasAccess = await checkUserAccess(userId, lessonId, null, null);
+        const hasAccess = await checkUserAccess(userId, lessonId, null, null, deviceId);
 
         if (!hasAccess) {
              return res.status(403).json({ message: "Access Denied: You do not have permission to view this video." });
