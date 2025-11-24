@@ -58,7 +58,7 @@ export default function WatchPage() {
 
         setLoading(true);
 
-        fetch(`/api/secure/get-video-id?lessonId=${videoId}`)
+       fetch(`/api/secure/get-video-id?lessonId=${videoId}&userId=${user.id}`)
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
