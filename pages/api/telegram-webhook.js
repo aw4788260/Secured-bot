@@ -1709,6 +1709,16 @@ const sendPendingRequests = async (chatId) => {
 // --- 🚀 الـ Webhook الرئيسي 🚀 ---
 // ===============================================
 export default async (req, res) => {
+  // 1. [🔒 حماية] التحقق من التوكن السري (Secret Token)
+  const secretToken = req.headers['x-telegram-bot-api-secret-token'];
+  const MY_SECRET = process.env.TELEGRAM_SECRET_TOKEN; // يجب إضافته في Environment Variables
+
+  // إذا لم يكن التوكن موجوداً أو غير مطابق، نرفض الطلب فوراً
+  if (secretToken !== MY_SECRET) {
+      console.warn("⛔ Unauthorized webhook attempt detected.");
+      return res.status(401).send('Unauthorized');
+  }
+
   if (req.method !== 'POST') return res.status(200).send('OK');
 
   let user, chatId, userId, text;
