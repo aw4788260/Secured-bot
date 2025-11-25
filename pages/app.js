@@ -267,20 +267,9 @@ export default function App() {
               let linkClassName = 'button-link';
               let icon = '▶️'; 
               
-              if (video.type === 'telegram-video') {
-                  href = `/stream/${video.id}${queryParams}`; 
-                  linkClassName += ' video-link';
-                  icon = '🎥'; 
-              
-              } else if (video.type === 'pdf') {
-                  href = `/view/${video.id}${queryParams}`;  
-                  icon = '📄'; 
-
-              } else {
-                  // يوتيوب
-                  href = `/watch/${video.id}${queryParams}`; 
-                  linkClassName += ' video-link';
-              }
+              // بما أن كل المحتوى أصبح يوتيوب
+              href = `/watch/${video.id}${queryParams}`;
+              linkClassName += ' video-link';
 
               return (
                 <li key={video.id}>
