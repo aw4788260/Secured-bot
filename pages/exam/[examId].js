@@ -324,11 +324,10 @@ export default function ExamPage() {
             
             {questions.map((q, index) => (
                 <div key={q.id} className="question-box">
-                    
                     {q.image_file_id && (
                         <div className="question-image-container">
-                            {/* [✅✅ تعديل هام] تمرير deviceId لرابط الصورة لتفتح بنجاح */}
                             <img 
+                                // نمرر deviceId للسيرفر ليقبل الطلب
                                 src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}&deviceId=${deviceId}`} 
                                 alt="Question Image" 
                                 className="question-image"
@@ -341,15 +340,10 @@ export default function ExamPage() {
                     <div className="options-list">
                         {q.options.map(opt => (
                             <label key={opt.id} className="option-label">
-                                <input 
-                                    type="radio" 
-                                    name={q.id} 
-                                    value={opt.id}
-                                    onChange={() => handleAnswerChange(q.id, opt.id)}
-                                    checked={answers[q.id] === opt.id}
-                                />
+                                <input type="radio" name={q.id} value={opt.id} onChange={() => handleAnswerChange(q.id, opt.id)} checked={answers[q.id] === opt.id} />
                                 {opt.option_text}
                             </label>
+                    
                         ))}
                     </div>
                 </div>
