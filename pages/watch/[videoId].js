@@ -10,7 +10,7 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 1. مكون العلامة المائية (لـ Plyr فقط) - طبقة منفصلة شفافة للمس
+// 1. مكون العلامة المائية (لـ Plyr فقط)
 // =========================================================================
 const WatermarkOverlay = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -23,7 +23,7 @@ const WatermarkOverlay = ({ user }) => {
             setPos({ top: `${t}%`, left: `${l}%` });
         };
         const interval = setInterval(move, 5000);
-        move(); // تحريك فوري
+        move(); 
         return () => clearInterval(interval);
     }, [user]);
 
@@ -32,17 +32,20 @@ const WatermarkOverlay = ({ user }) => {
             position: 'absolute',
             top: pos.top,
             left: pos.left,
-            zIndex: 50, // فوق الفيديو
-            pointerEvents: 'none', // ✅ السر: اللمس يعبر من خلالها لأزرار التحكم
-            padding: '4px 8px',
-            background: 'rgba(0,0,0,0.6)',
-            color: 'rgba(255,255,255,0.8)',
+            zIndex: 99999, 
+            // ✅✅✅ هذا السطر هو المسؤول عن تمرير اللمس (شفافية اللمس)
+            pointerEvents: 'none', 
+            // --------------------------------------------------------
+            padding: '5px 10px',
+            background: 'rgba(0,0,0,0.5)',
+            color: 'rgba(255,255,255,0.7)',
             fontSize: '12px',
             borderRadius: '4px',
             fontWeight: 'bold',
             transition: 'top 2s ease, left 2s ease',
             whiteSpace: 'nowrap',
-            userSelect: 'none'
+            userSelect: 'none', // منع تحديد النص
+            textShadow: '1px 1px 2px black'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -50,7 +53,7 @@ const WatermarkOverlay = ({ user }) => {
 };
 
 // =========================================================================
-// 2. الصفحة الرئيسية (التحكم الكامل)
+// 2. الصفحة الرئيسية
 // =========================================================================
 export default function WatchPage() {
     const router = useRouter();
@@ -63,15 +66,13 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
-    const [viewMode, setViewMode] = useState(null); // 'native' or 'youtube'
+    const [viewMode, setViewMode] = useState(null);
 
     // Refs
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // =========================================================================
-    // دالة توحيد الجودة (من كودك الأصلي)
-    // =========================================================================
+    // دالة توحيد الجودة (Artplayer)
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -104,7 +105,7 @@ export default function WatchPage() {
         }
     }, []);
 
-    // 2. جلب البيانات وتحديد الوضع
+    // 2. جلب البيانات
     useEffect(() => {
         if (!videoId || !user) return; 
 
@@ -139,7 +140,7 @@ export default function WatchPage() {
     }, [videoId, user]);
 
     // =========================================================================
-    // 3. منطق Artplayer (نسخ ولصق حرفي من كودك الأصلي - File 1)
+    // 3. منطق Artplayer (OfflineOn) - Native
     // =========================================================================
     useEffect(() => {
         if (viewMode !== 'native' || !videoData || !libsLoaded || !artRef.current || !window.Artplayer || !user) return;
@@ -157,7 +158,6 @@ export default function WatchPage() {
         const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
-        // إعداد المشغل (نفس إعدادات كودك الأصلي تماماً)
         const art = new window.Artplayer({
             container: artRef.current,
             url: startUrl, 
@@ -213,13 +213,6 @@ export default function WatchPage() {
                         });
                         hls.loadSource(url);
                         hls.attachMedia(video);
-                        hls.on(window.Hls.Events.ERROR, (event, data) => {
-                            if (data.fatal) {
-                                if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                                    hls.destroy(); video.src = url;
-                                } else { hls.destroy(); }
-                            }
-                        });
                         art.hls = hls;
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                         video.src = url;
@@ -231,7 +224,6 @@ export default function WatchPage() {
         art.notice.show = function() {}; 
 
         art.on('ready', () => {
-            // 1. العلامة المائية الداخلية (الخاصة بـ Artplayer فقط)
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
@@ -247,10 +239,9 @@ export default function WatchPage() {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // 2. منطق اللمس المتطور (التراكمي) - كما هو
+            // منطق اللمس (Gestures)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
-            
             let clickCount = 0;
             let singleTapTimer = null;
             let accumulateTimer = null;
@@ -258,8 +249,6 @@ export default function WatchPage() {
             zones.forEach(zone => {
                 zone.addEventListener('click', (e) => {
                     const action = zone.getAttribute('data-action');
-                    
-                    // --- المنطقة الوسطى ---
                     if (action === 'toggle') {
                         clickCount++;
                         clearTimeout(singleTapTimer);
@@ -274,12 +263,9 @@ export default function WatchPage() {
                         }
                         return;
                     }
-
-                    // --- الجوانب ---
                     clickCount++;
                     clearTimeout(singleTapTimer);
                     clearTimeout(accumulateTimer); 
-
                     if (clickCount === 1) {
                         singleTapTimer = setTimeout(() => {
                             simulateSingleTap(e);
@@ -289,14 +275,12 @@ export default function WatchPage() {
                         const seconds = (clickCount - 1) * 10;
                         const icon = zone.querySelector('.icon');
                         const isForward = action === 'forward';
-                        
                         if (isForward) {
                             icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
                         } else {
                             icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
                         }
                         showFeedback(icon, true);
-
                         accumulateTimer = setTimeout(() => {
                             if (isForward) art.forward = seconds;
                             else art.backward = seconds;
@@ -351,7 +335,8 @@ export default function WatchPage() {
 
     }, [viewMode, videoData, libsLoaded, user]);
 
-    // دالة التحميل (تعمل فقط في الوضع Native)
+
+    // دالة التحميل
     const handleDownloadClick = () => {
         if (!window.Android) { alert("تحديث التطبيق مطلوب."); return; }
         if (viewMode === 'native' && window.Android.downloadVideoWithQualities) {
@@ -377,27 +362,16 @@ export default function WatchPage() {
         }
     };
 
-    // =========================================================================
-    // 4. إعدادات Plyr (للوضع الثاني)
-    // ✅ تم التأكد من تفعيل الـ controls
-    // =========================================================================
+    // إعدادات Plyr
     const plyrSource = videoData?.youtube_video_id ? {
         type: 'video',
         sources: [{ src: videoData.youtube_video_id, provider: 'youtube' }],
     } : null;
 
     const plyrOptions = {
-        // تحديد أدوات التحكم بدقة
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
         settings: ['quality', 'speed'],
-        // إعدادات اليوتيوب للسماح بالتحكم
-        youtube: { 
-            noCookie: false, 
-            rel: 0, 
-            showinfo: 0, 
-            iv_load_policy: 3, 
-            modestbranding: 1
-        }
+        youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 }
     };
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
@@ -416,29 +390,28 @@ export default function WatchPage() {
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             <div className="player-wrapper">
-                {/* الوضع الأول: Native Artplayer */}
+                {/* Native */}
                 {viewMode === 'native' && (
                      <div ref={artRef} className="artplayer-app"></div>
                 )}
 
-                {/* الوضع الثاني: Plyr + العلامة المائية المستقلة */}
+                {/* Youtube / Plyr */}
                 {viewMode === 'youtube' && !loading && (
-                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                    <div className="plyr-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
                         <Plyr 
                             key={videoData?.youtube_video_id} 
                             source={plyrSource} 
                             options={plyrOptions} 
                         />
-                        {/* العلامة المائية كطبقة منفصلة (Sibling).
-                            مفصولة تماماً عن المشغل لتجنب المشاكل.
-                            لها pointer-events: none لتعبر النقرات من خلالها.
+                        {/* ✅ العلامة المائية هنا Sibling (خارج المشغل) 
+                            ✅ لها pointer-events: none (شفافة للمس)
+                            ✅ سيتم إجبارها بالـ CSS في الأسفل لتظهر في ملء الشاشة
                         */}
                         <WatermarkOverlay user={user} />
                     </div>
                 )}
             </div>
 
-            {/* زر التحميل فقط في وضع Native */}
             {isNativeAndroid && viewMode === 'native' && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -471,26 +444,26 @@ export default function WatchPage() {
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* إخفاء عناصر Artplayer المزعجة */
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
-
-                /* CSS خاص بـ Artplayer */
-                .watermark-content {
-                    padding: 2px 10px; 
-                    background: rgba(0, 0, 0, 0.5); 
-                    color: rgba(255, 255, 255, 0.9); 
-                    border-radius: 4px;
-                    white-space: nowrap; 
-                    font-size: 11px !important; 
-                    font-weight: bold;
-                    text-shadow: 1px 1px 2px black;
-                    pointer-events: none;
-                }
+                .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone .icon { font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
                 .gesture-zone.center .icon { font-size: 30px; }
+
+                /* ========================================================
+                   🔥 الحل الجذري لمشكلة اختفاء العلامة المائية في ملء الشاشة 🔥
+                   ======================================================== */
+                /* عندما يدخل المتصفح في وضع ملء الشاشة، نجبر العلامة المائية 
+                   على أن تأخذ وضعية fixed وتصبح فوق كل شيء */
+                
+                :fullscreen .watermark-overlay,
+                :-webkit-full-screen .watermark-overlay,
+                :-moz-full-screen .watermark-overlay {
+                    position: fixed !important; 
+                    z-index: 2147483647 !important; /* أعلى قيمة ممكنة */
+                }
             `}</style>
         </div>
     );
