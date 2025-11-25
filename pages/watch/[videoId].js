@@ -144,17 +144,16 @@ export default function WatchPage() {
                 };
 
                 // =========================================================
-                // [ الحالة 1: أونلاين (يوتيوب Iframe) - تعديل لإصلاح الخطأ 153 ]
+                // [ الحالة 1: أونلاين (يوتيوب Iframe مبسط جداً) ]
                 // =========================================================
                 if (data.offline_mode === false) {
                     const youtubeId = data.youtube_video_id;
                     
-                    // [✅ هام] تم إزالة enablejsapi و origin لتفادي خطأ 153
-                    // هذا يجعل الرابط "تضمين بسيط" يقبله يوتيوب بسهولة أكبر
-                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1`;
+                    // [✅] الرابط المبسط جداً كما طلبت
+                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?controls=0&playsinline=1&rel=0`;
                     artOptions.type = 'iframe'; 
                     
-                    // إخفاء تحكم Artplayer بالكامل
+                    // إخفاء واجهة Artplayer بالكامل لمنع التداخل
                     artOptions.controls = []; 
                     artOptions.setting = false;
                     
@@ -163,7 +162,8 @@ export default function WatchPage() {
                             const iframe = document.createElement('iframe');
                             iframe.src = url;
                             iframe.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 10;';
-                            // السماح بملء الشاشة والتشغيل التلقائي
+                            
+                            // خصائص الـ iframe الأساسية
                             iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
                             iframe.allowFullscreen = true;
                             
@@ -193,6 +193,7 @@ export default function WatchPage() {
                     artOptions.quality = qualityList;
                     artOptions.setting = true; 
                     
+                    // طبقة اللمس (فقط للأوفلاين)
                     artOptions.layers.push({
                         name: 'gestures',
                         html: `
@@ -249,7 +250,7 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
-                    // منطق اللمس (فقط في وضع الستريم)
+                    // منطق اللمس (فقط للأوفلاين)
                     if (data.offline_mode !== false) {
                         const wrapper = art.layers.gestures?.querySelector('.gesture-wrapper');
                         if (wrapper) {
@@ -404,11 +405,11 @@ export default function WatchPage() {
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
                 
-                /* [✅] شاشة تحميل سوداء بالكامل تغطي الفيديو */
+                /* [✅] شاشة تحميل سوداء تماماً */
                 .loading-overlay { 
                     position: absolute; 
-                    z-index: 9999; /* قيمة عالية لتغطية كل شيء */
-                    background: #000; /* أسود صريح */
+                    z-index: 9999; 
+                    background: #000; 
                     width: 100%; 
                     height: 100%; 
                     display: flex; 
