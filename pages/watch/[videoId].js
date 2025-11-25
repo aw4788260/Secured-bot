@@ -3,18 +3,57 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
+// --- [ 1. مكون العلامة المائية المنفصل (يعمل فوق الـ Iframe) ] ---
+const WatermarkOverlay = ({ user }) => {
+    const [watermarkPos, setWatermarkPos] = useState({ top: '10%', left: '10%' });
+
+    useEffect(() => {
+        if (!user) return;
+        
+        const moveWatermark = () => {
+            const isPortrait = window.innerHeight > window.innerWidth;
+            let minTop = 5, maxTop = 80;
+            if (isPortrait) { minTop = 20; maxTop = 60; }
+            
+            const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+            const newLeft = Math.floor(Math.random() * 80) + 5;
+            
+            setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
+        };
+
+        const intervalId = setInterval(moveWatermark, 5000);
+        moveWatermark(); // تشغيل فوري
+
+        return () => clearInterval(intervalId);
+    }, [user]);
+
+    return (
+        <div className="watermark-content" style={{
+            position: 'absolute',
+            top: watermarkPos.top,
+            left: watermarkPos.left,
+            zIndex: 50, // تأكدنا أنه فوق الـ Iframe
+            transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
+        }}>
+            {user.first_name} ({user.id})
+        </div>
+    );
+};
+
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
     
     const [videoData, setVideoData] = useState(null);
-    const RAILWAY_PROXY_URL = "https://web-production-3a04a.up.railway.app";
     const [user, setUser] = useState(null);
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     
+    // [ 2. حالة جديدة للتحكم في الوضع ]
+    const [offlineMode, setOfflineMode] = useState(true); 
+
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
@@ -65,6 +104,17 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
+                
+                // [ 3. تحديث حالة الأوفلاين بناءً على رد السيرفر ]
+                setOfflineMode(data.offline_mode);
+
+                // [ 4. إذا كان الأوفلاين معطل (يوتيوب)، نوقف هنا ولا نشغل Artplayer ]
+                if (data.offline_mode === false) {
+                    setLoading(false);
+                    return; 
+                }
+
+                // --- (كود Artplayer الأصلي لوضع الأوفلاين) ---
                 let qualities = data.availableQualities || [];
                 if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
                 
@@ -167,7 +217,6 @@ export default function WatchPage() {
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // 1. العلامة المائية
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
@@ -183,11 +232,10 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
-                    // 2. منطق اللمس المتقدم (التراكمي)
+                    // منطق اللمس (Gestures)
                     const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
                     const zones = wrapper.querySelectorAll('.gesture-zone');
                     
-                    // متغيرات للتحكم في النقر المتعدد
                     let clickCount = 0;
                     let singleTapTimer = null;
                     let accumulateTimer = null;
@@ -196,71 +244,57 @@ export default function WatchPage() {
                         zone.addEventListener('click', (e) => {
                             const action = zone.getAttribute('data-action');
                             
-                            // --- التعامل مع المنطقة الوسطى (تشغيل/إيقاف) ---
                             if (action === 'toggle') {
                                 clickCount++;
                                 clearTimeout(singleTapTimer);
                                 
                                 if (clickCount === 1) {
                                     singleTapTimer = setTimeout(() => {
-                                        // نقرة واحدة: إظهار/إخفاء الواجهة
                                         simulateSingleTap(e);
                                         clickCount = 0;
                                     }, 300);
                                 } else {
-                                    // نقرتين: تشغيل/إيقاف
                                     art.toggle();
                                     clickCount = 0;
                                 }
                                 return;
                             }
 
-                            // --- التعامل مع الجوانب (تقديم/تأخير تراكمي) ---
-                            // (يمين أو يسار)
                             clickCount++;
                             clearTimeout(singleTapTimer);
-                            clearTimeout(accumulateTimer); // إعادة ضبط مؤقت التنفيذ
+                            clearTimeout(accumulateTimer);
 
                             if (clickCount === 1) {
-                                // انتظار قليل لاحتمالية نقرة ثانية
                                 singleTapTimer = setTimeout(() => {
-                                    // لم تأتِ نقرة ثانية -> تصرف كنقرة مفردة (إظهار واجهة)
                                     simulateSingleTap(e);
                                     clickCount = 0;
                                 }, 250);
                             } else {
-    // نقرتين أو أكثر
-    const seconds = (clickCount - 1) * 10;
-    const icon = zone.querySelector('.icon');
-    const isForward = action === 'forward';
-    
-    // تنسيق النص بناءً على الاتجاه
-    // إذا تقديم: الرقم ثم السهم | إذا تأخير: السهم ثم الرقم
-    if (isForward) {
-        icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
-    } else {
-        icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
-    }
-    
-    showFeedback(icon, true);
+                                const seconds = (clickCount - 1) * 10;
+                                const icon = zone.querySelector('.icon');
+                                const isForward = action === 'forward';
+                                
+                                if (isForward) {
+                                    icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
+                                } else {
+                                    icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
+                                }
+                                
+                                showFeedback(icon, true);
 
-    accumulateTimer = setTimeout(() => {
-        if (isForward) art.forward = seconds;
-        else art.backward = seconds;
-        
-        hideFeedback(icon);
-        clickCount = 0;
-        
-        // إعادة الرقم للأصل (10) بنفس التنسيق
-        setTimeout(() => {
-            if (isForward) {
-                icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`;
-            } else {
-                icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`;
-            }
-        }, 300);
-    }, 600);
-}
+                                accumulateTimer = setTimeout(() => {
+                                    if (isForward) art.forward = seconds;
+                                    else art.backward = seconds;
+                                    
+                                    hideFeedback(icon);
+                                    clickCount = 0;
+                                    
+                                    setTimeout(() => {
+                                        if (isForward) icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`;
+                                        else icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`;
+                                    }, 300);
+                                }, 600);
+                            }
                         });
                     });
 
@@ -278,13 +312,10 @@ export default function WatchPage() {
                         gestureLayer.style.display = 'block';
                     };
 
-                    const showFeedback = (el, stayVisible = false) => {
+                    const showFeedback = (el) => {
                         if (!el) return;
                         el.style.opacity = '1';
                         el.style.transform = 'scale(1.2)';
-                        
-                        // إذا لم يكن "stayVisible"، نخفيه فوراً (للنقرات العادية)
-                        // لكن في حالتنا التراكمية، نحن نتحكم في الإخفاء يدوياً في accumulateTimer
                     };
 
                     const hideFeedback = (el) => {
@@ -315,17 +346,12 @@ export default function WatchPage() {
 
     
     const handleDownloadClick = () => {
-        // التحقق من الدالة (لاحظ زيادة عدد المتغيرات)
         if (window.Android && window.Android.downloadVideoWithQualities) {
             
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
-                    
-                    // [تعديل] استخدام العنوان القادم من قاعدة البيانات
                     const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
-                    
-                    // [جديد] جلب أسماء المجلدات من الرد الجديد
                     const subjectName = videoData.subject_name || "Unknown Subject";
                     const chapterName = videoData.chapter_name || "Unknown Chapter";
 
@@ -342,7 +368,6 @@ export default function WatchPage() {
                     }));
                     const qualitiesJson = JSON.stringify(qualitiesPayload);
 
-                    // [تعديل] تمرير المتغيرات الجديدة (6 متغيرات)
                     window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
 
                 } catch (e) {
@@ -372,10 +397,28 @@ export default function WatchPage() {
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             <div className="player-wrapper">
-                <div ref={artRef} className="artplayer-app"></div>
+                {/* [ 5. منطق العرض الجديد ] 
+                    - إذا كان الأوفلاين "معطل" (offlineMode === false)، اعرض يوتيوب + علامة مائية
+                    - وإلا، اعرض Artplayer
+                */}
+                {!offlineMode && videoData?.youtube_video_id ? (
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                        <iframe 
+                            src={`https://www.youtube.com/embed/${videoData.youtube_video_id}?rel=0&modestbranding=1&playsinline=1`}
+                            title={videoData.db_video_title}
+                            style={{ width: '100%', height: '100%', border: 'none' }}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                        ></iframe>
+                        <WatermarkOverlay user={user} />
+                    </div>
+                ) : (
+                    <div ref={artRef} className="artplayer-app"></div>
+                )}
             </div>
 
-            {isNativeAndroid && (
+            {/* [ 6. زر التحميل يظهر فقط إذا كان الأوفلاين مفعل ] */}
+            {isNativeAndroid && offlineMode && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
                 </button>
