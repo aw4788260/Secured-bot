@@ -11,10 +11,10 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState(null); 
   
-  // 1. [✅] حالة لتخزين بصمة الجهاز لاستخدامها في الروابط
+  // 1. [✅ حالة لتخزين بصمة الجهاز]
   const [deviceId, setDeviceId] = useState(null);
 
-  // (دالة جلب المواد - كما هي)
+  // --- دالة جلب المواد ---
   const fetchSubjects = (userIdString, foundUser, urlSubjectId = null, urlMode = null) => {
     fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
       .then(res => res.json())
@@ -33,6 +33,7 @@ export default function App() {
                 }
             }
         }
+        
         setStatus(null); 
       })
       .catch(err => {
@@ -41,7 +42,7 @@ export default function App() {
       });
   };
 
-  // (دالة فحص الجهاز - كما هي)
+  // --- دالة فحص الجهاز (API) ---
   const checkDeviceApi = (userId, deviceFingerprint, foundUser, isAndroidApk, urlSubjectId, urlMode) => {
     fetch('/api/auth/check-device', { 
       method: 'POST',
@@ -54,6 +55,7 @@ export default function App() {
         setError(deviceData.message);
       } else {
         const userIdString = String(userId);
+        
         if (isAndroidApk) { 
           fetch(`/api/auth/get-user-name?userId=${userIdString}`)
             .then(res => res.json())
@@ -76,7 +78,20 @@ export default function App() {
     });
   };
   
-  // (دالة فحص الاشتراك - كما هي)
+  // --- دالة تحميل بصمة المتصفح (مساعدة) ---
+  const getBrowserFingerprint = async () => {
+    try {
+      const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
+      const fp = await FingerprintJS.load();
+      const result = await fp.get();
+      return result.visitorId;
+    } catch (fpError) {
+       console.error("FingerprintJS error:", fpError);
+       return `fallback_${navigator.userAgent.substring(0, 50)}`;
+    }
+  };
+
+  // --- دالة فحص الاشتراك والجهاز ---
   const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, androidId = null, urlSubjectId, urlMode) => {
     fetch('/api/auth/check-subscription', { 
       method: 'POST',
@@ -90,25 +105,14 @@ export default function App() {
         return;
       }
 
+      // 2. [✅ تعديل] منطق التعامل مع البصمة
       if (isAndroidApk) {
-        // هنا كان يتم الحفظ سابقاً للحالة الأولى فقط
-        setDeviceId(androidId); 
+        setDeviceId(androidId); // حفظ بصمة الأندرويد
         checkDeviceApi(foundUser.id, androidId, foundUser, true, urlSubjectId, urlMode); 
       } else {
-        // ... (بصمة المتصفح) ...
-        const loadBrowserFingerprint = async () => {
-             try {
-                 const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
-                 const fp = await FingerprintJS.load();
-                 const result = await fp.get();
-                 return result.visitorId;
-             } catch (e) { 
-                 console.error("Fingerprint error:", e);
-                 return `fallback_${navigator.userAgent.substring(0, 50)}`; 
-             }
-        };
-        loadBrowserFingerprint().then(fingerprint => {
-            setDeviceId(fingerprint); 
+        // للمتصفح: نحمل البصمة
+        getBrowserFingerprint().then(fingerprint => {
+            setDeviceId(fingerprint); // حفظ بصمة المتصفح
             checkDeviceApi(foundUser.id, fingerprint, foundUser, false, urlSubjectId, urlMode); 
         });
       }
@@ -127,29 +131,23 @@ export default function App() {
       const urlMode = urlParams.get('mode');
       
       const androidUserId = urlParams.get('android_user_id');
+      const genericUserId = urlParams.get('userId'); 
       const androidDeviceId = urlParams.get('android_device_id'); 
       
-      // المتغيرات عند العودة من صفحة أخرى (مثل صفحة النتائج)
-      const genericUserId = urlParams.get('userId'); 
-      const genericDeviceId = urlParams.get('deviceId'); // [✅] قراءة البصمة عند العودة
+      // [✅ جديد] التقاط بصمة الجهاز من الرابط إذا وجدت (للمستخدم العائد)
+      const urlDeviceId = urlParams.get('deviceId');
 
-      // الحالة 1: مستخدم APK (أول دخول)
+      // (الحالة 1: مستخدم APK)
       if (androidUserId && androidUserId.trim() !== '') {
         console.log("Running in secure Android WebView wrapper");
         const apkUser = { id: androidUserId, first_name: "Loading..." }; 
         checkSubscriptionAndDevice(apkUser, true, androidDeviceId, urlSubjectId, urlMode);
       
-      // الحالة 2: مستخدم عائد من صفحة النتائج أو الفيديو
+      // (الحالة 2: مستخدم عائد من صفحة النتائج أو رابط خارجي - genericUserId)
       } else if (genericUserId && genericUserId.trim() !== '') {
-        console.log("Running as navigated user");
+        console.log("Running as navigated user (from results)");
         const navigatedUser = { id: genericUserId, first_name: "User" }; 
         
-        // [✅✅ التعديل الجوهري هنا]
-        // حفظ البصمة القادمة من الرابط في الـ State فوراً لضمان استمراريتها
-        if (genericDeviceId) {
-            setDeviceId(genericDeviceId);
-        }
-
         fetch('/api/auth/check-subscription', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -158,100 +156,138 @@ export default function App() {
         .then(res => res.json())
         .then(subData => {
             if (!subData.isSubscribed) {
-                setError('أنت غير مشترك.');
+                setError('أنت غير مشترك أو ليس لديك صلاحية لأي مادة.');
                 return;
             }
-            // جلب المواد مباشرة
+            
+            // [✅ تعديل هام جداً] التعامل مع البصمة عند العودة
+            if (urlDeviceId) {
+                // إذا كانت البصمة موجودة في الرابط، نحفظها فوراً
+                setDeviceId(urlDeviceId);
+                console.log("Device ID recovered from URL:", urlDeviceId);
+            } else {
+                // إذا لم تكن في الرابط (لأي سبب)، نعيد توليدها لضمان عمل الروابط التالية
+                // هذا يمنع إرسال null في الروابط القادمة
+                if (!androidDeviceId) { // إذا لم يكن أندرويد
+                    getBrowserFingerprint().then(fp => {
+                        setDeviceId(fp);
+                        console.log("Device ID regenerated for returning user:", fp);
+                    });
+                }
+            }
+
+            // إكمال عملية التحميل
             fetchSubjects(navigatedUser.id.toString(), navigatedUser, urlSubjectId, urlMode);
         })
         .catch(err => {
-           setError('حدث خطأ أثناء التحقق.');
-           console.error("Check sub error:", err);
+           setError('حدث خطأ أثناء التحقق من الاشتراك.');
+           console.error("Error checking subscription:", err);
         });
 
-      // الحالة 3: تليجرام
+      // (الحالة 3: مستخدم تليجرام ميني آب)
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-         window.Telegram.WebApp.ready();
-         const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-         if(miniAppUser) {
-             const platform = window.Telegram.WebApp.platform;
-             console.log("Detected Telegram Platform:", platform);
-             
-             if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
-                checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
-             } else {
-                // التحقق من الأدمن للمنصات الأخرى
-                fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
-                    .then(res => res.json())
-                    .then(adminData => {
-                        if (adminData.isAdmin) {
-                            checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
-                        } else {
-                            setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
-                        }
-                    }).catch(() => setError('فشل التحقق من الأدمن'));
-             }
-         } else {
-             setError("خطأ: لا يمكن التعرف على المستخدم من تليجرام.");
-         }
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        
+        const platform = window.Telegram.WebApp.platform; 
+        const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        
+        if (!miniAppUser || !miniAppUser.id) {
+            setError("لا يمكن التعرف على هويتك من تليجرام.");
+            return;
+        }
+        
+        console.log("Detected Telegram Platform:", platform);
+        
+        if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
+          checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
+        
+        } else {
+          fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
+            .then(res => res.json())
+            .then(adminData => {
+                if (adminData.isAdmin) {
+                    console.log("Admin detected on non-allowed platform. Allowing access.");
+                    checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
+                } else {
+                    setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
+                }
+            })
+            .catch(err => {
+                setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
+            });
+        }
+
+      // (الحالة 4: مستخدم متصفح عادي)
       } else if (typeof window !== 'undefined') {
-        setError('الرجاء الفتح من التطبيق المخصص.');
+        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
         return;
       }
       
     } catch (e) { 
+      console.error("Fatal error in useEffect:", e);
       setError(`خطأ فادح: ${e.message}`);
-      console.error(e);
     }
 
   }, []); 
 
-  // ... (شاشات التحميل والخطأ) ...
-  if (error) return <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
-  if (status || !user) return <div className="app-container loader-container"><h1>{status}</h1></div>;
+  if (error) {
+    return <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+  }
+  if (status || !user) {
+    return (
+      <div className="app-container loader-container">
+        <Head><title>جاري التحميل...</title></Head>
+        <h1>{status}</h1>
+        <div className="loading-bar"></div>
+      </div>
+    );
+  }
 
-  // --- العرض (Render) ---
-  
-  // [✅] دالة مساعدة لبناء الرابط مع البصمة
-  // تضمن أن البصمة موجودة دائماً في الروابط حتى لو كانت الحالة فارغة (تأخذها من الرابط الحالي)
-  const getLinkWithParams = (path) => {
-      const finalDeviceId = deviceId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('deviceId') : '');
-      return `${path}?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${finalDeviceId}`;
-  };
-
-  // المستوى 3: الفيديوهات
+  // --- [ المستوى 3 - عرض الفيديوهات والملفات ] ---
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
         <Head><title>{selectedChapter.title}</title></Head>
         <button className="back-button" onClick={() => setSelectedChapter(null)}>
-          &larr; رجوع
+          &larr; رجوع إلى شباتر {selectedSubject.title}
         </button>
         <h1>{selectedChapter.title}</h1>
         <ul className="item-list">
           {selectedChapter.videos.length > 0 ? (
             selectedChapter.videos.map(video => {
+              
+              // 3. [✅ هام جداً] إضافة deviceId لكل الروابط
               let href = '';
-              let icon = '▶️';
+              // إعداد الباراميترات الأساسية (userId + deviceId + firstName)
+              // نتأكد أن deviceId ليس null، إذا كان كذلك نستخدم نص فارغ لتجنب ظهور "null" كنص
+              const currentDeviceId = deviceId || '';
+              const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${currentDeviceId}`;
+              
               let linkClassName = 'button-link';
-
+              let icon = '▶️'; 
+              
               if (video.type === 'telegram-video') {
-                  href = getLinkWithParams(`/stream/${video.id}`);
+                  href = `/stream/${video.id}${queryParams}`; 
                   linkClassName += ' video-link';
-                  icon = '🎥';
+                  icon = '🎥'; 
+              
               } else if (video.type === 'pdf') {
-                  href = getLinkWithParams(`/view/${video.id}`);
-                  icon = '📄';
+                  href = `/view/${video.id}${queryParams}`;  
+                  icon = '📄'; 
+
               } else {
                   // يوتيوب
-                  href = getLinkWithParams(`/watch/${video.id}`);
+                  href = `/watch/${video.id}${queryParams}`; 
                   linkClassName += ' video-link';
               }
-              
+
               return (
                 <li key={video.id}>
                   <Link href={href}>
-                    <a className={linkClassName}>{icon} {video.title}</a>
+                    <a className={linkClassName}>
+                      {icon} {video.title}
+                    </a>
                   </Link>
                 </li>
               );
@@ -259,7 +295,7 @@ export default function App() {
           ) : (
             <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الشابتر بعد.</p>
           )}
-        </ul>
+        </ul>        
         <footer className="developer-info">
           <p>برمجة وتطوير: A7MeD WaLiD</p>
           <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
@@ -268,87 +304,113 @@ export default function App() {
     );
   }
 
-  // المستوى 2: الشباتر والامتحانات
+  // (المستوى 2: اختيار الوضع أو عرض المحتوى)
   if (selectedSubject) {
-    // ... (اختيار الوضع) ...
+    
+    // --- [ الحالة 2أ: المستخدم لم يختر الوضع بعد ] ---
     if (mode === null) {
-        return (
-            <div className="app-container">
-                <Head><title>{selectedSubject.title}</title></Head>
-                <button className="back-button" onClick={() => setSelectedSubject(null)}>&larr; رجوع للمواد</button>
-                <h1>{selectedSubject.title}</h1>
-                <p style={{ color: '#aaa', textAlign: 'right', marginBottom: '20px' }}>اختر القسم الذي تريده:</p>
-                <ul className="item-list">
-                    <li><button className="button-link" onClick={() => setMode('lectures')}>📁 الشرح <span>({selectedSubject.chapters.length} شابتر)</span></button></li>
-                    <li><button className="button-link" onClick={() => setMode('exams')}>✏️ الامتحانات</button></li>
-                </ul>
-                <footer className="developer-info">
-                    <p>برمجة وتطوير: A7MeD WaLiD</p>
-                    <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
-                </footer>
-            </div>
-        );
+      const exams = selectedSubject.exams || []; 
+      
+      return (
+        <div className="app-container">
+          <Head><title>{selectedSubject.title}</title></Head>
+          <button className="back-button" onClick={() => setSelectedSubject(null)}>
+            &larr; رجوع إلى المواد
+          </button>
+          <h1>{selectedSubject.title}</h1>
+          <p style={{ color: '#aaa', textAlign: 'right', marginBottom: '20px' }}>اختر القسم الذي تريده:</p>
+          <ul className="item-list">
+            <li>
+              <button className="button-link" onClick={() => setMode('lectures')}>
+                📁 الشرح (الشباتر والمحتويات)
+                <span>({selectedSubject.chapters.length} شابتر)</span>
+              </button>
+            </li>
+            <li>
+              <button className="button-link" onClick={() => setMode('exams')}>
+                ✏️ الامتحانات التفاعلية
+                <span>({exams.length} امتحان)</span>
+              </button>
+            </li>
+          </ul>
+          <footer className="developer-info">
+            <p>برمجة وتطوير: A7MeD WaLiD</p>
+            <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+          </footer>
+        </div>
+      );
     }
-
+    
+    // --- [ الحالة 2ب: المستخدم اختار "الشرح" (lectures) ] ---
     if (mode === 'lectures') {
-        // ... (قائمة الشباتر) ...
-        return (
-            <div className="app-container">
-                <Head><title>{selectedSubject.title} - الشرح</title></Head>
-                <button className="back-button" onClick={() => setMode(null)}>&larr; رجوع</button>
-                <h1>{selectedSubject.title}</h1>
-                <ul className="item-list">
-                    {selectedSubject.chapters.length > 0 ? (
-                        selectedSubject.chapters.map(ch => (
-                            <li key={ch.id}>
-                                <button className="button-link" onClick={() => setSelectedChapter(ch)}>
-                                    📁 {ch.title} <span>({ch.videos.length} ملف)</span>
-                                </button>
-                            </li>
-                        ))
-                    ) : (
-                        <p style={{ color: '#aaa' }}>لا توجد شباتر في هذه المادة بعد.</p>
-                    )}
-                </ul>
-                <footer className="developer-info">
-                    <p>برمجة وتطوير: A7MeD WaLiD</p>
-                    <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
-                </footer>
-            </div>
-        );
+      return (
+        <div className="app-container">
+          <Head><title>{selectedSubject.title} - الشرح</title></Head>
+          <button className="back-button" onClick={() => setMode(null)}>
+            &larr; رجوع لاختيار القسم
+          </button>
+          <h1>{selectedSubject.title}</h1>
+          <ul className="item-list">
+            {selectedSubject.chapters.length > 0 ? (
+              selectedSubject.chapters.map(chapter => (
+                <li key={chapter.id}>
+                  <button className="button-link" onClick={() => setSelectedChapter(chapter)}>
+                    📁 {chapter.title}
+                    <span>({chapter.videos.length} ملف)</span>
+                  </button>
+                </li>
+              ))
+            ) : (
+              <p style={{ color: '#aaa' }}>لا توجد شباتر في هذه المادة بعد.</p>
+            )}
+          </ul>
+          <footer className="developer-info">
+             <p>برمجة وتطوير: A7MeD WaLiD</p>
+             <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
+          </footer>
+        </div>
+      );
     }
 
+    // --- [ الحالة 2ج: المستخدم اختار "الامتحانات" (exams) ] ---
     if (mode === 'exams') {
       const exams = selectedSubject.exams || []; 
       return (
         <div className="app-container">
-          <Head><title>الامتحانات</title></Head>
-          <button className="back-button" onClick={() => setMode(null)}>&larr; رجوع</button>
+          <Head><title>{selectedSubject.title} - الامتحانات</title></Head>
+          <button className="back-button" onClick={() => setMode(null)}>
+            &larr; رجوع لاختيار القسم
+          </button>
           <h1>الامتحانات المتاحة</h1>
           <ul className="item-list">
             {exams.length > 0 ? (
               exams.map(exam => {
                 
                 let href = '';
-                // [✅] استخدام deviceId في روابط الامتحانات
-                const finalDeviceId = deviceId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('deviceId') : '');
-                const params = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}&deviceId=${finalDeviceId}`;
+                // [✅ تحديث] إضافة البصمة لرابط الامتحان
+                const currentDeviceId = deviceId || '';
+                const baseParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}&deviceId=${currentDeviceId}`;
                 
-                if (!exam.is_completed) href = `/exam/${exam.id}${params}`;
-                else href = `/results/${exam.first_attempt_id}${params}`;
-                
+                if (!exam.is_completed) {
+                    href = `/exam/${exam.id}${baseParams}`;
+                } else {
+                    href = `/results/${exam.first_attempt_id}${baseParams}`;
+                }
+                  
                 const examTitle = `✏️ ${exam.title} ${exam.is_completed ? '✅' : ''}`;
 
                 return (
                   <li key={exam.id}>
                     <Link href={href}>
-                      <a className="button-link">{examTitle}</a>
+                      <a className="button-link"> 
+                        {examTitle}
+                      </a>
                     </Link>
                   </li>
                 );
               })
             ) : (
-                <p style={{ color: '#aaa' }}>لا توجد امتحانات في هذه المادة بعد.</p>
+              <p style={{ color: '#aaa' }}>لا توجد امتحانات في هذه المادة بعد.</p>
             )}
           </ul>
           <footer className="developer-info">
@@ -360,24 +422,29 @@ export default function App() {
     }
   }
 
-  // المستوى 1: المواد
+  // (المستوى 1: عرض المواد)
   return (
     <div className="app-container">
       <Head><title>المواد المتاحة</title></Head>
       <h1>المواد المتاحة</h1>
       <ul className="item-list">
         {subjects.length > 0 ? (
-            subjects.map(subject => (
-                <li key={subject.id}>
-                <button className="button-link" onClick={() => { setSelectedSubject(subject); setMode(null); }}>
-                    📚 {subject.title} <span>({subject.chapters.length} شابتر)</span>
-                </button>
-                </li>
-            ))
+           subjects.map(subject => (
+            <li key={subject.id}>
+              <button className="button-link" onClick={() => {
+                  setSelectedSubject(subject);
+                  setMode(null); 
+              }}>
+                📚 {subject.title} 
+                <span>({subject.chapters.length} شابتر)</span>
+              </button>
+            </li>
+           ))
         ) : (
-            <p style={{ color: '#aaa' }}>لم يتم إسناد أي مواد لك حتى الآن.</p>
+           <p style={{ color: '#aaa' }}>لم يتم إسناد أي مواد لك حتى الآن.</p>
         )}
       </ul>
+      
       <footer className="developer-info">
          <p>برمجة وتطوير: A7MeD WaLiD</p>
          <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
