@@ -5,12 +5,12 @@ import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// استيراد Plyr (ديناميكي للوضع الثاني)
+// استيراد Plyr (ديناميكي)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 1. مكون العلامة المائية (الخاص بوضع اليوتيوب - OfflineOff)
+// 1. مكون العلامة المائية (الخاص بوضع اليوتيوب)
 // =========================================================================
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
@@ -41,15 +41,14 @@ const Watermark = ({ user }) => {
 };
 
 // =========================================================================
-// 2. مكون المشغل الأصلي (Artplayer - وضع OfflineOn)
-// يتم تفعيله عندما يرسل الباك إند: offline_mode = true
+// 2. مكون المشغل الأصلي (Native / OfflineOn)
+// ✅✅✅ هنا يظهر زر التحميل
 // =========================================================================
 const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
     const [libsLoaded, setLibsLoaded] = useState(false);
 
-    // دالة توحيد الجودات
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -57,30 +56,22 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
         return standards.reduce((prev, curr) => (Math.abs(curr - num) < Math.abs(prev - num) ? curr : prev)).toString();
     };
 
-    // التأكد من تحميل مكتبات Hls و Artplayer
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
         }
     }, []);
 
-    // تهيئة المشغل
     useEffect(() => {
-        // ننتظر تحميل المكتبات + وجود اليوزر + وجود البيانات
         if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
-        // تنظيف المشغل القديم إن وجد
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
         }
 
-        // تجهيز قائمة الجودات من البيانات القادمة من البروكسي
         let qualities = videoData.availableQualities || [];
-        if (qualities.length === 0) {
-            console.warn("Offline mode is ON but no qualities found.");
-            return; 
-        }
+        if (qualities.length === 0) return;
 
         qualities = qualities.sort((a, b) => b.quality - a.quality);
         const middleIndex = Math.floor((qualities.length - 1) / 2);
@@ -92,8 +83,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
         }));
 
         const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url;
-        
-        // استخدام db_video_title القادم من الباك إند
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
         const art = new window.Artplayer({
@@ -108,7 +97,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
             fullscreen: true, fullscreenWeb: true, miniProgressBar: true,
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
-            
             layers: [
                 {
                     name: 'watermark',
@@ -144,11 +132,9 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
             },
         });
 
-        // إخفاء الإشعارات الافتراضية
         art.notice.show = function() {};
 
         art.on('ready', () => {
-            // منطق تحريك العلامة المائية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
@@ -164,7 +150,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // منطق الإيماءات (Gestures Logic)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -226,15 +211,12 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
         if (window.Android && window.Android.downloadVideoWithQualities) {
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
-                    // استخدام البيانات القادمة من الباك إند
                     const yId = videoData.youtube_video_id;
                     const vTitle = videoData.db_video_title || "Video";
                     const subjectName = videoData.subject_name || "Unknown Subject";
                     const chapterName = videoData.chapter_name || "Unknown Chapter";
-                    
                     let duration = playerInstance.current?.duration?.toString() || videoData.duration?.toString() || "0";
                     const qualitiesJson = JSON.stringify(videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url })));
-                    
                     window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
                 } catch (e) { alert("حدث خطأ: " + e.message); }
             } else { alert("بيانات الفيديو غير مكتملة."); }
@@ -250,6 +232,7 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
             
+            {/* ✅✅ هذا الزر يظهر فقط هنا */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -260,10 +243,10 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل اليوتيوب (Plyr - وضع OfflineOff)
-// يتم تفعيله عندما يرسل الباك إند: offline_mode = false
+// 3. مكون مشغل اليوتيوب (Plyr / OfflineOff)
+// 🛑🛑🛑 تم حذف زر التحميل من هنا نهائياً
 // =========================================================================
-const YoutubePlayerView = ({ videoData, user, isNativeAndroid }) => {
+const YoutubePlayerView = ({ videoData, user }) => {
     const youtubeId = videoData.youtube_video_id;
 
     const plyrSource = {
@@ -277,36 +260,12 @@ const YoutubePlayerView = ({ videoData, user, isNativeAndroid }) => {
         youtube: { rel: 0, showinfo: 0, modestbranding: 1, controls: 0 }
     };
 
-    const handleDownloadClick = () => {
-        // استخدام db_video_title كعنوان
-        const fakeVideoTitle = videoData.db_video_title || "video";
-        
-        if (!youtubeId) { alert("بيانات الفيديو غير جاهزة بعد."); return; }
-        
-        if (isNativeAndroid && window.Android && window.Android.downloadVideo) {
-            try {
-                window.Android.downloadVideo(youtubeId, fakeVideoTitle);
-            } catch (e) {
-                console.error("Native Error:", e);
-                alert("حدث خطأ أثناء الاتصال بالتطبيق.");
-            }
-        } else {
-            alert("التحميل الأوفلاين متاح فقط من داخل تطبيق الأندرويد الرسمي.");
-        }
-    };
-
     return (
         <>
             <div className="player-wrapper plyr-wrapper">
                 <Plyr source={plyrSource} options={plyrOptions} />
                 <Watermark user={user} />
             </div>
-
-            {isNativeAndroid && (
-                <button onClick={handleDownloadClick} className="download-button-native">
-                    ⬇️ تحميل الفيديو (أوفلاين)
-                </button>
-            )}
 
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
                 <p>برمجة وتطوير: A7MeD WaLiD</p>
@@ -318,7 +277,7 @@ const YoutubePlayerView = ({ videoData, user, isNativeAndroid }) => {
 
 
 // =========================================================================
-// 4. الصفحة الرئيسية (Main Page Controller)
+// 4. الصفحة الرئيسية
 // =========================================================================
 export default function WatchPage() {
     const router = useRouter();
@@ -328,11 +287,9 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
     const [videoData, setVideoData] = useState(null);
-    
-    const [viewMode, setViewMode] = useState(null); // 'native' or 'youtube'
+    const [viewMode, setViewMode] = useState(null); 
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
 
-    // 1. التعرف على المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -344,13 +301,10 @@ export default function WatchPage() {
         } else if (window.Telegram?.WebApp) {
             window.Telegram.WebApp.ready();
             const u = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (u) {
-                 setupUser(u);
-            } else setError("يرجى الفتح من تليجرام.");
+            if (u) setupUser(u); else setError("يرجى الفتح من تليجرام.");
         }
     }, []);
 
-    // 2. جلب البيانات وتحديد الوضع بناءً على رد الـ Backend
     useEffect(() => {
         if (!videoId || !user) return;
         
@@ -363,14 +317,10 @@ export default function WatchPage() {
             .then(data => {
                 setVideoData(data);
                 
-                // === [المنطق الجديد المتوافق مع الباك إند] ===
-                // الباك إند يرسل المفتاح offline_mode صراحةً
-                
+                // تحديد الوضع بناءً على رد الباك إند
                 if (data.offline_mode === true) {
-                    // الوضع: أوفلاين (استخدام البروكسي و Artplayer)
                     setViewMode('native');
                 } else {
-                    // الوضع: أونلاين (يوتيوب عادي و Plyr)
                     setViewMode('youtube');
                 }
                 
@@ -394,14 +344,12 @@ export default function WatchPage() {
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
-            {/* عرض Artplayer إذا كان الوضع Native */}
             {!loading && viewMode === 'native' && (
                 <NativePlayerView videoData={videoData} user={user} isNativeAndroid={isNativeAndroid} />
             )}
 
-            {/* عرض Plyr إذا كان الوضع Youtube */}
             {!loading && viewMode === 'youtube' && (
-                <YoutubePlayerView videoData={videoData} user={user} isNativeAndroid={isNativeAndroid} />
+                <YoutubePlayerView videoData={videoData} user={user} />
             )}
 
             <style jsx global>{`
@@ -410,28 +358,21 @@ export default function WatchPage() {
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
                 .loading-overlay { position: absolute; z-index: 50; background: rgba(0,0,0,0.8); width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.2rem; }
                 
-                /* تنسيقات مشتركة */
                 .player-wrapper { width: 100%; max-width: 900px; background: #000; position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
                 
-                /* تنسيق خاص لـ Artplayer (16/9) */
                 .art-wrapper { aspect-ratio: 16/9; }
                 .artplayer-app { width: 100%; height: 100%; }
 
-                /* تنسيق خاص لـ Plyr (16/7 كما في الكود الثاني) */
                 .plyr-wrapper { aspect-ratio: 16/7; }
                 .plyr-wrapper .plyr { width: 100%; height: 100%; }
 
-                /* زر التحميل */
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; display: block; transition: background 0.3s; }
                 .download-button-native:hover { background-color: #7dd3fc; }
                 
                 .developer-info { width: 100%; text-align: center; font-size: 0.85rem; color: #777; margin-top: 20px; }
                 .developer-info a { color: #38bdf8; text-decoration: none; }
 
-                /* إخفاء عناصر Artplayer غير المرغوبة */
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
-
-                /* تنسيقات العلامة المائية واللمس الخاصة بـ Artplayer */
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
