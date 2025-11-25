@@ -113,8 +113,10 @@ export default function WatchPage() {
                 if (data.offline_mode === false) {
                     const youtubeId = data.youtube_video_id;
                     
-                    // رابط التضمين المباشر
-                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1`;
+                    // [✅ إصلاح الخطأ 153]: إضافة الـ origin للرابط
+                    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${origin}`;
+                    
                     artOptions.type = 'iframe'; // نوع مخصص
                     
                     // إخفاء واجهة تحكم Artplayer لأننا سنستخدم يوتيوب
@@ -389,7 +391,21 @@ export default function WatchPage() {
                 body { margin: 0; background: #111; color: white; font-family: sans-serif; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
-                .loading-overlay { position: absolute; z-index: 50; background: rgba(0,0,0,0.8); width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.2rem; }
+                
+                /* [✅] جعل الخلفية سوداء بالكامل (غير شفافة) */
+                .loading-overlay { 
+                    position: absolute; 
+                    z-index: 50; 
+                    background: #000; /* خلفية سوداء صريحة */
+                    width: 100%; 
+                    height: 100%; 
+                    display: flex; 
+                    justify-content: center; 
+                    align-items: center; 
+                    color: white; 
+                    font-size: 1.2rem; 
+                }
+                
                 .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
                 .artplayer-app { width: 100%; height: 100%; }
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
