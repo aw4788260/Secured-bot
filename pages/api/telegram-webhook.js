@@ -2795,8 +2795,21 @@ export default async (req, res) => {
       const stateData = user.state_data || {};
       messageId = stateData.message_id; // (ID الرسالة التي يجب تعديلها)
 
+// --- [ أوامر التحكم في وضع الأوفلاين ] ---
+      if (text === '/offlineon') {
+        await supabase.from('app_settings').upsert({ key: 'offline_mode', value: 'true' });
+        await sendMessage(chatId, '✅ **تم تفعيل وضع الأوفلاين.**\n\n- المشغل: Artplayer (الآمن).\n- زر التحميل: ظاهر (للأندرويد).', null, 'Markdown');
+        return res.status(200).send('OK');
+      }
 
+      if (text === '/offlineoff') {
+        await supabase.from('app_settings').upsert({ key: 'offline_mode', value: 'false' });
+        await sendMessage(chatId, '🚫 **تم تعطيل وضع الأوفلاين.**\n\n- المشغل: YouTube Iframe (سريع).\n- زر التحميل: مخفي.', null, 'Markdown');
+        return res.status(200).send('OK');
+      }
 // (1. حالات المستخدم العادي - إرسال صورة/نص)
+
+      
       if (!user.is_admin && currentState) {
         
             // [ ✅✅ تعديل: حالة انتظار الملاحظة (إرسال نص) ]
