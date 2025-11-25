@@ -99,16 +99,15 @@ export default function ResultsPage() {
                         
                         {/* [ ✅✅ جديد: عرض الصورة إن وجدت ] */}
                         {q.image_file_id && (
-                            <div className="question-image-container">
-                                {/* 2. [✅ تعديل] تمرير deviceId لرابط الصورة لتفتح بنجاح */}
-                                <img 
-                                    src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}&deviceId=${deviceId}`} 
-                                    alt="Question Image" 
-                                    className="question-image"
-                                    loading="lazy"
-                                />
-                            </div>
-                        )}
+                        <div className="question-image-container">
+                            <img 
+                                src={`/api/exams/get-image?file_id=${q.image_file_id}&userId=${userId}&deviceId=${deviceId}`} 
+                                alt="Question Image" 
+                                className="question-image"
+                                loading="lazy"
+                            />
+                        </div>
+                    )}
 
                         <h4>{index + 1}. {q.question_text}</h4>
                         <div className="options-list">
