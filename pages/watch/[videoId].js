@@ -3,6 +3,43 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
+// --- [ مكون العلامة المائية المنفصل ] ---
+const WatermarkOverlay = ({ user }) => {
+    const [watermarkPos, setWatermarkPos] = useState({ top: '10%', left: '10%' });
+
+    useEffect(() => {
+        if (!user) return;
+        
+        const moveWatermark = () => {
+            const isPortrait = window.innerHeight > window.innerWidth;
+            let minTop = 5, maxTop = 80;
+            if (isPortrait) { minTop = 20; maxTop = 60; }
+            
+            const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+            const newLeft = Math.floor(Math.random() * 80) + 5;
+            
+            setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
+        };
+
+        const intervalId = setInterval(moveWatermark, 5000);
+        moveWatermark(); 
+
+        return () => clearInterval(intervalId);
+    }, [user]);
+
+    return (
+        <div className="watermark-content" style={{
+            position: 'absolute',
+            top: watermarkPos.top,
+            left: watermarkPos.left,
+            zIndex: 50, 
+            transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
+        }}>
+            {user.first_name} ({user.id})
+        </div>
+    );
+};
+
 export default function WatchPage() {
     const router = useRouter();
     const { videoId } = router.query;
@@ -14,7 +51,6 @@ export default function WatchPage() {
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     
-    // حالة وضع الأوفلاين (تأتي من السيرفر)
     const [offlineMode, setOfflineMode] = useState(true); 
 
     const artRef = useRef(null);
@@ -67,11 +103,11 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
-                setOfflineMode(data.offline_mode); // تحديث الحالة من السيرفر
+                setOfflineMode(data.offline_mode); 
 
                 if (!artRef.current || !window.Artplayer) return;
 
-                // --- [ إعدادات Artplayer الأساسية (مشتركة) ] ---
+                // --- [ إعدادات Artplayer المشتركة ] ---
                 let artOptions = {
                     container: artRef.current,
                     title: data.videoTitle || "مشاهدة الدرس",
@@ -94,13 +130,13 @@ export default function WatchPage() {
                     playsInline: true,
                     theme: '#38bdf8',
                     lang: 'ar',
-                    // [1] العلامة المائية (تعمل في الحالتين)
+                    // طبقة العلامة المائية
                     layers: [
                         {
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 99, // zIndex عالي لتظهر فوق الـ iframe
+                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 99, 
                                 transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                             },
                         }
@@ -108,43 +144,38 @@ export default function WatchPage() {
                 };
 
                 // =========================================================
-                // [ السيناريو 1: الوضع أونلاين (يوتيوب Iframe داخل Artplayer) ]
+                // [ الحالة 1: أونلاين (يوتيوب Iframe) - تعديل لإصلاح الخطأ 153 ]
                 // =========================================================
                 if (data.offline_mode === false) {
                     const youtubeId = data.youtube_video_id;
                     
-                    // [✅ إصلاح الخطأ 153]: إضافة الـ origin للرابط
-                    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${origin}`;
+                    // [✅ هام] تم إزالة enablejsapi و origin لتفادي خطأ 153
+                    // هذا يجعل الرابط "تضمين بسيط" يقبله يوتيوب بسهولة أكبر
+                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1`;
+                    artOptions.type = 'iframe'; 
                     
-                    artOptions.type = 'iframe'; // نوع مخصص
-                    
-                    // إخفاء واجهة تحكم Artplayer لأننا سنستخدم يوتيوب
+                    // إخفاء تحكم Artplayer بالكامل
                     artOptions.controls = []; 
                     artOptions.setting = false;
                     
-                    // تعريف كيفية تشغيل الـ Iframe
                     artOptions.customType = {
                         iframe: function (video, url, art) {
                             const iframe = document.createElement('iframe');
                             iframe.src = url;
                             iframe.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 10;';
+                            // السماح بملء الشاشة والتشغيل التلقائي
                             iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
                             iframe.allowFullscreen = true;
                             
-                            // إضافة الـ iframe داخل حاوية المشغل
                             art.template.$player.appendChild(iframe);
+                            art.template.$video.style.display = 'none'; // إخفاء الفيديو الوهمي
                             
-                            // إخفاء عنصر الفيديو الأصلي
-                            art.template.$video.style.display = 'none';
-                            
-                            // إخفاء أيقونة التحميل
                             if(art.loading) art.loading.show = false; 
                         }
                     };
                 } 
                 // =========================================================
-                // [ السيناريو 2: الوضع أوفلاين (Stream HLS طبيعي) ]
+                // [ الحالة 2: أوفلاين (Stream HLS) ]
                 // =========================================================
                 else {
                     let qualities = data.availableQualities || [];
@@ -160,9 +191,8 @@ export default function WatchPage() {
                     
                     artOptions.url = qualityList[middleIndex]?.url || qualityList[0].url;
                     artOptions.quality = qualityList;
-                    artOptions.setting = true; // تفعيل الإعدادات
+                    artOptions.setting = true; 
                     
-                    // إضافة طبقة الإيماءات (Gestures) فقط في وضع الستريم
                     artOptions.layers.push({
                         name: 'gestures',
                         html: `
@@ -177,7 +207,6 @@ export default function WatchPage() {
                         },
                     });
 
-                    // تعريف مشغل HLS
                     artOptions.customType = {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
@@ -204,21 +233,15 @@ export default function WatchPage() {
                     };
                 }
 
-                // --- [ تشغيل Artplayer ] ---
                 const art = new window.Artplayer(artOptions);
 
                 art.notice.show = function() {}; 
 
                 art.on('ready', () => {
-                    // 1. تحريك العلامة المائية (تعمل في الحالتين)
                     const watermarkLayer = art.layers.watermark;
                     const moveWatermark = () => {
                         if (!watermarkLayer) return;
-                        const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
-                        const isPortrait = window.innerHeight > window.innerWidth;
-                        let minTop = 5, maxTop = 80; 
-                        if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
-                        const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+                        const newTop = Math.floor(Math.random() * 80) + 5;
                         const newLeft = Math.floor(Math.random() * 80) + 5;
                         watermarkLayer.style.top = `${newTop}%`;
                         watermarkLayer.style.left = `${newLeft}%`;
@@ -226,7 +249,7 @@ export default function WatchPage() {
                     moveWatermark();
                     const watermarkInterval = setInterval(moveWatermark, 5500);
 
-                    // 2. منطق اللمس (يعمل فقط في وضع الستريم)
+                    // منطق اللمس (فقط في وضع الستريم)
                     if (data.offline_mode !== false) {
                         const wrapper = art.layers.gestures?.querySelector('.gesture-wrapper');
                         if (wrapper) {
@@ -252,11 +275,9 @@ export default function WatchPage() {
                                         }
                                         return;
                                     }
-
                                     clickCount++;
                                     clearTimeout(singleTapTimer);
                                     clearTimeout(accumulateTimer);
-
                                     if (clickCount === 1) {
                                         singleTapTimer = setTimeout(() => {
                                             simulateSingleTap(e);
@@ -266,10 +287,8 @@ export default function WatchPage() {
                                         const seconds = (clickCount - 1) * 10;
                                         const icon = zone.querySelector('.icon');
                                         const isForward = action === 'forward';
-                                        
                                         if (isForward) icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
                                         else icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
-                                        
                                         showFeedback(icon);
                                         accumulateTimer = setTimeout(() => {
                                             if (isForward) art.forward = seconds;
@@ -295,12 +314,10 @@ export default function WatchPage() {
                                 }
                                 gestureLayer.style.display = 'block';
                             };
-
                             const showFeedback = (el) => { if (el) { el.style.opacity = '1'; el.style.transform = 'scale(1.2)'; } };
                             const hideFeedback = (el) => { if (el) { el.style.opacity = '0'; el.style.transform = 'scale(1)'; } };
                         }
                     }
-
                     art.on('destroy', () => clearInterval(watermarkInterval));
                 });
 
@@ -330,22 +347,18 @@ export default function WatchPage() {
                     const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
                     const subjectName = videoData.subject_name || "Unknown Subject";
                     const chapterName = videoData.chapter_name || "Unknown Chapter";
-
                     let duration = "0";
                     if (playerInstance.current && playerInstance.current.duration) {
                         duration = playerInstance.current.duration.toString(); 
                     } else if (videoData.duration) {
                         duration = videoData.duration.toString();
                     }
-
                     const qualitiesPayload = videoData.availableQualities.map(q => ({
                         quality: q.quality,
                         url: q.url
                     }));
                     const qualitiesJson = JSON.stringify(qualitiesPayload);
-
                     window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
-
                 } catch (e) {
                     alert("حدث خطأ: " + e.message);
                 }
@@ -376,7 +389,6 @@ export default function WatchPage() {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
 
-            {/* زر التحميل يظهر فقط إذا كان أندرويد والوضع أوفلاين مفعل */}
             {isNativeAndroid && offlineMode && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -392,11 +404,11 @@ export default function WatchPage() {
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
                 
-                /* [✅] جعل الخلفية سوداء بالكامل (غير شفافة) */
+                /* [✅] شاشة تحميل سوداء بالكامل تغطي الفيديو */
                 .loading-overlay { 
                     position: absolute; 
-                    z-index: 50; 
-                    background: #000; /* خلفية سوداء صريحة */
+                    z-index: 9999; /* قيمة عالية لتغطية كل شيء */
+                    background: #000; /* أسود صريح */
                     width: 100%; 
                     height: 100%; 
                     display: flex; 
