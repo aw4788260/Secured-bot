@@ -3,7 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
-// --- [ مكون العلامة المائية المنفصل ] ---
+// --- [ 1. مكون العلامة المائية المنفصل ] ---
+// هذا المكون سيعمل فوق الـ Iframe وفوق الـ Artplayer لضمان الحماية في الحالتين
 const WatermarkOverlay = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '10%', left: '10%' });
 
@@ -32,8 +33,9 @@ const WatermarkOverlay = ({ user }) => {
             position: 'absolute',
             top: watermarkPos.top,
             left: watermarkPos.left,
-            zIndex: 50, 
-            transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
+            zIndex: 999, // طبقة عالية جداً لتظهر فوق كل شيء
+            transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out',
+            pointerEvents: 'none' // لكي لا تعيق النقر على الفيديو
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -51,11 +53,13 @@ export default function WatchPage() {
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     
+    // حالة الأوفلاين
     const [offlineMode, setOfflineMode] = useState(true); 
 
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
+    // دالة توحيد الجودة
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -66,12 +70,14 @@ export default function WatchPage() {
         return closest.toString();
     };
 
+    // تحميل المكتبات
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
         }
     }, []);
 
+    // التعرف على المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -86,12 +92,14 @@ export default function WatchPage() {
         }
     }, []);
 
+    // جلب الفيديو وتشغيل المشغل المناسب
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
         const params = new URLSearchParams(window.location.search);
         const currentDeviceId = params.get('deviceId');
         
+        // تنظيف المشغل السابق إذا وجد
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -105,11 +113,37 @@ export default function WatchPage() {
                 setVideoData(data);
                 setOfflineMode(data.offline_mode); 
 
+                // =========================================================
+                // [ المسار 1: الوضع أونلاين (يوتيوب Iframe) ]
+                // =========================================================
+                if (data.offline_mode === false) {
+                    // لا نحتاج لتهيئة Artplayer هنا، سنعرض الـ iframe مباشرة في الـ JSX
+                    setLoading(false);
+                    return; 
+                } 
+                
+                // =========================================================
+                // [ المسار 2: الوضع أوفلاين (Artplayer Stream) ]
+                // =========================================================
                 if (!artRef.current || !window.Artplayer) return;
 
-                // --- [ إعدادات Artplayer المشتركة ] ---
-                let artOptions = {
+                let qualities = data.availableQualities || [];
+                if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
+                qualities = qualities.sort((a, b) => b.quality - a.quality);
+                const middleIndex = Math.floor((qualities.length - 1) / 2);
+
+                const qualityList = qualities.map((q, index) => ({
+                    default: index === middleIndex,
+                    html: normalizeQuality(q.quality),
+                    url: q.url,
+                }));
+                
+                const startUrl = qualityList[middleIndex]?.url || qualityList[0].url;
+
+                const art = new window.Artplayer({
                     container: artRef.current,
+                    url: startUrl,
+                    quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
                     isLive: false,
@@ -118,6 +152,7 @@ export default function WatchPage() {
                     autoSize: true,
                     autoMini: true,
                     screenshot: false,
+                    setting: true,
                     loop: false,
                     flip: false,
                     playbackRate: true,
@@ -130,85 +165,25 @@ export default function WatchPage() {
                     playsInline: true,
                     theme: '#38bdf8',
                     lang: 'ar',
-                    // طبقة العلامة المائية
+                    
+                    // طبقة الإيماءات (فقط للـ Stream)
                     layers: [
                         {
-                            name: 'watermark',
-                            html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
+                            name: 'gestures',
+                            html: `
+                                <div class="gesture-wrapper">
+                                    <div class="gesture-zone left" data-action="backward"><span class="icon"><span style="font-size:1.2em">«</span> 10</span></div>
+                                    <div class="gesture-zone center" data-action="toggle"></div>
+                                    <div class="gesture-zone right" data-action="forward"><span class="icon">10 <span style="font-size:1.2em">»</span></span></div>
+                                </div>`,
                             style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 99, 
-                                transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
+                                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
+                                zIndex: 20, pointerEvents: 'none',
                             },
                         }
                     ],
-                };
 
-                // =========================================================
-                // [ الحالة 1: أونلاين (يوتيوب Iframe مبسط جداً) ]
-                // =========================================================
-                if (data.offline_mode === false) {
-                    const youtubeId = data.youtube_video_id;
-                    
-                    // [✅] الرابط المبسط جداً كما طلبت
-                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?controls=0&playsinline=1&rel=0`;
-                    artOptions.type = 'iframe'; 
-                    
-                    // إخفاء واجهة Artplayer بالكامل لمنع التداخل
-                    artOptions.controls = []; 
-                    artOptions.setting = false;
-                    
-                    artOptions.customType = {
-                        iframe: function (video, url, art) {
-                            const iframe = document.createElement('iframe');
-                            iframe.src = url;
-                            iframe.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 10;';
-                            
-                            // خصائص الـ iframe الأساسية
-                            iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
-                            iframe.allowFullscreen = true;
-                            
-                            art.template.$player.appendChild(iframe);
-                            art.template.$video.style.display = 'none'; // إخفاء الفيديو الوهمي
-                            
-                            if(art.loading) art.loading.show = false; 
-                        }
-                    };
-                } 
-                // =========================================================
-                // [ الحالة 2: أوفلاين (Stream HLS) ]
-                // =========================================================
-                else {
-                    let qualities = data.availableQualities || [];
-                    if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
-                    qualities = qualities.sort((a, b) => b.quality - a.quality);
-                    const middleIndex = Math.floor((qualities.length - 1) / 2);
-
-                    const qualityList = qualities.map((q, index) => ({
-                        default: index === middleIndex,
-                        html: normalizeQuality(q.quality),
-                        url: q.url,
-                    }));
-                    
-                    artOptions.url = qualityList[middleIndex]?.url || qualityList[0].url;
-                    artOptions.quality = qualityList;
-                    artOptions.setting = true; 
-                    
-                    // طبقة اللمس (فقط للأوفلاين)
-                    artOptions.layers.push({
-                        name: 'gestures',
-                        html: `
-                            <div class="gesture-wrapper">
-                                <div class="gesture-zone left" data-action="backward"><span class="icon"><span style="font-size:1.2em">«</span> 10</span></div>
-                                <div class="gesture-zone center" data-action="toggle"></div>
-                                <div class="gesture-zone right" data-action="forward"><span class="icon">10 <span style="font-size:1.2em">»</span></span></div>
-                            </div>`,
-                        style: {
-                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                            zIndex: 20, pointerEvents: 'none',
-                        },
-                    });
-
-                    artOptions.customType = {
+                    customType: {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
@@ -219,113 +194,68 @@ export default function WatchPage() {
                                 });
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
-                                hls.on(window.Hls.Events.ERROR, (event, data) => {
-                                    if (data.fatal) {
-                                        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                                            hls.destroy(); video.src = url;
-                                        } else { hls.destroy(); }
-                                    }
-                                });
                                 art.hls = hls;
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
                             }
                         },
-                    };
-                }
-
-                const art = new window.Artplayer(artOptions);
+                    },
+                });
 
                 art.notice.show = function() {}; 
 
+                // تفعيل منطق الإيماءات للـ Artplayer
                 art.on('ready', () => {
-                    const watermarkLayer = art.layers.watermark;
-                    const moveWatermark = () => {
-                        if (!watermarkLayer) return;
-                        const newTop = Math.floor(Math.random() * 80) + 5;
-                        const newLeft = Math.floor(Math.random() * 80) + 5;
-                        watermarkLayer.style.top = `${newTop}%`;
-                        watermarkLayer.style.left = `${newLeft}%`;
-                    };
-                    moveWatermark();
-                    const watermarkInterval = setInterval(moveWatermark, 5500);
+                    const wrapper = art.layers.gestures?.querySelector('.gesture-wrapper');
+                    if (wrapper) {
+                        const zones = wrapper.querySelectorAll('.gesture-zone');
+                        let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
 
-                    // منطق اللمس (فقط للأوفلاين)
-                    if (data.offline_mode !== false) {
-                        const wrapper = art.layers.gestures?.querySelector('.gesture-wrapper');
-                        if (wrapper) {
-                            const zones = wrapper.querySelectorAll('.gesture-zone');
-                            let clickCount = 0;
-                            let singleTapTimer = null;
-                            let accumulateTimer = null;
-
-                            zones.forEach(zone => {
-                                zone.addEventListener('click', (e) => {
-                                    const action = zone.getAttribute('data-action');
-                                    if (action === 'toggle') {
-                                        clickCount++;
-                                        clearTimeout(singleTapTimer);
-                                        if (clickCount === 1) {
-                                            singleTapTimer = setTimeout(() => {
-                                                simulateSingleTap(e);
-                                                clickCount = 0;
-                                            }, 300);
-                                        } else {
-                                            art.toggle();
-                                            clickCount = 0;
-                                        }
-                                        return;
-                                    }
-                                    clickCount++;
-                                    clearTimeout(singleTapTimer);
-                                    clearTimeout(accumulateTimer);
+                        zones.forEach(zone => {
+                            zone.addEventListener('click', (e) => {
+                                const action = zone.getAttribute('data-action');
+                                if (action === 'toggle') {
+                                    clickCount++; clearTimeout(singleTapTimer);
                                     if (clickCount === 1) {
                                         singleTapTimer = setTimeout(() => {
-                                            simulateSingleTap(e);
+                                            art.layers.gestures.style.display = 'none';
+                                            const el = document.elementFromPoint(e.clientX, e.clientY);
+                                            if(el) el.dispatchEvent(new MouseEvent('click', {view:window, bubbles:true, clientX:e.clientX, clientY:e.clientY}));
+                                            art.layers.gestures.style.display = 'block';
                                             clickCount = 0;
-                                        }, 250);
-                                    } else {
-                                        const seconds = (clickCount - 1) * 10;
-                                        const icon = zone.querySelector('.icon');
-                                        const isForward = action === 'forward';
-                                        if (isForward) icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
-                                        else icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
-                                        showFeedback(icon);
-                                        accumulateTimer = setTimeout(() => {
-                                            if (isForward) art.forward = seconds;
-                                            else art.backward = seconds;
-                                            hideFeedback(icon);
-                                            clickCount = 0;
-                                            setTimeout(() => {
-                                                if (isForward) icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`;
-                                                else icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`;
-                                            }, 300);
-                                        }, 600);
-                                    }
-                                });
-                            });
-                            
-                            const simulateSingleTap = (e) => {
-                                const gestureLayer = art.layers.gestures;
-                                gestureLayer.style.display = 'none';
-                                const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
-                                if (elementBelow) {
-                                    const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY });
-                                    elementBelow.dispatchEvent(clickEvent);
+                                        }, 300);
+                                    } else { art.toggle(); clickCount = 0; }
+                                    return;
                                 }
-                                gestureLayer.style.display = 'block';
-                            };
-                            const showFeedback = (el) => { if (el) { el.style.opacity = '1'; el.style.transform = 'scale(1.2)'; } };
-                            const hideFeedback = (el) => { if (el) { el.style.opacity = '0'; el.style.transform = 'scale(1)'; } };
-                        }
+                                clickCount++; clearTimeout(singleTapTimer); clearTimeout(accumulateTimer);
+                                if (clickCount === 1) {
+                                    singleTapTimer = setTimeout(() => {
+                                        art.layers.gestures.style.display = 'none';
+                                        const el = document.elementFromPoint(e.clientX, e.clientY);
+                                        if(el) el.dispatchEvent(new MouseEvent('click', {view:window, bubbles:true, clientX:e.clientX, clientY:e.clientY}));
+                                        art.layers.gestures.style.display = 'block';
+                                        clickCount = 0;
+                                    }, 250);
+                                } else {
+                                    const seconds = (clickCount - 1) * 10;
+                                    const icon = zone.querySelector('.icon');
+                                    const isForward = action === 'forward';
+                                    if (isForward) icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
+                                    else icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
+                                    icon.style.opacity = '1'; icon.style.transform = 'scale(1.2)';
+                                    accumulateTimer = setTimeout(() => {
+                                        if (isForward) art.forward = seconds; else art.backward = seconds;
+                                        icon.style.opacity = '0'; icon.style.transform = 'scale(1)';
+                                        clickCount = 0;
+                                        setTimeout(() => { if (isForward) icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`; else icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`; }, 300);
+                                    }, 600);
+                                }
+                            });
+                        });
                     }
-                    art.on('destroy', () => clearInterval(watermarkInterval));
                 });
 
-                art.on('destroy', () => {
-                    if (art.hls) art.hls.destroy();
-                });
-
+                art.on('destroy', () => { if (art.hls) art.hls.destroy(); });
                 playerInstance.current = art;
                 setLoading(false);
             })
@@ -342,33 +272,16 @@ export default function WatchPage() {
     
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideoWithQualities) {
-            if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
+            if (videoData && videoData.availableQualities?.length > 0) {
                 try {
-                    const yId = videoData.youtube_video_id || videoData.youtubeId;
-                    const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
-                    const subjectName = videoData.subject_name || "Unknown Subject";
-                    const chapterName = videoData.chapter_name || "Unknown Chapter";
-                    let duration = "0";
-                    if (playerInstance.current && playerInstance.current.duration) {
-                        duration = playerInstance.current.duration.toString(); 
-                    } else if (videoData.duration) {
-                        duration = videoData.duration.toString();
-                    }
-                    const qualitiesPayload = videoData.availableQualities.map(q => ({
-                        quality: q.quality,
-                        url: q.url
-                    }));
-                    const qualitiesJson = JSON.stringify(qualitiesPayload);
-                    window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
-                } catch (e) {
-                    alert("حدث خطأ: " + e.message);
-                }
-            } else {
-                alert("بيانات الفيديو غير مكتملة.");
-            }
-        } else {
-            alert("يرجى تحديث التطبيق.");
-        }
+                    const yId = videoData.youtube_video_id;
+                    const vTitle = videoData.db_video_title || "Video";
+                    const duration = playerInstance.current?.duration?.toString() || videoData.duration?.toString() || "0";
+                    const qualitiesJson = JSON.stringify(videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url })));
+                    window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, videoData.subject_name || "", videoData.chapter_name || "");
+                } catch (e) { alert("حدث خطأ: " + e.message); }
+            } else { alert("بيانات الفيديو غير مكتملة."); }
+        } else { alert("يرجى تحديث التطبيق."); }
     };
         
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
@@ -378,7 +291,6 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                <meta name="referrer" content="no-referrer" />
             </Head>
 
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
@@ -387,7 +299,36 @@ export default function WatchPage() {
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             <div className="player-wrapper">
-                <div ref={artRef} className="artplayer-app"></div>
+                
+                {/* [ الشرح ]
+                    هنا نتحكم فيما يتم عرضه داخل المربع الأسود (player-wrapper):
+                    1. إذا كان الأوفلاين "معطل" (offlineMode === false): نعرض iframe يوتيوب مباشرة + العلامة المائية فوقه.
+                    2. إذا كان الأوفلاين "مفعل": نعرض div الخاص بـ Artplayer (الذي سيحتوي الفيديو والعلامة المائية بداخله).
+                */}
+                
+                {!offlineMode && videoData?.youtube_video_id ? (
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                        <iframe 
+                            src={`https://www.youtube.com/embed/${videoData.youtube_video_id}?controls=0&playsinline=1&rel=0&modestbranding=1`}
+                            title="YouTube Video"
+                            style={{ width: '100%', height: '100%', border: 'none', backgroundColor: '#000' }}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                            allowFullScreen
+                        ></iframe>
+                        
+                        {/* العلامة المائية المنفصلة (تظهر فوق الـ Iframe) */}
+                        <WatermarkOverlay user={user} />
+                    </div>
+                ) : (
+                    <>
+                       {/* Artplayer يظهر هنا في حالة الأوفلاين (ويحتوي العلامة المائية بداخله عبر layers) */}
+                       <div ref={artRef} className="artplayer-app"></div>
+                       
+                       {/* (احتياطي) إذا كنت تريد العلامة المائية "دائماً" من الخارج حتى مع Artplayer، يمكنك وضعها هنا وإزالتها من إعدادات layers */}
+                       {/* <WatermarkOverlay user={user} /> */}
+                    </>
+                )}
+                
             </div>
 
             {isNativeAndroid && offlineMode && (
@@ -405,71 +346,37 @@ export default function WatchPage() {
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
                 
-                /* [✅] شاشة تحميل سوداء تماماً */
                 .loading-overlay { 
-                    position: absolute; 
-                    z-index: 9999; 
-                    background: #000; 
-                    width: 100%; 
-                    height: 100%; 
-                    display: flex; 
-                    justify-content: center; 
-                    align-items: center; 
-                    color: white; 
-                    font-size: 1.2rem; 
+                    position: absolute; z-index: 9999; background: #000; 
+                    width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; 
+                    color: white; font-size: 1.2rem; 
                 }
                 
-                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+                .player-wrapper { 
+                    width: 100%; max-width: 900px; aspect-ratio: 16/9; 
+                    background: #000; position: relative; border-radius: 8px; overflow: hidden; 
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+                }
                 .artplayer-app { width: 100%; height: 100%; }
+                
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                .art-notice { display: none !important; }
-                .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
-
                 .watermark-content {
-                    padding: 2px 10px; 
-                    background: rgba(0, 0, 0, 0.5); 
-                    color: rgba(255, 255, 255, 0.9); 
-                    border-radius: 4px;
-                    white-space: nowrap; 
-                    font-size: 11px !important; 
-                    font-weight: bold;
-                    text-shadow: 1px 1px 2px black;
-                    pointer-events: none;
+                    padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); 
+                    border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; 
+                    text-shadow: 1px 1px 2px black; pointer-events: none;
                 }
 
-                .gesture-wrapper {
-                    width: 100%; height: 100%;
-                    display: flex;
-                }
-                
-                .gesture-zone.left, .gesture-zone.right {
-                    width: 30%; height: 100%;
-                    display: flex; align-items: center; justify-content: center;
-                    pointer-events: auto;
-                }
-                .gesture-zone.center {
-                    width: 40%; height: 100%;
-                    display: flex; align-items: center; justify-content: center;
-                    pointer-events: auto;
-                }
-
+                .gesture-wrapper { width: 100%; height: 100%; display: flex; }
+                .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+                .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone .icon { 
-                    font-size: 18px; font-weight: bold; font-family: sans-serif; 
-                    color: rgba(255, 255, 255, 0.9);
-                    opacity: 0; 
-                    transition: opacity 0.2s, transform 0.2s;
-                    background: transparent; 
-                    padding: 10px; 
-                    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-                    pointer-events: none;
-                    
+                    font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9);
+                    opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; 
+                    padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; 
                 }
-                
-                .gesture-zone.center .icon {
-                    font-size: 30px;
-                }
+                .gesture-zone.center .icon { font-size: 30px; }
             `}</style>
         </div>
     );
