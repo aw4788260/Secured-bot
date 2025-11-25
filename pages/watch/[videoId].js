@@ -5,12 +5,12 @@ import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// 1. استيراد Plyr (للوضع الأونلاين)
+// 1. استيراد Plyr
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية (مخصص لوضع Plyr فقط - OfflineOff)
+// 2. مكون العلامة المائية (لـ Plyr فقط)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -30,7 +30,7 @@ const PlyrWatermark = ({ user }) => {
     return (
         <div className="plyr-watermark" style={{
             position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999,
-            pointerEvents: 'none', // ✅ يسمح بمرور اللمس للأزرار خلفه
+            pointerEvents: 'none',
             padding: '5px 10px', background: 'rgba(0,0,0,0.6)',
             color: 'rgba(255,255,255,0.8)', fontSize: '12px', borderRadius: '5px',
             fontWeight: 'bold', transition: 'top 2s ease, left 2s ease',
@@ -42,10 +42,10 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
-// ✅ يحتوي الآن على زر التحميل داخله لضمان ظهوره وعمله بشكل صحيح
+// 3. مكون مشغل Artplayer (الوضع Native)
+// ✅ يستقبل getPlayerInstance لتمرير المشغل للأب (من أجل زر التحميل)
 // =========================================================================
-const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
+const NativeArtPlayer = ({ videoData, user, libsLoaded, getPlayerInstance }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
@@ -56,7 +56,6 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         return standards.reduce((prev, curr) => (Math.abs(curr - num) < Math.abs(prev - num) ? curr : prev)).toString();
     };
 
-    // منطق تشغيل Artplayer (نسخ حرفي من ملفك الأصلي)
     useEffect(() => {
         if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
@@ -91,7 +90,6 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // ✅ النسخ الحرفي للطبقات (Layers)
             layers: [
                 {
                     name: 'watermark',
@@ -136,7 +134,9 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         art.notice.show = function() {}; 
 
         art.on('ready', () => {
-            // 1. تحريك العلامة المائية الداخلية
+            // تمرير المشغل للأب (WatchPage) ليستخدمه زر التحميل
+            if (getPlayerInstance) getPlayerInstance(art);
+
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
@@ -148,7 +148,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // 2. منطق اللمس المتقدم (التراكمي)
+            // منطق اللمس
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -210,45 +210,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
     }, [libsLoaded, user, videoData]);
 
-    // ✅✅✅ دالة التحميل (داخل المكون لتعمل بشكل صحيح)
-    const handleDownloadClick = () => {
-        if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
-        
-        if (window.Android.downloadVideoWithQualities && videoData.availableQualities) {
-            try {
-                const yId = videoData.youtube_video_id || videoData.youtubeId;
-                const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
-                const subjectName = videoData.subject_name || "Unknown Subject";
-                const chapterName = videoData.chapter_name || "Unknown Chapter";
-                let duration = "0";
-                
-                // محاولة جلب المدة الحقيقية من المشغل
-                if (playerInstance.current && playerInstance.current.duration) {
-                    duration = playerInstance.current.duration.toString(); 
-                } else if (videoData.duration) {
-                    duration = videoData.duration.toString();
-                }
-
-                const qualitiesPayload = videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url }));
-                const qualitiesJson = JSON.stringify(qualitiesPayload);
-                
-                window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
-            } catch (e) { alert("حدث خطأ: " + e.message); }
-        } else { alert("بيانات الفيديو غير مكتملة للتحميل."); }
-    };
-
-    return (
-        <>
-            <div className="artplayer-app" ref={artRef}></div>
-            
-            {/* ✅✅✅ الزر موجود هنا ليظهر فقط عند تفعيل NativeArtPlayer */}
-            {isNativeAndroid && (
-                <button onClick={handleDownloadClick} className="download-button-native">
-                    ⬇️ تحميل الفيديو (أوفلاين)
-                </button>
-            )}
-        </>
-    );
+    return <div className="artplayer-app" ref={artRef}></div>;
 };
 
 
@@ -265,7 +227,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
-        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' } // ✅ الحل لمشكلة ملء الشاشة
+        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
 
     return (
@@ -278,7 +240,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
 
 
 // =========================================================================
-// 5. الصفحة الرئيسية
+// 5. الصفحة الرئيسية (Main Controller)
 // =========================================================================
 export default function WatchPage() {
     const router = useRouter();
@@ -292,6 +254,8 @@ export default function WatchPage() {
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
 
+    // مرجع لتخزين نسخة Artplayer للوصول إليها من زر التحميل
+    const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
 
     // التعرف على المستخدم
@@ -333,6 +297,36 @@ export default function WatchPage() {
             });
     }, [videoId, user]);
 
+    // ✅✅✅ دالة التحميل (موجودة في الخارج كما طلبت)
+    const handleDownloadClick = () => {
+        if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
+        
+        // تعمل فقط في وضع Native
+        if (viewMode === 'native' && window.Android.downloadVideoWithQualities && videoData.availableQualities) {
+            try {
+                const yId = videoData.youtube_video_id || videoData.youtubeId;
+                const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
+                const subjectName = videoData.subject_name || "Unknown Subject";
+                const chapterName = videoData.chapter_name || "Unknown Chapter";
+                
+                let duration = "0";
+                // محاولة جلب المدة من Artplayer Instance المخزن في Ref
+                if (artPlayerInstanceRef.current && artPlayerInstanceRef.current.duration) {
+                    duration = artPlayerInstanceRef.current.duration.toString(); 
+                } else if (videoData.duration) {
+                    duration = videoData.duration.toString();
+                }
+
+                const qualitiesPayload = videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url }));
+                const qualitiesJson = JSON.stringify(qualitiesPayload);
+                
+                window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
+            } catch (e) { alert("حدث خطأ: " + e.message); }
+        } else { 
+            alert("التحميل غير متاح حالياً."); 
+        }
+    };
+
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
     return (
@@ -348,24 +342,31 @@ export default function WatchPage() {
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
-                // الحاوية الرئيسية (مهمة لوضع Plyr Fullscreen)
                 <div className="player-wrapper" ref={playerWrapperRef}>
                     
-                    {/* 1. وضع Native (Artplayer) - يظهر زر التحميل داخله */}
+                    {/* 1. Artplayer */}
                     {viewMode === 'native' && (
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
-                            isNativeAndroid={isNativeAndroid}
                             libsLoaded={libsLoaded}
+                            // نمرر دالة لاستلام نسخة المشغل
+                            getPlayerInstance={(art) => { artPlayerInstanceRef.current = art; }}
                         />
                     )}
 
-                    {/* 2. وضع Youtube (Plyr) - بدون زر تحميل */}
+                    {/* 2. Plyr */}
                     {viewMode === 'youtube' && (
                         <YoutubePlyrPlayer videoData={videoData} user={user} />
                     )}
                 </div>
+            )}
+
+            {/* ✅✅✅ زر التحميل: خارج المشغل بالكامل، ويظهر فقط في وضع offlineon */}
+            {isNativeAndroid && viewMode === 'native' && (
+                <button onClick={handleDownloadClick} className="download-button-native">
+                    ⬇️ تحميل الفيديو (أوفلاين)
+                </button>
             )}
 
             <footer className="developer-info">
@@ -386,7 +387,7 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
                 }
 
-                /* خدعة الـ Fullscreen لـ Plyr */
+                /* تكبير الحاوية عند ملء الشاشة (لحل مشكلة Plyr) */
                 .player-wrapper:fullscreen, .player-wrapper:-webkit-full-screen, .player-wrapper:-moz-full-screen {
                     width: 100%; height: 100%; max-width: none; aspect-ratio: auto; background: #000;
                     display: flex; align-items: center; justify-content: center;
@@ -395,9 +396,16 @@ export default function WatchPage() {
                 .player-wrapper .plyr { width: 100%; height: 100%; }
                 .artplayer-app { width: 100%; height: 100%; }
                 
-                .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
+                /* تنسيق زر التحميل (خارج المشغل) */
+                .download-button-native { 
+                    width: 100%; max-width: 900px; padding: 15px; 
+                    background: #38bdf8; border: none; border-radius: 8px; 
+                    font-weight: bold; cursor: pointer; color: #111; 
+                    margin-top: 20px; font-size: 16px;
+                }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
+                /* تنسيقات Artplayer */
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
