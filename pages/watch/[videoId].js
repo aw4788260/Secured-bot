@@ -1,7 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
-import { createPortal } from 'react-dom'; // ضروري لزرع العلامة المائية
 import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
@@ -14,14 +13,15 @@ import 'plyr/dist/plyr.css';
 // 1. مكون العلامة المائية
 // =========================================================================
 const Watermark = ({ user }) => {
-    const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
+    const [watermarkPos, setWatermarkPos] = useState({ top: '10%', left: '10%' });
     const watermarkIntervalRef = useRef(null);
 
     useEffect(() => {
         if (!user) return;
         
         const moveWatermark = () => {
-             const newTop = Math.floor(Math.random() * 80) + 5;
+             // تجنبنا الحواف القصوى لضمان عدم خروج العلامة عن الإطار
+             const newTop = Math.floor(Math.random() * 80) + 5; 
              const newLeft = Math.floor(Math.random() * 80) + 5;
              setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         };
@@ -39,17 +39,18 @@ const Watermark = ({ user }) => {
             position: 'absolute', 
             top: watermarkPos.top, 
             left: watermarkPos.left,
-            zIndex: 2147483647, // أعلى طبقة ممكنة
-            pointerEvents: 'none',
+            zIndex: 50, // طبقة فوق الفيديو
+            pointerEvents: 'none', // ✅ هذا السطر يجعل اللمس يعبر من خلالها
             padding: '5px 10px', 
-            background: 'rgba(0, 0, 0, 0.6)', 
-            color: 'rgba(255, 255, 255, 0.8)', 
-            fontSize: 'clamp(11px, 2.5vw, 15px)',
+            background: 'rgba(0, 0, 0, 0.5)', 
+            color: 'rgba(255, 255, 255, 0.7)', 
+            fontSize: 'clamp(11px, 2.5vw, 14px)',
             borderRadius: '5px',
             fontWeight: 'bold',
             transition: 'top 2s ease-in-out, left 2s ease-in-out',
             whiteSpace: 'nowrap',
-            textShadow: '1px 1px 2px black'
+            textShadow: '1px 1px 2px black',
+            userSelect: 'none'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -75,10 +76,6 @@ export default function WatchPage() {
     // Refs
     const artRef = useRef(null);
     const playerInstance = useRef(null);
-    
-    // Refs خاصة بـ Plyr للعلامة المائية
-    const plyrWrapperRef = useRef(null);
-    const [plyrElement, setPlyrElement] = useState(null);
 
     // دالة توحيد الجودة (Artplayer)
     const normalizeQuality = (val) => {
@@ -148,29 +145,7 @@ export default function WatchPage() {
     }, [videoId, user]);
 
     // =========================================================================
-    // 3. البحث عن حاوية Plyr (لحل مشكلة العلامة المائية في ملء الشاشة)
-    // =========================================================================
-    useEffect(() => {
-        if (viewMode === 'youtube' && !loading) {
-            // نبحث عن عنصر .plyr الذي يتم إنشاؤه ليكون هو الأب للعلامة المائية
-            const interval = setInterval(() => {
-                if (plyrWrapperRef.current) {
-                    // Plyr ينشئ div بكلاس .plyr هو الذي يأخذ ملء الشاشة
-                    const el = plyrWrapperRef.current.querySelector('.plyr');
-                    if (el) {
-                        setPlyrElement(el);
-                        clearInterval(interval);
-                    }
-                }
-            }, 200);
-            return () => clearInterval(interval);
-        } else {
-            setPlyrElement(null);
-        }
-    }, [viewMode, loading, videoData]);
-
-    // =========================================================================
-    // 4. منطق تشغيل Artplayer (OfflineOn)
+    // 3. منطق تشغيل Artplayer (OfflineOn)
     // =========================================================================
     useEffect(() => {
         if (viewMode !== 'native' || !videoData || !libsLoaded || !artRef.current || !window.Artplayer) return;
@@ -332,7 +307,7 @@ export default function WatchPage() {
     }, [viewMode, videoData, libsLoaded, user]);
 
     // =========================================================================
-    // 5. دالة التحميل
+    // 4. دالة التحميل (فقط للوضع Native)
     // =========================================================================
     const handleDownloadClick = () => {
         if (!window.Android) {
@@ -340,7 +315,6 @@ export default function WatchPage() {
             return;
         }
 
-        // فقط في وضع Native
         if (viewMode === 'native' && window.Android.downloadVideoWithQualities) {
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
@@ -368,17 +342,15 @@ export default function WatchPage() {
     };
 
     // إعدادات Plyr (للوضع الثاني)
-    // ✅ تم تفعيل القائمة لتظهر (حل مشكلة عدم ظهورها)
     const plyrSource = videoData?.youtube_video_id ? {
         type: 'video',
         sources: [{ src: videoData.youtube_video_id, provider: 'youtube' }],
     } : null;
 
     const plyrOptions = {
-        // هذه القائمة ستجعل الأزرار تظهر
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        youtube: { rel: 0, showinfo: 0, modestbranding: 1, controls: 0 }
+        youtube: { rel: 0, showinfo: 0, modestbranding: 1, controls: 1 } // تأكدنا من تفعيل التحكم
     };
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
@@ -404,16 +376,17 @@ export default function WatchPage() {
 
                 {/* 2. وضع OfflineOff (Plyr) */}
                 {viewMode === 'youtube' && !loading && (
-                    <div ref={plyrWrapperRef} style={{ width: '100%', height: '100%' }}>
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                         <Plyr 
                             key={videoData?.youtube_video_id} 
                             source={plyrSource} 
                             options={plyrOptions} 
                         />
-                        {/* ✅ الحل السحري: نزرع العلامة المائية داخل عنصر Plyr نفسه باستخدام Portal
-                            هذا يضمن أنها ستكون "ابن" للعنصر الذي يأخذ ملء الشاشة، وبالتالي تظهر فوق الفيديو دائماً
+                        {/* ✅ العلامة المائية: طبقة منفصلة (Sibling)
+                            ✅ لها pointer-events: none (شفافة للمس)
+                            ✅ لها z-index عالي
                         */}
-                        {plyrElement && createPortal(<Watermark user={user} />, plyrElement)}
+                        <Watermark user={user} />
                     </div>
                 )}
             </div>
@@ -430,9 +403,9 @@ export default function WatchPage() {
             </footer>
 
             <style jsx global>{`
-                body { margin: 0; background: #111; color: white; font-family: sans-serif; }
+                body { margin: 0; background: #000; color: white; font-family: sans-serif; }
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; position: relative; }
-                .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white;}
+                .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white; background: #000; }
                 
                 /* ✅ خلفية سوداء لشاشة التحميل */
                 .loading-overlay { position: absolute; z-index: 50; background: #000; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.2rem; }
@@ -455,6 +428,7 @@ export default function WatchPage() {
 
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
+                /* تنسيقات العلامة المائية داخل Artplayer */
                 .watermark-content {
                     padding: 2px 10px; 
                     background: rgba(0, 0, 0, 0.5); 
