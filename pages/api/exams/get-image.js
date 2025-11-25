@@ -1,62 +1,63 @@
 // pages/api/exams/get-image.js
 import axios from 'axios';
 import { supabase } from '../../../lib/supabaseClient';
-import { checkUserAccess } from '../../../lib/authHelper'; // استيراد دالة التحقق
+import { checkUserAccess } from '../../../lib/authHelper';
 
 export default async (req, res) => {
-  // 1. [✅ تعديل] استقبال userId و deviceId بالإضافة لـ file_id
+  // 1. استقبال البيانات اللازمة للتحقق
   const { file_id, userId, deviceId } = req.query;
 
   if (!file_id || !userId || !deviceId) {
     return res.status(400).json({ error: 'Missing file_id, userId, or deviceId' });
   }
 
-  // التحقق من إعدادات السيرفر
   const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-  if (!TOKEN) {
-    console.error("TELEGRAM_BOT_TOKEN is not set!");
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  if (!TOKEN) return res.status(500).json({ error: 'Server config error' });
 
   try {
-    // 2. [🔒 حماية] البحث عن الامتحان الذي تتبع له هذه الصورة
-    // نبحث في جدول الأسئلة (questions) لأن الصور مخزنة هناك
+    // 2. البحث عن الامتحان المرتبط بهذه الصورة (لأن الصلاحية مرتبطة بالامتحان)
     const { data: questionData, error: qError } = await supabase
         .from('questions')
         .select('exam_id')
         .eq('image_file_id', file_id)
-        .limit(1)
-        .maybeSingle(); // استخدام maybeSingle أفضل لتجنب الاستثناءات
+        .maybeSingle();
 
     if (qError || !questionData) {
-        // إذا لم نجد الصورة في القاعدة، نرفض الطلب
-        return res.status(404).json({ error: 'Image context not found in database' });
+        return res.status(404).json({ error: 'Image not found in database' });
     }
 
-    // 3. [🔒 حماية] التحقق من صلاحية المستخدم لهذا الامتحان + بصمة الجهاز
-    // نمرر examId كمعامل رابع، و deviceId كمعامل خامس
+    // 3. [🔒 الحماية القصوى] التحقق من المستخدم + الجهاز + الاشتراك
     const hasAccess = await checkUserAccess(userId, null, null, questionData.exam_id, deviceId);
     
     if (!hasAccess) {
         return res.status(403).json({ error: 'Access Denied: Device Mismatch or No Subscription.' });
     }
 
-    // 4. طلب مسار الملف من تليجرام (الكود الأصلي)
+    // 4. جلب مسار الملف من تليجرام (Server-to-Server)
     const getFileUrl = `https://api.telegram.org/bot${TOKEN}/getFile?file_id=${file_id}`;
-    const fileInfoResponse = await axios.get(getFileUrl);
+    const fileInfo = await axios.get(getFileUrl);
+    
+    if (!fileInfo.data.ok) throw new Error('Telegram API Error');
+    
+    const filePath = fileInfo.data.result.file_path;
+    const telegramUrl = `https://api.telegram.org/file/bot${TOKEN}/${filePath}`;
 
-    if (!fileInfoResponse.data.ok) {
-      throw new Error(fileInfoResponse.data.description || 'Failed to get file info from Telegram');
-    }
+    // 5. [🛡️ البروكسي] جلب الصورة كـ Stream
+    const imageResponse = await axios({
+        method: 'GET',
+        url: telegramUrl,
+        responseType: 'stream'
+    });
 
-    const file_path = fileInfoResponse.data.result.file_path;
+    // 6. إعداد الهيدرز (كاش لمدة سنة لتوفير الباقة + نوع الملف)
+    res.setHeader('Content-Type', 'image/jpeg'); 
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
 
-    // 5. بناء رابط التحميل المباشر وتوجيه المستخدم (الكود الأصلي)
-    const downloadUrl = `https://api.telegram.org/file/bot${TOKEN}/${file_path}`;
-    res.redirect(307, downloadUrl);
+    // 7. إرسال الصورة للمستخدم (بدون كشف الرابط الأصلي)
+    imageResponse.data.pipe(res);
 
   } catch (err) {
-    console.error(`Error proxying Telegram image (file_id: ${file_id}):`, err.message);
-    res.status(404).json({ error: 'Image not found or proxy failed' });
+    console.error(`Image Proxy Error:`, err.message);
+    res.status(500).json({ error: 'Failed to fetch image' });
   }
 };
