@@ -20,23 +20,26 @@ const WatermarkPlyr = ({ user }) => {
     useEffect(() => {
         if (!user) return;
         const moveWatermark = () => {
-             const newTop = Math.floor(Math.random() * 70) + 10;
-             const newLeft = Math.floor(Math.random() * 70) + 10;
+             const newTop = Math.floor(Math.random() * 80) + 10;
+             const newLeft = Math.floor(Math.random() * 80) + 10;
              setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
         };
+        // تحريك فوري
         moveWatermark();
         watermarkIntervalRef.current = setInterval(moveWatermark, 5000);
         return () => clearInterval(watermarkIntervalRef.current);
     }, [user]);
 
+    // ملاحظة: zIndex عالي جداً لضمان الظهور فوق فيديو اليوتيوب
     return (
         <div className="watermark-plyr" style={{
             position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-            zIndex: 100, pointerEvents: 'none', padding: '5px 10px',
-            background: 'rgba(0, 0, 0, 0.6)', color: 'rgba(255, 255, 255, 0.8)',
+            zIndex: 99999, pointerEvents: 'none', padding: '5px 10px',
+            background: 'rgba(0, 0, 0, 0.7)', color: 'rgba(255, 255, 255, 0.9)',
             fontSize: 'clamp(12px, 2.5vw, 16px)', borderRadius: '6px',
             fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
-            whiteSpace: 'nowrap', textShadow: '1px 1px 2px black', fontFamily: 'sans-serif'
+            whiteSpace: 'nowrap', textShadow: '1px 1px 2px black', fontFamily: 'sans-serif',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.5)'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -45,7 +48,7 @@ const WatermarkPlyr = ({ user }) => {
 
 // =========================================================================
 // 2. مشغل الوضع الخاص (Artplayer - OfflineOn)
-// ✅ تم نسخ المنطق حرفياً من كودك الأصلي (اللمس التراكمي، العلامة، التحميل)
+// (منسوخ تماماً من الكود الأصلي كما طلبت)
 // =========================================================================
 const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
     const artRef = useRef(null);
@@ -88,7 +91,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
         const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url;
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
-        // إعداد المشغل (نفس إعدادات كودك الأصلي)
         const art = new window.Artplayer({
             container: artRef.current,
             url: startUrl,
@@ -102,7 +104,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // طبقات العلامة المائية واللمس (كما في الكود الأصلي)
             layers: [
                 {
                     name: 'watermark',
@@ -119,9 +120,7 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                             <div class="gesture-zone left" data-action="backward">
                                 <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
                             </div>
-                            
                             <div class="gesture-zone center" data-action="toggle"></div>
-
                             <div class="gesture-zone right" data-action="forward">
                                 <span class="icon">10 <span style="font-size:1.2em">»</span></span>
                             </div>
@@ -162,7 +161,7 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
         art.notice.show = function() {}; 
 
         art.on('ready', () => {
-            // 1. منطق العلامة المائية (نفس الكود الأصلي)
+            // منطق العلامة المائية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
@@ -178,7 +177,7 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // 2. منطق اللمس المتقدم والتراكمي (نفس الكود الأصلي)
+            // منطق اللمس المتقدم
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             
@@ -190,11 +189,9 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                 zone.addEventListener('click', (e) => {
                     const action = zone.getAttribute('data-action');
                     
-                    // --- المنطقة الوسطى ---
                     if (action === 'toggle') {
                         clickCount++;
                         clearTimeout(singleTapTimer);
-                        
                         if (clickCount === 1) {
                             singleTapTimer = setTimeout(() => {
                                 simulateSingleTap(e);
@@ -207,7 +204,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                         return;
                     }
 
-                    // --- الجوانب (تقديم/تأخير تراكمي) ---
                     clickCount++;
                     clearTimeout(singleTapTimer);
                     clearTimeout(accumulateTimer); 
@@ -218,7 +214,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                             clickCount = 0;
                         }, 250);
                     } else {
-                        // نقرتين أو أكثر
                         const seconds = (clickCount - 1) * 10;
                         const icon = zone.querySelector('.icon');
                         const isForward = action === 'forward';
@@ -234,10 +229,8 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                         accumulateTimer = setTimeout(() => {
                             if (isForward) art.forward = seconds;
                             else art.backward = seconds;
-                            
                             hideFeedback(icon);
                             clickCount = 0;
-                            
                             setTimeout(() => {
                                 if (isForward) {
                                     icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`;
@@ -285,7 +278,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
     }, [libsLoaded, user, videoData]);
 
-    // دالة التحميل كما في الكود الأصلي (مع التعديلات للباك إند الجديد)
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideoWithQualities) {
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
@@ -320,7 +312,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
             
-            {/* زر التحميل يظهر فقط هنا */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -332,20 +323,31 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
 
 // =========================================================================
 // 3. مشغل اليوتيوب (Plyr - OfflineOff)
-// ✅ تم الحفاظ على الإصلاح (Portal + Key) ليعمل الفيديو والعلامة المائية
+// ✅ إصلاح مشكلة اختفاء العلامة المائية: استخدام setInterval للعثور على المشغل
 // =========================================================================
 const YoutubePlayerView = ({ videoData, user }) => {
     const youtubeId = videoData.youtube_video_id;
     const [plyrContainer, setPlyrContainer] = useState(null);
+    const wrapperRef = useRef(null); // مرجع للحاوية الخارجية للبحث داخلها
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            const container = document.querySelector('.plyr-wrapper .plyr');
-            if (container) {
-                setPlyrContainer(container);
+        // إعادة تعيين الحاوية عند تغيير الفيديو
+        setPlyrContainer(null);
+
+        // ✅ الحل الجذري: البحث المتكرر كل 100 ملي ثانية حتى نجد عنصر .plyr
+        // هذا يضمن العثور عليه حتى لو تأخر تحميل الصفحة أو السكريبت
+        const checkInterval = setInterval(() => {
+            if (wrapperRef.current) {
+                const container = wrapperRef.current.querySelector('.plyr');
+                if (container) {
+                    setPlyrContainer(container);
+                    clearInterval(checkInterval); // إيقاف البحث بمجرد العثور عليه
+                }
             }
-        }, 500);
-        return () => clearTimeout(timer);
+        }, 100);
+
+        // إيقاف البحث إذا خرج المستخدم من الصفحة
+        return () => clearInterval(checkInterval);
     }, [youtubeId]);
 
     const plyrSource = {
@@ -361,8 +363,12 @@ const YoutubePlayerView = ({ videoData, user }) => {
 
     return (
         <>
-            <div className="player-wrapper plyr-wrapper">
+            <div className="player-wrapper plyr-wrapper" ref={wrapperRef}>
                 <Plyr key={youtubeId} source={plyrSource} options={plyrOptions} />
+                
+                {/* ✅ استخدام createPortal لحقن العلامة المائية داخل عنصر .plyr مباشرة 
+                   هذا يجعلها جزءاً من المشغل، فتظهر في وضع ملئ الشاشة
+                */}
                 {plyrContainer && createPortal(<WatermarkPlyr user={user} />, plyrContainer)}
             </div>
 
