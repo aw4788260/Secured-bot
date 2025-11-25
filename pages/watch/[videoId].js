@@ -1,10 +1,11 @@
+// pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// استيراد Plyr (ديناميكي)
+// استدعاء Plyr (للوضع الأونلاين - OfflineOff)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
@@ -72,9 +73,8 @@ export default function WatchPage() {
     // Refs
     const artRef = useRef(null);
     const playerInstance = useRef(null);
-    const playerWrapperRef = useRef(null); 
 
-    // دالة توحيد الجودة (من كودك الأول)
+    // دالة توحيد الجودة (من كودك الأول - Artplayer)
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -85,7 +85,7 @@ export default function WatchPage() {
         return closest.toString();
     };
 
-    // تحميل مكتبات Artplayer (للوضع الأول)
+    // تحميل مكتبات Artplayer
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
@@ -115,7 +115,7 @@ export default function WatchPage() {
         const params = new URLSearchParams(window.location.search);
         const currentDeviceId = params.get('deviceId');
         
-        // تنظيف المشغل القديم إذا وجد
+        // تنظيف المشغل القديم
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -125,14 +125,12 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
-                
                 // تحديد الوضع بناءً على رد الباك إند
                 if (data.offline_mode === true) {
-                    setViewMode('native'); // سيتم تفعيل كود Artplayer
+                    setViewMode('native'); // Artplayer
                 } else {
-                    setViewMode('youtube'); // سيتم تفعيل كود Plyr
+                    setViewMode('youtube'); // Plyr
                 }
-                
                 setLoading(false);
             })
             .catch(err => {
@@ -147,15 +145,17 @@ export default function WatchPage() {
 
     // =========================================================================
     // 3. منطق تشغيل Artplayer (نسخة طبق الأصل من كودك الأول)
-    // يعمل فقط عندما يكون viewMode === 'native'
     // =========================================================================
     useEffect(() => {
         if (viewMode !== 'native' || !videoData || !libsLoaded || !artRef.current || !window.Artplayer) return;
 
         let qualities = videoData.availableQualities || [];
-        if (qualities.length === 0) return; // أو إظهار خطأ
+        // إذا لم توجد جودات، لا نقوم بإيقاف الكود، ربما هناك رابط مباشر
         
-        qualities = qualities.sort((a, b) => b.quality - a.quality);
+        if (qualities.length > 0) {
+            qualities = qualities.sort((a, b) => b.quality - a.quality);
+        }
+        
         const middleIndex = Math.floor((qualities.length - 1) / 2);
 
         const qualityList = qualities.map((q, index) => ({
@@ -164,7 +164,7 @@ export default function WatchPage() {
             url: q.url,
         }));
         
-        const startUrl = qualityList[middleIndex]?.url || qualityList[0].url;
+        const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
         const art = new window.Artplayer({
@@ -356,9 +356,20 @@ export default function WatchPage() {
 
     }, [viewMode, videoData, libsLoaded, user]);
 
-    // دالة التحميل (فقط للوضع Native)
+    // =========================================================================
+    // 4. دالة التحميل الذكية (تختار المنطق الصحيح حسب الوضع)
+    // =========================================================================
     const handleDownloadClick = () => {
-        if (window.Android && window.Android.downloadVideoWithQualities) {
+        // التحقق الأساسي من وجود البريدج
+        if (!window.Android) {
+            alert("يرجى تحديث التطبيق.");
+            return;
+        }
+
+        // الحالة الأولى: وضع الأوفلاين (Native - Artplayer)
+        // هذا يتطلب 6 متغيرات كما في كودك الأصلي الأول
+        if (viewMode === 'native' && window.Android.downloadVideoWithQualities) {
+            
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
@@ -378,10 +389,33 @@ export default function WatchPage() {
                         url: q.url
                     }));
                     const qualitiesJson = JSON.stringify(qualitiesPayload);
+                    
+                    // استدعاء الدالة الخاصة بالأوفلاين (6 متغيرات)
                     window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
                 } catch (e) { alert("حدث خطأ: " + e.message); }
-            } else { alert("بيانات الفيديو غير مكتملة."); }
-        } else { alert("يرجى تحديث التطبيق."); }
+            } else {
+                alert("بيانات الفيديو غير مكتملة.");
+            }
+        
+        // الحالة الثانية: وضع اليوتيوب (Plyr)
+        // هذا يتطلب متغيرين فقط كما في كودك الأصلي الثاني
+        } else if (window.Android.downloadVideo) {
+            const yId = videoData?.youtube_video_id;
+            const fakeVideoTitle = videoData?.db_video_title || "video";
+            
+            if (yId) {
+                try {
+                    // استدعاء الدالة البسيطة (متغيرين)
+                    window.Android.downloadVideo(yId, fakeVideoTitle);
+                } catch (e) {
+                    alert("حدث خطأ أثناء الاتصال بالتطبيق.");
+                }
+            } else {
+                alert("بيانات الفيديو غير جاهزة.");
+            }
+        } else {
+             alert("وظيفة التحميل غير مدعومة في إصدار التطبيق الحالي.");
+        }
     };
 
     // إعدادات Plyr (للوضع الثاني)
@@ -412,7 +446,7 @@ export default function WatchPage() {
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
-            <div className="player-wrapper" ref={playerWrapperRef}>
+            <div className="player-wrapper">
                 {/* 1. وضع OfflineOn (Artplayer) */}
                 {viewMode === 'native' && (
                      <div ref={artRef} className="artplayer-app"></div>
@@ -426,16 +460,16 @@ export default function WatchPage() {
                             source={plyrSource} 
                             options={plyrOptions} 
                         />
-                        {/* نسخة طبق الأصل من هيكلية كودك الثاني:
-                            العلامة المائية بجانب المشغل مباشرة 
+                        {/* تم فصل العلامة المائية هنا كما في كودك الثاني.
+                            وسيتم معالجة اختفائها عند التكبير عن طريق الـ CSS بالأسفل 
                         */}
                         <Watermark user={user} />
                     </>
                 )}
             </div>
 
-            {/* زر التحميل يظهر فقط في وضع Native */}
-            {isNativeAndroid && viewMode === 'native' && (
+            {/* زر التحميل: يظهر في الحالتين إذا كان أندرويد */}
+            {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
                 </button>
@@ -455,7 +489,7 @@ export default function WatchPage() {
                 .player-wrapper { 
                     width: 100%; 
                     max-width: 900px; 
-                    /* aspect-ratio تعتمد على الوضع */
+                    /* الحفاظ على النسب في كل وضع كما في الأكواد الأصلية */
                     aspect-ratio: ${viewMode === 'youtube' ? '16/7' : '16/9'};
                     background: #000; 
                     position: relative; 
@@ -486,24 +520,23 @@ export default function WatchPage() {
                     pointer-events: none;
                 }
 
-                /* تنسيقات اللمس */
+                /* تنسيقات اللمس في Artplayer */
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone .icon { font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
                 .gesture-zone.center .icon { font-size: 30px; }
 
-                /* ===============================================
-                   🔥 إصلاح مشكلة العلامة المائية في وضع Plyr 🔥
-                   ===============================================
-                   عندما يصبح المشغل Fullscreen، نجبر العلامة المائية 
-                   على أن تكون fixed لتظهر فوق كل شيء.
+                /* =========================================================
+                   🛑 الحل النهائي لمشكلة اختفاء العلامة المائية في التكبير 🛑
+                   =========================================================
+                   عندما يكون المتصفح في وضع Fullscreen، نقوم بإجبار العلامة المائية
+                   على أن تكون fixed وفي أعلى طبقة ممكنة.
                 */
-                .plyr--fullscreen-active ~ .watermark, 
                 :fullscreen .watermark,
                 :-webkit-full-screen .watermark {
                     position: fixed !important; 
-                    z-index: 2147483647 !important; /* أعلى قيمة ممكنة */
+                    z-index: 2147483647 !important;
                 }
             `}</style>
         </div>
