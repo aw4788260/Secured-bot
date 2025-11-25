@@ -5,13 +5,12 @@ import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// 1. استيراد Plyr بشكل ديناميكي (للوضع الأونلاين)
+// 1. استيراد Plyr (للوضع الأونلاين)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
-
 // =========================================================================
-// 2. مكون العلامة المائية (مخصص لوضع Plyr فقط)
+// 2. مكون العلامة المائية (مخصص لوضع Plyr فقط - OfflineOff)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -19,8 +18,8 @@ const PlyrWatermark = ({ user }) => {
     useEffect(() => {
         if (!user) return;
         const move = () => {
-            const t = Math.floor(Math.random() * 80) + 10;
-            const l = Math.floor(Math.random() * 80) + 10;
+            const t = Math.floor(Math.random() * 80) + 5;
+            const l = Math.floor(Math.random() * 80) + 5;
             setPos({ top: `${t}%`, left: `${l}%` });
         };
         const interval = setInterval(move, 5000);
@@ -30,30 +29,21 @@ const PlyrWatermark = ({ user }) => {
 
     return (
         <div className="plyr-watermark" style={{
-            position: 'absolute',
-            top: pos.top,
-            left: pos.left,
-            zIndex: 20, 
-            pointerEvents: 'none', // ✅ يسمح بمرور اللمس
-            padding: '5px 10px',
-            background: 'rgba(0,0,0,0.5)',
-            color: 'rgba(255,255,255,0.7)',
-            fontSize: '12px',
-            borderRadius: '5px',
-            fontWeight: 'bold',
-            transition: 'top 2s ease, left 2s ease',
-            userSelect: 'none',
-            whiteSpace: 'nowrap'
+            position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999,
+            pointerEvents: 'none', // ✅ يسمح بمرور اللمس للأزرار خلفه
+            padding: '5px 10px', background: 'rgba(0,0,0,0.6)',
+            color: 'rgba(255,255,255,0.8)', fontSize: '12px', borderRadius: '5px',
+            fontWeight: 'bold', transition: 'top 2s ease, left 2s ease',
+            userSelect: 'none', whiteSpace: 'nowrap', textShadow: '1px 1px 2px black'
         }}>
             {user.first_name} ({user.id})
         </div>
     );
 };
 
-
 // =========================================================================
 // 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
-// (منسوخ طبق الأصل من الكود الأصلي الذي يعمل بنجاح)
+// ✅ يحتوي الآن على زر التحميل داخله لضمان ظهوره وعمله بشكل صحيح
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
     const artRef = useRef(null);
@@ -66,6 +56,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         return standards.reduce((prev, curr) => (Math.abs(curr - num) < Math.abs(prev - num) ? curr : prev)).toString();
     };
 
+    // منطق تشغيل Artplayer (نسخ حرفي من ملفك الأصلي)
     useEffect(() => {
         if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
@@ -100,7 +91,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // ✅ الطبقات الأصلية (علامة مائية + لمس)
+            // ✅ النسخ الحرفي للطبقات (Layers)
             layers: [
                 {
                     name: 'watermark',
@@ -113,23 +104,17 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
                 {
                     name: 'gestures',
                     html: `
-    <div class="gesture-wrapper">
-        <div class="gesture-zone left" data-action="backward">
-            <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
-        </div>
-        <div class="gesture-zone center" data-action="toggle"></div>
-        <div class="gesture-zone right" data-action="forward">
-            <span class="icon">10 <span style="font-size:1.2em">»</span></span>
-        </div>
-    </div>
-`,
+                        <div class="gesture-wrapper">
+                            <div class="gesture-zone left" data-action="backward"><span class="icon"><span style="font-size:1.2em">«</span> 10</span></div>
+                            <div class="gesture-zone center" data-action="toggle"></div>
+                            <div class="gesture-zone right" data-action="forward"><span class="icon">10 <span style="font-size:1.2em">»</span></span></div>
+                        </div>`,
                     style: {
                         position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
                         zIndex: 20, pointerEvents: 'none',
                     },
                 }
             ],
-            
             customType: {
                 m3u8: function (video, url, art) {
                     if (art.hls) art.hls.destroy();
@@ -151,15 +136,11 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         art.notice.show = function() {}; 
 
         art.on('ready', () => {
-            // 1. العلامة المائية
+            // 1. تحريك العلامة المائية الداخلية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
-                const isPortrait = window.innerHeight > window.innerWidth;
-                let minTop = 5, maxTop = 80; 
-                if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
-                const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+                const newTop = Math.floor(Math.random() * 80) + 5;
                 const newLeft = Math.floor(Math.random() * 80) + 5;
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
@@ -167,7 +148,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // 2. منطق اللمس المتقدم
+            // 2. منطق اللمس المتقدم (التراكمي)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -175,8 +156,6 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             zones.forEach(zone => {
                 zone.addEventListener('click', (e) => {
                     const action = zone.getAttribute('data-action');
-                    
-                    // المنطقة الوسطى
                     if (action === 'toggle') {
                         clickCount++;
                         clearTimeout(singleTapTimer);
@@ -185,8 +164,6 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
                         } else { art.toggle(); clickCount = 0; }
                         return;
                     }
-
-                    // الجوانب
                     clickCount++;
                     clearTimeout(singleTapTimer);
                     clearTimeout(accumulateTimer); 
@@ -233,9 +210,10 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
     }, [libsLoaded, user, videoData]);
 
-    // ✅✅✅ دالة التحميل (تمت إعادتها لتعمل هنا بنفس المنطق الأصلي)
+    // ✅✅✅ دالة التحميل (داخل المكون لتعمل بشكل صحيح)
     const handleDownloadClick = () => {
         if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
+        
         if (window.Android.downloadVideoWithQualities && videoData.availableQualities) {
             try {
                 const yId = videoData.youtube_video_id || videoData.youtubeId;
@@ -243,23 +221,27 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
                 const subjectName = videoData.subject_name || "Unknown Subject";
                 const chapterName = videoData.chapter_name || "Unknown Chapter";
                 let duration = "0";
+                
+                // محاولة جلب المدة الحقيقية من المشغل
                 if (playerInstance.current && playerInstance.current.duration) {
                     duration = playerInstance.current.duration.toString(); 
                 } else if (videoData.duration) {
                     duration = videoData.duration.toString();
                 }
+
                 const qualitiesPayload = videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url }));
                 const qualitiesJson = JSON.stringify(qualitiesPayload);
+                
                 window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
             } catch (e) { alert("حدث خطأ: " + e.message); }
-        } else { alert("بيانات الفيديو غير مكتملة."); }
+        } else { alert("بيانات الفيديو غير مكتملة للتحميل."); }
     };
 
     return (
         <>
             <div className="artplayer-app" ref={artRef}></div>
             
-            {/* ✅✅✅ زر التحميل: يظهر هنا فقط */}
+            {/* ✅✅✅ الزر موجود هنا ليظهر فقط عند تفعيل NativeArtPlayer */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -283,7 +265,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
-        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
+        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' } // ✅ الحل لمشكلة ملء الشاشة
     };
 
     return (
@@ -310,7 +292,6 @@ export default function WatchPage() {
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
 
-    // لتكبير الحاوية بالكامل في وضع Plyr
     const playerWrapperRef = useRef(null);
 
     // التعرف على المستخدم
@@ -361,27 +342,26 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تحميل المكتبات وتمرير الحالة لـ Artplayer */}
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
             <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
-                // هذه الحاوية مهمة جداً لوضع Plyr Fullscreen
+                // الحاوية الرئيسية (مهمة لوضع Plyr Fullscreen)
                 <div className="player-wrapper" ref={playerWrapperRef}>
                     
-                    {/* 1. وضع Native (Artplayer) */}
+                    {/* 1. وضع Native (Artplayer) - يظهر زر التحميل داخله */}
                     {viewMode === 'native' && (
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
                             isNativeAndroid={isNativeAndroid}
-                            libsLoaded={libsLoaded} 
+                            libsLoaded={libsLoaded}
                         />
                     )}
 
-                    {/* 2. وضع Youtube (Plyr) */}
+                    {/* 2. وضع Youtube (Plyr) - بدون زر تحميل */}
                     {viewMode === 'youtube' && (
                         <YoutubePlyrPlayer videoData={videoData} user={user} />
                     )}
@@ -398,6 +378,7 @@ export default function WatchPage() {
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white; background: #000; }
                 .loading-overlay { position: absolute; z-index: 50; background: #000; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.2rem; }
                 
+                /* تنسيقات الحاوية */
                 .player-wrapper { 
                     position: relative; width: 100%; max-width: 900px; 
                     aspect-ratio: ${viewMode === 'youtube' ? '16/7' : '16/9'};
@@ -405,7 +386,7 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
                 }
 
-                /* تكبير الحاوية عند ملء الشاشة (لحل مشكلة Plyr) */
+                /* خدعة الـ Fullscreen لـ Plyr */
                 .player-wrapper:fullscreen, .player-wrapper:-webkit-full-screen, .player-wrapper:-moz-full-screen {
                     width: 100%; height: 100%; max-width: none; aspect-ratio: auto; background: #000;
                     display: flex; align-items: center; justify-content: center;
