@@ -1,16 +1,17 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom'; // ✅ ضروري لحل مشكلة العلامة المائية
 import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// استيراد Plyr (ديناميكي)
+// ✅ استدعاء Plyr بنفس طريقتك الأصلية
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 1. مكون العلامة المائية (الخاص بوضع اليوتيوب)
+// 1. مكون العلامة المائية
 // =========================================================================
 const Watermark = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '15%', left: '15%' });
@@ -18,22 +19,37 @@ const Watermark = ({ user }) => {
 
     useEffect(() => {
         if (!user) return;
-        watermarkIntervalRef.current = setInterval(() => {
-            const newTop = Math.floor(Math.random() * 70) + 10;
-            const newLeft = Math.floor(Math.random() * 70) + 10;
-            setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
-        }, 5000);
+        
+        // تحريك العلامة المائية كل 5 ثواني
+        const moveWatermark = () => {
+             const newTop = Math.floor(Math.random() * 70) + 10;
+             const newLeft = Math.floor(Math.random() * 70) + 10;
+             setWatermarkPos({ top: `${newTop}%`, left: `${newLeft}%` });
+        };
+
+        moveWatermark(); // تحريك فوري عند البدء
+        watermarkIntervalRef.current = setInterval(moveWatermark, 5000);
+        
         return () => clearInterval(watermarkIntervalRef.current);
     }, [user]);
 
     return (
         <div className="watermark" style={{
-            position: 'absolute', top: watermarkPos.top, left: watermarkPos.left,
-            zIndex: 15, pointerEvents: 'none', padding: '4px 8px',
-            background: 'rgba(0, 0, 0, 0.7)', color: 'white',
-            fontSize: 'clamp(10px, 2.5vw, 14px)', borderRadius: '4px',
-            fontWeight: 'bold', transition: 'top 2s ease-in-out, left 2s ease-in-out',
-            whiteSpace: 'nowrap'
+            position: 'absolute', 
+            top: watermarkPos.top, 
+            left: watermarkPos.left,
+            zIndex: 100, // ✅ رفعنا الطبقة لتظهر فوق الفيديو
+            pointerEvents: 'none', 
+            padding: '5px 10px',
+            background: 'rgba(0, 0, 0, 0.6)', 
+            color: 'rgba(255, 255, 255, 0.8)',
+            fontSize: 'clamp(12px, 2.5vw, 16px)', 
+            borderRadius: '6px',
+            fontWeight: 'bold', 
+            transition: 'top 2s ease-in-out, left 2s ease-in-out',
+            whiteSpace: 'nowrap',
+            textShadow: '1px 1px 2px black',
+            fontFamily: 'sans-serif'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -41,8 +57,7 @@ const Watermark = ({ user }) => {
 };
 
 // =========================================================================
-// 2. مكون المشغل الأصلي (Native / OfflineOn)
-// ✅✅✅ هنا يظهر زر التحميل
+// 2. مشغل الوضع الأصلي (OfflineOn / Artplayer)
 // =========================================================================
 const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
     const artRef = useRef(null);
@@ -232,7 +247,6 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
             
-            {/* ✅✅ هذا الزر يظهر فقط هنا */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -243,28 +257,68 @@ const NativePlayerView = ({ videoData, user, isNativeAndroid }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل اليوتيوب (Plyr / OfflineOff)
-// 🛑🛑🛑 تم حذف زر التحميل من هنا نهائياً
+// 3. مشغل اليوتيوب (OfflineOff / Plyr)
+// ✅ تم الإصلاح: استخدام Portal للعلامة المائية لتظهر في وضع ملئ الشاشة
+// ✅ تم الإصلاح: إضافة key للمشغل لضمان التحميل
 // =========================================================================
 const YoutubePlayerView = ({ videoData, user }) => {
     const youtubeId = videoData.youtube_video_id;
+    const ref = useRef(null);
+    const [plyrContainer, setPlyrContainer] = useState(null);
+
+    // ✅ التأكد من وجود حاوية Plyr لحقن العلامة المائية داخلها
+    useEffect(() => {
+        // نحاول العثور على العنصر .plyr الذي ينشئه المكتبة
+        // نستخدم setTimeout بسيط لضمان أن Plyr قام بالرسم في الـ DOM
+        const timer = setTimeout(() => {
+            const container = document.querySelector('.plyr-wrapper .plyr');
+            if (container) {
+                setPlyrContainer(container);
+            }
+        }, 500); // انتظار نصف ثانية
+
+        return () => clearTimeout(timer);
+    }, [youtubeId]); // إعادة البحث إذا تغير الفيديو
 
     const plyrSource = {
         type: 'video',
-        sources: [{ src: youtubeId, provider: 'youtube' }],
+        sources: [{
+            src: youtubeId,
+            provider: 'youtube',
+        }],
     };
 
     const plyrOptions = {
-        controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
+        controls: [
+            'play-large', 'play', 'progress', 'current-time',
+            'mute', 'volume', 'settings', 'fullscreen'
+        ],
         settings: ['quality', 'speed'],
-        youtube: { rel: 0, showinfo: 0, modestbranding: 1, controls: 0 }
+        youtube: {
+            rel: 0,
+            showinfo: 0,
+            modestbranding: 1,
+            controls: 0,
+        }
     };
 
     return (
         <>
             <div className="player-wrapper plyr-wrapper">
-                <Plyr source={plyrSource} options={plyrOptions} />
-                <Watermark user={user} />
+                {/* ✅ key={youtubeId} هو الحل السحري لإجبار المشغل على التحميل عند تغيير الفيديو */}
+                <Plyr 
+                    ref={ref}
+                    key={youtubeId} 
+                    source={plyrSource} 
+                    options={plyrOptions} 
+                />
+
+                {/* ✅ هنا السحر: إذا وجدنا حاوية Plyr، نضع العلامة المائية داخلها باستخدام Portal */}
+                {/* هذا يضمن بقاء العلامة المائية ظاهرة حتى عندما يأخذ Plyr وضع ملئ الشاشة */}
+                {plyrContainer && createPortal(
+                    <Watermark user={user} />,
+                    plyrContainer
+                )}
             </div>
 
             <footer className="developer-info" style={{ maxWidth: '900px', margin: '30px auto 0' }}>
@@ -344,10 +398,12 @@ export default function WatchPage() {
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
+            {/* الوضع الخاص (Proxy + Artplayer) */}
             {!loading && viewMode === 'native' && (
                 <NativePlayerView videoData={videoData} user={user} isNativeAndroid={isNativeAndroid} />
             )}
 
+            {/* وضع اليوتيوب (Online + Plyr) */}
             {!loading && viewMode === 'youtube' && (
                 <YoutubePlayerView videoData={videoData} user={user} />
             )}
