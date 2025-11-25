@@ -14,7 +14,7 @@ export default function WatchPage() {
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     
-    // لتخزين حالة الأوفلاين القادمة من السيرفر
+    // حالة وضع الأوفلاين (تأتي من السيرفر)
     const [offlineMode, setOfflineMode] = useState(true); 
 
     const artRef = useRef(null);
@@ -67,11 +67,11 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
-                setOfflineMode(data.offline_mode);
+                setOfflineMode(data.offline_mode); // تحديث الحالة من السيرفر
 
                 if (!artRef.current || !window.Artplayer) return;
 
-                // --- [ إعدادات Artplayer المشتركة (للحالتين) ] ---
+                // --- [ إعدادات Artplayer الأساسية (مشتركة) ] ---
                 let artOptions = {
                     container: artRef.current,
                     title: data.videoTitle || "مشاهدة الدرس",
@@ -94,13 +94,13 @@ export default function WatchPage() {
                     playsInline: true,
                     theme: '#38bdf8',
                     lang: 'ar',
-                    // طبقة العلامة المائية (مشتركة في الحالتين)
+                    // [1] العلامة المائية (تعمل في الحالتين)
                     layers: [
                         {
                             name: 'watermark',
                             html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                             style: {
-                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
+                                position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 99, // zIndex عالي لتظهر فوق الـ iframe
                                 transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                             },
                         }
@@ -108,19 +108,20 @@ export default function WatchPage() {
                 };
 
                 // =========================================================
-                // الحالة 1: الوضع أونلاين (يوتيوب Iframe)
+                // [ السيناريو 1: الوضع أونلاين (يوتيوب Iframe داخل Artplayer) ]
                 // =========================================================
                 if (data.offline_mode === false) {
                     const youtubeId = data.youtube_video_id;
                     
+                    // رابط التضمين المباشر
                     artOptions.url = `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1`;
                     artOptions.type = 'iframe'; // نوع مخصص
                     
-                    // تعطيل واجهة Artplayer لأننا سنستخدم تحكم يوتيوب
+                    // إخفاء واجهة تحكم Artplayer لأننا سنستخدم يوتيوب
                     artOptions.controls = []; 
-                    artOptions.setting = false; // إخفاء الإعدادات
+                    artOptions.setting = false;
                     
-                    // تعريف كيفية تشغيل الـ Iframe داخل Artplayer
+                    // تعريف كيفية تشغيل الـ Iframe
                     artOptions.customType = {
                         iframe: function (video, url, art) {
                             const iframe = document.createElement('iframe');
@@ -129,10 +130,10 @@ export default function WatchPage() {
                             iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
                             iframe.allowFullscreen = true;
                             
-                            // إضافة الـ iframe للحاوية
-                            art.template.$video.parentNode.appendChild(iframe);
+                            // إضافة الـ iframe داخل حاوية المشغل
+                            art.template.$player.appendChild(iframe);
                             
-                            // إخفاء عنصر الفيديو الأصلي لـ Artplayer
+                            // إخفاء عنصر الفيديو الأصلي
                             art.template.$video.style.display = 'none';
                             
                             // إخفاء أيقونة التحميل
@@ -141,7 +142,7 @@ export default function WatchPage() {
                     };
                 } 
                 // =========================================================
-                // الحالة 2: الوضع أوفلاين (Stream HLS)
+                // [ السيناريو 2: الوضع أوفلاين (Stream HLS طبيعي) ]
                 // =========================================================
                 else {
                     let qualities = data.availableQualities || [];
@@ -201,7 +202,7 @@ export default function WatchPage() {
                     };
                 }
 
-                // --- [ تهيئة المشغل ] ---
+                // --- [ تشغيل Artplayer ] ---
                 const art = new window.Artplayer(artOptions);
 
                 art.notice.show = function() {}; 
@@ -321,7 +322,6 @@ export default function WatchPage() {
     
     const handleDownloadClick = () => {
         if (window.Android && window.Android.downloadVideoWithQualities) {
-            
             if (videoData && videoData.availableQualities && videoData.availableQualities.length > 0) {
                 try {
                     const yId = videoData.youtube_video_id || videoData.youtubeId;
@@ -370,11 +370,11 @@ export default function WatchPage() {
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
-            {/* دائماً نستخدم Artplayer كحاوية */}
             <div className="player-wrapper">
                 <div ref={artRef} className="artplayer-app"></div>
             </div>
 
+            {/* زر التحميل يظهر فقط إذا كان أندرويد والوضع أوفلاين مفعل */}
             {isNativeAndroid && offlineMode && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -435,6 +435,7 @@ export default function WatchPage() {
                     padding: 10px; 
                     text-shadow: 0 2px 4px rgba(0,0,0,0.8);
                     pointer-events: none;
+                    
                 }
                 
                 .gesture-zone.center .icon {
