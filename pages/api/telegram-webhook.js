@@ -3304,45 +3304,37 @@ export default async (req, res) => {
           // ... (داخل switch (currentState))
 
           case 'awaiting_video_title':
-            await setUserState(userId, 'awaiting_video_content', { // <-- [✅ تعديل] تغيير اسم الحالة القادمة
+            await setUserState(userId, 'awaiting_video_content', { 
                 ...stateData,
                 video_title: text 
             });
-            // [✅ تعديل] تغيير نص الرسالة
-            await editMessage(chatId, messageId, `👍 العنوان: "${text}"\n\nالآن أرسل "رابط يوتيوب"، أو "ارفع ملف الفيديو"، أو "ارفع ملف الـ PDF":`);
+            // ✅ تم التعديل: طلب رابط يوتيوب فقط
+            await editMessage(chatId, messageId, `👍 العنوان: "${text}"\n\nالآن أرسل "رابط يوتيوب" فقط:`);
             break;
             
           // [✅ تعديل] تغيير اسم الحالة بالكامل
+          
+            // [✅ تعديل] تغيير اسم الحالة بالكامل
           case 'awaiting_video_content':
             const videoTitle = stateData.video_title;
             const chapterId = stateData.chapter_id;
+            
+            // إعداد كائن البيانات
             let newVideoData = {
                 title: videoTitle,
                 chapter_id: chapterId,
-                sort_order: 0
+                sort_order: 0,
+                type: 'youtube' // النوع دائماً يوتيوب الآن
             };
             let success = false;
 
-            // (1. المستخدم أرسل رابط يوتيوب)
+            // (فقط نتحقق من الرابط النصي)
             if (message.text) {
                 const videoId = getYouTubeID(message.text);
                 if (videoId) {
                     newVideoData.youtube_video_id = videoId;
-                    newVideoData.type = 'youtube';
                     success = true;
                 }
-            
-            // (2. المستخدم رفع ملف فيديو)
-            } else if (message.video) {
-                newVideoData.storage_path = message.video.file_id;
-                newVideoData.type = 'telegram-video';
-                success = true;
-
-            // (3. المستخدم رفع ملف PDF)
-            } else if (message.document && message.document.mime_type === 'application/pdf') {
-                newVideoData.storage_path = message.document.file_id;
-                newVideoData.type = 'pdf';
-                success = true;
             }
 
             // (التحقق من النجاح والحفظ)
@@ -3350,10 +3342,10 @@ export default async (req, res) => {
                 await supabase.from('videos').insert(newVideoData);
                 await sendContentMenu_Videos(chatId, messageId, chapterId);
             } else {
-                await editMessage(chatId, messageId, 'خطأ: لم أستلم رابطاً أو فيديو أو PDF صالح. أعد المحاولة أو /cancel');
+                // رسالة الخطأ تم تعديلها
+                await editMessage(chatId, messageId, 'خطأ: الرابط غير صحيح. الرجاء إرسال رابط يوتيوب صالح، أو /cancel');
             }
             break;
-            
           // (حالة الترتيب)
           // (حالة الترتيب)
           // (حالة الترتيب)
