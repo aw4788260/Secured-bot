@@ -3,8 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 
-// --- [ 1. مكون العلامة المائية المنفصل ] ---
-// هذا المكون سيعمل فوق الـ Iframe وفوق الـ Artplayer لضمان الحماية في الحالتين
+// --- [ 1. مكون العلامة المائية (يعمل فوق Artplayer في الحالتين) ] ---
 const WatermarkOverlay = ({ user }) => {
     const [watermarkPos, setWatermarkPos] = useState({ top: '10%', left: '10%' });
 
@@ -33,9 +32,10 @@ const WatermarkOverlay = ({ user }) => {
             position: 'absolute',
             top: watermarkPos.top,
             left: watermarkPos.left,
-            zIndex: 999, // طبقة عالية جداً لتظهر فوق كل شيء
+            zIndex: 100, // طبقة أعلى من الفيديو والتحكم
             transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out',
-            pointerEvents: 'none' // لكي لا تعيق النقر على الفيديو
+            pointerEvents: 'none', // للسماح بالنقر عبرها
+            userSelect: 'none'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -52,14 +52,11 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
-    
-    // حالة الأوفلاين
     const [offlineMode, setOfflineMode] = useState(true); 
 
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
-    // دالة توحيد الجودة
     const normalizeQuality = (val) => {
         const num = parseInt(val);
         if (isNaN(num)) return val;
@@ -70,14 +67,12 @@ export default function WatchPage() {
         return closest.toString();
     };
 
-    // تحميل المكتبات
     useEffect(() => {
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
         }
     }, []);
 
-    // التعرف على المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -92,14 +87,12 @@ export default function WatchPage() {
         }
     }, []);
 
-    // جلب الفيديو وتشغيل المشغل المناسب
     useEffect(() => {
         if (!videoId || !libsLoaded || !user) return; 
 
         const params = new URLSearchParams(window.location.search);
         const currentDeviceId = params.get('deviceId');
         
-        // تنظيف المشغل السابق إذا وجد
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
@@ -111,39 +104,13 @@ export default function WatchPage() {
             .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
             .then(data => {
                 setVideoData(data);
-                setOfflineMode(data.offline_mode); 
+                setOfflineMode(data.offline_mode);
 
-                // =========================================================
-                // [ المسار 1: الوضع أونلاين (يوتيوب Iframe) ]
-                // =========================================================
-                if (data.offline_mode === false) {
-                    // لا نحتاج لتهيئة Artplayer هنا، سنعرض الـ iframe مباشرة في الـ JSX
-                    setLoading(false);
-                    return; 
-                } 
-                
-                // =========================================================
-                // [ المسار 2: الوضع أوفلاين (Artplayer Stream) ]
-                // =========================================================
                 if (!artRef.current || !window.Artplayer) return;
 
-                let qualities = data.availableQualities || [];
-                if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
-                qualities = qualities.sort((a, b) => b.quality - a.quality);
-                const middleIndex = Math.floor((qualities.length - 1) / 2);
-
-                const qualityList = qualities.map((q, index) => ({
-                    default: index === middleIndex,
-                    html: normalizeQuality(q.quality),
-                    url: q.url,
-                }));
-                
-                const startUrl = qualityList[middleIndex]?.url || qualityList[0].url;
-
-                const art = new window.Artplayer({
+                // إعدادات Artplayer الأساسية
+                let artOptions = {
                     container: artRef.current,
-                    url: startUrl,
-                    quality: qualityList,
                     title: data.videoTitle || "مشاهدة الدرس",
                     volume: 0.7,
                     isLive: false,
@@ -152,7 +119,6 @@ export default function WatchPage() {
                     autoSize: true,
                     autoMini: true,
                     screenshot: false,
-                    setting: true,
                     loop: false,
                     flip: false,
                     playbackRate: true,
@@ -165,9 +131,62 @@ export default function WatchPage() {
                     playsInline: true,
                     theme: '#38bdf8',
                     lang: 'ar',
+                };
+
+                // =========================================================
+                // [ الحالة 1: أونلاين (Artplayer يستضيف Iframe بسيط) ]
+                // =========================================================
+                if (data.offline_mode === false) {
+                    const youtubeId = data.youtube_video_id;
                     
-                    // طبقة الإيماءات (فقط للـ Stream)
-                    layers: [
+                    // نستخدم رابط بسيط جداً لتجنب خطأ 153
+                    // (controls=1 لأننا سنخفي واجهة Artplayer ونعتمد على يوتيوب)
+                    artOptions.url = `https://www.youtube.com/embed/${youtubeId}?playsinline=1&rel=0&modestbranding=1`;
+                    artOptions.type = 'iframe'; 
+                    
+                    // إخفاء واجهة Artplayer بالكامل (لتجنب التداخل)
+                    artOptions.controls = []; 
+                    artOptions.setting = false;
+                    
+                    // تعريف النوع iframe
+                    artOptions.customType = {
+                        iframe: function (video, url, art) {
+                            const iframe = document.createElement('iframe');
+                            iframe.src = url;
+                            iframe.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 10;';
+                            iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
+                            iframe.allowFullscreen = true;
+                            
+                            // إضافة الـ iframe داخل الحاوية
+                            art.template.$player.appendChild(iframe);
+                            // إخفاء تاج الفيديو الأصلي
+                            art.template.$video.style.display = 'none';
+                            
+                            if(art.loading) art.loading.show = false; 
+                        }
+                    };
+                } 
+                // =========================================================
+                // [ الحالة 2: أوفلاين (Artplayer Stream HLS) ]
+                // =========================================================
+                else {
+                    let qualities = data.availableQualities || [];
+                    if (qualities.length === 0) throw new Error("لا توجد جودات متاحة.");
+                    qualities = qualities.sort((a, b) => b.quality - a.quality);
+                    const middleIndex = Math.floor((qualities.length - 1) / 2);
+
+                    const qualityList = qualities.map((q, index) => ({
+                        default: index === middleIndex,
+                        html: normalizeQuality(q.quality),
+                        url: q.url,
+                    }));
+                    
+                    artOptions.url = qualityList[middleIndex]?.url || qualityList[0].url;
+                    artOptions.quality = qualityList;
+                    artOptions.setting = true; 
+                    
+                    // طبقة الإيماءات (فقط للأوفلاين)
+                    artOptions.layers = [
                         {
                             name: 'gestures',
                             html: `
@@ -181,9 +200,9 @@ export default function WatchPage() {
                                 zIndex: 20, pointerEvents: 'none',
                             },
                         }
-                    ],
+                    ];
 
-                    customType: {
+                    artOptions.customType = {
                         m3u8: function (video, url, art) {
                             if (art.hls) art.hls.destroy();
                             if (window.Hls && window.Hls.isSupported()) {
@@ -199,61 +218,54 @@ export default function WatchPage() {
                                 video.src = url;
                             }
                         },
-                    },
-                });
+                    };
+                }
 
+                // تهيئة المشغل
+                const art = new window.Artplayer(artOptions);
                 art.notice.show = function() {}; 
 
-                // تفعيل منطق الإيماءات للـ Artplayer
-                art.on('ready', () => {
-                    const wrapper = art.layers.gestures?.querySelector('.gesture-wrapper');
-                    if (wrapper) {
-                        const zones = wrapper.querySelectorAll('.gesture-zone');
-                        let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
-
-                        zones.forEach(zone => {
-                            zone.addEventListener('click', (e) => {
-                                const action = zone.getAttribute('data-action');
-                                if (action === 'toggle') {
-                                    clickCount++; clearTimeout(singleTapTimer);
+                // تفعيل الإيماءات للأوفلاين فقط
+                if (data.offline_mode !== false) {
+                    art.on('ready', () => {
+                        const wrapper = art.layers.gestures?.querySelector('.gesture-wrapper');
+                        if (wrapper) {
+                            const zones = wrapper.querySelectorAll('.gesture-zone');
+                            let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
+                            zones.forEach(zone => {
+                                zone.addEventListener('click', (e) => {
+                                    const action = zone.getAttribute('data-action');
+                                    if (action === 'toggle') {
+                                        clickCount++; clearTimeout(singleTapTimer);
+                                        if (clickCount === 1) {
+                                            singleTapTimer = setTimeout(() => {
+                                                art.toggle(); clickCount = 0;
+                                            }, 300);
+                                        } else { art.toggle(); clickCount = 0; }
+                                        return;
+                                    }
+                                    clickCount++; clearTimeout(singleTapTimer); clearTimeout(accumulateTimer);
                                     if (clickCount === 1) {
-                                        singleTapTimer = setTimeout(() => {
-                                            art.layers.gestures.style.display = 'none';
-                                            const el = document.elementFromPoint(e.clientX, e.clientY);
-                                            if(el) el.dispatchEvent(new MouseEvent('click', {view:window, bubbles:true, clientX:e.clientX, clientY:e.clientY}));
-                                            art.layers.gestures.style.display = 'block';
+                                        singleTapTimer = setTimeout(() => { clickCount = 0; }, 250);
+                                    } else {
+                                        const seconds = (clickCount - 1) * 10;
+                                        const icon = zone.querySelector('.icon');
+                                        const isForward = action === 'forward';
+                                        if (isForward) icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
+                                        else icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
+                                        icon.style.opacity = '1'; icon.style.transform = 'scale(1.2)';
+                                        accumulateTimer = setTimeout(() => {
+                                            if (isForward) art.forward = seconds; else art.backward = seconds;
+                                            icon.style.opacity = '0'; icon.style.transform = 'scale(1)';
                                             clickCount = 0;
-                                        }, 300);
-                                    } else { art.toggle(); clickCount = 0; }
-                                    return;
-                                }
-                                clickCount++; clearTimeout(singleTapTimer); clearTimeout(accumulateTimer);
-                                if (clickCount === 1) {
-                                    singleTapTimer = setTimeout(() => {
-                                        art.layers.gestures.style.display = 'none';
-                                        const el = document.elementFromPoint(e.clientX, e.clientY);
-                                        if(el) el.dispatchEvent(new MouseEvent('click', {view:window, bubbles:true, clientX:e.clientX, clientY:e.clientY}));
-                                        art.layers.gestures.style.display = 'block';
-                                        clickCount = 0;
-                                    }, 250);
-                                } else {
-                                    const seconds = (clickCount - 1) * 10;
-                                    const icon = zone.querySelector('.icon');
-                                    const isForward = action === 'forward';
-                                    if (isForward) icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
-                                    else icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
-                                    icon.style.opacity = '1'; icon.style.transform = 'scale(1.2)';
-                                    accumulateTimer = setTimeout(() => {
-                                        if (isForward) art.forward = seconds; else art.backward = seconds;
-                                        icon.style.opacity = '0'; icon.style.transform = 'scale(1)';
-                                        clickCount = 0;
-                                        setTimeout(() => { if (isForward) icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`; else icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`; }, 300);
-                                    }, 600);
-                                }
+                                            setTimeout(() => { if (isForward) icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`; else icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`; }, 300);
+                                        }, 600);
+                                    }
+                                });
                             });
-                        });
-                    }
-                });
+                        }
+                    });
+                }
 
                 art.on('destroy', () => { if (art.hls) art.hls.destroy(); });
                 playerInstance.current = art;
@@ -276,8 +288,14 @@ export default function WatchPage() {
                 try {
                     const yId = videoData.youtube_video_id;
                     const vTitle = videoData.db_video_title || "Video";
-                    const duration = playerInstance.current?.duration?.toString() || videoData.duration?.toString() || "0";
-                    const qualitiesJson = JSON.stringify(videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url })));
+                    let duration = "0";
+                    if (playerInstance.current && playerInstance.current.duration) {
+                        duration = playerInstance.current.duration.toString(); 
+                    } else if (videoData.duration) {
+                        duration = videoData.duration.toString();
+                    }
+                    const qualitiesPayload = videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url }));
+                    const qualitiesJson = JSON.stringify(qualitiesPayload);
                     window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, videoData.subject_name || "", videoData.chapter_name || "");
                 } catch (e) { alert("حدث خطأ: " + e.message); }
             } else { alert("بيانات الفيديو غير مكتملة."); }
@@ -291,6 +309,7 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                <meta name="referrer" content="no-referrer" />
             </Head>
 
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
@@ -299,36 +318,11 @@ export default function WatchPage() {
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             <div className="player-wrapper">
+                {/* Artplayer هو الحاوية في الحالتين */}
+                <div ref={artRef} className="artplayer-app"></div>
                 
-                {/* [ الشرح ]
-                    هنا نتحكم فيما يتم عرضه داخل المربع الأسود (player-wrapper):
-                    1. إذا كان الأوفلاين "معطل" (offlineMode === false): نعرض iframe يوتيوب مباشرة + العلامة المائية فوقه.
-                    2. إذا كان الأوفلاين "مفعل": نعرض div الخاص بـ Artplayer (الذي سيحتوي الفيديو والعلامة المائية بداخله).
-                */}
-                
-                {!offlineMode && videoData?.youtube_video_id ? (
-                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                        <iframe 
-                            src={`https://www.youtube.com/embed/${videoData.youtube_video_id}?controls=0&playsinline=1&rel=0&modestbranding=1`}
-                            title="YouTube Video"
-                            style={{ width: '100%', height: '100%', border: 'none', backgroundColor: '#000' }}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                            allowFullScreen
-                        ></iframe>
-                        
-                        {/* العلامة المائية المنفصلة (تظهر فوق الـ Iframe) */}
-                        <WatermarkOverlay user={user} />
-                    </div>
-                ) : (
-                    <>
-                       {/* Artplayer يظهر هنا في حالة الأوفلاين (ويحتوي العلامة المائية بداخله عبر layers) */}
-                       <div ref={artRef} className="artplayer-app"></div>
-                       
-                       {/* (احتياطي) إذا كنت تريد العلامة المائية "دائماً" من الخارج حتى مع Artplayer، يمكنك وضعها هنا وإزالتها من إعدادات layers */}
-                       {/* <WatermarkOverlay user={user} /> */}
-                    </>
-                )}
-                
+                {/* العلامة المائية خارج Artplayer لضمان ظهورها فوق الـ Iframe */}
+                <WatermarkOverlay user={user} />
             </div>
 
             {isNativeAndroid && offlineMode && (
@@ -352,13 +346,8 @@ export default function WatchPage() {
                     color: white; font-size: 1.2rem; 
                 }
                 
-                .player-wrapper { 
-                    width: 100%; max-width: 900px; aspect-ratio: 16/9; 
-                    background: #000; position: relative; border-radius: 8px; overflow: hidden; 
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-                }
+                .player-wrapper { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: #000; position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
                 .artplayer-app { width: 100%; height: 100%; }
-                
                 .download-button-native { width: 100%; max-width: 900px; padding: 15px; background: #38bdf8; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #111; margin-top: 20px; }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
