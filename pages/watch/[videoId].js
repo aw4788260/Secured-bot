@@ -5,12 +5,13 @@ import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// 1. استيراد Plyr (للوضع الأونلاين)
+// 1. استيراد Plyr بشكل ديناميكي (للوضع الأونلاين)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
+
 // =========================================================================
-// 2. مكون العلامة المائية (لـ Plyr فقط)
+// 2. مكون العلامة المائية (مخصص لوضع Plyr فقط)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -18,8 +19,8 @@ const PlyrWatermark = ({ user }) => {
     useEffect(() => {
         if (!user) return;
         const move = () => {
-            const t = Math.floor(Math.random() * 80) + 5;
-            const l = Math.floor(Math.random() * 80) + 5;
+            const t = Math.floor(Math.random() * 80) + 10;
+            const l = Math.floor(Math.random() * 80) + 10;
             setPos({ top: `${t}%`, left: `${l}%` });
         };
         const interval = setInterval(move, 5000);
@@ -29,20 +30,30 @@ const PlyrWatermark = ({ user }) => {
 
     return (
         <div className="plyr-watermark" style={{
-            position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999,
-            pointerEvents: 'none', // ✅ يمرر اللمس
-            padding: '5px 10px', background: 'rgba(0,0,0,0.5)',
-            color: 'rgba(255,255,255,0.8)', fontSize: '12px', borderRadius: '5px',
-            fontWeight: 'bold', transition: 'top 2s ease, left 2s ease',
-            userSelect: 'none', whiteSpace: 'nowrap'
+            position: 'absolute',
+            top: pos.top,
+            left: pos.left,
+            zIndex: 20, 
+            pointerEvents: 'none', // ✅ يسمح بمرور اللمس
+            padding: '5px 10px',
+            background: 'rgba(0,0,0,0.5)',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: '12px',
+            borderRadius: '5px',
+            fontWeight: 'bold',
+            transition: 'top 2s ease, left 2s ease',
+            userSelect: 'none',
+            whiteSpace: 'nowrap'
         }}>
             {user.first_name} ({user.id})
         </div>
     );
 };
 
+
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native) - نسخة طبق الأصل
+// 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
+// (منسوخ طبق الأصل من الكود الأصلي الذي يعمل بنجاح)
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
     const artRef = useRef(null);
@@ -56,7 +67,6 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
     };
 
     useEffect(() => {
-        // شرط التشغيل: المكتبات محملة + البيانات موجودة + العنصر موجود
         if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
         if (playerInstance.current) {
@@ -90,7 +100,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // الطبقات (علامة مائية + لمس) - منسوخ حرفياً
+            // ✅ الطبقات الأصلية (علامة مائية + لمس)
             layers: [
                 {
                     name: 'watermark',
@@ -103,17 +113,23 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
                 {
                     name: 'gestures',
                     html: `
-                        <div class="gesture-wrapper">
-                            <div class="gesture-zone left" data-action="backward"><span class="icon"><span style="font-size:1.2em">«</span> 10</span></div>
-                            <div class="gesture-zone center" data-action="toggle"></div>
-                            <div class="gesture-zone right" data-action="forward"><span class="icon">10 <span style="font-size:1.2em">»</span></span></div>
-                        </div>`,
+    <div class="gesture-wrapper">
+        <div class="gesture-zone left" data-action="backward">
+            <span class="icon"><span style="font-size:1.2em">«</span> 10</span>
+        </div>
+        <div class="gesture-zone center" data-action="toggle"></div>
+        <div class="gesture-zone right" data-action="forward">
+            <span class="icon">10 <span style="font-size:1.2em">»</span></span>
+        </div>
+    </div>
+`,
                     style: {
                         position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
                         zIndex: 20, pointerEvents: 'none',
                     },
                 }
             ],
+            
             customType: {
                 m3u8: function (video, url, art) {
                     if (art.hls) art.hls.destroy();
@@ -135,11 +151,15 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         art.notice.show = function() {}; 
 
         art.on('ready', () => {
-            // منطق العلامة المائية
+            // 1. العلامة المائية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                const newTop = Math.floor(Math.random() * 80) + 5;
+                const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
+                const isPortrait = window.innerHeight > window.innerWidth;
+                let minTop = 5, maxTop = 80; 
+                if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+                const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
                 const newLeft = Math.floor(Math.random() * 80) + 5;
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
@@ -147,7 +167,7 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // منطق اللمس (Gestures)
+            // 2. منطق اللمس المتقدم
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -155,6 +175,8 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
             zones.forEach(zone => {
                 zone.addEventListener('click', (e) => {
                     const action = zone.getAttribute('data-action');
+                    
+                    // المنطقة الوسطى
                     if (action === 'toggle') {
                         clickCount++;
                         clearTimeout(singleTapTimer);
@@ -163,6 +185,8 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
                         } else { art.toggle(); clickCount = 0; }
                         return;
                     }
+
+                    // الجوانب
                     clickCount++;
                     clearTimeout(singleTapTimer);
                     clearTimeout(accumulateTimer); 
@@ -209,33 +233,33 @@ const NativeArtPlayer = ({ videoData, user, isNativeAndroid, libsLoaded }) => {
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
     }, [libsLoaded, user, videoData]);
 
-    // ✅✅✅ دالة التحميل (تمت إعادتها هنا لتعمل بشكل صحيح مع Artplayer)
+    // ✅✅✅ دالة التحميل (تمت إعادتها لتعمل هنا بنفس المنطق الأصلي)
     const handleDownloadClick = () => {
         if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
         if (window.Android.downloadVideoWithQualities && videoData.availableQualities) {
             try {
-                const yId = videoData.youtube_video_id;
-                const vTitle = videoData.db_video_title || "Video";
-                const subjectName = videoData.subject_name || "Unknown";
-                const chapterName = videoData.chapter_name || "Unknown";
+                const yId = videoData.youtube_video_id || videoData.youtubeId;
+                const vTitle = videoData.db_video_title || videoData.videoTitle || "Video";
+                const subjectName = videoData.subject_name || "Unknown Subject";
+                const chapterName = videoData.chapter_name || "Unknown Chapter";
                 let duration = "0";
-                // الحصول على المدة من المشغل الحالي
                 if (playerInstance.current && playerInstance.current.duration) {
-                    duration = playerInstance.current.duration.toString();
+                    duration = playerInstance.current.duration.toString(); 
                 } else if (videoData.duration) {
                     duration = videoData.duration.toString();
                 }
-                const qualitiesJson = JSON.stringify(videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url })));
+                const qualitiesPayload = videoData.availableQualities.map(q => ({ quality: q.quality, url: q.url }));
+                const qualitiesJson = JSON.stringify(qualitiesPayload);
                 window.Android.downloadVideoWithQualities(yId, vTitle, duration, qualitiesJson, subjectName, chapterName);
-            } catch (e) { alert("خطأ: " + e.message); }
-        } else { alert("التحميل غير متاح."); }
+            } catch (e) { alert("حدث خطأ: " + e.message); }
+        } else { alert("بيانات الفيديو غير مكتملة."); }
     };
 
     return (
         <>
             <div className="artplayer-app" ref={artRef}></div>
             
-            {/* ✅✅✅ زر التحميل عاد للظهور هنا */}
+            {/* ✅✅✅ زر التحميل: يظهر هنا فقط */}
             {isNativeAndroid && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -259,7 +283,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
-        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' } // ✅ حل ملء الشاشة
+        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
 
     return (
@@ -285,6 +309,9 @@ export default function WatchPage() {
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
+
+    // لتكبير الحاوية بالكامل في وضع Plyr
+    const playerWrapperRef = useRef(null);
 
     // التعرف على المستخدم
     useEffect(() => {
@@ -334,14 +361,15 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تحميل المكتبات وتمرير الحالة */}
+            {/* تحميل المكتبات وتمرير الحالة لـ Artplayer */}
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
             <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
-                <div className="player-wrapper">
+                // هذه الحاوية مهمة جداً لوضع Plyr Fullscreen
+                <div className="player-wrapper" ref={playerWrapperRef}>
                     
                     {/* 1. وضع Native (Artplayer) */}
                     {viewMode === 'native' && (
@@ -349,7 +377,7 @@ export default function WatchPage() {
                             videoData={videoData} 
                             user={user} 
                             isNativeAndroid={isNativeAndroid}
-                            libsLoaded={libsLoaded} // ✅ تمرير حالة المكتبات ضروري جداً
+                            libsLoaded={libsLoaded} 
                         />
                     )}
 
@@ -377,7 +405,7 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
                 }
 
-                /* تكبير الحاوية عند ملء الشاشة */
+                /* تكبير الحاوية عند ملء الشاشة (لحل مشكلة Plyr) */
                 .player-wrapper:fullscreen, .player-wrapper:-webkit-full-screen, .player-wrapper:-moz-full-screen {
                     width: 100%; height: 100%; max-width: none; aspect-ratio: auto; background: #000;
                     display: flex; align-items: center; justify-content: center;
