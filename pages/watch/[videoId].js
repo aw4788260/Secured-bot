@@ -430,6 +430,9 @@ export default function WatchPage() {
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone .icon { font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
                 .gesture-zone.center .icon { font-size: 30px; }
+                .art-bottom {
+    z-index: 100 !important;
+}
             `}</style>
         </div>
     );
