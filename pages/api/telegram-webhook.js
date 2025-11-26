@@ -2796,15 +2796,22 @@ export default async (req, res) => {
       messageId = stateData.message_id; // (ID الرسالة التي يجب تعديلها)
 
 // --- [ أوامر التحكم في وضع الأوفلاين ] ---
-      if (text === '/offlineon') {
-        await supabase.from('app_settings').upsert({ key: 'offline_mode', value: 'true' });
-        await sendMessage(chatId, '✅ **تم تفعيل وضع الأوفلاين.**\n\n- المشغل: Artplayer (الآمن).\n- زر التحميل: ظاهر (للأندرويد).', null, 'Markdown');
-        return res.status(200).send('OK');
-      }
+      // في ملف pages/api/telegram-webhook.js
 
-      if (text === '/offlineoff') {
-        await supabase.from('app_settings').upsert({ key: 'offline_mode', value: 'false' });
-        await sendMessage(chatId, '🚫 **تم تعطيل وضع الأوفلاين.**\n\n- المشغل: YouTube Iframe (سريع).\n- زر التحميل: مخفي.', null, 'Markdown');
+      // --- [ أوامر التحكم في وضع الأوفلاين (للأدمن فقط) ] ---
+      if (text === '/offlineon' || text === '/offlineoff') {
+        
+        if (!user.is_admin) return res.status(200).send('OK');
+
+        if (text === '/offlineon') {
+            await supabase.from('app_settings').upsert({ key: 'offline_mode', value: 'true' });
+            await sendMessage(chatId, '✅ تم تفعيل وضع الأوفلاين.');
+        
+        } else {
+            await supabase.from('app_settings').upsert({ key: 'offline_mode', value: 'false' });
+            await sendMessage(chatId, '🌐 تم تفعيل وضع الأونلاين.');
+        }
+        
         return res.status(200).send('OK');
       }
 // (1. حالات المستخدم العادي - إرسال صورة/نص)
