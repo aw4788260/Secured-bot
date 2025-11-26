@@ -188,6 +188,18 @@ const editMessage = async (chatId, messageId, text, reply_markup = null, parse_m
         if (textError.response && textError.response.data) {
             const desc = textError.response.data.description;
 
+          // ✅ 1. إذا لم يتغير شيء، تجاهل الخطأ واخرج بهدوء
+            if (desc.includes("message is not modified")) return;
+
+            // ✅ 2. إذا كانت الرسالة محذوفة، أرسل رسالة جديدة بدلاً من الانهيار
+            if (desc.includes("message to edit not found")) {
+                 // 👇👇 هذا هو السطر الذي نسيته (مفيد للتتبع في اللوج)
+                 console.warn(`Message ${messageId} not found, sending new one instead.`);
+                 
+                 await sendMessage(chatId, text, reply_markup, parse_mode, protect_content);
+                 return;
+            }
+
             // [ ✅✅ جديد: إذا فشل تعديل النص، جرب تعديل الكابشن ]
             if (desc.includes("no text in the message to edit") || desc.includes("message can't be edited")) {
                 
