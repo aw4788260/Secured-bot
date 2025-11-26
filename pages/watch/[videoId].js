@@ -10,16 +10,21 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية (لـ Plyr فقط)
+// 2. مكون العلامة المائية (لـ Plyr فقط - OfflineOff)
+// ✅ تم تعديل النطاق ليكون آمناً جداً (20% - 80%)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
-    const [pos, setPos] = useState({ top: '10%', left: '10%' });
+    const [pos, setPos] = useState({ top: '20%', left: '20%' });
 
     useEffect(() => {
         if (!user) return;
         const move = () => {
-            const t = Math.floor(Math.random() * 80) + 5;
-            const l = Math.floor(Math.random() * 80) + 5;
+            // ✅ التعديل هنا: جعلنا النطاق أضيق ليبقى في المنتصف
+            // الرقم 60 يعني أن الحركة ستكون في نطاق 60%
+            // الرقم 20 يعني أننا سنترك هامش 20% من البداية
+            // النتيجة: العلامة تتحرك بين 20% و 80% فقط
+            const t = Math.floor(Math.random() * 60) + 20; 
+            const l = Math.floor(Math.random() * 60) + 20;
             setPos({ top: `${t}%`, left: `${l}%` });
         };
         const interval = setInterval(move, 5000);
@@ -42,28 +47,11 @@ const PlyrWatermark = ({ user }) => {
 
 // =========================================================================
 // 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
-// ✅ تم إضافة التحقق من الوجود المسبق للمشغل (Skip Build Check)
+// ✅ تم تطبيق نفس منطق الأمان (20% - 80%)
 // =========================================================================
-const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
+const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
-    const [readyToBuild, setReadyToBuild] = useState(false);
-
-    // ✅ التحقق الفوري: هل المكتبات موجودة مسبقاً؟ (لحل مشكلة إعادة التحميل/الرجوع)
-    useEffect(() => {
-        const checkLibs = () => {
-            if (window.Artplayer && window.Hls) {
-                setReadyToBuild(true);
-            }
-        };
-        
-        // فحص فوري
-        checkLibs();
-        
-        // فحص دوري قصير في حال تأخر التحميل قليلاً
-        const timer = setInterval(checkLibs, 100);
-        return () => clearInterval(timer);
-    }, []);
 
     const normalizeQuality = (val) => {
         const num = parseInt(val);
@@ -73,18 +61,13 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
     };
 
     useEffect(() => {
-        // شرط التشغيل: المكتبات جاهزة + البيانات موجودة + الحاوية موجودة
-        if (!readyToBuild || !user || !videoData || !artRef.current) return;
+        if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
-        // ✅ منطق التخطي الذكي:
-        // إذا كان المشغل مبنياً بالفعل والحاوية لم تتغير، لا تهدمه بل قم بتحديث الرابط فقط (اختياري)
-        // لكن في React، عند تغيير الصفحة يتم تدمير الـ DOM، لذا الأفضل هو التدمير وإعادة البناء النظيفة.
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
         }
 
-        // إعداد الجودات
         let qualities = videoData.availableQualities || [];
         if (qualities.length > 0) qualities = qualities.sort((a, b) => b.quality - a.quality);
         
@@ -98,7 +81,6 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
         const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
-        // بناء المشغل
         const art = new window.Artplayer({
             container: artRef.current,
             url: startUrl, 
@@ -117,7 +99,9 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
                     name: 'watermark',
                     html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                     style: {
-                        position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
+                        // بداية آمنة
+                        position: 'absolute', top: '20%', left: '20%', 
+                        pointerEvents: 'none', zIndex: 25,
                         transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                     },
                 },
@@ -130,9 +114,7 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
                             <div class="gesture-zone right" data-action="forward"><span class="icon">10 <span style="font-size:1.2em">»</span></span></div>
                         </div>`,
                     style: {
-                        position: 'absolute', top: 0, left: 0, width: '100%', 
-                        // ✅ تعديل الارتفاع لعدم تغطية شريط التحكم السفلي
-                        height: 'calc(100% - 50px)', 
+                        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
                         zIndex: 20, pointerEvents: 'none',
                     },
                 }
@@ -168,19 +150,19 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
 
-            // منطق العلامة المائية
+            // ✅ تعديل نطاق الحركة في Artplayer أيضاً ليكون آمناً (20-80)
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                const newTop = Math.floor(Math.random() * 80) + 5;
-                const newLeft = Math.floor(Math.random() * 80) + 5;
+                // حركة آمنة بعيدة عن الحواف
+                const newTop = Math.floor(Math.random() * 60) + 20;
+                const newLeft = Math.floor(Math.random() * 60) + 20;
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
             };
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // منطق اللمس
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -240,7 +222,7 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
         playerInstance.current = art;
 
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
-    }, [readyToBuild, user, videoData]); // ✅ نعتمد على readyToBuild بدلاً من onLoad
+    }, [libsLoaded, user, videoData]);
 
     return <div className="artplayer-app" ref={artRef} style={{ width: '100%', height: '100%' }}></div>;
 };
@@ -283,12 +265,12 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
+    const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
 
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
 
-    // التعرف على المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -303,7 +285,6 @@ export default function WatchPage() {
         }
     }, []);
 
-    // جلب البيانات
     useEffect(() => {
         if (!videoId || !user) return; 
         setLoading(true);
@@ -327,7 +308,6 @@ export default function WatchPage() {
             });
     }, [videoId, user]);
 
-    // دالة التحميل (خارج المشغل)
     const handleDownloadClick = () => {
         if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
         
@@ -364,8 +344,8 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" />
-            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" />
+            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
+            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
@@ -375,6 +355,7 @@ export default function WatchPage() {
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
+                            libsLoaded={libsLoaded}
                             onPlayerReady={(art) => { artPlayerInstanceRef.current = art; }}
                         />
                     )}
@@ -423,9 +404,7 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* ✅ إصلاح اختفاء الأزرار في ملء الشاشة */
                 .art-bottom { z-index: 100 !important; }
-
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
