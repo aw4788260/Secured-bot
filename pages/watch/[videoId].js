@@ -10,25 +10,35 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية (لـ Plyr فقط - OfflineOff)
-// ✅ تم تعديل النطاق ليكون آمناً جداً (20% - 80%)
+// 2. مكون العلامة المائية (لـ Plyr - تم تطبيق منطق الملف الأصلي 4)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
-    const [pos, setPos] = useState({ top: '20%', left: '20%' });
+    const [pos, setPos] = useState({ top: '10%', left: '10%' });
 
     useEffect(() => {
         if (!user) return;
+        
         const move = () => {
-            // ✅ التعديل هنا: جعلنا النطاق أضيق ليبقى في المنتصف
-            // الرقم 60 يعني أن الحركة ستكون في نطاق 60%
-            // الرقم 20 يعني أننا سنترك هامش 20% من البداية
-            // النتيجة: العلامة تتحرك بين 20% و 80% فقط
-            const t = Math.floor(Math.random() * 60) + 20; 
-            const l = Math.floor(Math.random() * 60) + 20;
+            // ✅ منطق الملف الأصلي (File 4) لحساب الموقع الآمن
+            const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
+            const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+            
+            let minTop = 5, maxTop = 80; 
+            
+            // في حالة تليجرام والوضع العمودي، نضيق النطاق لتجنب الـ Notch والأشرطة
+            if (isTelegram && isPortrait) { 
+                minTop = 38; 
+                maxTop = 58; 
+            }
+            
+            const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+            const l = Math.floor(Math.random() * 80) + 5; // 5% هامش أمان يسار
+            
             setPos({ top: `${t}%`, left: `${l}%` });
         };
+
         const interval = setInterval(move, 5000);
-        move();
+        move(); // تحريك فوري
         return () => clearInterval(interval);
     }, [user]);
 
@@ -46,8 +56,8 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
-// ✅ تم تطبيق نفس منطق الأمان (20% - 80%)
+// 3. مكون مشغل Artplayer (الوضع Native)
+// ✅ تم نسخ الكود الأصلي (File 4) حرفياً مع منطق العلامة المائية الخاص به
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -99,9 +109,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
                     name: 'watermark',
                     html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                     style: {
-                        // بداية آمنة
-                        position: 'absolute', top: '20%', left: '20%', 
-                        pointerEvents: 'none', zIndex: 25,
+                        position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
                         transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                     },
                 },
@@ -150,19 +158,27 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
 
-            // ✅ تعديل نطاق الحركة في Artplayer أيضاً ليكون آمناً (20-80)
+            // ✅✅✅ تطبيق نفس منطق الحركة من File 4 للعلامة الداخلية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                // حركة آمنة بعيدة عن الحواف
-                const newTop = Math.floor(Math.random() * 60) + 20;
-                const newLeft = Math.floor(Math.random() * 60) + 20;
+                
+                const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
+                const isPortrait = window.innerHeight > window.innerWidth;
+                
+                let minTop = 5, maxTop = 80; 
+                if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+                
+                const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+                const newLeft = Math.floor(Math.random() * 80) + 5;
+                
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
             };
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
+            // منطق اللمس (Gestures)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -365,6 +381,7 @@ export default function WatchPage() {
                 </div>
             )}
 
+            {/* زر التحميل منفصل وخارج المشغل */}
             {isNativeAndroid && viewMode === 'native' && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -404,7 +421,9 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
+                /* إصلاح أزرار التحكم في Artplayer */
                 .art-bottom { z-index: 100 !important; }
+
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
