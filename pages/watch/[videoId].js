@@ -5,30 +5,36 @@ import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// 1. استيراد Plyr (للوضع الأونلاين)
+// 1. استيراد Plyr
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية (لـ Plyr فقط - OfflineOff)
-// ✅ تم تعديل النطاق ليكون آمناً جداً (20% - 80%)
+// 2. مكون العلامة المائية (لـ Plyr - تم تطبيق منطق الملف الأصلي)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
-    const [pos, setPos] = useState({ top: '20%', left: '20%' });
+    const [pos, setPos] = useState({ top: '10%', left: '10%' });
 
     useEffect(() => {
         if (!user) return;
+        
         const move = () => {
-            // ✅ التعديل هنا: جعلنا النطاق أضيق ليبقى في المنتصف
-            // الرقم 60 يعني أن الحركة ستكون في نطاق 60%
-            // الرقم 20 يعني أننا سنترك هامش 20% من البداية
-            // النتيجة: العلامة تتحرك بين 20% و 80% فقط
-            const t = Math.floor(Math.random() * 60) + 20; 
-            const l = Math.floor(Math.random() * 60) + 20;
+            // ✅ نفس منطق الملف الأصلي بالضبط
+            const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
+            const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+            
+            let minTop = 5, maxTop = 80; 
+            // تضييق النطاق في تليجرام والوضع العمودي لتجنب الحواف
+            if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+            
+            const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+            const l = Math.floor(Math.random() * 80) + 5; // من 5% إلى 85%
+            
             setPos({ top: `${t}%`, left: `${l}%` });
         };
+
         const interval = setInterval(move, 5000);
-        move();
+        move(); // تحريك فوري
         return () => clearInterval(interval);
     }, [user]);
 
@@ -46,8 +52,8 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
-// ✅ تم تطبيق نفس منطق الأمان (20% - 80%)
+// 3. مكون Artplayer (الوضع Native)
+// ✅ تم استعادة دالة moveWatermark الأصلية
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -99,9 +105,8 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
                     name: 'watermark',
                     html: `<div class="watermark-content">${user.first_name} (${user.id})</div>`,
                     style: {
-                        // بداية آمنة
-                        position: 'absolute', top: '20%', left: '20%', 
-                        pointerEvents: 'none', zIndex: 25,
+                        // بداية أولية
+                        position: 'absolute', top: '10%', left: '10%', pointerEvents: 'none', zIndex: 25,
                         transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                     },
                 },
@@ -150,16 +155,26 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
 
-            // ✅ تعديل نطاق الحركة في Artplayer أيضاً ليكون آمناً (20-80)
+            // ✅✅✅ استعادة دالة الحركة من الكود الأصلي (VideoId 4)
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                // حركة آمنة بعيدة عن الحواف
-                const newTop = Math.floor(Math.random() * 60) + 20;
-                const newLeft = Math.floor(Math.random() * 60) + 20;
+                
+                const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
+                const isPortrait = window.innerHeight > window.innerWidth;
+                
+                let minTop = 5, maxTop = 80; 
+                // الشرط الخاص بتليجرام والوضع العمودي
+                if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+                
+                const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+                const newLeft = Math.floor(Math.random() * 80) + 5;
+                
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
             };
+            // -------------------------------------------------------
+
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
@@ -271,6 +286,7 @@ export default function WatchPage() {
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
 
+    // التعرف على المستخدم
     useEffect(() => {
         const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
         const params = new URLSearchParams(window.location.search);
@@ -285,6 +301,7 @@ export default function WatchPage() {
         }
     }, []);
 
+    // جلب البيانات
     useEffect(() => {
         if (!videoId || !user) return; 
         setLoading(true);
@@ -308,6 +325,7 @@ export default function WatchPage() {
             });
     }, [videoId, user]);
 
+    // زر التحميل (خارجي)
     const handleDownloadClick = () => {
         if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
         
@@ -404,7 +422,9 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
+                /* إصلاح أزرار التحكم في ملء الشاشة */
                 .art-bottom { z-index: 100 !important; }
+
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
