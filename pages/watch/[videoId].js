@@ -42,11 +42,28 @@ const PlyrWatermark = ({ user }) => {
 
 // =========================================================================
 // 3. مكون مشغل Artplayer (الوضع Native / OfflineOn)
-// ✅ تم تطبيق منطق الملف الأصلي (File 4) بحذافيره لحل مشكلة بدء التشغيل
+// ✅ تم إضافة التحقق من الوجود المسبق للمشغل (Skip Build Check)
 // =========================================================================
-const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
+const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
+    const [readyToBuild, setReadyToBuild] = useState(false);
+
+    // ✅ التحقق الفوري: هل المكتبات موجودة مسبقاً؟ (لحل مشكلة إعادة التحميل/الرجوع)
+    useEffect(() => {
+        const checkLibs = () => {
+            if (window.Artplayer && window.Hls) {
+                setReadyToBuild(true);
+            }
+        };
+        
+        // فحص فوري
+        checkLibs();
+        
+        // فحص دوري قصير في حال تأخر التحميل قليلاً
+        const timer = setInterval(checkLibs, 100);
+        return () => clearInterval(timer);
+    }, []);
 
     const normalizeQuality = (val) => {
         const num = parseInt(val);
@@ -56,35 +73,35 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     };
 
     useEffect(() => {
-        // شرط التشغيل: التأكد من تحميل المكتبات والبيانات
-        if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
+        // شرط التشغيل: المكتبات جاهزة + البيانات موجودة + الحاوية موجودة
+        if (!readyToBuild || !user || !videoData || !artRef.current) return;
 
-        // تنظيف المشغل السابق
+        // ✅ منطق التخطي الذكي:
+        // إذا كان المشغل مبنياً بالفعل والحاوية لم تتغير، لا تهدمه بل قم بتحديث الرابط فقط (اختياري)
+        // لكن في React، عند تغيير الصفحة يتم تدمير الـ DOM، لذا الأفضل هو التدمير وإعادة البناء النظيفة.
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
             playerInstance.current = null;
         }
 
-        // 1. تجهيز الجودات (نسخ من الكود الأصلي)
+        // إعداد الجودات
         let qualities = videoData.availableQualities || [];
         if (qualities.length > 0) qualities = qualities.sort((a, b) => b.quality - a.quality);
         
         const middleIndex = Math.floor((qualities.length - 1) / 2);
-        
         const qualityList = qualities.map((q, index) => ({
             default: index === middleIndex,
             html: normalizeQuality(q.quality),
             url: q.url,
         }));
         
-        // ✅ تحديد رابط البدء (مهم جداً)
         const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
-        // 2. إنشاء المشغل
+        // بناء المشغل
         const art = new window.Artplayer({
             container: artRef.current,
-            url: startUrl, // ✅ هذا السطر هو المسؤول عن بدء الفيديو
+            url: startUrl, 
             quality: qualityList,
             title: title,
             volume: 0.7,
@@ -95,7 +112,6 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // الطبقات (Layers)
             layers: [
                 {
                     name: 'watermark',
@@ -114,27 +130,24 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
                             <div class="gesture-zone right" data-action="forward"><span class="icon">10 <span style="font-size:1.2em">»</span></span></div>
                         </div>`,
                     style: {
-                        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
+                        position: 'absolute', top: 0, left: 0, width: '100%', 
+                        // ✅ تعديل الارتفاع لعدم تغطية شريط التحكم السفلي
+                        height: 'calc(100% - 50px)', 
                         zIndex: 20, pointerEvents: 'none',
                     },
                 }
             ],
             
-            // ✅ إعدادات HLS (الحرجة) - منسوخة تماماً من الكود الأصلي
             customType: {
                 m3u8: function (video, url, art) {
                     if (art.hls) art.hls.destroy();
                     if (window.Hls && window.Hls.isSupported()) {
                         const hls = new window.Hls({
-                            maxBufferLength: 300, 
-                            enableWorker: true,
-                            // 👇 هذا السطر مهم جداً وتم استعادته من الكود الأصلي
-                            xhrSetup: function (xhr) { xhr.withCredentials = false; } 
+                            maxBufferLength: 300, enableWorker: true,
+                            xhrSetup: function (xhr) { xhr.withCredentials = false; }
                         });
                         hls.loadSource(url);
                         hls.attachMedia(video);
-                        
-                        // معالجة الأخطاء (من الكود الأصلي)
                         hls.on(window.Hls.Events.ERROR, (event, data) => {
                             if (data.fatal) {
                                 if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
@@ -153,10 +166,9 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         art.notice.show = function() {}; 
 
         art.on('ready', () => {
-            // ✅ إرسال المشغل للأب ليعمل زر التحميل
             if (onPlayerReady) onPlayerReady(art);
 
-            // تحريك العلامة المائية
+            // منطق العلامة المائية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
@@ -168,7 +180,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // إعدادات اللمس (Gestures)
+            // منطق اللمس
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -228,7 +240,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         playerInstance.current = art;
 
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
-    }, [libsLoaded, user, videoData]);
+    }, [readyToBuild, user, videoData]); // ✅ نعتمد على readyToBuild بدلاً من onLoad
 
     return <div className="artplayer-app" ref={artRef} style={{ width: '100%', height: '100%' }}></div>;
 };
@@ -271,10 +283,8 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
-    const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
 
-    // مرجع لتخزين نسخة Artplayer (من أجل زر التحميل)
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
 
@@ -317,7 +327,7 @@ export default function WatchPage() {
             });
     }, [videoId, user]);
 
-    // ✅ دالة التحميل (موجودة بالخارج، وتستخدم الـ Ref)
+    // دالة التحميل (خارج المشغل)
     const handleDownloadClick = () => {
         if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
         
@@ -329,7 +339,6 @@ export default function WatchPage() {
                 const chapterName = videoData.chapter_name || "Unknown Chapter";
                 
                 let duration = "0";
-                // استخدام الـ Ref لجلب مدة الفيديو من Artplayer
                 if (artPlayerInstanceRef.current && artPlayerInstanceRef.current.duration) {
                     duration = artPlayerInstanceRef.current.duration.toString(); 
                 } else if (videoData.duration) {
@@ -355,34 +364,26 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تحميل المكتبات */}
-            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
-            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
+            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" />
+            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" />
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
                 <div className="player-wrapper" ref={playerWrapperRef}>
-                    
-                    {/* 1. وضع Native */}
                     {viewMode === 'native' && (
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
-                            libsLoaded={libsLoaded}
-                            // ✅ استلام نسخة المشغل
                             onPlayerReady={(art) => { artPlayerInstanceRef.current = art; }}
                         />
                     )}
-
-                    {/* 2. وضع Youtube */}
                     {viewMode === 'youtube' && (
                         <YoutubePlyrPlayer videoData={videoData} user={user} />
                     )}
                 </div>
             )}
 
-            {/* ✅ زر التحميل منفصل خارج المشغل تماماً، ويظهر في وضع Native فقط */}
             {isNativeAndroid && viewMode === 'native' && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -414,14 +415,16 @@ export default function WatchPage() {
                 .player-wrapper .plyr { width: 100%; height: 100%; }
                 .artplayer-app { width: 100%; height: 100%; }
                 
-                /* تنسيق زر التحميل ليكون منفصلاً وواضحاً */
                 .download-button-native { 
                     width: 100%; max-width: 900px; padding: 15px; 
                     background: #38bdf8; border: none; border-radius: 8px; 
                     font-weight: bold; cursor: pointer; color: #111; 
-                    margin-top: 20px; font-size: 16px; display: block;
+                    margin-top: 20px; display: block; 
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
+
+                /* ✅ إصلاح اختفاء الأزرار في ملء الشاشة */
+                .art-bottom { z-index: 100 !important; }
 
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
