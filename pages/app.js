@@ -14,6 +14,52 @@ export default function App() {
   // 1. [✅ حالة لتخزين بصمة الجهاز]
   const [deviceId, setDeviceId] = useState(null);
 
+  // ---------------------------------------------------------
+  // 🛠️ دالة التحديث التلقائي (الجديدة)
+  // ---------------------------------------------------------
+  const checkAndTriggerUpdate = async () => {
+    // التحقق من أننا نعمل داخل تطبيق الأندرويد الخاص بنا
+    if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) {
+        return;
+    }
+
+    try {
+        // ✅ رابط API لجلب أحدث إصدار من مستودع الأندرويد الخاص بك
+        const REPO_API_URL = "https://api.github.com/repos/aw4788260/Apk-code-/releases/latest"; 
+        
+        const response = await fetch(REPO_API_URL);
+        if (!response.ok) return; 
+        
+        const data = await response.json();
+        
+        // الحصول على رقم الإصدار الجديد (الـ Tag Name)
+        const latestVersionTag = data.tag_name; 
+        
+        // التحقق من الإصدار المخزن محلياً (لتجنب تكرار السؤال لنفس التحديث)
+        const storedVersion = localStorage.getItem("app_version_tag");
+
+        if (storedVersion !== latestVersionTag) {
+            
+            // البحث عن ملف APK في المرفقات
+            const apkAsset = data.assets.find(asset => asset.name.endsWith(".apk"));
+            if (!apkAsset) return;
+
+            // رسالة التنبيه
+            const confirmMsg = `تحديث جديد متوفر (${latestVersionTag})!\n\n${data.body || 'تحسينات وإصلاحات جديدة.'}\n\nهل تريد التثبيت الآن؟`;
+            
+            if (confirm(confirmMsg)) {
+                // حفظ الإصدار الجديد
+                localStorage.setItem("app_version_tag", latestVersionTag);
+                
+                // 🔥 استدعاء دالة الأندرويد للتحميل والتثبيت
+                window.Android.updateApp(apkAsset.browser_download_url);
+            }
+        }
+    } catch (err) {
+        console.error("Update check failed:", err);
+    }
+  };
+
   // --- دالة جلب المواد ---
   const fetchSubjects = (userIdString, foundUser, urlSubjectId = null, urlMode = null) => {
     fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
@@ -126,6 +172,9 @@ export default function App() {
 
   useEffect(() => {
     try {
+      // ✅ استدعاء دالة فحص التحديثات عند بدء التشغيل
+      checkAndTriggerUpdate();
+
       const urlParams = new URLSearchParams(window.location.search);
       const urlSubjectId = urlParams.get('subjectId');
       const urlMode = urlParams.get('mode');
