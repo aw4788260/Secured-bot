@@ -284,6 +284,14 @@ export default function WatchPage() {
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
 
+    useEffect(() => {
+        // عند فتح الصفحة، نفحص هل كائنات Artplayer و Hls موجودة في window؟
+        // إذا كانت موجودة (لأنك لم تغلق التطبيق)، نتخطى الانتظار ونعتبرها محملة
+        if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
+            setLibsLoaded(true);
+        }
+    }, []);
+    
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
 
