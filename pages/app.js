@@ -54,11 +54,13 @@ export default function App() {
             const apkAsset = data.assets.find(asset => asset.name.endsWith(".apk"));
             if (!apkAsset) return;
 
-            // 5. طلب التحديث (بدون تخزين في localStorage لضمان التكرار حتى النجاح)
             if (confirm(`تحديث جديد متوفر (v${latestVersionCode})!\n\nيجب تثبيت التحديث لاستكمال الاستخدام.`)) {
-                window.Android.updateApp(apkAsset.browser_download_url);
+                // ✅✅ [تعديل هام] تمرير رقم الإصدار كـ نص (String)
+                // حولنا الرقم إلى نص باستخدام String()
+                window.Android.updateApp(apkAsset.browser_download_url, String(latestVersionCode));
             }
         }
+
     } catch (err) {
         console.error("Update check failed:", err);
     }
