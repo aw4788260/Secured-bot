@@ -15,43 +15,47 @@ export default function App() {
   const [deviceId, setDeviceId] = useState(null);
 
   // ---------------------------------------------------------
-  // 🛠️ دالة التحديث التلقائي (الجديدة)
+  // 🛠️ دالة التحقق من التحديثات
   // ---------------------------------------------------------
   const checkAndTriggerUpdate = async () => {
-    // التحقق من أننا نعمل داخل تطبيق الأندرويد الخاص بنا
+    // التحقق من بيئة الأندرويد
     if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) {
         return;
     }
 
     try {
-        // ✅ رابط API لجلب أحدث إصدار من مستودع الأندرويد الخاص بك
+        // 1. قراءة إصدار التطبيق من الرابط
+        const urlParams = new URLSearchParams(window.location.search);
+        // (إذا لم يرسل التطبيق رقماً، نعتبره 0 ليتم التحديث إجبارياً)
+        const currentAppVersion = parseInt(urlParams.get('app_ver') || "0"); 
+
+        // 2. جلب أحدث إصدار من GitHub
+        // ⚠️ تأكد من صحة الرابط (اسم المستخدم / اسم المشروع)
         const REPO_API_URL = "https://api.github.com/repos/aw4788260/Apk-code-/releases/latest"; 
         
         const response = await fetch(REPO_API_URL);
-        if (!response.ok) return; 
+        if (!response.ok) return;
         
         const data = await response.json();
         
-        // الحصول على رقم الإصدار الجديد (الـ Tag Name)
-        const latestVersionTag = data.tag_name; 
-        
-        // التحقق من الإصدار المخزن محلياً (لتجنب تكرار السؤال لنفس التحديث)
-        const storedVersion = localStorage.getItem("app_version_tag");
+        // 3. استخراج الرقم من التاج (Tag)
+        let latestVersionCode = 0;
+        const tagName = data.tag_name; // مثلاً "v313"
+        const match = tagName.match(/\d+/); // يستخرج "313"
+        if (match) {
+            latestVersionCode = parseInt(match[0]);
+        }
 
-        if (storedVersion !== latestVersionTag) {
+        console.log(`Current App: ${currentAppVersion}, Latest Cloud: ${latestVersionCode}`);
+
+        // 4. المقارنة
+        if (latestVersionCode > currentAppVersion) {
             
-            // البحث عن ملف APK في المرفقات
             const apkAsset = data.assets.find(asset => asset.name.endsWith(".apk"));
             if (!apkAsset) return;
 
-            // رسالة التنبيه
-            const confirmMsg = `تحديث جديد متوفر (${latestVersionTag})!\n\n${data.body || 'تحسينات وإصلاحات جديدة.'}\n\nهل تريد التثبيت الآن؟`;
-            
-            if (confirm(confirmMsg)) {
-                // حفظ الإصدار الجديد
-                localStorage.setItem("app_version_tag", latestVersionTag);
-                
-                // 🔥 استدعاء دالة الأندرويد للتحميل والتثبيت
+            // 5. طلب التحديث (بدون تخزين في localStorage لضمان التكرار حتى النجاح)
+            if (confirm(`تحديث جديد متوفر (v${latestVersionCode})!\n\nيجب تثبيت التحديث لاستكمال الاستخدام.`)) {
                 window.Android.updateApp(apkAsset.browser_download_url);
             }
         }
@@ -60,6 +64,7 @@ export default function App() {
     }
   };
 
+  
   // --- دالة جلب المواد ---
   const fetchSubjects = (userIdString, foundUser, urlSubjectId = null, urlMode = null) => {
     fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
