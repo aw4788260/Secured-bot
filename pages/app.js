@@ -17,55 +17,54 @@ export default function App() {
   // ---------------------------------------------------------
   // 🛠️ دالة التحقق من التحديثات
   // ---------------------------------------------------------
-  const checkAndTriggerUpdate = async () => {
-    // التحقق من بيئة الأندرويد
+const checkAndTriggerUpdate = async () => {
     if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) {
         return;
     }
 
     try {
-        // 1. قراءة إصدار التطبيق من الرابط
         const urlParams = new URLSearchParams(window.location.search);
-        // (إذا لم يرسل التطبيق رقماً، نعتبره 0 ليتم التحديث إجبارياً)
         const currentAppVersion = parseInt(urlParams.get('app_ver') || "0"); 
 
-        // 2. جلب أحدث إصدار من GitHub
-        // ⚠️ تأكد من صحة الرابط (اسم المستخدم / اسم المشروع)
+        // رابط الـ API الخاص بك
         const REPO_API_URL = "https://api.github.com/repos/aw4788260/Apk-code-/releases/latest"; 
-        
         const response = await fetch(REPO_API_URL);
         if (!response.ok) return;
         
         const data = await response.json();
         
-        // 3. استخراج الرقم من التاج (Tag)
         let latestVersionCode = 0;
-        const tagName = data.tag_name; // مثلاً "v313"
-        const match = tagName.match(/\d+/); // يستخرج "313"
-        if (match) {
-            latestVersionCode = parseInt(match[0]);
-        }
+        const tagName = data.tag_name; 
+        const match = tagName.match(/\d+/);
+        if (match) latestVersionCode = parseInt(match[0]);
 
-        console.log(`Current App: ${currentAppVersion}, Latest Cloud: ${latestVersionCode}`);
-
-        // 4. المقارنة
+        // المقارنة
         if (latestVersionCode > currentAppVersion) {
-            
             const apkAsset = data.assets.find(asset => asset.name.endsWith(".apk"));
             if (!apkAsset) return;
 
-            if (confirm(`تحديث جديد متوفر (v${latestVersionCode})!\n\nيجب تثبيت التحديث لاستكمال الاستخدام.`)) {
-                // ✅✅ [تعديل هام] تمرير رقم الإصدار كـ نص (String)
-                // حولنا الرقم إلى نص باستخدام String()
+            // رسالة الإجبار
+            const msg = `تحديث ضروري متوفر (v${latestVersionCode})!\n\nلضمان عمل التطبيق، يجب التحديث الآن.\n(الضغط على إلغاء سيغلق التطبيق)`;
+            
+            // ✅ إذا ضغط موافق -> حدث
+            if (confirm(msg)) {
+                // تمرير الرابط + رقم الإصدار
                 window.Android.updateApp(apkAsset.browser_download_url, String(latestVersionCode));
+            } else {
+                // ⛔️ إذا ضغط إلغاء -> أغلق التطبيق فوراً
+                if (window.Android.closeApp) {
+                    window.Android.closeApp();
+                } else {
+                    // (للمستخدمين القدامى جداً الذين ليس لديهم دالة الإغلاق بعد)
+                    alert("عذراً، لا يمكن استخدام التطبيق بدون تحديث.");
+                    location.reload(); // إعادة تحميل الصفحة لإظهار الرسالة مرة أخرى
+                }
             }
         }
-
     } catch (err) {
         console.error("Update check failed:", err);
     }
   };
-
   
   // --- دالة جلب المواد ---
   const fetchSubjects = (userIdString, foundUser, urlSubjectId = null, urlMode = null) => {
