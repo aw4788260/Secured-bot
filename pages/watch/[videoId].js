@@ -45,7 +45,7 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (للموبايل Native)
+// 3. مكون مشغل Artplayer (Native - للموبايل)
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -122,10 +122,9 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
 
 // =========================================================================
-// 4. مكون مشغل Plyr (للكمبيوتر) - تم إصلاح زر التشغيل 100%
+// 4. مكون مشغل Plyr (كمبيوتر/أونلاين) - تم الإصلاح ✅
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
-    // نستخدم ref للوصول للمشغل مباشرة دون الاعتماد على state
     const ref = useRef(null);
     const [isPaused, setIsPaused] = useState(true);
 
@@ -141,41 +140,39 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
 
-    // مراقبة الأحداث
     useEffect(() => {
-        // Plyr-react يضع المشغل داخل ref.current.plyr
-        const player = ref.current?.plyr;
-        
-        if (player) {
-            const handlePlay = () => setIsPaused(false);
-            const handlePause = () => setIsPaused(true);
-            const handleEnd = () => setIsPaused(true);
+        // ✅ الإصلاح: التحقق المتكرر حتى يصبح المشغل جاهزاً
+        const checkForPlayer = setInterval(() => {
+            const player = ref.current?.plyr;
+            if (player) {
+                // وجدنا المشغل! نوقف البحث ونربط الأحداث
+                clearInterval(checkForPlayer);
+                
+                // تعريف الدوال
+                const handlePlay = () => setIsPaused(false);
+                const handlePause = () => setIsPaused(true);
+                const handleEnded = () => setIsPaused(true);
 
-            player.on('play', handlePlay);
-            player.on('playing', handlePlay);
-            player.on('pause', handlePause);
-            player.on('ended', handleEnd);
-            player.on('ready', () => {
-                // عند الجاهزية، نتأكد أن الحالة صحيحة
-                if (player.paused) setIsPaused(true);
-            });
-        }
-    });
+                // ربط الأحداث
+                player.on('play', handlePlay);
+                player.on('playing', handlePlay);
+                player.on('pause', handlePause);
+                player.on('ended', handleEnded);
+                
+                // تأكد من الحالة الأولية
+                if (!player.paused) setIsPaused(false);
+            }
+        }, 500); // يفحص كل نصف ثانية
+
+        return () => clearInterval(checkForPlayer);
+    }, []);
 
     const handleCoverClick = () => {
-        // 1. إجبار الستارة على الاختفاء فوراً (لتعطي إحساس بالاستجابة)
-        setIsPaused(false);
-        
-        // 2. محاولة تشغيل الفيديو
+        setIsPaused(false); // إخفاء الستارة فوراً
         const player = ref.current?.plyr;
         if (player) {
-            try {
-                player.play();
-            } catch (e) {
-                console.error("Play error:", e);
-                // إذا فشل التشغيل، نعيد الستارة
-                setIsPaused(true); 
-            }
+            // محاولة التشغيل مع تأخير بسيط جداً لضمان الاستجابة
+            setTimeout(() => player.play(), 50);
         }
     };
 
@@ -184,10 +181,9 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     return (
         <div className="secure-plyr-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
             
-            {/* استخدام ref المباشر */}
             <Plyr ref={ref} key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
             
-            {/* شرط الستارة: تظهر فقط إذا كان متوقفاً */}
+            {/* تظهر الستارة فقط إذا كان متوقفاً */}
             {isPaused && (
                 <div className="pause-cover" onClick={handleCoverClick}>
                     <div className="big-play-btn">▶</div>
@@ -197,7 +193,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
             <PlyrWatermark user={user} />
 
             <style jsx global>{`
-                /* الحماية: منع الضغط على iframe يوتيوب نهائياً */
+                /* منع الضغط على اليوتيوب */
                 .secure-plyr-wrapper .plyr__video-embed iframe {
                     pointer-events: none !important;
                 }
@@ -206,14 +202,15 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
                     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
                     background-image: url('${posterUrl}');
                     background-size: cover; background-position: center;
-                    z-index: 60; /* أعلى من الفيديو */
+                    z-index: 60;
                     display: flex; justify-content: center; align-items: center;
                     cursor: pointer;
-                    transition: opacity 0.3s;
+                    /* أنيميشن ناعم للظهور والاختفاء */
+                    transition: opacity 0.2s ease-in-out;
                 }
                 .pause-cover::before {
                     content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                    background: rgba(0, 0, 0, 0.5); /* تعتيم الخلفية */
+                    background: rgba(0, 0, 0, 0.5);
                 }
                 .big-play-btn {
                     position: relative; z-index: 2;
@@ -222,12 +219,12 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
                     display: flex; justify-content: center; align-items: center;
                     color: white; font-size: 35px; padding-left: 5px;
                     box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-                    transition: transform 0.2s, background 0.2s;
-                    pointer-events: none; /* السماح للضغط بالمرور للغطاء نفسه */
+                    transition: transform 0.2s;
+                    pointer-events: none; /* جعل الضغط يمر للحاوية */
                 }
                 .pause-cover:hover .big-play-btn { transform: scale(1.1); background: #0ea5e9; }
                 
-                /* هام جداً: رفع أزرار التحكم الخاصة بـ Plyr لتكون فوق الستارة في حال حدث خطأ */
+                /* رفع أزرار التحكم لتكون متاحة دائماً */
                 .plyr__controls { z-index: 70 !important; }
             `}</style>
         </div>
@@ -316,9 +313,6 @@ export default function WatchPage() {
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
-    // استراتيجية التشغيل:
-    // موبايل + أوفلاين = Native Artplayer
-    // غير ذلك = Secure Plyr
     const shouldUseNativePlayer = isMobile && videoData?.offline_mode === true;
 
     return (
