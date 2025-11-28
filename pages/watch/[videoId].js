@@ -1,14 +1,13 @@
-// pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
-// 1. استيراد المكتبات المثبتة محلياً (بدلاً من CDN)
+// ✅ 1. استيراد المكتبات محلياً لضمان العمل على الكمبيوتر والموبايل
 import Artplayer from 'artplayer';
 import Hls from 'hls.js';
 
-// استيراد Plyr (للوضع الأونلاين)
+// استيراد Plyr (للوضع الأونلاين) بشكل ديناميكي
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
@@ -20,15 +19,23 @@ const PlyrWatermark = ({ user }) => {
 
     useEffect(() => {
         if (!user) return;
+        
         const move = () => {
             const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+            
             let minTop = 5, maxTop = 80; 
-            if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+            if (isTelegram && isPortrait) { 
+                minTop = 38; 
+                maxTop = 58; 
+            }
+            
             const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
             const l = Math.floor(Math.random() * 80) + 5; 
+            
             setPos({ top: `${t}%`, left: `${l}%` });
         };
+
         const interval = setInterval(move, 5000);
         move(); 
         return () => clearInterval(interval);
@@ -48,7 +55,7 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native/Offline) - النسخة المستقرة
+// 3. مكون مشغل Artplayer (الوضع Native/Offline) - نسخة الـ Import
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -79,7 +86,6 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
             url: q.url,
         }));
         
-        // إذا لم يكن هناك قائمة جودات، استخدم الرابط المباشر
         const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || videoData.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
@@ -96,7 +102,6 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // ✅ إصلاح: إضافة العلامة المائية كطبقة
             layers: [
                 {
                     name: 'watermark',
@@ -121,7 +126,6 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
                 }
             ],
             
-            // ✅ إصلاح جوهري: إعداد HLS باستخدام المكتبة المستوردة
             customType: {
                 m3u8: function (video, url, art) {
                     if (Hls.isSupported()) {
@@ -134,7 +138,7 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                         video.src = url;
                     } else {
-                        art.notice.show = 'عذراً، المتصفح لا يدعم تشغيل هذا الفيديو.';
+                        art.notice.show = 'عذراً، المتصفح لا يدعم تشغيل الفيديو.';
                     }
                 },
             },
@@ -147,7 +151,7 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
                 const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
-                const isPortrait = window.innerHeight > window.innerWidth;
+                const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
                 let minTop = 5, maxTop = 80; 
                 if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
                 const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
@@ -158,10 +162,10 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // تفعيل اللمس (Gestures)
+            // تفعيل اللمس
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             if (wrapper) {
-                wrapper.style.pointerEvents = "auto";
+                wrapper.style.pointerEvents = "auto"; 
                 const zones = wrapper.querySelectorAll('.gesture-zone');
                 let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
 
@@ -198,14 +202,14 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
 
         playerInstance.current = art;
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
-    }, [user, videoData]); // تمت إزالة libsLoaded لأننا قمنا باستيرادها
+    }, [user, videoData]);
 
     return <div className="artplayer-app" ref={artRef} style={{ width: '100%', height: '100%' }}></div>;
 };
 
 
 // =========================================================================
-// 4. مكون مشغل Plyr (الوضع Online)
+// 4. مكون مشغل Plyr (الوضع Online) مع الحماية
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrSource = {
@@ -233,11 +237,13 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
             
             <PlyrWatermark user={user} />
             
-            {/* طبقة الحماية الشفافة */}
+            {/* طبقة حماية علوية لإخفاء العنوان وزر المشاركة */}
             <div style={{
                 position: 'absolute', top: 0, left: 0, width: '100%', height: '60px',
                 zIndex: 20, backgroundColor: 'transparent', 
             }}></div>
+            
+            {/* طبقة حماية سفلية لإخفاء زر يوتيوب */}
              <div style={{
                 position: 'absolute', bottom: 0, right: 0, width: '150px', height: '50px',
                 zIndex: 20, backgroundColor: 'transparent',
@@ -337,8 +343,6 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تم إزالة Script tags لأننا نستخدم import */}
-
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
@@ -356,7 +360,6 @@ export default function WatchPage() {
                 </div>
             )}
 
-            {/* زر التحميل منفصل وخارج المشغل */}
             {isNativeAndroid && viewMode === 'native' && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
