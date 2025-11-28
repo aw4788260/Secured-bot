@@ -209,12 +209,13 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
 
     const plyrSource = { type: 'video', sources: [{ src: videoData.youtube_video_id, provider: 'youtube' }] };
     
-    // ✅ استخدام useMemo للحفاظ على خيارات المشغل دون إعادة تحميل (يصلح مشكلة زر التكبير)
     const plyrOptions = useMemo(() => ({
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }, 
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
+        // ✅ إضافة Ratio هنا أيضاً كاحتياط
+        ratio: '16:9'
     }), []);
 
     useEffect(() => {
@@ -254,7 +255,6 @@ export default function WatchPage() {
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
     
-    // المتغير المسؤول عن تحديد ما إذا كان المستخدم قادم من تليجرام
     const [isTelegram, setIsTelegram] = useState(false);
 
     useEffect(() => { if (typeof window !== 'undefined' && window.Artplayer && window.Hls) setLibsLoaded(true); }, []);
@@ -314,8 +314,10 @@ export default function WatchPage() {
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
-    // ✅ تحديد النسبة: إذا كان يوتيوب وتليجرام -> 16/7، غير ذلك -> 16/9
+    // ✅ تحديد النسبة بناءً على تليجرام
     const aspectRatio = (viewMode === 'youtube' && isTelegram) ? '16/7' : '16/9';
+    // ✅ إضافة كلاس خاص في حالة تليجرام
+    const telegramClass = (viewMode === 'youtube' && isTelegram) ? 'telegram-ratio' : '';
 
     return (
         <div className="page-container">
@@ -330,7 +332,7 @@ export default function WatchPage() {
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
-                <div className="player-wrapper" ref={playerWrapperRef}>
+                <div className={`player-wrapper ${telegramClass}`} ref={playerWrapperRef}>
                     {viewMode === 'native' && <NativeArtPlayer videoData={videoData} user={user} libsLoaded={libsLoaded} onPlayerReady={(art) => { artPlayerInstanceRef.current = art; }} />}
                     {viewMode === 'youtube' && <YoutubePlyrPlayer videoData={videoData} user={user} />}
                 </div>
@@ -350,7 +352,6 @@ export default function WatchPage() {
                 
                 .player-wrapper { 
                     position: relative; width: 100%; max-width: 900px; 
-                    /* ✅ تطبيق النسبة المتغيرة */
                     aspect-ratio: ${aspectRatio};
                     background: #111; 
                     overflow: visible !important; 
@@ -359,6 +360,18 @@ export default function WatchPage() {
                     transition: aspect-ratio 0.3s ease;
                 }
 
+                /* ✅✅✅ إجبار Plyr على احترام النسبة 16:7 في تليجرام */
+                .player-wrapper.telegram-ratio .plyr__video-embed,
+                .player-wrapper.telegram-ratio .plyr__video-wrapper {
+                    aspect-ratio: 16/7 !important;
+                    padding-bottom: 42.85% !important; /* = (7/16)*100 */
+                }
+                
+                .player-wrapper.telegram-ratio .plyr iframe {
+                   /* تكبير الفيديو ليغطي المساحة بدون حواف سوداء إذا لزم الأمر */
+                   transform: scale(1.05); 
+                }
+                
                 .player-wrapper .plyr { width: 100%; height: 100%; border-radius: 8px; overflow: hidden; }
                 .artplayer-app { width: 100%; height: 100%; border-radius: 8px; overflow: hidden; }
                 
@@ -396,6 +409,8 @@ export default function WatchPage() {
                     width: 100% !important; 
                     height: 100% !important; 
                     border-radius: 0 !important; 
+                    padding-bottom: 0 !important; /* إلغاء الـ padding في وضع ملء الشاشة */
+                    aspect-ratio: unset !important;
                 }
                 
                 .plyr--fullscreen-active .plyr__controls {
