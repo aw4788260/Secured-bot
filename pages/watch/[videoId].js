@@ -1,6 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
@@ -45,7 +45,7 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (موبايل - Native)
+// 3. مكون مشغل Artplayer (للموبايل Native)
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -122,11 +122,11 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
 
 // =========================================================================
-// 4. مكون مشغل Plyr (كمبيوتر/أونلاين) - تم إصلاح زر التشغيل ✅
+// 4. مكون مشغل Plyr (للكمبيوتر) - تم إصلاح زر التشغيل 100%
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
-    // نستخدم state لحفظ المشغل بدلاً من ref لضمان تحديث الـ events
-    const [playerInstance, setPlayerInstance] = useState(null);
+    // نستخدم ref للوصول للمشغل مباشرة دون الاعتماد على state
+    const ref = useRef(null);
     const [isPaused, setIsPaused] = useState(true);
 
     const plyrSource = {
@@ -141,41 +141,41 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
 
-    // هذا الـ Ref Callback هو الحل السحري لمشكلة عدم استجابة الزر
-    const refCallback = useCallback((node) => {
-        if (node && node.plyr) {
-            setPlayerInstance(node.plyr);
-        }
-    }, []);
-
-    // ربط الأحداث بمجرد توفر المشغل
+    // مراقبة الأحداث
     useEffect(() => {
-        if (!playerInstance) return;
-
-        const onPlay = () => setIsPaused(false);
-        const onPause = () => setIsPaused(true);
-        const onEnded = () => setIsPaused(true);
-
-        playerInstance.on('play', onPlay);
-        playerInstance.on('playing', onPlay);
-        playerInstance.on('pause', onPause);
-        playerInstance.on('ended', onEnded);
+        // Plyr-react يضع المشغل داخل ref.current.plyr
+        const player = ref.current?.plyr;
         
-        // تنظيف عند الخروج
-        return () => {
-            playerInstance.off('play', onPlay);
-            playerInstance.off('playing', onPlay);
-            playerInstance.off('pause', onPause);
-            playerInstance.off('ended', onEnded);
-        };
-    }, [playerInstance]);
+        if (player) {
+            const handlePlay = () => setIsPaused(false);
+            const handlePause = () => setIsPaused(true);
+            const handleEnd = () => setIsPaused(true);
+
+            player.on('play', handlePlay);
+            player.on('playing', handlePlay);
+            player.on('pause', handlePause);
+            player.on('ended', handleEnd);
+            player.on('ready', () => {
+                // عند الجاهزية، نتأكد أن الحالة صحيحة
+                if (player.paused) setIsPaused(true);
+            });
+        }
+    });
 
     const handleCoverClick = () => {
-        if (playerInstance) {
-            // إخفاء الستارة فوراً لتحسين تجربة المستخدم
-            setIsPaused(false);
-            // تشغيل الفيديو
-            playerInstance.play();
+        // 1. إجبار الستارة على الاختفاء فوراً (لتعطي إحساس بالاستجابة)
+        setIsPaused(false);
+        
+        // 2. محاولة تشغيل الفيديو
+        const player = ref.current?.plyr;
+        if (player) {
+            try {
+                player.play();
+            } catch (e) {
+                console.error("Play error:", e);
+                // إذا فشل التشغيل، نعيد الستارة
+                setIsPaused(true); 
+            }
         }
     };
 
@@ -184,9 +184,10 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     return (
         <div className="secure-plyr-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
             
-            {/* استخدام refCallback بدلاً من ref العادي */}
-            <Plyr ref={refCallback} key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
+            {/* استخدام ref المباشر */}
+            <Plyr ref={ref} key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
             
+            {/* شرط الستارة: تظهر فقط إذا كان متوقفاً */}
             {isPaused && (
                 <div className="pause-cover" onClick={handleCoverClick}>
                     <div className="big-play-btn">▶</div>
@@ -196,7 +197,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
             <PlyrWatermark user={user} />
 
             <style jsx global>{`
-                /* الحماية: منع الضغط على iframe يوتيوب */
+                /* الحماية: منع الضغط على iframe يوتيوب نهائياً */
                 .secure-plyr-wrapper .plyr__video-embed iframe {
                     pointer-events: none !important;
                 }
@@ -205,13 +206,14 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
                     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
                     background-image: url('${posterUrl}');
                     background-size: cover; background-position: center;
-                    z-index: 60;
+                    z-index: 60; /* أعلى من الفيديو */
                     display: flex; justify-content: center; align-items: center;
                     cursor: pointer;
+                    transition: opacity 0.3s;
                 }
                 .pause-cover::before {
                     content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                    background: rgba(0, 0, 0, 0.4);
+                    background: rgba(0, 0, 0, 0.5); /* تعتيم الخلفية */
                 }
                 .big-play-btn {
                     position: relative; z-index: 2;
@@ -221,10 +223,11 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
                     color: white; font-size: 35px; padding-left: 5px;
                     box-shadow: 0 4px 20px rgba(0,0,0,0.6);
                     transition: transform 0.2s, background 0.2s;
+                    pointer-events: none; /* السماح للضغط بالمرور للغطاء نفسه */
                 }
                 .pause-cover:hover .big-play-btn { transform: scale(1.1); background: #0ea5e9; }
                 
-                /* رفع أزرار Plyr لتكون قابلة للضغط فوق الستارة لو حدث خطأ */
+                /* هام جداً: رفع أزرار التحكم الخاصة بـ Plyr لتكون فوق الستارة في حال حدث خطأ */
                 .plyr__controls { z-index: 70 !important; }
             `}</style>
         </div>
@@ -314,8 +317,8 @@ export default function WatchPage() {
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
     // استراتيجية التشغيل:
-    // موبايل + أوفلاين متاح = Native Artplayer
-    // أي حالة أخرى (كمبيوتر أو موبايل أونلاين) = Secure Plyr
+    // موبايل + أوفلاين = Native Artplayer
+    // غير ذلك = Secure Plyr
     const shouldUseNativePlayer = isMobile && videoData?.offline_mode === true;
 
     return (
