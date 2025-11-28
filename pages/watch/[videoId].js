@@ -10,7 +10,7 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية
+// 2. مكون العلامة المائية (لـ Plyr - تم تطبيق منطق الملف الأصلي 4)
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -19,24 +19,26 @@ const PlyrWatermark = ({ user }) => {
         if (!user) return;
         
         const move = () => {
+            // ✅ منطق الملف الأصلي (File 4) لحساب الموقع الآمن
             const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
             
             let minTop = 5, maxTop = 80; 
             
+            // في حالة تليجرام والوضع العمودي، نضيق النطاق لتجنب الـ Notch والأشرطة
             if (isTelegram && isPortrait) { 
                 minTop = 38; 
                 maxTop = 58; 
             }
             
             const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
-            const l = Math.floor(Math.random() * 80) + 5;
+            const l = Math.floor(Math.random() * 80) + 5; // 5% هامش أمان يسار
             
             setPos({ top: `${t}%`, left: `${l}%` });
         };
 
         const interval = setInterval(move, 5000);
-        move();
+        move(); // تحريك فوري
         return () => clearInterval(interval);
     }, [user]);
 
@@ -55,6 +57,7 @@ const PlyrWatermark = ({ user }) => {
 
 // =========================================================================
 // 3. مكون مشغل Artplayer (الوضع Native)
+// ✅ تم نسخ الكود الأصلي (File 4) حرفياً مع منطق العلامة المائية الخاص به
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -90,9 +93,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
         const art = new window.Artplayer({
             container: artRef.current,
-            url: startUrl,
-            // ✅ إصلاح مشكلة الكمبيوتر: تحديد النوع صراحةً ليعرف أنه M3U8 ويشغل customType
-            type: 'm3u8', 
+            url: startUrl, 
             quality: qualityList,
             title: title,
             volume: 0.7,
@@ -157,6 +158,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
 
+            // ✅✅✅ تطبيق نفس منطق الحركة من File 4 للعلامة الداخلية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
@@ -176,6 +178,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
+            // منطق اللمس (Gestures)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -253,7 +256,6 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        // modestbranding لم يعد فعالاً جداً، الحل في الـ CSS بالأسفل
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
@@ -283,6 +285,8 @@ export default function WatchPage() {
     const [viewMode, setViewMode] = useState(null);
 
     useEffect(() => {
+        // عند فتح الصفحة، نفحص هل كائنات Artplayer و Hls موجودة في window؟
+        // إذا كانت موجودة (لأنك لم تغلق التطبيق)، نتخطى الانتظار ونعتبرها محملة
         if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
             setLibsLoaded(true);
         }
@@ -385,6 +389,7 @@ export default function WatchPage() {
                 </div>
             )}
 
+            {/* زر التحميل منفصل وخارج المشغل */}
             {isNativeAndroid && viewMode === 'native' && (
                 <button onClick={handleDownloadClick} className="download-button-native">
                     ⬇️ تحميل الفيديو (أوفلاين)
@@ -434,11 +439,6 @@ export default function WatchPage() {
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone .icon { font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
                 .gesture-zone.center .icon { font-size: 30px; }
-
-                /* ✅ إصلاح أمان اليوتيوب (منع الضغط على روابط Iframe) */
-                .plyr__video-embed iframe {
-                    pointer-events: none !important;
-                }
             `}</style>
         </div>
     );
