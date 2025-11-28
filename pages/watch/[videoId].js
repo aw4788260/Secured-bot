@@ -45,30 +45,11 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native) - يرسل الأخطاء لـ Vercel
+// 3. مكون مشغل Artplayer (الوضع Native)
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerReady }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
-
-    // دالة لإرسال الأخطاء إلى Vercel Logs
-    const logErrorToVercel = (type, data) => {
-        try {
-            fetch('/api/log-error', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    errorType: type,
-                    errorDetails: data,
-                    userId: user?.id || 'unknown',
-                    videoId: videoData?.id || 'unknown',
-                    userAgent: navigator.userAgent
-                })
-            });
-        } catch (err) {
-            console.error("Failed to send log to Vercel", err);
-        }
-    };
 
     const normalizeQuality = (val) => {
         const num = parseInt(val);
@@ -142,30 +123,25 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
                     
                     if (window.Hls && window.Hls.isSupported()) {
                         const hls = new window.Hls({
-                            maxBufferLength: 30, 
-                            enableWorker: true,
+                            maxBufferLength: 30, enableWorker: true,
+                            xhrSetup: function (xhr, url) {
+                                // ✅ زيادة الأمان: منع إرسال الكوكيز وبيانات الاعتماد
+                                xhr.withCredentials = false;
+                            }
                         });
                         
                         hls.loadSource(url);
                         hls.attachMedia(video);
                         
-                        // ✅ تسجيل الأخطاء وإرسالها إلى Vercel
                         hls.on(window.Hls.Events.ERROR, function (event, data) {
                             if (data.fatal) {
-                                // إرسال الخطأ فوراً للسيرفر
-                                logErrorToVercel('HLS_FATAL_ERROR', {
-                                    type: data.type,
-                                    details: data.details,
-                                    response: data.response ? { code: data.response.code, text: data.response.text, url: data.response.url } : 'No Response Data'
-                                });
-
                                 switch (data.type) {
                                     case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                        console.error("Network Error, retrying...");
+                                        console.log("Network error, trying to recover...");
                                         hls.startLoad();
                                         break;
                                     case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                        console.error("Media Error, recovering...");
+                                        console.log("Media error, trying to recover...");
                                         hls.recoverMediaError();
                                         break;
                                     default:
@@ -181,7 +157,6 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
                         video.src = url;
                     } else {
                         art.notice.show = 'المتصفح غير مدعوم';
-                        logErrorToVercel('BROWSER_NOT_SUPPORTED', { userAgent: navigator.userAgent });
                     }
                 },
             },
@@ -380,6 +355,10 @@ export default function WatchPage() {
             <Head>
                 <title>مشاهدة الدرس</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+                
+                {/* ⬇️⬇️⬇️ الحل السحري: إخفاء هوية الموقع عن سيرفرات جوجل ⬇️⬇️⬇️ */}
+                {/* هذا يجعل الكمبيوتر يتصرف كأنه يفتح الرابط مباشرة مثل الموبايل */}
+                <meta name="referrer" content="no-referrer" />
             </Head>
 
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => setHlsReady(true)} />
