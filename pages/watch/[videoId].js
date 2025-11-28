@@ -451,13 +451,24 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* إصلاح أزرار التحكم في Artplayer */
+                /* === إصلاحات Artplayer === */
+                
+                /* 1. رفع شريط التحكم ليظهر فوق الفيديو */
                 .art-bottom { z-index: 100 !important; }
 
-                /* ✅ تم إزالة إجبار الـ CSS هنا ليتم التحكم به عبر الـ JS بناءً على أبعاد الفيديو */
+                /* 2. ✅✅✅ الحل هنا: رفع قائمة الإعدادات لتظهر فوق شريط التحكم */
+                .art-setting { 
+                    z-index: 110 !important; /* لازم يكون أعلى من 100 */
+                    margin-bottom: 10px; /* مسافة بسيطة من تحت عشان الشكل */
+                }
 
+                /* إخفاء بعض العناصر غير المطلوبة */
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
+                
+                /* تنسيق العلامة المائية */
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
+                
+                /* تنسيق اللمسات (Gestures) */
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
