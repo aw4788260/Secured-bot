@@ -101,8 +101,6 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             fullscreen: true, fullscreenWeb: true, miniProgressBar: true,
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
-
-            // ⚠️ ملاحظة: قمنا بإزالة moreVideoAttr الثابتة هنا لنتحكم بها ديناميكياً بالأسفل
             
             layers: [
                 {
@@ -160,17 +158,13 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             const video = art.template.$video;
             if (!video) return;
 
-            // ننتظر حتى تتوفر أبعاد الفيديو
             if (video.videoWidth > 0 && video.videoHeight > 0) {
-                const isPortrait = video.videoHeight > video.videoWidth; // هل الفيديو طولي؟
-
+                const isPortrait = video.videoHeight > video.videoWidth; 
                 if (isPortrait) {
-                    // 📱 إذا كان الفيديو طولي: استخدم contain ليظهر كاملاً دون تشويه
                     video.style.width = '100%';
                     video.style.height = '100%';
                     video.style.objectFit = 'contain';
                 } else {
-                    // 💻 إذا كان الفيديو عرضي: استخدم fill لملء الشاشة (إلزامي)
                     video.style.width = '100%';
                     video.style.height = '100%';
                     video.style.objectFit = 'fill';
@@ -181,12 +175,8 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
 
-            // تشغيل دالة الكشف عند الجاهزية
             handleSmartFit();
-
-            // ✅ تشغيل دالة الكشف أيضاً عند تحميل الميتاداتا (لضمان الدقة)
             art.on('video:loadedmetadata', handleSmartFit);
-            // ✅ تشغيل الدالة عند تغيير الجودة (لأن الفيديو يعاد تحميله)
             art.on('video:canplay', handleSmartFit);
 
             const watermarkLayer = art.layers.watermark;
@@ -451,24 +441,33 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* === إصلاحات Artplayer === */
-                
-                /* 1. رفع شريط التحكم ليظهر فوق الفيديو */
+                /* === إصلاحات Artplayer (كما في السابق) === */
                 .art-bottom { z-index: 100 !important; }
-
-                /* 2. ✅✅✅ الحل هنا: رفع قائمة الإعدادات لتظهر فوق شريط التحكم */
                 .art-setting { 
-                    z-index: 110 !important; /* لازم يكون أعلى من 100 */
-                    margin-bottom: 10px; /* مسافة بسيطة من تحت عشان الشكل */
+                    z-index: 110 !important; 
+                    margin-bottom: 10px; 
+                }
+                .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
+
+                /* === ✅ إصلاح قائمة Plyr الطويلة === */
+                /* تحديد أقصى ارتفاع للقائمة وتفعيل السكرول */
+                .plyr__menu__container {
+                    max-height: 220px !important; /* ارتفاع ثابت لضمان عدم اختفائها */
+                    overflow-y: auto !important; /* تفعيل التمرير */
+                    -webkit-overflow-scrolling: touch; /* لتحسين التمرير في الآيفون */
+                    width: 100% !important;
+                }
+                
+                /* تقليل حجم الخط قليلاً داخل القائمة لتستوعب عناصر أكثر */
+                .plyr__menu__container .plyr__control {
+                    font-size: 13px !important;
+                    padding: 8px 10px !important;
                 }
 
-                /* إخفاء بعض العناصر غير المطلوبة */
-                .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
+                /* ======================================= */
                 
-                /* تنسيق العلامة المائية */
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 
-                /* تنسيق اللمسات (Gestures) */
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
