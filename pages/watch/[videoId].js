@@ -10,9 +10,9 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية
+// 2. مكون العلامة المائية (Plyr) - تم التعديل
 // =========================================================================
-const PlyrWatermark = ({ user }) => {
+const PlyrWatermark = ({ user, isFullscreen }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
 
     useEffect(() => {
@@ -20,8 +20,11 @@ const PlyrWatermark = ({ user }) => {
         const move = () => {
             const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+            
+            // تعديل النطاق بناءً على الوضع (ملء الشاشة أم لا)
             let minTop = 5, maxTop = 80; 
-            if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+            if (isTelegram && isPortrait && !isFullscreen) { minTop = 38; maxTop = 58; }
+            
             const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
             const l = Math.floor(Math.random() * 80) + 5;
             setPos({ top: `${t}%`, left: `${l}%` });
@@ -29,15 +32,25 @@ const PlyrWatermark = ({ user }) => {
         const interval = setInterval(move, 5000);
         move();
         return () => clearInterval(interval);
-    }, [user]);
+    }, [user, isFullscreen]);
 
     return (
         <div className="plyr-watermark" style={{
-            position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999,
-            pointerEvents: 'none', padding: '5px 10px', background: 'rgba(0,0,0,0.6)',
-            color: 'rgba(255,255,255,0.8)', fontSize: '12px', borderRadius: '5px',
-            fontWeight: 'bold', transition: 'top 2s ease, left 2s ease',
-            userSelect: 'none', whiteSpace: 'nowrap', textShadow: '1px 1px 2px black'
+            // ✅ التعديل الجوهري: إذا كان ملء الشاشة، تصبح fixed لتظهر فوق الفيديو
+            position: isFullscreen ? 'fixed' : 'absolute', 
+            // ✅ رفع الطبقة لأعلى من الفيديو (الفيديو 999999)
+            zIndex: isFullscreen ? 1000000 : 9999, 
+            
+            top: pos.top, left: pos.left,
+            padding: '8px 16px', 
+            background: 'rgba(0,0,0,0.6)',
+            color: 'rgba(255,255,255,0.9)', 
+            fontSize: '18px', 
+            borderRadius: '8px',
+            fontWeight: '900', 
+            transition: 'top 2s ease, left 2s ease',
+            userSelect: 'none', whiteSpace: 'nowrap', 
+            textShadow: '2px 2px 4px black'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -191,21 +204,41 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 };
 
 // =========================================================================
-// 4. مكون Plyr (Online)
+// 4. مكون Plyr (Online) - تم التعديل
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
+    const plyrRef = useRef(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
     const plyrSource = { type: 'video', sources: [{ src: videoData.youtube_video_id, provider: 'youtube' }] };
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        // تفعيل خيارات ملء الشاشة المختلفة
         fullscreen: { enabled: true, fallback: true, iosNative: true }, 
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
     };
+
+    // ✅ اكتشاف حالة ملء الشاشة لتحديث العلامة المائية
+    useEffect(() => {
+        const player = plyrRef.current?.plyr;
+        if (player) {
+            const onEnter = () => setIsFullscreen(true);
+            const onExit = () => setIsFullscreen(false);
+
+            player.on('enterfullscreen', onEnter);
+            player.on('exitfullscreen', onExit);
+
+            return () => {
+                player.off('enterfullscreen', onEnter);
+                player.off('exitfullscreen', onExit);
+            };
+        }
+    }, [plyrRef]);
+
     return (
         <div className="plyr-container-div" style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <Plyr key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
-            <PlyrWatermark user={user} />
+            <Plyr ref={plyrRef} key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
+            <PlyrWatermark user={user} isFullscreen={isFullscreen} />
         </div>
     );
 };
@@ -225,7 +258,6 @@ export default function WatchPage() {
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
     
-    // ✅ متغير لتحديد هل المستخدم من تليجرام أم لا
     const [isTelegram, setIsTelegram] = useState(false);
 
     useEffect(() => { if (typeof window !== 'undefined' && window.Artplayer && window.Hls) setLibsLoaded(true); }, []);
@@ -241,7 +273,6 @@ export default function WatchPage() {
             setupUser({ id: urlUserId, first_name: params.get("firstName") || "User" });
             if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
         } else if (window.Telegram?.WebApp) {
-            // ✅ اكتشاف تليجرام وتوسيع العرض
             setIsTelegram(true);
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand(); 
@@ -286,8 +317,6 @@ export default function WatchPage() {
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
-    // ✅ تحديد نسبة العرض بناءً على تليجرام
-    // إذا تليجرام ويوتيوب = 16/7، غير ذلك = 16/9
     const aspectRatio = (viewMode === 'youtube' && isTelegram) ? '16/7' : '16/9';
 
     return (
@@ -323,7 +352,6 @@ export default function WatchPage() {
                 
                 .player-wrapper { 
                     position: relative; width: 100%; max-width: 900px; 
-                    /* ✅ تطبيق نسبة العرض الديناميكية */
                     aspect-ratio: ${aspectRatio};
                     background: #111; 
                     overflow: visible !important; 
@@ -354,8 +382,7 @@ export default function WatchPage() {
                     width: auto !important; min-width: 200px !important; right: 10px !important;
                 }
 
-                /* ✅✅✅ إصلاح ملء الشاشة داخل تليجرام ✅✅✅ */
-                /* عندما يضيف Plyr كلاس .plyr--fullscreen-active، نجبر الحاوية على ملء الشاشة */
+                /* ✅ إصلاح ملء الشاشة داخل تليجرام */
                 .plyr--fullscreen-active {
                     position: fixed !important;
                     top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
@@ -364,15 +391,21 @@ export default function WatchPage() {
                     background: #000 !important;
                     border-radius: 0 !important;
                 }
-                
-                /* نضمن أن حاوية المشغل أيضاً تتمدد */
-                .plyr--fullscreen-active .plyr {
-                    width: 100% !important;
-                    height: 100% !important;
-                    border-radius: 0 !important;
+                .plyr--fullscreen-active .plyr { width: 100% !important; height: 100% !important; border-radius: 0 !important; }
+
+                /* ✅ تكبير العلامة المائية لـ Artplayer عبر CSS */
+                .watermark-content { 
+                    padding: 8px 16px !important; 
+                    background: rgba(0, 0, 0, 0.6); 
+                    color: rgba(255, 255, 255, 0.9); 
+                    border-radius: 8px; 
+                    white-space: nowrap; 
+                    font-size: 18px !important; 
+                    font-weight: 900 !important;
+                    text-shadow: 2px 2px 4px black; 
+                    pointer-events: none; 
                 }
 
-                .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
