@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
+// [✅ 1] استيراد useRouter للتنقل البرمجي
+import { useRouter } from 'next/router'; 
 
 export default function App() {
+  const router = useRouter(); // [✅ 2] تفعيل الراوتر
+  
   const [status, setStatus] = useState('جار فحص معلومات المستخدم...');
   const [error, setError] = useState(null);
   const [subjects, setSubjects] = useState([]);
@@ -11,13 +14,13 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState(null); 
   
-  // 1. [✅ حالة لتخزين بصمة الجهاز]
+  // حالة لتخزين بصمة الجهاز
   const [deviceId, setDeviceId] = useState(null);
 
   // ---------------------------------------------------------
   // 🛠️ دالة التحقق من التحديثات
   // ---------------------------------------------------------
-const checkAndTriggerUpdate = async () => {
+  const checkAndTriggerUpdate = async () => {
     if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) {
         return;
     }
@@ -46,16 +49,15 @@ const checkAndTriggerUpdate = async () => {
             // رسالة الإجبار
             const msg = `تحديث ضروري متوفر (v${latestVersionCode})!\n\nلضمان عمل التطبيق، يجب التحديث الآن.\n(الضغط على إلغاء سيغلق التطبيق)`;
             
-            // ✅ إذا ضغط موافق -> حدث
+            // إذا ضغط موافق -> حدث
             if (confirm(msg)) {
                 // تمرير الرابط + رقم الإصدار
                 window.Android.updateApp(apkAsset.browser_download_url, String(latestVersionCode));
             } else {
-                // ⛔️ إذا ضغط إلغاء -> أغلق التطبيق فوراً
+                // إذا ضغط إلغاء -> أغلق التطبيق فوراً
                 if (window.Android.closeApp) {
                     window.Android.closeApp();
                 } else {
-                    // (للمستخدمين القدامى جداً الذين ليس لديهم دالة الإغلاق بعد)
                     alert("عذراً، لا يمكن استخدام التطبيق بدون تحديث.");
                     location.reload(); // إعادة تحميل الصفحة لإظهار الرسالة مرة أخرى
                 }
@@ -157,7 +159,7 @@ const checkAndTriggerUpdate = async () => {
         return;
       }
 
-      // 2. [✅ تعديل] منطق التعامل مع البصمة
+      // منطق التعامل مع البصمة
       if (isAndroidApk) {
         setDeviceId(androidId); // حفظ بصمة الأندرويد
         checkDeviceApi(foundUser.id, androidId, foundUser, true, urlSubjectId, urlMode); 
@@ -178,7 +180,7 @@ const checkAndTriggerUpdate = async () => {
 
   useEffect(() => {
     try {
-      // ✅ استدعاء دالة فحص التحديثات عند بدء التشغيل
+      // استدعاء دالة فحص التحديثات عند بدء التشغيل
       checkAndTriggerUpdate();
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -189,7 +191,7 @@ const checkAndTriggerUpdate = async () => {
       const genericUserId = urlParams.get('userId'); 
       const androidDeviceId = urlParams.get('android_device_id'); 
       
-      // [✅ جديد] التقاط بصمة الجهاز من الرابط إذا وجدت (للمستخدم العائد)
+      // التقاط بصمة الجهاز من الرابط إذا وجدت (للمستخدم العائد)
       const urlDeviceId = urlParams.get('deviceId');
 
       // (الحالة 1: مستخدم APK)
@@ -215,14 +217,11 @@ const checkAndTriggerUpdate = async () => {
                 return;
             }
             
-            // [✅ تعديل هام جداً] التعامل مع البصمة عند العودة
+            // التعامل مع البصمة عند العودة
             if (urlDeviceId) {
-                // إذا كانت البصمة موجودة في الرابط، نحفظها فوراً
                 setDeviceId(urlDeviceId);
                 console.log("Device ID recovered from URL:", urlDeviceId);
             } else {
-                // إذا لم تكن في الرابط (لأي سبب)، نعيد توليدها لضمان عمل الروابط التالية
-                // هذا يمنع إرسال null في الروابط القادمة
                 if (!androidDeviceId) { // إذا لم يكن أندرويد
                     getBrowserFingerprint().then(fp => {
                         setDeviceId(fp);
@@ -312,27 +311,27 @@ const checkAndTriggerUpdate = async () => {
           {selectedChapter.videos.length > 0 ? (
             selectedChapter.videos.map(video => {
               
-              // 3. [✅ هام جداً] إضافة deviceId لكل الروابط
+              // إضافة deviceId لكل الروابط
               let href = '';
-              // إعداد الباراميترات الأساسية (userId + deviceId + firstName)
-              // نتأكد أن deviceId ليس null، إذا كان كذلك نستخدم نص فارغ لتجنب ظهور "null" كنص
               const currentDeviceId = deviceId || '';
               const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${currentDeviceId}`;
               
               let linkClassName = 'button-link';
               let icon = '▶️'; 
               
-              // بما أن كل المحتوى أصبح يوتيوب
               href = `/watch/${video.id}${queryParams}`;
               linkClassName += ' video-link';
 
               return (
                 <li key={video.id}>
-                  <Link href={href}>
-                    <a className={linkClassName}>
+                    {/* [✅ 3] استبدال Link بـ div و onClick لمنع ظهور الرابط */}
+                    <div 
+                        className={linkClassName}
+                        onClick={() => router.push(href)}
+                        style={{ cursor: 'pointer' }}
+                    >
                       {icon} {video.title}
-                    </a>
-                  </Link>
+                    </div>
                 </li>
               );
             })
@@ -431,7 +430,6 @@ const checkAndTriggerUpdate = async () => {
               exams.map(exam => {
                 
                 let href = '';
-                // [✅ تحديث] إضافة البصمة لرابط الامتحان
                 const currentDeviceId = deviceId || '';
                 const baseParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}&deviceId=${currentDeviceId}`;
                 
@@ -445,11 +443,14 @@ const checkAndTriggerUpdate = async () => {
 
                 return (
                   <li key={exam.id}>
-                    <Link href={href}>
-                      <a className="button-link"> 
-                        {examTitle}
-                      </a>
-                    </Link>
+                    {/* [✅ 4] استبدال Link بـ div و onClick للامتحانات أيضاً */}
+                    <div 
+                        className="button-link" 
+                        onClick={() => router.push(href)}
+                        style={{ cursor: 'pointer' }}
+                    >
+                      {examTitle}
+                    </div>
                   </li>
                 );
               })
