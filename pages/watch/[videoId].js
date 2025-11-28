@@ -45,11 +45,30 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native) - مع إصلاح HLS للكمبيوتر
+// 3. مكون مشغل Artplayer (الوضع Native) - يرسل الأخطاء لـ Vercel
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerReady }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
+
+    // دالة لإرسال الأخطاء إلى Vercel Logs
+    const logErrorToVercel = (type, data) => {
+        try {
+            fetch('/api/log-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    errorType: type,
+                    errorDetails: data,
+                    userId: user?.id || 'unknown',
+                    videoId: videoData?.id || 'unknown',
+                    userAgent: navigator.userAgent
+                })
+            });
+        } catch (err) {
+            console.error("Failed to send log to Vercel", err);
+        }
+    };
 
     const normalizeQuality = (val) => {
         const num = parseInt(val);
@@ -59,7 +78,6 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
     };
 
     useEffect(() => {
-        // ✅ عدم البدء إلا عند جاهزية المكتبات والبيانات
         if (!isHlsReady || !isArtReady || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
         if (playerInstance.current) {
@@ -83,7 +101,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
         const art = new window.Artplayer({
             container: artRef.current,
             url: startUrl,
-            type: 'm3u8', // ✅ هذا السطر هو أهم إصلاح للكمبيوتر
+            type: 'm3u8', // ✅ ضروري للكمبيوتر
             quality: qualityList,
             title: title,
             volume: 0.7,
@@ -124,23 +142,30 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
                     
                     if (window.Hls && window.Hls.isSupported()) {
                         const hls = new window.Hls({
-                            maxBufferLength: 30, // تقليل البفر لبدء أسرع
+                            maxBufferLength: 30, 
                             enableWorker: true,
                         });
                         
                         hls.loadSource(url);
                         hls.attachMedia(video);
                         
-                        // التعامل مع الأخطاء بصمت أو طباعتها في الكونسول فقط
+                        // ✅ تسجيل الأخطاء وإرسالها إلى Vercel
                         hls.on(window.Hls.Events.ERROR, function (event, data) {
                             if (data.fatal) {
+                                // إرسال الخطأ فوراً للسيرفر
+                                logErrorToVercel('HLS_FATAL_ERROR', {
+                                    type: data.type,
+                                    details: data.details,
+                                    response: data.response ? { code: data.response.code, text: data.response.text, url: data.response.url } : 'No Response Data'
+                                });
+
                                 switch (data.type) {
                                     case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                        console.error("Network Error (CORS or Connectivity):", data);
+                                        console.error("Network Error, retrying...");
                                         hls.startLoad();
                                         break;
                                     case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                        console.error("Media Error:", data);
+                                        console.error("Media Error, recovering...");
                                         hls.recoverMediaError();
                                         break;
                                     default:
@@ -153,10 +178,10 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
                         art.hls = hls;
                         art.on('destroy', () => hls.destroy());
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        // دعم Safari و iOS الأصلي
                         video.src = url;
                     } else {
                         art.notice.show = 'المتصفح غير مدعوم';
+                        logErrorToVercel('BROWSER_NOT_SUPPORTED', { userAgent: navigator.userAgent });
                     }
                 },
             },
@@ -180,7 +205,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // منطق الإيماءات (Gestures)
+            // Gestures Logic
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -244,7 +269,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
 };
 
 // =========================================================================
-// 4. مكون مشغل Plyr (يوتيوب)
+// 4. مكون مشغل Plyr
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrSource = {
@@ -278,13 +303,11 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
     
-    // ✅ حالة تحميل المكتبات
     const [hlsReady, setHlsReady] = useState(false);
     const [artReady, setArtReady] = useState(false);
     
     const [viewMode, setViewMode] = useState(null);
 
-    // فحص مبدئي
     useEffect(() => {
         if (typeof window !== 'undefined') {
             if (window.Hls) setHlsReady(true);
@@ -359,7 +382,6 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* ✅ استدعاء المكتبات بترتيب صحيح */}
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => setHlsReady(true)} />
             <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => setArtReady(true)} />
 
@@ -395,7 +417,6 @@ export default function WatchPage() {
                 .page-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; box-sizing: border-box; }
                 .center-msg { display: flex; justify-content: center; align-items: center; height: 100vh; color: white; background: #000; }
                 .loading-overlay { position: absolute; z-index: 50; background: #000; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.2rem; }
-                
                 .player-wrapper { 
                     position: relative; width: 100%; max-width: 900px; 
                     aspect-ratio: ${viewMode === 'youtube' ? '16/7' : '16/9'};
