@@ -54,7 +54,7 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native)
+// 3. مكون مشغل Artplayer (الوضع Native) - تم التعديل
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -91,17 +91,27 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         const art = new window.Artplayer({
             container: artRef.current,
             url: startUrl,
-            // ✅ إصلاح مشكلة الكمبيوتر: تحديد النوع صراحةً ليعرف أنه M3U8 ويشغل customType
             type: 'm3u8', 
             quality: qualityList,
             title: title,
             volume: 0.7,
             isLive: false, muted: false, autoplay: false,
-            autoSize: true, autoMini: true, screenshot: false, setting: true,
-            loop: false, flip: false, playbackRate: true, aspectRatio: false,
+            
+            // ✅ تم التعديل: تعطيل الحجم التلقائي لكي نتحكم نحن في الامتلاء
+            autoSize: false, 
+            autoMini: true, screenshot: false, setting: true,
+            loop: false, flip: false, playbackRate: true, 
+            aspectRatio: true, // تفعيل خيار تغيير الأبعاد يدوياً إذا لزم الأمر
             fullscreen: true, fullscreenWeb: true, miniProgressBar: true,
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
+
+            // ✅ تم التعديل: إجبار الفيديو على ملء الحاوية (Fill)
+            moreVideoAttr: {
+                style: 'width: 100%; height: 100%; object-fit: fill;',
+                playsInline: true,
+                'webkit-playsinline': true,
+            },
             
             layers: [
                 {
@@ -156,6 +166,12 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
+
+            // ✅ تأكيد إضافي لفرض الامتلاء بعد تحميل الفيديو
+            const videoElement = art.template.$video;
+            if(videoElement) {
+                videoElement.style.objectFit = 'fill';
+            }
 
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
@@ -253,7 +269,6 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        // modestbranding لم يعد فعالاً جداً، الحل في الـ CSS بالأسفل
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
@@ -427,6 +442,13 @@ export default function WatchPage() {
                 /* إصلاح أزرار التحكم في Artplayer */
                 .art-bottom { z-index: 100 !important; }
 
+                /* ✅ تعديل هام: فرض الامتلاء على عنصر الفيديو داخل Artplayer */
+                .art-video {
+                    object-fit: fill !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                }
+
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
                 .gesture-wrapper { width: 100%; height: 100%; display: flex; }
@@ -435,7 +457,6 @@ export default function WatchPage() {
                 .gesture-zone .icon { font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
                 .gesture-zone.center .icon { font-size: 30px; }
 
-                /* ✅ إصلاح أمان اليوتيوب (منع الضغط على روابط Iframe) */
                 .plyr__video-embed iframe {
                     pointer-events: none !important;
                 }
