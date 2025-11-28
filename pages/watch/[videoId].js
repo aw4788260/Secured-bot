@@ -45,7 +45,7 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native) - تم الإصلاح للكمبيوتر
+// 3. مكون مشغل Artplayer (الوضع Native) - مع إصلاح HLS للكمبيوتر
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -59,7 +59,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
     };
 
     useEffect(() => {
-        // ✅ الشرط الأهم: لا تبدأ إلا إذا تم تحميل المكتبتين (Hls + Artplayer)
+        // ✅ عدم البدء إلا عند جاهزية المكتبات والبيانات
         if (!isHlsReady || !isArtReady || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
         if (playerInstance.current) {
@@ -83,7 +83,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
         const art = new window.Artplayer({
             container: artRef.current,
             url: startUrl,
-            type: 'm3u8', // ✅ ضروري جداً للكمبيوتر
+            type: 'm3u8', // ✅ هذا السطر هو أهم إصلاح للكمبيوتر
             quality: qualityList,
             title: title,
             volume: 0.7,
@@ -121,27 +121,46 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
             customType: {
                 m3u8: function (video, url, art) {
                     if (art.hls) art.hls.destroy();
-                    // ✅ فحص دقيق لدعم HLS.js على الكمبيوتر
+                    
                     if (window.Hls && window.Hls.isSupported()) {
                         const hls = new window.Hls({
-                            maxBufferLength: 300, enableWorker: true,
-                            xhrSetup: function (xhr) { xhr.withCredentials = false; }
+                            maxBufferLength: 30, // تقليل البفر لبدء أسرع
+                            enableWorker: true,
                         });
+                        
                         hls.loadSource(url);
                         hls.attachMedia(video);
+                        
+                        // التعامل مع الأخطاء بصمت أو طباعتها في الكونسول فقط
+                        hls.on(window.Hls.Events.ERROR, function (event, data) {
+                            if (data.fatal) {
+                                switch (data.type) {
+                                    case window.Hls.ErrorTypes.NETWORK_ERROR:
+                                        console.error("Network Error (CORS or Connectivity):", data);
+                                        hls.startLoad();
+                                        break;
+                                    case window.Hls.ErrorTypes.MEDIA_ERROR:
+                                        console.error("Media Error:", data);
+                                        hls.recoverMediaError();
+                                        break;
+                                    default:
+                                        hls.destroy();
+                                        break;
+                                }
+                            }
+                        });
+
                         art.hls = hls;
                         art.on('destroy', () => hls.destroy());
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        // للهواتف والمتصفحات الداعمة
+                        // دعم Safari و iOS الأصلي
                         video.src = url;
                     } else {
-                        art.notice.show = 'عذراً، المتصفح لا يدعم تشغيل هذا الفيديو';
+                        art.notice.show = 'المتصفح غير مدعوم';
                     }
                 },
             },
         });
-
-        art.notice.show = function() {}; 
 
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
@@ -161,7 +180,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // Gestures Logic (نفس المنطق السابق)
+            // منطق الإيماءات (Gestures)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -225,7 +244,7 @@ const NativeArtPlayer = ({ videoData, user, isHlsReady, isArtReady, onPlayerRead
 };
 
 // =========================================================================
-// 4. مكون مشغل Plyr
+// 4. مكون مشغل Plyr (يوتيوب)
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrSource = {
@@ -259,13 +278,13 @@ export default function WatchPage() {
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
     
-    // ✅ فصلنا حالة تحميل المكتبات للتأكد من كل واحدة
+    // ✅ حالة تحميل المكتبات
     const [hlsReady, setHlsReady] = useState(false);
     const [artReady, setArtReady] = useState(false);
     
     const [viewMode, setViewMode] = useState(null);
 
-    // فحص مبدئي إذا كانت المكتبات محملة مسبقاً (عند التنقل بين الصفحات)
+    // فحص مبدئي
     useEffect(() => {
         if (typeof window !== 'undefined') {
             if (window.Hls) setHlsReady(true);
@@ -340,7 +359,7 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* ✅ استدعاء المكتبات مع تحديث الحالة المنفصلة */}
+            {/* ✅ استدعاء المكتبات بترتيب صحيح */}
             <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => setHlsReady(true)} />
             <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => setArtReady(true)} />
 
@@ -352,8 +371,8 @@ export default function WatchPage() {
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
-                            isHlsReady={hlsReady} // ✅ تمرير حالة Hls
-                            isArtReady={artReady} // ✅ تمرير حالة Artplayer
+                            isHlsReady={hlsReady} 
+                            isArtReady={artReady} 
                             onPlayerReady={(art) => { artPlayerInstanceRef.current = art; }}
                         />
                     )}
