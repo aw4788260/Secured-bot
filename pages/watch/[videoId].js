@@ -2,10 +2,13 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
-import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// 1. استيراد Plyr (للوضع الأونلاين)
+// 1. استيراد المكتبات المثبتة محلياً (بدلاً من CDN)
+import Artplayer from 'artplayer';
+import Hls from 'hls.js';
+
+// استيراد Plyr (للوضع الأونلاين)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
@@ -45,9 +48,9 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native/Offline)
+// 3. مكون مشغل Artplayer (الوضع Native/Offline) - النسخة المستقرة
 // =========================================================================
-const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
+const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
@@ -59,8 +62,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     };
 
     useEffect(() => {
-        // التأكد من تحميل المكتبات
-        if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
+        if (!user || !videoData || !artRef.current) return;
 
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
@@ -77,10 +79,11 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             url: q.url,
         }));
         
-        const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || "";
+        // إذا لم يكن هناك قائمة جودات، استخدم الرابط المباشر
+        const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || videoData.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
-        const art = new window.Artplayer({
+        const art = new Artplayer({
             container: artRef.current,
             url: startUrl, 
             quality: qualityList,
@@ -93,7 +96,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
             
-            // إضافة العلامة المائية
+            // ✅ إصلاح: إضافة العلامة المائية كطبقة
             layers: [
                 {
                     name: 'watermark',
@@ -103,7 +106,6 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
                         transition: 'top 1.5s ease-in-out, left 1.5s ease-in-out'
                     },
                 },
-                // إضافة طبقة اللمس (Gestures)
                 {
                     name: 'gestures',
                     html: `
@@ -114,17 +116,17 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
                         </div>`,
                     style: {
                         position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                        zIndex: 20, pointerEvents: 'none', // تسمح بالضغط من خلالها
+                        zIndex: 20, pointerEvents: 'none', 
                     },
                 }
             ],
             
-            // إعداد HLS (مهم جداً لتشغيل الفيديو على الكمبيوتر)
+            // ✅ إصلاح جوهري: إعداد HLS باستخدام المكتبة المستوردة
             customType: {
                 m3u8: function (video, url, art) {
-                    if (window.Hls.isSupported()) {
+                    if (Hls.isSupported()) {
                         if (art.hls) art.hls.destroy();
-                        const hls = new window.Hls();
+                        const hls = new Hls();
                         hls.loadSource(url);
                         hls.attachMedia(video);
                         art.hls = hls;
@@ -132,7 +134,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                         video.src = url;
                     } else {
-                        art.notice.show = 'عذراً، المتصفح لا يدعم تشغيل الفيديو.';
+                        art.notice.show = 'عذراً، المتصفح لا يدعم تشغيل هذا الفيديو.';
                     }
                 },
             },
@@ -141,11 +143,10 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
             
-            // تحريك العلامة المائية
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
+                const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
                 const isPortrait = window.innerHeight > window.innerWidth;
                 let minTop = 5, maxTop = 80; 
                 if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
@@ -157,13 +158,39 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // تفعيل اللمس
+            // تفعيل اللمس (Gestures)
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             if (wrapper) {
-                wrapper.style.pointerEvents = "auto"; // تفعيل اللمس داخل الطبقة
+                wrapper.style.pointerEvents = "auto";
                 const zones = wrapper.querySelectorAll('.gesture-zone');
-                // ... (نفس منطق اللمس السابق)
-                // (اختصاراً للكود، المنطق موجود في الملف الأصلي)
+                let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
+
+                zones.forEach(zone => {
+                    zone.addEventListener('click', (e) => {
+                        const action = zone.getAttribute('data-action');
+                        if (action === 'toggle') {
+                            clickCount++;
+                            clearTimeout(singleTapTimer);
+                            if (clickCount === 1) {
+                                singleTapTimer = setTimeout(() => { clickCount = 0; }, 300);
+                            } else { art.toggle(); clickCount = 0; }
+                            return;
+                        }
+                        clickCount++;
+                        clearTimeout(singleTapTimer);
+                        clearTimeout(accumulateTimer); 
+                        if (clickCount === 1) {
+                            singleTapTimer = setTimeout(() => { clickCount = 0; }, 250);
+                        } else {
+                            const seconds = (clickCount - 1) * 10;
+                            const isForward = action === 'forward';
+                            accumulateTimer = setTimeout(() => {
+                                if (isForward) art.forward = seconds; else art.backward = seconds;
+                                clickCount = 0;
+                            }, 600);
+                        }
+                    });
+                });
             }
             
             art.on('destroy', () => clearInterval(watermarkInterval));
@@ -171,14 +198,14 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
         playerInstance.current = art;
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
-    }, [libsLoaded, user, videoData]);
+    }, [user, videoData]); // تمت إزالة libsLoaded لأننا قمنا باستيرادها
 
     return <div className="artplayer-app" ref={artRef} style={{ width: '100%', height: '100%' }}></div>;
 };
 
 
 // =========================================================================
-// 4. مكون مشغل Plyr (الوضع Online) - [ ✅ تعديل: طبقة الحماية ]
+// 4. مكون مشغل Plyr (الوضع Online)
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrSource = {
@@ -186,7 +213,6 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
         sources: [{ src: videoData.youtube_video_id, provider: 'youtube' }],
     };
 
-    // إعدادات Plyr لإخفاء ما يمكن إخفاؤه
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
@@ -196,7 +222,7 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
             showinfo: 0, 
             iv_load_policy: 3, 
             modestbranding: 1,
-            disablekb: 1 // تعطيل اختصارات الكيبورد ليوتيوب
+            disablekb: 1 
         },
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
@@ -207,30 +233,15 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
             
             <PlyrWatermark user={user} />
             
-            {/* [✅ طبقة حماية شفافة في الأعلى] */}
-            {/* تغطي عنوان الفيديو وأزرار المشاركة لمنع الضغط عليها */}
+            {/* طبقة الحماية الشفافة */}
             <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '60px', // ارتفاع الشريط العلوي ليوتيوب تقريباً
-                zIndex: 20, // فوق الفيديو ولكن تحت أدوات تحكم Plyr
-                backgroundColor: 'transparent', // شفاف
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '60px',
+                zIndex: 20, backgroundColor: 'transparent', 
             }}></div>
-            
-            {/* [✅ طبقة حماية لزر "يوتيوب" في الأسفل يمين] */}
-            {/* ملاحظة: يوتيوب يغير مكانه أحياناً، لكن هذا يغطي الركن الأيمن السفلي */}
              <div style={{
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: '150px',
-                height: '50px',
-                zIndex: 20,
-                backgroundColor: 'transparent',
+                position: 'absolute', bottom: 0, right: 0, width: '150px', height: '50px',
+                zIndex: 20, backgroundColor: 'transparent',
             }}></div>
-
         </div>
     );
 };
@@ -248,20 +259,7 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
-    const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
-
-    useEffect(() => {
-        // التحقق من تحميل المكتبات (Hls, Artplayer)
-        // نضع تأخير بسيط لضمان تحميل السكريبتات الخارجية
-        const checkLibs = setInterval(() => {
-            if (window.Artplayer && window.Hls) {
-                setLibsLoaded(true);
-                clearInterval(checkLibs);
-            }
-        }, 100);
-        return () => clearInterval(checkLibs);
-    }, []);
     
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
@@ -339,15 +337,7 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
-            {/* تحميل المكتبات بشكل متزامن لضمان عملها على الكمبيوتر */}
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" 
-                strategy="beforeInteractive" 
-            />
-            <Script 
-                src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" 
-                strategy="beforeInteractive"
-            />
+            {/* تم إزالة Script tags لأننا نستخدم import */}
 
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
@@ -357,7 +347,6 @@ export default function WatchPage() {
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
-                            libsLoaded={libsLoaded}
                             onPlayerReady={(art) => { artPlayerInstanceRef.current = art; }}
                         />
                     )}
@@ -391,9 +380,9 @@ export default function WatchPage() {
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
                 }
 
-                /* إجبار وضع ملء الشاشة أن يكون أسود */
-                .player-wrapper:fullscreen, .player-wrapper:-webkit-full-screen {
-                    background-color: #000;
+                .player-wrapper:fullscreen, .player-wrapper:-webkit-full-screen, .player-wrapper:-moz-full-screen {
+                    width: 100%; height: 100%; max-width: none; aspect-ratio: auto; background: #000;
+                    display: flex; align-items: center; justify-content: center;
                 }
                 
                 .player-wrapper .plyr { width: 100%; height: 100%; }
