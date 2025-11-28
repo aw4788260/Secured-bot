@@ -1,18 +1,16 @@
+// pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
+import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
-// ✅ 1. استيراد المكتبات محلياً لضمان العمل على الكمبيوتر والموبايل
-import Artplayer from 'artplayer';
-import Hls from 'hls.js';
-
-// استيراد Plyr (للوضع الأونلاين) بشكل ديناميكي
+// 1. استيراد Plyr (للوضع الأونلاين)
 const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية (لـ Plyr)
+// 2. مكون العلامة المائية
 // =========================================================================
 const PlyrWatermark = ({ user }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -25,19 +23,20 @@ const PlyrWatermark = ({ user }) => {
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
             
             let minTop = 5, maxTop = 80; 
+            
             if (isTelegram && isPortrait) { 
                 minTop = 38; 
                 maxTop = 58; 
             }
             
             const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
-            const l = Math.floor(Math.random() * 80) + 5; 
+            const l = Math.floor(Math.random() * 80) + 5;
             
             setPos({ top: `${t}%`, left: `${l}%` });
         };
 
         const interval = setInterval(move, 5000);
-        move(); 
+        move();
         return () => clearInterval(interval);
     }, [user]);
 
@@ -55,9 +54,9 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native/Offline) - نسخة الـ Import
+// 3. مكون مشغل Artplayer (الوضع Native)
 // =========================================================================
-const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
+const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
     const playerInstance = useRef(null);
 
@@ -69,7 +68,7 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
     };
 
     useEffect(() => {
-        if (!user || !videoData || !artRef.current) return;
+        if (!libsLoaded || !user || !videoData || !artRef.current || !window.Artplayer) return;
 
         if (playerInstance.current) {
             playerInstance.current.destroy(false);
@@ -86,18 +85,20 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
             url: q.url,
         }));
         
-        const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || videoData.url || "";
+        const startUrl = qualityList[middleIndex]?.url || qualityList[0]?.url || "";
         const title = videoData.db_video_title || "مشاهدة الدرس";
 
-        const art = new Artplayer({
+        const art = new window.Artplayer({
             container: artRef.current,
-            url: startUrl, 
+            url: startUrl,
+            // ✅ إصلاح مشكلة الكمبيوتر: تحديد النوع صراحةً ليعرف أنه M3U8 ويشغل customType
+            type: 'm3u8', 
             quality: qualityList,
             title: title,
             volume: 0.7,
             isLive: false, muted: false, autoplay: false,
             autoSize: true, autoMini: true, screenshot: false, setting: true,
-            loop: false, flip: false, playbackRate: true, aspectRatio: true,
+            loop: false, flip: false, playbackRate: true, aspectRatio: false,
             fullscreen: true, fullscreenWeb: true, miniProgressBar: true,
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
@@ -121,95 +122,127 @@ const NativeArtPlayer = ({ videoData, user, onPlayerReady }) => {
                         </div>`,
                     style: {
                         position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                        zIndex: 20, pointerEvents: 'none', 
+                        zIndex: 20, pointerEvents: 'none',
                     },
                 }
             ],
             
             customType: {
                 m3u8: function (video, url, art) {
-                    if (Hls.isSupported()) {
-                        if (art.hls) art.hls.destroy();
-                        const hls = new Hls();
+                    if (art.hls) art.hls.destroy();
+                    if (window.Hls && window.Hls.isSupported()) {
+                        const hls = new window.Hls({
+                            maxBufferLength: 300, enableWorker: true,
+                            xhrSetup: function (xhr) { xhr.withCredentials = false; }
+                        });
                         hls.loadSource(url);
                         hls.attachMedia(video);
+                        hls.on(window.Hls.Events.ERROR, (event, data) => {
+                            if (data.fatal) {
+                                if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                                    hls.destroy(); video.src = url;
+                                } else { hls.destroy(); }
+                            }
+                        });
                         art.hls = hls;
-                        art.on('destroy', () => hls.destroy());
                     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                         video.src = url;
-                    } else {
-                        art.notice.show = 'عذراً، المتصفح لا يدعم تشغيل الفيديو.';
                     }
                 },
             },
         });
 
+        art.notice.show = function() {}; 
+
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
-            
+
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
-                const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+                
+                const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
+                const isPortrait = window.innerHeight > window.innerWidth;
+                
                 let minTop = 5, maxTop = 80; 
                 if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
+                
                 const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
                 const newLeft = Math.floor(Math.random() * 80) + 5;
+                
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
             };
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // تفعيل اللمس
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
-            if (wrapper) {
-                wrapper.style.pointerEvents = "auto"; 
-                const zones = wrapper.querySelectorAll('.gesture-zone');
-                let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
+            const zones = wrapper.querySelectorAll('.gesture-zone');
+            let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
 
-                zones.forEach(zone => {
-                    zone.addEventListener('click', (e) => {
-                        const action = zone.getAttribute('data-action');
-                        if (action === 'toggle') {
-                            clickCount++;
-                            clearTimeout(singleTapTimer);
-                            if (clickCount === 1) {
-                                singleTapTimer = setTimeout(() => { clickCount = 0; }, 300);
-                            } else { art.toggle(); clickCount = 0; }
-                            return;
-                        }
+            zones.forEach(zone => {
+                zone.addEventListener('click', (e) => {
+                    const action = zone.getAttribute('data-action');
+                    if (action === 'toggle') {
                         clickCount++;
                         clearTimeout(singleTapTimer);
-                        clearTimeout(accumulateTimer); 
                         if (clickCount === 1) {
-                            singleTapTimer = setTimeout(() => { clickCount = 0; }, 250);
-                        } else {
-                            const seconds = (clickCount - 1) * 10;
-                            const isForward = action === 'forward';
-                            accumulateTimer = setTimeout(() => {
-                                if (isForward) art.forward = seconds; else art.backward = seconds;
-                                clickCount = 0;
-                            }, 600);
-                        }
-                    });
+                            singleTapTimer = setTimeout(() => { simulateSingleTap(e); clickCount = 0; }, 300);
+                        } else { art.toggle(); clickCount = 0; }
+                        return;
+                    }
+                    clickCount++;
+                    clearTimeout(singleTapTimer);
+                    clearTimeout(accumulateTimer); 
+                    if (clickCount === 1) {
+                        singleTapTimer = setTimeout(() => { simulateSingleTap(e); clickCount = 0; }, 250);
+                    } else {
+                        const seconds = (clickCount - 1) * 10;
+                        const icon = zone.querySelector('.icon');
+                        const isForward = action === 'forward';
+                        if (isForward) icon.innerHTML = `${seconds} <span style="font-size:1.2em">»</span>`;
+                        else icon.innerHTML = `<span style="font-size:1.2em">«</span> ${seconds}`;
+                        showFeedback(icon, true);
+                        accumulateTimer = setTimeout(() => {
+                            if (isForward) art.forward = seconds; else art.backward = seconds;
+                            hideFeedback(icon); clickCount = 0;
+                            setTimeout(() => {
+                                if (isForward) icon.innerHTML = `10 <span style="font-size:1.2em">»</span>`;
+                                else icon.innerHTML = `<span style="font-size:1.2em">«</span> 10`;
+                            }, 300);
+                        }, 600);
+                    }
                 });
-            }
-            
+            });
+
+            const simulateSingleTap = (e) => {
+                const gestureLayer = art.layers.gestures;
+                gestureLayer.style.display = 'none';
+                const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+                if (elementBelow) {
+                    const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY });
+                    elementBelow.dispatchEvent(clickEvent);
+                }
+                gestureLayer.style.display = 'block';
+            };
+            const showFeedback = (el, stayVisible = false) => { if (el) { el.style.opacity = '1'; el.style.transform = 'scale(1.2)'; } };
+            const hideFeedback = (el) => { if (el) { el.style.opacity = '0'; el.style.transform = 'scale(1)'; } };
+
             art.on('destroy', () => clearInterval(watermarkInterval));
         });
 
+        art.on('destroy', () => { if (art.hls) art.hls.destroy(); });
         playerInstance.current = art;
+
         return () => { if (playerInstance.current) playerInstance.current.destroy(false); };
-    }, [user, videoData]);
+    }, [libsLoaded, user, videoData]);
 
     return <div className="artplayer-app" ref={artRef} style={{ width: '100%', height: '100%' }}></div>;
 };
 
 
 // =========================================================================
-// 4. مكون مشغل Plyr (الوضع Online) مع الحماية
+// 4. مكون مشغل Plyr (الوضع Online)
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrSource = {
@@ -220,34 +253,15 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        youtube: { 
-            noCookie: false, 
-            rel: 0, 
-            showinfo: 0, 
-            iv_load_policy: 3, 
-            modestbranding: 1,
-            disablekb: 1 
-        },
+        // modestbranding لم يعد فعالاً جداً، الحل في الـ CSS بالأسفل
+        youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
 
     return (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             <Plyr key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
-            
             <PlyrWatermark user={user} />
-            
-            {/* طبقة حماية علوية لإخفاء العنوان وزر المشاركة */}
-            <div style={{
-                position: 'absolute', top: 0, left: 0, width: '100%', height: '60px',
-                zIndex: 20, backgroundColor: 'transparent', 
-            }}></div>
-            
-            {/* طبقة حماية سفلية لإخفاء زر يوتيوب */}
-             <div style={{
-                position: 'absolute', bottom: 0, right: 0, width: '150px', height: '50px',
-                zIndex: 20, backgroundColor: 'transparent',
-            }}></div>
         </div>
     );
 };
@@ -265,7 +279,14 @@ export default function WatchPage() {
     const [error, setError] = useState(null);
     const [isNativeAndroid, setIsNativeAndroid] = useState(false);
     const [loading, setLoading] = useState(true);      
+    const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.Artplayer && window.Hls) {
+            setLibsLoaded(true);
+        }
+    }, []);
     
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
@@ -343,6 +364,9 @@ export default function WatchPage() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
             </Head>
 
+            <Script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js" strategy="afterInteractive" onLoad={() => { if (window.Artplayer) setLibsLoaded(true); }} />
+            <Script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js" strategy="afterInteractive" onLoad={() => { if (window.Hls) setLibsLoaded(true); }} />
+
             {loading && <div className="loading-overlay">جاري التحميل...</div>}
 
             {!loading && (
@@ -351,6 +375,7 @@ export default function WatchPage() {
                         <NativeArtPlayer 
                             videoData={videoData} 
                             user={user} 
+                            libsLoaded={libsLoaded}
                             onPlayerReady={(art) => { artPlayerInstanceRef.current = art; }}
                         />
                     )}
@@ -399,14 +424,21 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
+                /* إصلاح أزرار التحكم في Artplayer */
                 .art-bottom { z-index: 100 !important; }
+
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
-                .gesture-wrapper { width: 100%; height: 100%; display: flex; pointer-events: none; }
+                .gesture-wrapper { width: 100%; height: 100%; display: flex; }
                 .gesture-zone.left, .gesture-zone.right { width: 30%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone.center { width: 40%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
                 .gesture-zone .icon { font-size: 18px; font-weight: bold; font-family: sans-serif; color: rgba(255, 255, 255, 0.9); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: transparent; padding: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
                 .gesture-zone.center .icon { font-size: 30px; }
+
+                /* ✅ إصلاح أمان اليوتيوب (منع الضغط على روابط Iframe) */
+                .plyr__video-embed iframe {
+                    pointer-events: none !important;
+                }
             `}</style>
         </div>
     );
