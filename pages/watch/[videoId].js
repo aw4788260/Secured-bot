@@ -21,7 +21,7 @@ const PlyrWatermark = ({ user, isFullscreen }) => {
             const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
             
-            // تعديل النطاق بناءً على الوضع (ملء الشاشة أم لا)
+            // تعديل النطاق: لو في وضع ملء الشاشة، بنسيب مساحة أكبر شوية عشان الحواف
             let minTop = 5, maxTop = 80; 
             if (isTelegram && isPortrait && !isFullscreen) { minTop = 38; maxTop = 58; }
             
@@ -36,21 +36,24 @@ const PlyrWatermark = ({ user, isFullscreen }) => {
 
     return (
         <div className="plyr-watermark" style={{
-            // ✅ التعديل الجوهري: إذا كان ملء الشاشة، تصبح fixed لتظهر فوق الفيديو
+            // ✅ الحل الجذري: fixed بتخليها ترتبط بالشاشة مش بالعنصر الأب في حالة ملء الشاشة
             position: isFullscreen ? 'fixed' : 'absolute', 
-            // ✅ رفع الطبقة لأعلى من الفيديو (الفيديو 999999)
-            zIndex: isFullscreen ? 1000000 : 9999, 
+            // ✅ أعلى Z-Index مسموح بيه في المتصفحات لضمان ظهورها فوق أي فيديو
+            zIndex: 2147483647, 
             
             top: pos.top, left: pos.left,
-            padding: '8px 16px', 
-            background: 'rgba(0,0,0,0.6)',
-            color: 'rgba(255,255,255,0.9)', 
-            fontSize: '18px', 
-            borderRadius: '8px',
-            fontWeight: '900', 
+            
+            // ✅ تصغير الخط والحواف كما طلبت
+            padding: '4px 8px', 
+            background: 'rgba(0,0,0,0.5)', // خلفية أخف شوية
+            color: 'rgba(255,255,255,0.7)', // لون أهدى
+            fontSize: '12px', // رجعنا الخط صغير
+            borderRadius: '4px',
+            fontWeight: 'bold', 
             transition: 'top 2s ease, left 2s ease',
             userSelect: 'none', whiteSpace: 'nowrap', 
-            textShadow: '2px 2px 4px black'
+            textShadow: '1px 1px 2px black',
+            pointerEvents: 'none'
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -204,7 +207,7 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 };
 
 // =========================================================================
-// 4. مكون Plyr (Online) - تم التعديل
+// 4. مكون Plyr (Online)
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrRef = useRef(null);
@@ -214,11 +217,12 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        fullscreen: { enabled: true, fallback: true, iosNative: true }, 
+        // بنستخدم fallback عشان نضمن اننا نتحكم في الـ Fullscreen بـ CSS
+        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }, 
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
     };
 
-    // ✅ اكتشاف حالة ملء الشاشة لتحديث العلامة المائية
+    // مراقبة حالة ملء الشاشة
     useEffect(() => {
         const player = plyrRef.current?.plyr;
         if (player) {
@@ -393,16 +397,16 @@ export default function WatchPage() {
                 }
                 .plyr--fullscreen-active .plyr { width: 100% !important; height: 100% !important; border-radius: 0 !important; }
 
-                /* ✅ تكبير العلامة المائية لـ Artplayer عبر CSS */
+                /* ✅ تصغير العلامة المائية لـ Artplayer */
                 .watermark-content { 
-                    padding: 8px 16px !important; 
-                    background: rgba(0, 0, 0, 0.6); 
-                    color: rgba(255, 255, 255, 0.9); 
-                    border-radius: 8px; 
+                    padding: 4px 8px !important; 
+                    background: rgba(0, 0, 0, 0.5); 
+                    color: rgba(255, 255, 255, 0.7); 
+                    border-radius: 4px; 
                     white-space: nowrap; 
-                    font-size: 18px !important; 
-                    font-weight: 900 !important;
-                    text-shadow: 2px 2px 4px black; 
+                    font-size: 12px !important; /* تصغير الخط */
+                    font-weight: bold !important;
+                    text-shadow: 1px 1px 2px black; 
                     pointer-events: none; 
                 }
 
