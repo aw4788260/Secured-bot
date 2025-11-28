@@ -54,7 +54,7 @@ const PlyrWatermark = ({ user }) => {
 };
 
 // =========================================================================
-// 3. مكون مشغل Artplayer (الوضع Native) - تم التعديل
+// 3. مكون مشغل Artplayer (الوضع Native) - التعديل الذكي
 // =========================================================================
 const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
     const artRef = useRef(null);
@@ -96,22 +96,13 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             title: title,
             volume: 0.7,
             isLive: false, muted: false, autoplay: false,
-            
-            // ✅ تم التعديل: تعطيل الحجم التلقائي لكي نتحكم نحن في الامتلاء
-            autoSize: false, 
-            autoMini: true, screenshot: false, setting: true,
-            loop: false, flip: false, playbackRate: true, 
-            aspectRatio: true, // تفعيل خيار تغيير الأبعاد يدوياً إذا لزم الأمر
+            autoSize: false, autoMini: true, screenshot: false, setting: true,
+            loop: false, flip: false, playbackRate: true, aspectRatio: true,
             fullscreen: true, fullscreenWeb: true, miniProgressBar: true,
             mutex: true, backdrop: true, playsInline: true,
             theme: '#38bdf8', lang: 'ar',
 
-            // ✅ تم التعديل: إجبار الفيديو على ملء الحاوية (Fill)
-            moreVideoAttr: {
-                style: 'width: 100%; height: 100%; object-fit: fill;',
-                playsInline: true,
-                'webkit-playsinline': true,
-            },
+            // ⚠️ ملاحظة: قمنا بإزالة moreVideoAttr الثابتة هنا لنتحكم بها ديناميكياً بالأسفل
             
             layers: [
                 {
@@ -164,28 +155,49 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
         art.notice.show = function() {}; 
 
+        // ✅ وظيفة الكشف الذكي عن الأبعاد وتطبيق الستايل المناسب
+        const handleSmartFit = () => {
+            const video = art.template.$video;
+            if (!video) return;
+
+            // ننتظر حتى تتوفر أبعاد الفيديو
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                const isPortrait = video.videoHeight > video.videoWidth; // هل الفيديو طولي؟
+
+                if (isPortrait) {
+                    // 📱 إذا كان الفيديو طولي: استخدم contain ليظهر كاملاً دون تشويه
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'contain';
+                } else {
+                    // 💻 إذا كان الفيديو عرضي: استخدم fill لملء الشاشة (إلزامي)
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'fill';
+                }
+            }
+        };
+
         art.on('ready', () => {
             if (onPlayerReady) onPlayerReady(art);
 
-            // ✅ تأكيد إضافي لفرض الامتلاء بعد تحميل الفيديو
-            const videoElement = art.template.$video;
-            if(videoElement) {
-                videoElement.style.objectFit = 'fill';
-            }
+            // تشغيل دالة الكشف عند الجاهزية
+            handleSmartFit();
+
+            // ✅ تشغيل دالة الكشف أيضاً عند تحميل الميتاداتا (لضمان الدقة)
+            art.on('video:loadedmetadata', handleSmartFit);
+            // ✅ تشغيل الدالة عند تغيير الجودة (لأن الفيديو يعاد تحميله)
+            art.on('video:canplay', handleSmartFit);
 
             const watermarkLayer = art.layers.watermark;
             const moveWatermark = () => {
                 if (!watermarkLayer) return;
-                
                 const isTelegram = !!(window.Telegram && window.Telegram.WebApp);
                 const isPortrait = window.innerHeight > window.innerWidth;
-                
                 let minTop = 5, maxTop = 80; 
                 if (isTelegram && isPortrait) { minTop = 38; maxTop = 58; }
-                
                 const newTop = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
                 const newLeft = Math.floor(Math.random() * 80) + 5;
-                
                 watermarkLayer.style.top = `${newTop}%`;
                 watermarkLayer.style.left = `${newLeft}%`;
             };
@@ -442,12 +454,7 @@ export default function WatchPage() {
                 /* إصلاح أزرار التحكم في Artplayer */
                 .art-bottom { z-index: 100 !important; }
 
-                /* ✅ تعديل هام: فرض الامتلاء على عنصر الفيديو داخل Artplayer */
-                .art-video {
-                    object-fit: fill !important;
-                    width: 100% !important;
-                    height: 100% !important;
-                }
+                /* ✅ تم إزالة إجبار الـ CSS هنا ليتم التحكم به عبر الـ JS بناءً على أبعاد الفيديو */
 
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
