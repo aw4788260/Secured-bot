@@ -111,7 +111,6 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 
         art.notice.show = function() {}; 
 
-        // Smart Fit Logic
         const handleSmartFit = () => {
             const video = art.template.$video;
             if (!video) return;
@@ -143,7 +142,6 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
             moveWatermark();
             const watermarkInterval = setInterval(moveWatermark, 5500);
 
-            // Gestures Logic
             const wrapper = art.layers.gestures.querySelector('.gesture-wrapper');
             const zones = wrapper.querySelectorAll('.gesture-zone');
             let clickCount = 0, singleTapTimer = null, accumulateTimer = null;
@@ -200,11 +198,12 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrOptions = {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
+        // تفعيل خيارات ملء الشاشة المختلفة
+        fullscreen: { enabled: true, fallback: true, iosNative: true }, 
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
-        fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }
     };
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div className="plyr-container-div" style={{ position: 'relative', width: '100%', height: '100%' }}>
             <Plyr key={videoData.youtube_video_id} source={plyrSource} options={plyrOptions} />
             <PlyrWatermark user={user} />
         </div>
@@ -225,6 +224,9 @@ export default function WatchPage() {
     const [loading, setLoading] = useState(true);      
     const [libsLoaded, setLibsLoaded] = useState(false); 
     const [viewMode, setViewMode] = useState(null);
+    
+    // ✅ متغير لتحديد هل المستخدم من تليجرام أم لا
+    const [isTelegram, setIsTelegram] = useState(false);
 
     useEffect(() => { if (typeof window !== 'undefined' && window.Artplayer && window.Hls) setLibsLoaded(true); }, []);
     
@@ -239,7 +241,10 @@ export default function WatchPage() {
             setupUser({ id: urlUserId, first_name: params.get("firstName") || "User" });
             if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
         } else if (window.Telegram?.WebApp) {
+            // ✅ اكتشاف تليجرام وتوسيع العرض
+            setIsTelegram(true);
             window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand(); 
             const u = window.Telegram.WebApp.initDataUnsafe?.user;
             if (u) setupUser(u); else setError("يرجى الفتح من تليجرام.");
         }
@@ -281,6 +286,10 @@ export default function WatchPage() {
 
     if (error) return <div className="center-msg"><h1>{error}</h1></div>;
 
+    // ✅ تحديد نسبة العرض بناءً على تليجرام
+    // إذا تليجرام ويوتيوب = 16/7، غير ذلك = 16/9
+    const aspectRatio = (viewMode === 'youtube' && isTelegram) ? '16/7' : '16/9';
+
     return (
         <div className="page-container">
             <Head>
@@ -314,12 +323,13 @@ export default function WatchPage() {
                 
                 .player-wrapper { 
                     position: relative; width: 100%; max-width: 900px; 
-                    aspect-ratio: ${viewMode === 'youtube' ? '16/7' : '16/9'};
+                    /* ✅ تطبيق نسبة العرض الديناميكية */
+                    aspect-ratio: ${aspectRatio};
                     background: #111; 
-                    /* ✅ إصلاح Plyr: السماح للقائمة بالظهور خارج الحدود */
                     overflow: visible !important; 
                     border-radius: 8px; 
                     box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+                    transition: aspect-ratio 0.3s ease;
                 }
 
                 .player-wrapper .plyr { width: 100%; height: 100%; border-radius: 8px; overflow: hidden; }
@@ -333,29 +343,33 @@ export default function WatchPage() {
                 }
                 .developer-info { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.85rem; color: #777; }
 
-                /* === إصلاحات Artplayer الجذرية === */
-                
-                /* ✅ 1. رفع قائمة الإعدادات لأعلى طبقة ممكنة */
-                .art-setting, .art-layer-setting { 
-                    z-index: 9999 !important; 
-                    bottom: 60px !important; /* رفعها فيزيائياً لتبتعد عن الشريط */
-                }
-
-                /* ✅ 2. جعل شريط التحكم في طبقة أقل من الإعدادات */
-                .art-bottom { 
-                    z-index: 9000 !important; 
-                }
-
+                /* === إصلاحات Artplayer === */
+                .art-setting, .art-layer-setting { z-index: 9999 !important; bottom: 60px !important; }
+                .art-bottom { z-index: 9000 !important; }
                 .art-notice, .art-control-lock, .art-layer-lock, div[data-art-control="lock"] { display: none !important; }
 
-                /* === ✅ إصلاحات Plyr === */
+                /* === إصلاحات Plyr === */
                 .plyr__menu__container {
-                    z-index: 10000 !important; /* التأكد أنها فوق كل شيء */
-                    max-height: 250px !important;
-                    overflow-y: auto !important;
-                    width: auto !important;
-                    min-width: 200px !important; /* لضمان عدم ظهورها بشكل مضغوط */
-                    right: 10px !important; /* تثبيتها يمين الشاشة */
+                    z-index: 10000 !important; max-height: 250px !important; overflow-y: auto !important;
+                    width: auto !important; min-width: 200px !important; right: 10px !important;
+                }
+
+                /* ✅✅✅ إصلاح ملء الشاشة داخل تليجرام ✅✅✅ */
+                /* عندما يضيف Plyr كلاس .plyr--fullscreen-active، نجبر الحاوية على ملء الشاشة */
+                .plyr--fullscreen-active {
+                    position: fixed !important;
+                    top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+                    width: 100vw !important; height: 100vh !important;
+                    z-index: 999999 !important;
+                    background: #000 !important;
+                    border-radius: 0 !important;
+                }
+                
+                /* نضمن أن حاوية المشغل أيضاً تتمدد */
+                .plyr--fullscreen-active .plyr {
+                    width: 100% !important;
+                    height: 100% !important;
+                    border-radius: 0 !important;
                 }
 
                 .watermark-content { padding: 2px 10px; background: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 0.9); border-radius: 4px; white-space: nowrap; font-size: 11px !important; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; }
