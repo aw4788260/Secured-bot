@@ -1,6 +1,6 @@
 // pages/watch/[videoId].js
 import { useRouter } from 'next/router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import Head from 'next/head';
 import Script from 'next/script';
 import dynamic from 'next/dynamic';
@@ -10,7 +10,7 @@ const Plyr = dynamic(() => import('plyr-react'), { ssr: false });
 import 'plyr/dist/plyr.css';
 
 // =========================================================================
-// 2. مكون العلامة المائية (Plyr) - تم التعديل
+// 2. مكون العلامة المائية (Plyr)
 // =========================================================================
 const PlyrWatermark = ({ user, isFullscreen }) => {
     const [pos, setPos] = useState({ top: '10%', left: '10%' });
@@ -21,7 +21,7 @@ const PlyrWatermark = ({ user, isFullscreen }) => {
             const isTelegram = !!(typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp);
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
             
-            // تعديل النطاق: لو في وضع ملء الشاشة، بنسيب مساحة أكبر شوية عشان الحواف
+            // في وضع ملء الشاشة، نستخدم كامل المساحة
             let minTop = 5, maxTop = 80; 
             if (isTelegram && isPortrait && !isFullscreen) { minTop = 38; maxTop = 58; }
             
@@ -29,6 +29,8 @@ const PlyrWatermark = ({ user, isFullscreen }) => {
             const l = Math.floor(Math.random() * 80) + 5;
             setPos({ top: `${t}%`, left: `${l}%` });
         };
+        
+        // تحريك العلامة كل 5 ثواني
         const interval = setInterval(move, 5000);
         move();
         return () => clearInterval(interval);
@@ -36,24 +38,27 @@ const PlyrWatermark = ({ user, isFullscreen }) => {
 
     return (
         <div className="plyr-watermark" style={{
-            // ✅ الحل الجذري: fixed بتخليها ترتبط بالشاشة مش بالعنصر الأب في حالة ملء الشاشة
-            position: isFullscreen ? 'fixed' : 'absolute', 
-            // ✅ أعلى Z-Index مسموح بيه في المتصفحات لضمان ظهورها فوق أي فيديو
-            zIndex: 2147483647, 
+            // عند ملء الشاشة، نستخدم fixed لتخرج العلامة خارج حدود الحاوية وتظهر فوق الفيديو
+            position: isFullscreen ? 'fixed' : 'absolute',
+            // z-index عالي جداً لضمان الظهور، لكن pointer-events تمنع حجب النقر
+            zIndex: 2147483647,
+            top: pos.top, 
+            left: pos.left,
             
-            top: pos.top, left: pos.left,
-            
-            // ✅ تصغير الخط والحواف كما طلبت
+            // تنسيق العلامة
             padding: '4px 8px', 
-            background: 'rgba(0,0,0,0.5)', // خلفية أخف شوية
-            color: 'rgba(255,255,255,0.7)', // لون أهدى
-            fontSize: '12px', // رجعنا الخط صغير
+            background: 'rgba(0,0,0,0.5)', 
+            color: 'rgba(255,255,255,0.7)', 
+            fontSize: '12px', 
             borderRadius: '4px',
             fontWeight: 'bold', 
             transition: 'top 2s ease, left 2s ease',
-            userSelect: 'none', whiteSpace: 'nowrap', 
+            userSelect: 'none', 
+            whiteSpace: 'nowrap', 
             textShadow: '1px 1px 2px black',
-            pointerEvents: 'none'
+            
+            // ✅ هام جداً: هذا السطر يسمح للنقرات بالمرور عبر العلامة المائية للوصول للأزرار تحتها
+            pointerEvents: 'none' 
         }}>
             {user.first_name} ({user.id})
         </div>
@@ -207,28 +212,30 @@ const NativeArtPlayer = ({ videoData, user, libsLoaded, onPlayerReady }) => {
 };
 
 // =========================================================================
-// 4. مكون Plyr (Online)
+// 4. مكون Plyr (Online) - تم الإصلاح
 // =========================================================================
 const YoutubePlyrPlayer = ({ videoData, user }) => {
     const plyrRef = useRef(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const plyrSource = { type: 'video', sources: [{ src: videoData.youtube_video_id, provider: 'youtube' }] };
-    const plyrOptions = {
+    
+    // ✅ الحل: استخدام useMemo لمنع إعادة إنشاء الخيارات وتعطيل المشغل عند تغيير الحالة
+    const plyrOptions = useMemo(() => ({
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
         settings: ['quality', 'speed'],
-        // بنستخدم fallback عشان نضمن اننا نتحكم في الـ Fullscreen بـ CSS
+        // تفعيل خيار fallback وتحديد الحاوية لضمان عمل ملء الشاشة
         fullscreen: { enabled: true, fallback: true, iosNative: true, container: '.player-wrapper' }, 
         youtube: { noCookie: false, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
-    };
+    }), []);
 
-    // مراقبة حالة ملء الشاشة
     useEffect(() => {
         const player = plyrRef.current?.plyr;
         if (player) {
             const onEnter = () => setIsFullscreen(true);
             const onExit = () => setIsFullscreen(false);
 
+            // الاستماع لأحداث ملء الشاشة
             player.on('enterfullscreen', onEnter);
             player.on('exitfullscreen', onExit);
 
@@ -387,6 +394,7 @@ export default function WatchPage() {
                 }
 
                 /* ✅ إصلاح ملء الشاشة داخل تليجرام */
+                /* عندما يضيف Plyr الكلاس للحاوية، نجعلها تملأ الشاشة */
                 .plyr--fullscreen-active {
                     position: fixed !important;
                     top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
@@ -395,7 +403,19 @@ export default function WatchPage() {
                     background: #000 !important;
                     border-radius: 0 !important;
                 }
-                .plyr--fullscreen-active .plyr { width: 100% !important; height: 100% !important; border-radius: 0 !important; }
+                
+                /* نجبر الفيديو والأدوات على أخذ المساحة كاملة */
+                .plyr--fullscreen-active .plyr,
+                .plyr--fullscreen-active .plyr__video-wrapper { 
+                    width: 100% !important; 
+                    height: 100% !important; 
+                    border-radius: 0 !important; 
+                }
+                
+                /* رفع طبقة أدوات التحكم لتظهر فوق الفيديو ولكن تحت العلامة المائية */
+                .plyr--fullscreen-active .plyr__controls {
+                    z-index: 1000000 !important; 
+                }
 
                 /* ✅ تصغير العلامة المائية لـ Artplayer */
                 .watermark-content { 
@@ -404,7 +424,7 @@ export default function WatchPage() {
                     color: rgba(255, 255, 255, 0.7); 
                     border-radius: 4px; 
                     white-space: nowrap; 
-                    font-size: 12px !important; /* تصغير الخط */
+                    font-size: 12px !important; 
                     font-weight: bold !important;
                     text-shadow: 1px 1px 2px black; 
                     pointer-events: none; 
