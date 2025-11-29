@@ -40,25 +40,31 @@ export default async (req, res) => {
             headers: proxyHeaders
         });
         
-        // استخراج الرابط المباشر (كما فعلنا سابقاً)
+        // استخراج الرابط المباشر
         let directUrl = proxyResponse.data.url;
         if (!directUrl && proxyResponse.data.availableQualities && proxyResponse.data.availableQualities.length > 0) {
             const bestQuality = proxyResponse.data.availableQualities.sort((a, b) => b.quality - a.quality)[0];
             directUrl = bestQuality.url;
         }
 
-        // ✅ [جديد] استخراج "المدة" من داخل الرابط بذكاء
+        // =========================================================
+        // ✅ [إصلاح] استخراج المدة بشكل صحيح (مع فك التشفير)
+        // =========================================================
         let videoDuration = "0";
         try {
             if (proxyResponse.data.availableQualities) {
-                // نبحث في الروابط عن كلمة 'dur='
                 for (const q of proxyResponse.data.availableQualities) {
-                    if (q.url && q.url.includes("dur=")) {
-                        // استخدام Regex لاستخراج الرقم
-                        const match = q.url.match(/dur=([\d.]+)/);
-                        if (match && match[1]) {
-                            videoDuration = match[1]; // ستكون مثلاً "542.069"
-                            break; // وجدناها، نتوقف
+                    if (q.url) {
+                        // 1. فك تشفير الرابط لتحويل %3D إلى =
+                        const decodedUrl = decodeURIComponent(q.url);
+                        
+                        // 2. البحث الآن عن dur= بشكل سليم
+                        if (decodedUrl.includes("dur=")) {
+                            const match = decodedUrl.match(/dur=([\d.]+)/);
+                            if (match && match[1]) {
+                                videoDuration = match[1]; // تم الإمساك بها: 542.069
+                                break; 
+                            }
                         }
                     }
                 }
@@ -66,12 +72,13 @@ export default async (req, res) => {
         } catch (e) {
             console.error("Failed to extract duration:", e);
         }
+        // =========================================================
 
         // 5. إرجاع البيانات
         res.status(200).json({ 
             ...proxyResponse.data, 
             url: directUrl, 
-            duration: videoDuration, // ✅ الآن السيرفر يرسل المدة للتطبيق
+            duration: videoDuration, // ✅ الآن سترسل القيمة الصحيحة
             youtube_video_id: data.youtube_video_id,
             db_video_title: data.title,
             subject_name: data.chapters?.subjects?.title,
