@@ -32,6 +32,8 @@ export default function ExamPage() {
 
     // (التحقق من المستخدم والجهاز)
     useEffect(() => {
+        if (!router.isReady) return; // ✅ انتظار تحميل الراوتر
+
         const urlParams = new URLSearchParams(window.location.search);
         const urlUserId = urlParams.get('userId');
         
@@ -58,7 +60,7 @@ export default function ExamPage() {
         
         // (جلب تفاصيل الامتحان)
         // [✅ تعديل] نمرر deviceId أيضاً إذا كان الـ API يحتاجه (للتأكد)
-        fetch(`/api/exams/get-details?examId=${examId}&userId=${effectiveUserId}&deviceId=${effectiveDeviceId}`)
+        fetch(`/api/exams/get-details?examId=${examId}&userId=${effectiveUserId}&deviceId=${effectiveDeviceId || ''}`)
             .then(res => res.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -70,7 +72,7 @@ export default function ExamPage() {
                 setError(err.message);
                 setIsLoading(false);
             });
-    }, [examId, userId, deviceId]); // (يعتمد على examId و userId و deviceId)
+    }, [router.isReady, examId, userId, deviceId]); // (يعتمد على جاهزية الراوتر)
 
 
     // (العداد التنازلي)
@@ -101,7 +103,7 @@ export default function ExamPage() {
         
         const urlParams = new URLSearchParams(window.location.search);
         const currentUserId = urlParams.get('userId') || window.Telegram.WebApp.initDataUnsafe?.user?.id.toString();
-        // [✅ تعديل] جلب البصمة
+        // [✅ تعديل] جلب البصمة من الرابط أو الكويري
         const currentDeviceId = deviceId || urlParams.get('deviceId');
 
         try {
@@ -138,7 +140,7 @@ export default function ExamPage() {
         // جلب البيانات الحالية
         const urlParams = new URLSearchParams(window.location.search);
         const currentUserId = urlParams.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
-        const currentDeviceId = urlParams.get('deviceId'); // [✅ جديد]
+        const currentDeviceId = deviceId || urlParams.get('deviceId'); // [✅ جديد]
 
         const data = {
             attemptId: attemptIdRef.current,
@@ -150,7 +152,7 @@ export default function ExamPage() {
         
         navigator.sendBeacon('/api/exams/submit-attempt', blob);
         
-    }, []); 
+    }, [deviceId]); 
     
     // (دالة تأكيد الخروج - لزر الرجوع)
     const handleBackButtonConfirm = useCallback(() => {
