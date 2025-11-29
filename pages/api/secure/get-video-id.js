@@ -12,16 +12,12 @@ export default async (req, res) => {
     }
 
     try {
-        // 1. التحقق الأمني (يبقى كما هو)
+        // 1. التحقق الأمني
         const hasAccess = await checkUserAccess(userId, lessonId, null, null, deviceId);
         if (!hasAccess) return res.status(403).json({ message: "Access Denied" });
 
-        // 2. جلب إعداد الأوفلاين (يبقى كمعلومة)
-        const { data: setting } = await supabase
-            .from('app_settings')
-            .select('value')
-            .eq('key', 'offline_mode')
-            .single();
+        // 2. جلب إعداد الأوفلاين
+        const { data: setting } = await supabase.from('app_settings').select('value').eq('key', 'offline_mode').single();
         const isOfflineMode = setting ? setting.value === 'true' : true;
 
         // 3. جلب بيانات الفيديو
@@ -33,7 +29,7 @@ export default async (req, res) => {
 
         if (error || !data) return res.status(404).json({ message: "Video not found" });
 
-        // 🛑🛑 [إلغاء الشرط القديم]: الآن نتصل بالبروكسي دائماً للحصول على الرابط
+        // 4. الاتصال بالبروكسي
         if (!PYTHON_PROXY_BASE_URL) return res.status(500).json({ message: "Proxy Config Error" });
         
         const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`; 
@@ -44,10 +40,38 @@ export default async (req, res) => {
             headers: proxyHeaders
         });
         
-        // 4. إرجاع بيانات البروكسي (التي تحتوي على url) + المعلومات الإضافية
+        // استخراج الرابط المباشر (كما فعلنا سابقاً)
+        let directUrl = proxyResponse.data.url;
+        if (!directUrl && proxyResponse.data.availableQualities && proxyResponse.data.availableQualities.length > 0) {
+            const bestQuality = proxyResponse.data.availableQualities.sort((a, b) => b.quality - a.quality)[0];
+            directUrl = bestQuality.url;
+        }
+
+        // ✅ [جديد] استخراج "المدة" من داخل الرابط بذكاء
+        let videoDuration = "0";
+        try {
+            if (proxyResponse.data.availableQualities) {
+                // نبحث في الروابط عن كلمة 'dur='
+                for (const q of proxyResponse.data.availableQualities) {
+                    if (q.url && q.url.includes("dur=")) {
+                        // استخدام Regex لاستخراج الرقم
+                        const match = q.url.match(/dur=([\d.]+)/);
+                        if (match && match[1]) {
+                            videoDuration = match[1]; // ستكون مثلاً "542.069"
+                            break; // وجدناها، نتوقف
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to extract duration:", e);
+        }
+
+        // 5. إرجاع البيانات
         res.status(200).json({ 
-            // ✅ يتم تمرير url (رابط البث) من هنا
             ...proxyResponse.data, 
+            url: directUrl, 
+            duration: videoDuration, // ✅ الآن السيرفر يرسل المدة للتطبيق
             youtube_video_id: data.youtube_video_id,
             db_video_title: data.title,
             subject_name: data.chapters?.subjects?.title,
