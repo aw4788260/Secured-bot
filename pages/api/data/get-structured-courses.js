@@ -1,8 +1,7 @@
 // pages/api/data/get-structured-courses.js
 import { supabase } from '../../../lib/supabaseClient';
 
-// [✅✅ تم الإصلاح]
-// تم حذف التعليقات العربية التي تسببت في الخطأ من داخل الاستعلام
+// ✅ التعديل هنا: أضفنا youtube_video_id للقائمة
 const subjectQuery = `
   id, 
   title,
@@ -16,7 +15,8 @@ const subjectQuery = `
         title, 
         sort_order, 
         type,
-        storage_path 
+        storage_path,
+        youtube_video_id 
     )
   ),
   exams ( 
@@ -36,18 +36,18 @@ export default async (req, res) => {
     let allowedSubjectIds = new Set();
     let finalSubjectsData = [];
 
-    // --- (الخطوة 1 و 2: جلب المواد بنفس الطريقة) ---
-    // (جلب الكورسات الكاملة)
+    // 1. جلب الكورسات الكاملة
     const { data: courseAccess, error: courseErr } = await supabase
       .from('user_course_access')
       .select('course_id')
       .eq('user_id', userId);
     if (courseErr) throw courseErr;
+    
     if (courseAccess && courseAccess.length > 0) {
       const courseIds = courseAccess.map(c => c.course_id);
       const { data: subjectsFromCourses, error: subjectsErr } = await supabase
         .from('subjects')
-        .select(subjectQuery) // <-- استخدام الاستعلام المعدل
+        .select(subjectQuery) // استخدام الاستعلام المعدل
         .in('course_id', courseIds)
         .order('sort_order', { ascending: true })
         .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -58,12 +58,14 @@ export default async (req, res) => {
         finalSubjectsData.push(subject);
       });
     }
-    // (جلب المواد المحددة)
+
+    // 2. جلب المواد المحددة
     const { data: subjectAccess, error: subjectErr } = await supabase
       .from('user_subject_access')
       .select('subject_id')
       .eq('user_id', userId);
     if (subjectErr) throw subjectErr;
+    
     if (subjectAccess && subjectAccess.length > 0) {
       const specificSubjectIds = subjectAccess
         .map(s => s.subject_id)
@@ -71,7 +73,7 @@ export default async (req, res) => {
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
           .from('subjects')
-          .select(subjectQuery) // <-- استخدام الاستعلام المعدل
+          .select(subjectQuery) // استخدام الاستعلام المعدل
           .in('id', specificSubjectIds)
           .order('sort_order', { ascending: true })
           .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -81,7 +83,7 @@ export default async (req, res) => {
       }
     }
 
-    // --- [ جلب "المحاولة الأولى" فقط ] ---
+    // 3. جلب حالة الامتحانات
     const { data: userAttempts, error: attemptError } = await supabase
         .from('user_attempts')
         .select('id, exam_id')
@@ -91,7 +93,6 @@ export default async (req, res) => {
 
     if (attemptError) throw attemptError;
 
-    // (وخريطة لتخزين "أول" محاولة)
     const firstAttemptMap = new Map();
     if (userAttempts) {
         for (const attempt of userAttempts) {
@@ -100,9 +101,8 @@ export default async (req, res) => {
             }
         }
     }
-    // --- [ نهاية التعديل ] ---
 
-    // --- الخطوة 4: [ بناء البيانات ] ---
+    // 4. بناء الرد النهائي
     finalSubjectsData.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
     const structuredData = finalSubjectsData.map(subject => ({
@@ -114,7 +114,6 @@ export default async (req, res) => {
                           videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       })),
 
-      // (تعديل منطق الامتحانات)
       exams: subject.exams
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       .map(exam => {
@@ -130,8 +129,7 @@ export default async (req, res) => {
     res.status(200).json(structuredData); 
 
   } catch (err) {
-    // هذا هو الخطأ الذي ظهر في اللوج
-    console.error("CRITICAL Error in get-structured-data:", err.message, err.stack);
-    res.status(500).json({ message: err.message, details: err.stack });
+    console.error("Error:", err.message);
+    res.status(500).json({ message: err.message });
   }
 };
