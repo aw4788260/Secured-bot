@@ -49,6 +49,17 @@ export default function ResultsPage() {
             });
     }, [attemptId]);
 
+    // ✅ دالة العودة الذكية (تغلق النشاط في الأندرويد، وتعود للقائمة في الويب)
+    const handleBackToMenu = () => {
+        if (typeof window !== 'undefined' && window.Android && window.Android.closeWebView) {
+            // إذا كان داخل التطبيق: أغلق الـ WebView وعد للنشاط السابق
+            window.Android.closeWebView();
+        } else {
+            // إذا كان تليجرام أو متصفح: عد للقائمة الرئيسية مع البيانات
+            router.push(`/app?userId=${userId || ''}&firstName=${firstName || ''}&deviceId=${deviceId || ''}`);
+        }
+    };
+
     if (isLoading) {
          return (
             <div className="app-container loader-container">
@@ -64,8 +75,8 @@ export default function ResultsPage() {
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
                 <Head><title>خطأ</title></Head>
                 <h1>خطأ: {error || "لا يمكن العثور على النتائج."}</h1>
-                {/* (زر العودة هنا أيضاً) */}
-                <button className="back-button" onClick={() => router.back()}>
+                {/* استخدام زر العودة الذكي هنا أيضاً */}
+                <button className="back-button" onClick={handleBackToMenu}>
                     &larr; العودة
                 </button>
             </div>
@@ -97,7 +108,7 @@ export default function ResultsPage() {
                 return (
                     <div key={q.id} className="question-box-result">
                         
-                        {/* [ ✅✅ جديد: عرض الصورة إن وجدت ] */}
+                        {/* [ ✅✅ جديد: عرض الصورة إن وجدت مع تمرير deviceId ] */}
                         {q.image_file_id && (
                         <div className="question-image-container">
                             <img 
@@ -143,17 +154,15 @@ export default function ResultsPage() {
                 );
             })}
             
-            {/* --- [ ✅✅ هذا هو الكود الذي تم إصلاحه ] --- */}
-            {/* (الضغط هنا سيعيدنا إلى app.js بدون تحديد مادة أو وضع) */}
+            {/* --- [ ✅✅ زر العودة الذكي ] --- */}
             <button 
                 className="button-link" 
                 style={{marginTop: '20px'}} 
-                // 3. [✅ تعديل] تمرير deviceId عند العودة للقائمة الرئيسية
-                onClick={() => router.push(`/app?userId=${userId || ''}&firstName=${firstName || ''}&deviceId=${deviceId || ''}`)}
+                onClick={handleBackToMenu}
             >
                 العودة للقائمة الرئيسية
             </button>
-            {/* --- [ نهاية الإصلاح ] --- */}
+            {/* --- [ نهاية التعديل ] --- */}
 
         </div>
     );
