@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
+
 // [✅ 1] استيراد useRouter للتنقل البرمجي
 import { useRouter } from 'next/router'; 
 
