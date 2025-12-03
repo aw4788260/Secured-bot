@@ -20,10 +20,24 @@ export default async (req, res) => {
     if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File missing" });
 
     // 3. إعداد الكاش والتدفق
+    // 3. إعداد الكاش والتدفق
     const stat = fs.statSync(filePath);
+    
+    // ✅ تنظيف الهيدرز التي تمنع الكاش
+    res.removeHeader('Set-Cookie'); // أهم سطر: حذف الكوكيز لمنع Cloudflare من رفض الكاش
+    res.removeHeader('Pragma');     // حذف أي هيدر قديم يمنع الكاش
+    res.removeHeader('Expires');    // الاعتماد فقط على Cache-Control
+
+    // ✅ إعدادات الكاش القوية
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // كاش سنة
+    
+    // كاش للمتصفح (سنة)
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); 
+    
+    // كاش لـ Cloudflare والـ CDNs (سنة)
+    res.setHeader('Surrogate-Control', 'public, max-age=31536000'); 
+
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(data.title)}.pdf"`);
 
     fs.createReadStream(filePath).pipe(res);
