@@ -1,13 +1,28 @@
 // pages/api/data/get-structured-courses.js
 import { supabase } from '../../../lib/supabaseClient';
 
-// ✅ التعديل هنا: أضفنا youtube_video_id للقائمة
+// ✅ تم إضافة pdfs هنا
 const subjectQuery = `
-  id, title, sort_order,
+  id, 
+  title,
+  sort_order,
   chapters (
-    id, title, sort_order,
-    videos ( id, title, sort_order, youtube_video_id ),
-    pdfs ( id, title, sort_order )  // <--- [جديد] إضافة الـ pdfs
+    id,
+    title,
+    sort_order,
+    videos ( 
+        id, 
+        title, 
+        sort_order, 
+        type,
+        storage_path,
+        youtube_video_id 
+    ),
+    pdfs (
+        id,
+        title,
+        sort_order
+    )
   ),
   exams ( 
     id, 
@@ -37,11 +52,12 @@ export default async (req, res) => {
       const courseIds = courseAccess.map(c => c.course_id);
       const { data: subjectsFromCourses, error: subjectsErr } = await supabase
         .from('subjects')
-        .select(subjectQuery) // استخدام الاستعلام المعدل
+        .select(subjectQuery)
         .in('course_id', courseIds)
         .order('sort_order', { ascending: true })
         .order('sort_order', { foreignTable: 'chapters', ascending: true })
         .order('sort_order', { foreignTable: 'chapters.videos', ascending: true });
+        
       if (subjectsErr) throw subjectsErr;
       subjectsFromCourses.forEach(subject => {
         allowedSubjectIds.add(subject.id);
@@ -63,7 +79,7 @@ export default async (req, res) => {
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
           .from('subjects')
-          .select(subjectQuery) // استخدام الاستعلام المعدل
+          .select(subjectQuery)
           .in('id', specificSubjectIds)
           .order('sort_order', { ascending: true })
           .order('sort_order', { foreignTable: 'chapters', ascending: true })
@@ -97,14 +113,16 @@ export default async (req, res) => {
 
     const structuredData = finalSubjectsData.map(subject => ({
       ...subject,
-    chapters: subject.chapters
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-    .map(chapter => ({
-        ...chapter,
-        videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
-        // [جديد] إضافة مصفوفة ملفات PDF
-        pdfs: chapter.pdfs ? chapter.pdfs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : []
-    })),
+      chapters: subject.chapters
+                      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                      .map(chapter => ({
+                          ...chapter,
+                          // ترتيب الفيديوهات
+                          videos: chapter.videos ? chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : [],
+                          // ✅ ترتيب ملفات PDF (مضاف حديثاً)
+                          pdfs: chapter.pdfs ? chapter.pdfs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : []
+                      })),
+
       exams: subject.exams
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       .map(exam => {
@@ -120,7 +138,7 @@ export default async (req, res) => {
     res.status(200).json(structuredData); 
 
   } catch (err) {
-    console.error("Error:", err.message);
+    console.error("Error in get-structured-courses:", err.message);
     res.status(500).json({ message: err.message });
   }
 };
