@@ -3,11 +3,11 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// استيراد ملفات التنسيق الضرورية لظهور الـ PDF بشكل صحيح
+// استيراد تنسيقات react-pdf الضرورية
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// ✅ [إصلاح] استخدام رابط CDN دقيق وصحيح للـ Worker (بصيغة mjs للإصدارات الحديثة)
+// ضبط الـ Worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfViewer() {
@@ -15,7 +15,6 @@ export default function PdfViewer() {
   const { pdfId, userId, deviceId, title } = router.query;
 
   const [numPages, setNumPages] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
   const [windowWidth, setWindowWidth] = useState(0);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -51,11 +50,9 @@ export default function PdfViewer() {
     if (error.message.includes('403')) uiErrorMsg = '⛔ غير مصرح لك (تأكد من الاشتراك أو الجهاز).';
     else if (error.message.includes('404')) uiErrorMsg = '❌ الملف غير موجود.';
     else if (error.message.includes('500')) uiErrorMsg = '⚠️ خطأ في السيرفر.';
-    else if (error.message.includes('worker')) uiErrorMsg = '⚠️ خطأ في تحميل ملفات النظام (Worker).';
-
+    
     setErrorMessage(uiErrorMsg);
     
-    // إرسال اللوج للسيرفر
     if (userId) {
         fetch('/api/log-client', {
             method: 'POST',
@@ -86,7 +83,7 @@ export default function PdfViewer() {
       <div style={{
         padding: '15px', background: '#0f172a', color: 'white',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.3)', zIndex: 100
+        boxShadow: '0 2px 10px rgba(0,0,0,0.3)', zIndex: 100, position: 'sticky', top: 0
       }}>
         <button onClick={() => router.back()} style={{background:'none', border:'none', color:'#38bdf8', fontSize:'16px', cursor:'pointer', fontWeight:'bold'}}>
           &larr; رجوع
@@ -95,7 +92,7 @@ export default function PdfViewer() {
           {title}
         </span>
         <div style={{fontSize:'12px', color:'#94a3b8', minWidth:'40px', textAlign:'left'}}>
-          {numPages ? `${pageNumber} / ${numPages}` : '--'}
+          {numPages ? `${numPages} صفحة` : '--'}
         </div>
       </div>
 
@@ -109,68 +106,55 @@ export default function PdfViewer() {
               </button>
           </div>
       ) : (
-        /* منطقة الـ PDF */
-        <div style={{ flex: 1, overflow: 'auto', position: 'relative', display:'flex', justifyContent:'center', padding:'10px 0' }}>
+        /* منطقة الـ PDF (تمرير عمودي) */
+        <div style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}>
             <Document
                 file={pdfUrl}
                 onLoadSuccess={onDocumentLoadSuccess}
                 onLoadError={onDocumentLoadError}
-                loading={<div style={{color:'white', marginTop:'50px'}}>جاري تحميل الصفحات...</div>}
-                error={<div></div>} // إخفاء الرسالة الافتراضية
+                loading={<div style={{color:'white', marginTop:'50px'}}>جاري تحميل الملف...</div>}
+                error={<div></div>}
             >
-                <div style={{ position: 'relative', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
-                    {/* العلامة المائية */}
-                    <div style={{
-                        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', 
-                        zIndex: 50, pointerEvents: 'none', overflow: 'hidden', opacity: 0.15
-                    }}>
-                        {Array(20).fill(userId).map((uid, i) => (
-                            <div key={i} style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                transform: 'rotate(-30deg)', color: '#000',
-                                fontSize: '16px', fontWeight: 'bold', userSelect: 'none'
-                            }}>
-                                {uid}
-                            </div>
-                        ))}
+                {/* عرض جميع الصفحات */}
+                {numPages && Array.from(new Array(numPages), (el, index) => (
+                    <div key={`page_${index + 1}`} style={{ position: 'relative', marginBottom: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
+                        
+                        {/* ✅ العلامة المائية المعدلة (مرتين فقط وبشفافية عالية) */}
+                        <div style={{
+                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                            display: 'grid',
+                            gridTemplateColumns: '1fr', // عمود واحد
+                            gridTemplateRows: 'repeat(2, 1fr)', // صفين لتوزيع المرتين على طول الصفحة
+                            zIndex: 50, pointerEvents: 'none', overflow: 'hidden',
+                            opacity: 0.08 // ✅ تم تقليل الشفافية لتصبح باهتة جداً
+                        }}>
+                            {Array(2).fill(userId).map((uid, i) => ( // ✅ تم تقليل العدد إلى 2 فقط
+                                <div key={i} style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transform: 'rotate(-30deg)', color: '#000',
+                                    fontSize: '24px', // ✅ زيادة حجم الخط قليلاً ليكون واضحاً
+                                    fontWeight: 'bold', userSelect: 'none'
+                                }}>
+                                    {uid}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {/* الصفحة */}
+                        <Page 
+                            pageNumber={index + 1} 
+                            width={windowWidth > 600 ? 600 : windowWidth} 
+                            renderTextLayer={false} 
+                            renderAnnotationLayer={false}
+                            loading={
+                                <div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white', display:'flex', justifyContent:'center', alignItems:'center', color:'#333'}}>
+                                    جاري تحميل الصفحة {index + 1}...
+                                </div>
+                            }
+                        />
                     </div>
-                    
-                    {/* الصفحة */}
-                    <Page 
-                        pageNumber={pageNumber} 
-                        width={windowWidth > 600 ? 600 : windowWidth} 
-                        renderTextLayer={false} 
-                        renderAnnotationLayer={false} 
-                    />
-                </div>
+                ))}
             </Document>
-        </div>
-      )}
-
-      {/* أزرار التحكم */}
-      {!errorMessage && numPages && (
-        <div style={{
-          padding: '15px', background: '#0f172a', display: 'flex', justifyContent: 'space-around',
-          borderTop: '1px solid #334155', position: 'sticky', bottom: 0, zIndex: 100
-        }}>
-          <button 
-            disabled={pageNumber <= 1}
-            onClick={() => setPageNumber(prev => prev - 1)}
-            className="button-link"
-            style={{width:'auto', padding:'8px 25px', background: pageNumber <= 1 ? '#334155' : '#38bdf8', color: pageNumber <= 1 ? '#94a3b8' : '#0f172a', fontWeight:'bold'}}
-          >
-            السابق
-          </button>
-          
-          <button 
-            disabled={pageNumber >= numPages}
-            onClick={() => setPageNumber(prev => prev + 1)}
-            className="button-link"
-            style={{width:'auto', padding:'8px 25px', background: pageNumber >= numPages ? '#334155' : '#38bdf8', color: pageNumber >= numPages ? '#94a3b8' : '#0f172a', fontWeight:'bold'}}
-          >
-            التالي
-          </button>
         </div>
       )}
     </div>
