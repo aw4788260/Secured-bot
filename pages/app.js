@@ -7,7 +7,7 @@ import { useRouter } from 'next/router';
 export default function App() {
   const router = useRouter(); // [✅ 2] تفعيل الراوتر
   
-  const [status, setStatus] = useState('جار فحص معلومات المستخدم...');
+  const [status, setStatus] = useState('جار فحص معلومات المستخدم... انتظر');
   const [error, setError] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
