@@ -3,21 +3,11 @@ import { supabase } from '../../../lib/supabaseClient';
 
 // ✅ التعديل هنا: أضفنا youtube_video_id للقائمة
 const subjectQuery = `
-  id, 
-  title,
-  sort_order,
+  id, title, sort_order,
   chapters (
-    id,
-    title,
-    sort_order,
-    videos ( 
-        id, 
-        title, 
-        sort_order, 
-        type,
-        storage_path,
-        youtube_video_id 
-    )
+    id, title, sort_order,
+    videos ( id, title, sort_order, youtube_video_id ),
+    pdfs ( id, title, sort_order )  // <--- [جديد] إضافة الـ pdfs
   ),
   exams ( 
     id, 
@@ -107,13 +97,14 @@ export default async (req, res) => {
 
     const structuredData = finalSubjectsData.map(subject => ({
       ...subject,
-      chapters: subject.chapters
-                      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-                      .map(chapter => ({
-                          ...chapter,
-                          videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-                      })),
-
+    chapters: subject.chapters
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    .map(chapter => ({
+        ...chapter,
+        videos: chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+        // [جديد] إضافة مصفوفة ملفات PDF
+        pdfs: chapter.pdfs ? chapter.pdfs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : []
+    })),
       exams: subject.exams
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       .map(exam => {
