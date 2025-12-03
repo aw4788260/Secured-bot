@@ -1,7 +1,7 @@
 // pages/api/data/get-structured-courses.js
 import { supabase } from '../../../lib/supabaseClient';
 
-// ✅ تم إضافة pdfs هنا
+// ✅ هذا هو الاستعلام الصحيح (بدون تعليقات داخلية)
 const subjectQuery = `
   id, 
   title,
@@ -119,7 +119,7 @@ export default async (req, res) => {
                           ...chapter,
                           // ترتيب الفيديوهات
                           videos: chapter.videos ? chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : [],
-                          // ✅ ترتيب ملفات PDF (مضاف حديثاً)
+                          // ترتيب ملفات PDF
                           pdfs: chapter.pdfs ? chapter.pdfs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : []
                       })),
 
