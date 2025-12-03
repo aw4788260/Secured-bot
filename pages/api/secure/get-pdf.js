@@ -4,40 +4,29 @@ import fs from 'fs';
 import path from 'path';
 
 export default async (req, res) => {
-  // استقبال البيانات من الرابط
   const { pdfId, userId, deviceId } = req.query;
-
-  if (!pdfId || !userId || !deviceId) {
-      return res.status(400).json({ message: "Missing data" });
-  }
+  if (!pdfId || !userId || !deviceId) return res.status(400).json({ message: "Missing data" });
 
   try {
-    // 1. التحقق من الصلاحية (الداتا بيز + البصمة)
+    // 1. التحقق الأمني
     const hasAccess = await checkUserAccess(userId, null, pdfId, null, deviceId);
-    if (!hasAccess) return res.status(403).json({ message: "Access Denied by DB" });
+    if (!hasAccess) return res.status(403).json({ message: "Access Denied" });
 
-    // 2. جلب مسار الملف
-    const { data: pdfData } = await supabase.from('pdfs').select('file_path, title').eq('id', pdfId).single();
-    if (!pdfData) return res.status(404).json({ message: "PDF Not found" });
+    // 2. جلب المسار
+    const { data } = await supabase.from('pdfs').select('file_path, title').eq('id', pdfId).single();
+    if (!data) return res.status(404).json({ message: "Not found" });
 
-    const filePath = path.join(process.cwd(), 'storage', 'pdfs', pdfData.file_path);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File missing on disk" });
+    const filePath = path.join(process.cwd(), 'storage', 'pdfs', data.file_path);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File missing" });
 
-    // 3. إعداد الهيدرز (منع الكاش لضمان الأمان الأقصى)
+    // 3. إعداد الكاش والتدفق
     const stat = fs.statSync(filePath);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
-    
-    // منع الكاش لإجبار المتصفح على المرور بالـ Middleware في كل مرة
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(pdfData.title)}.pdf"`);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // كاش سنة
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(data.title)}.pdf"`);
 
-    // 4. إرسال الملف
     fs.createReadStream(filePath).pipe(res);
-
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
