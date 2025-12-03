@@ -3,8 +3,12 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// رابط الـ Worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// استيراد ملفات التنسيق الضرورية لظهور الـ PDF بشكل صحيح
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// ✅ [إصلاح] استخدام رابط CDN دقيق وصحيح للـ Worker (بصيغة mjs للإصدارات الحديثة)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfViewer() {
   const router = useRouter();
@@ -16,22 +20,7 @@ export default function PdfViewer() {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // 1. دالة لإرسال اللوجات إلى السيرفر (PM2)
-  const logErrorToPm2 = (errorMsg) => {
-    // نتأكد أننا لا نرسل اللوج إلا إذا توفرت البيانات الأساسية لتجنب الازدحام
-    if (!userId) return;
-
-    fetch('/api/log-client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            msg: `❌ PDF Failure | PDF ID: ${pdfId} | Error: ${errorMsg}`, 
-            userId: userId 
-        })
-    }).catch(err => console.error("Failed to send log:", err));
-  };
-
-  // 2. ضبط العرض للموبايل
+  // 1. ضبط العرض للموبايل
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setWindowWidth(window.innerWidth);
@@ -41,7 +30,7 @@ export default function PdfViewer() {
     }
   }, []);
 
-  // 3. بناء الرابط فقط عند اكتمال البيانات
+  // 2. بناء الرابط
   useEffect(() => {
     if (router.isReady && pdfId && userId && deviceId) {
         const url = `/api/secure/get-pdf?pdfId=${pdfId}&userId=${userId}&deviceId=${deviceId}`;
@@ -54,27 +43,29 @@ export default function PdfViewer() {
     setErrorMessage(null); 
   }
 
-  // ✅ 4. دالة معالجة الخطأ (تم تحديثها لترسل اللوج)
+  // 3. معالجة الأخطاء
   function onDocumentLoadError(error) {
     console.error('PDF Load Error:', error);
+    let uiErrorMsg = `تعذر فتح الملف: ${error.message}`;
     
-    // تحديد رسالة الخطأ للمستخدم
-    let uiErrorMsg = '';
-    
-    if (error.message.includes('403')) {
-        uiErrorMsg = '⛔ غير مصرح لك بفتح هذا الملف (تأكد من الاشتراك أو الجهاز).';
-    } else if (error.message.includes('404')) {
-        uiErrorMsg = '❌ الملف غير موجود على السيرفر.';
-    } else if (error.message.includes('500')) {
-        uiErrorMsg = '⚠️ حدث خطأ في السيرفر.';
-    } else {
-        uiErrorMsg = `تعذر فتح الملف: ${error.message}`;
-    }
+    if (error.message.includes('403')) uiErrorMsg = '⛔ غير مصرح لك (تأكد من الاشتراك أو الجهاز).';
+    else if (error.message.includes('404')) uiErrorMsg = '❌ الملف غير موجود.';
+    else if (error.message.includes('500')) uiErrorMsg = '⚠️ خطأ في السيرفر.';
+    else if (error.message.includes('worker')) uiErrorMsg = '⚠️ خطأ في تحميل ملفات النظام (Worker).';
 
     setErrorMessage(uiErrorMsg);
-
-    // 🔥 إرسال اللوج للسيرفر ليظهر في PM2
-    logErrorToPm2(error.message);
+    
+    // إرسال اللوج للسيرفر
+    if (userId) {
+        fetch('/api/log-client', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                msg: `❌ PDF Failure | PDF ID: ${pdfId} | Error: ${error.message}`, 
+                userId: userId 
+            })
+        }).catch(() => {});
+    }
   }
 
   // شاشة الانتظار
@@ -112,8 +103,10 @@ export default function PdfViewer() {
       {errorMessage ? (
           <div style={{flex:1, display:'flex', justifyContent:'center', alignItems:'center', flexDirection:'column', padding:'20px'}}>
               <h2 style={{color:'#ef4444', marginBottom:'10px'}}>فشل العرض</h2>
-              <p style={{color:'#cbd5e1', textAlign:'center'}}>{errorMessage}</p>
-              <button onClick={() => window.location.reload()} style={{marginTop:'20px', padding:'10px 20px', background:'#38bdf8', border:'none', borderRadius:'5px'}}>إعادة المحاولة</button>
+              <p style={{color:'#cbd5e1', textAlign:'center', marginBottom:'20px'}}>{errorMessage}</p>
+              <button onClick={() => window.location.reload()} style={{padding:'10px 20px', background:'#38bdf8', border:'none', borderRadius:'5px', fontWeight:'bold', cursor:'pointer'}}>
+                إعادة المحاولة
+              </button>
           </div>
       ) : (
         /* منطقة الـ PDF */
@@ -121,9 +114,9 @@ export default function PdfViewer() {
             <Document
                 file={pdfUrl}
                 onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={onDocumentLoadError} // سيتم استدعاء دالة اللوج هنا
+                onLoadError={onDocumentLoadError}
                 loading={<div style={{color:'white', marginTop:'50px'}}>جاري تحميل الصفحات...</div>}
-                error={<div></div>} 
+                error={<div></div>} // إخفاء الرسالة الافتراضية
             >
                 <div style={{ position: 'relative', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
                     {/* العلامة المائية */}
