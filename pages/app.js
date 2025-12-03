@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
-
-// [✅ 1] استيراد useRouter للتنقل البرمجي
-import { useRouter } from 'next/router'; 
+import { useRouter } from 'next/router'; // [✅] استيراد الراوتر
 
 export default function App() {
-  const router = useRouter(); // [✅ 2] تفعيل الراوتر
+  const router = useRouter(); // [✅] تفعيل الراوتر
   
   const [status, setStatus] = useState('جار فحص معلومات المستخدم...');
   const [error, setError] = useState(null);
@@ -15,8 +13,28 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState(null); 
   
+  // [✅ جديد] حالة لتخزين هل المستخدم أدمن أم لا
+  const [isAdmin, setIsAdmin] = useState(false);
+
   // حالة لتخزين بصمة الجهاز
   const [deviceId, setDeviceId] = useState(null);
+
+  // ---------------------------------------------------------
+  // [✅ جديد] التحقق التلقائي من صلاحية الأدمن
+  // ---------------------------------------------------------
+  useEffect(() => {
+    if (user && user.id) {
+        // بمجرد التعرف على المستخدم، نسأل السيرفر هل هو أدمن؟
+        fetch(`/api/auth/check-admin?userId=${user.id}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.isAdmin) {
+                    setIsAdmin(true); // تفعيل الزر
+                }
+            })
+            .catch(err => console.error("Admin check failed", err));
+    }
+  }, [user]); // يعمل كلما تغير المستخدم (عند الدخول)
 
   // ---------------------------------------------------------
   // 🛠️ دالة التحقق من التحديثات
@@ -30,7 +48,6 @@ export default function App() {
         const urlParams = new URLSearchParams(window.location.search);
         const currentAppVersion = parseInt(urlParams.get('app_ver') || "0"); 
 
-        // رابط الـ API الخاص بك
         const REPO_API_URL = "https://api.github.com/repos/aw4788260/Apk-code-/releases/latest"; 
         const response = await fetch(REPO_API_URL);
         if (!response.ok) return;
@@ -42,25 +59,20 @@ export default function App() {
         const match = tagName.match(/\d+/);
         if (match) latestVersionCode = parseInt(match[0]);
 
-        // المقارنة
         if (latestVersionCode > currentAppVersion) {
             const apkAsset = data.assets.find(asset => asset.name.endsWith(".apk"));
             if (!apkAsset) return;
 
-            // رسالة الإجبار
             const msg = `تحديث ضروري متوفر (v${latestVersionCode})!\n\nلضمان عمل التطبيق، يجب التحديث الآن.\n(الضغط على إلغاء سيغلق التطبيق)`;
             
-            // إذا ضغط موافق -> حدث
             if (confirm(msg)) {
-                // تمرير الرابط + رقم الإصدار
                 window.Android.updateApp(apkAsset.browser_download_url, String(latestVersionCode));
             } else {
-                // إذا ضغط إلغاء -> أغلق التطبيق فوراً
                 if (window.Android.closeApp) {
                     window.Android.closeApp();
                 } else {
                     alert("عذراً، لا يمكن استخدام التطبيق بدون تحديث.");
-                    location.reload(); // إعادة تحميل الصفحة لإظهار الرسالة مرة أخرى
+                    location.reload();
                 }
             }
         }
@@ -181,7 +193,6 @@ export default function App() {
 
   useEffect(() => {
     try {
-      // استدعاء دالة فحص التحديثات عند بدء التشغيل
       checkAndTriggerUpdate();
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -192,7 +203,6 @@ export default function App() {
       const genericUserId = urlParams.get('userId'); 
       const androidDeviceId = urlParams.get('android_device_id'); 
       
-      // التقاط بصمة الجهاز من الرابط إذا وجدت (للمستخدم العائد)
       const urlDeviceId = urlParams.get('deviceId');
 
       // (الحالة 1: مستخدم APK)
@@ -201,9 +211,9 @@ export default function App() {
         const apkUser = { id: androidUserId, first_name: "Loading..." }; 
         checkSubscriptionAndDevice(apkUser, true, androidDeviceId, urlSubjectId, urlMode);
       
-      // (الحالة 2: مستخدم عائد من صفحة النتائج أو رابط خارجي - genericUserId)
+      // (الحالة 2: مستخدم عائد من صفحة النتائج أو رابط خارجي)
       } else if (genericUserId && genericUserId.trim() !== '') {
-        console.log("Running as navigated user (from results)");
+        console.log("Running as navigated user");
         const navigatedUser = { id: genericUserId, first_name: "User" }; 
         
         fetch('/api/auth/check-subscription', { 
@@ -218,28 +228,24 @@ export default function App() {
                 return;
             }
             
-            // التعامل مع البصمة عند العودة
             if (urlDeviceId) {
                 setDeviceId(urlDeviceId);
                 console.log("Device ID recovered from URL:", urlDeviceId);
             } else {
-                if (!androidDeviceId) { // إذا لم يكن أندرويد
+                if (!androidDeviceId) {
                     getBrowserFingerprint().then(fp => {
                         setDeviceId(fp);
-                        console.log("Device ID regenerated for returning user:", fp);
                     });
                 }
             }
 
-            // إكمال عملية التحميل
             fetchSubjects(navigatedUser.id.toString(), navigatedUser, urlSubjectId, urlMode);
         })
         .catch(err => {
            setError('حدث خطأ أثناء التحقق من الاشتراك.');
-           console.error("Error checking subscription:", err);
         });
 
-      // (الحالة 3: مستخدم تليجرام ميني آب)
+      // (الحالة 3: تليجرام ميني آب)
       } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
@@ -252,8 +258,6 @@ export default function App() {
             return;
         }
         
-        console.log("Detected Telegram Platform:", platform);
-        
         if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
           checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
         
@@ -262,7 +266,6 @@ export default function App() {
             .then(res => res.json())
             .then(adminData => {
                 if (adminData.isAdmin) {
-                    console.log("Admin detected on non-allowed platform. Allowing access.");
                     checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
                 } else {
                     setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
@@ -273,7 +276,7 @@ export default function App() {
             });
         }
 
-      // (الحالة 4: مستخدم متصفح عادي)
+      // (الحالة 4: متصفح عادي)
       } else if (typeof window !== 'undefined') {
         setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
         return;
@@ -309,23 +312,20 @@ export default function App() {
         </button>
         <h1>{selectedChapter.title}</h1>
         <ul className="item-list">
+          {/* 1. عرض الفيديوهات */}
           {selectedChapter.videos.length > 0 ? (
             selectedChapter.videos.map(video => {
               
-              // إضافة deviceId لكل الروابط
               let href = '';
               const currentDeviceId = deviceId || '';
               const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${currentDeviceId}`;
               
-              let linkClassName = 'button-link';
+              let linkClassName = 'button-link video-link';
               let icon = '▶️'; 
-              
               href = `/watch/${video.id}${queryParams}`;
-              linkClassName += ' video-link';
 
               return (
-                <li key={video.id}>
-                    {/* [✅ 3] استبدال Link بـ div و onClick لمنع ظهور الرابط */}
+                <li key={`video-${video.id}`}>
                     <div 
                         className={linkClassName}
                         onClick={() => router.push(href)}
@@ -337,7 +337,28 @@ export default function App() {
               );
             })
           ) : (
-            <p style={{ color: '#aaa' }}>لا توجد فيديوهات في هذا الشابتر بعد.</p>
+            <p style={{ color: '#aaa', marginBottom:'10px' }}>(لا توجد فيديوهات)</p>
+          )}
+
+          {/* 2. عرض ملفات PDF */}
+          {selectedChapter.pdfs && selectedChapter.pdfs.length > 0 && (
+            <>
+            <h3 style={{marginTop: '25px', color: '#94a3b8', borderBottom:'1px solid #334155', paddingBottom:'5px', fontSize:'1.1em'}}>📄 المذكرات والملفات</h3>
+            {selectedChapter.pdfs.map(pdf => {
+                const currentDeviceId = deviceId || '';
+                return (
+                    <li key={`pdf-${pdf.id}`}>
+                        <div 
+                            className="button-link"
+                            style={{cursor: 'pointer', borderLeft: '4px solid #ef4444'}}
+                            onClick={() => router.push(`/pdf-viewer/${pdf.id}?userId=${user.id}&deviceId=${currentDeviceId}&title=${encodeURIComponent(pdf.title)}`)}
+                        >
+                          📄 {pdf.title}
+                        </div>
+                    </li>
+                );
+            })}
+            </>
           )}
         </ul>        
         <footer className="developer-info">
@@ -400,7 +421,7 @@ export default function App() {
                 <li key={chapter.id}>
                   <button className="button-link" onClick={() => setSelectedChapter(chapter)}>
                     📁 {chapter.title}
-                    <span>({chapter.videos.length} ملف)</span>
+                    <span>({chapter.videos.length} فيديو)</span>
                   </button>
                 </li>
               ))
@@ -444,7 +465,6 @@ export default function App() {
 
                 return (
                   <li key={exam.id}>
-                    {/* [✅ 4] استبدال Link بـ div و onClick للامتحانات أيضاً */}
                     <div 
                         className="button-link" 
                         onClick={() => router.push(href)}
@@ -472,6 +492,18 @@ export default function App() {
   return (
     <div className="app-container">
       <Head><title>المواد المتاحة</title></Head>
+      
+      {/* [✅ تعديل] زر لوحة تحكم الأدمن (يظهر تلقائياً لأي أدمن مسجل في القاعدة) */}
+      {isAdmin && (
+        <button 
+            className="button-link" 
+            style={{background: '#334155', border: '1px dashed #38bdf8', marginBottom: '20px', justifyContent:'center'}}
+            onClick={() => router.push(`/admin/dashboard?userId=${user.id}&firstName=${user.first_name}`)}
+        >
+            ⚙️ لوحة تحكم الأدمن
+        </button>
+      )}
+
       <h1>المواد المتاحة</h1>
       <ul className="item-list">
         {subjects.length > 0 ? (
