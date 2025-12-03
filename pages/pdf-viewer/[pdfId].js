@@ -1,13 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// استيراد تنسيقات react-pdf الضرورية
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// ضبط الـ Worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PdfViewer() {
@@ -16,10 +14,8 @@ export default function PdfViewer() {
 
   const [numPages, setNumPages] = useState(null);
   const [windowWidth, setWindowWidth] = useState(0);
-  const [pdfUrl, setPdfUrl] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // 1. ضبط العرض للموبايل
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setWindowWidth(window.innerWidth);
@@ -29,20 +25,26 @@ export default function PdfViewer() {
     }
   }, []);
 
-  // 2. بناء الرابط
-  useEffect(() => {
-    if (router.isReady && pdfId && userId && deviceId) {
-        const url = `/api/secure/get-pdf?pdfId=${pdfId}&userId=${userId}&deviceId=${deviceId}`;
-        setPdfUrl(url);
-    }
-  }, [router.isReady, pdfId, userId, deviceId]);
+  // ✅ تجهيز كائن الملف مع الهيدرز (هذا هو التغيير الجوهري)
+  const fileObj = useMemo(() => {
+    if (!pdfId || !userId || !deviceId) return null;
+    return {
+        // الرابط أصبح نظيفاً (بدون userId و deviceId) ليتم تخزينه نسخة واحدة
+        url: `/api/secure/get-pdf?pdfId=${pdfId}`,
+        // البيانات الحساسة تنتقل هنا
+        httpHeaders: {
+            'x-user-id': userId,
+            'x-device-id': deviceId
+        },
+        withCredentials: true
+    };
+  }, [pdfId, userId, deviceId]);
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
     setErrorMessage(null); 
   }
 
-  // 3. معالجة الأخطاء
   function onDocumentLoadError(error) {
     console.error('PDF Load Error:', error);
     let uiErrorMsg = `تعذر فتح الملف: ${error.message}`;
@@ -65,8 +67,7 @@ export default function PdfViewer() {
     }
   }
 
-  // شاشة الانتظار
-  if (!pdfUrl) {
+  if (!fileObj) {
       return (
         <div style={{minHeight:'100vh', background:'#1e293b', display:'flex', justifyContent:'center', alignItems:'center', color:'white', flexDirection:'column'}}>
             <div className="loading-bar" style={{width:'50px', marginBottom:'10px'}}></div>
@@ -79,7 +80,6 @@ export default function PdfViewer() {
     <div style={{ minHeight: '100vh', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
       <Head><title>{title || 'عرض المستند'}</title></Head>
 
-      {/* الشريط العلوي */}
       <div style={{
         padding: '15px', background: '#0f172a', color: 'white',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -96,7 +96,6 @@ export default function PdfViewer() {
         </div>
       </div>
 
-      {/* منطقة عرض الخطأ */}
       {errorMessage ? (
           <div style={{flex:1, display:'flex', justifyContent:'center', alignItems:'center', flexDirection:'column', padding:'20px'}}>
               <h2 style={{color:'#ef4444', marginBottom:'10px'}}>فشل العرض</h2>
@@ -106,51 +105,36 @@ export default function PdfViewer() {
               </button>
           </div>
       ) : (
-        /* منطقة الـ PDF (تمرير عمودي) */
         <div style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}>
             <Document
-                file={pdfUrl}
+                file={fileObj} // ✅ تم استبدال الرابط بالكائن الجديد
                 onLoadSuccess={onDocumentLoadSuccess}
                 onLoadError={onDocumentLoadError}
                 loading={<div style={{color:'white', marginTop:'50px'}}>جاري تحميل الملف...</div>}
                 error={<div></div>}
             >
-                {/* عرض جميع الصفحات */}
                 {numPages && Array.from(new Array(numPages), (el, index) => (
                     <div key={`page_${index + 1}`} style={{ position: 'relative', marginBottom: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
-                        
-                        {/* ✅ العلامة المائية المعدلة (مرتين فقط وبشفافية عالية) */}
                         <div style={{
                             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                            display: 'grid',
-                            gridTemplateColumns: '1fr', // عمود واحد
-                            gridTemplateRows: 'repeat(2, 1fr)', // صفين لتوزيع المرتين على طول الصفحة
-                            zIndex: 50, pointerEvents: 'none', overflow: 'hidden',
-                            opacity: 0.08 // ✅ تم تقليل الشفافية لتصبح باهتة جداً
+                            display: 'grid', gridTemplateColumns: '1fr', gridTemplateRows: 'repeat(2, 1fr)',
+                            zIndex: 50, pointerEvents: 'none', overflow: 'hidden', opacity: 0.08
                         }}>
-                            {Array(2).fill(userId).map((uid, i) => ( // ✅ تم تقليل العدد إلى 2 فقط
+                            {Array(2).fill(userId).map((uid, i) => (
                                 <div key={i} style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    transform: 'rotate(-30deg)', color: '#000',
-                                    fontSize: '24px', // ✅ زيادة حجم الخط قليلاً ليكون واضحاً
-                                    fontWeight: 'bold', userSelect: 'none'
+                                    transform: 'rotate(-30deg)', color: '#000', fontSize: '24px', fontWeight: 'bold', userSelect: 'none'
                                 }}>
                                     {uid}
                                 </div>
                             ))}
                         </div>
-                        
-                        {/* الصفحة */}
                         <Page 
                             pageNumber={index + 1} 
                             width={windowWidth > 600 ? 600 : windowWidth} 
                             renderTextLayer={false} 
                             renderAnnotationLayer={false}
-                            loading={
-                                <div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white', display:'flex', justifyContent:'center', alignItems:'center', color:'#333'}}>
-                                    جاري تحميل الصفحة {index + 1}...
-                                </div>
-                            }
+                            loading={<div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white'}}></div>}
                         />
                     </div>
                 ))}
