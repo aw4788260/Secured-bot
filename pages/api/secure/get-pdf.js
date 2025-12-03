@@ -4,34 +4,38 @@ import fs from 'fs';
 import path from 'path';
 
 export default async (req, res) => {
-  // 1. قراءة البيانات (ندعم الطريقتين: من الرابط أو من الهيدر)
-  const pdfId = req.query.pdfId;
-  const userId = req.headers['x-user-id'] || req.query.userId;
-  const deviceId = req.headers['x-device-id'] || req.query.deviceId;
+  // استقبال البيانات من الرابط
+  const { pdfId, userId, deviceId } = req.query;
 
   if (!pdfId || !userId || !deviceId) {
-      return res.status(400).json({ message: "Missing auth data" });
+      return res.status(400).json({ message: "Missing data" });
   }
 
   try {
-    // 2. التحقق الأمني
+    // 1. التحقق من الصلاحية (الداتا بيز + البصمة)
     const hasAccess = await checkUserAccess(userId, null, pdfId, null, deviceId);
-    if (!hasAccess) return res.status(403).json({ message: "Access Denied" });
+    if (!hasAccess) return res.status(403).json({ message: "Access Denied by DB" });
 
-    // 3. جلب معلومات الملف
+    // 2. جلب مسار الملف
     const { data: pdfData } = await supabase.from('pdfs').select('file_path, title').eq('id', pdfId).single();
-    if (!pdfData) return res.status(404).json({ message: "Not found" });
+    if (!pdfData) return res.status(404).json({ message: "PDF Not found" });
 
     const filePath = path.join(process.cwd(), 'storage', 'pdfs', pdfData.file_path);
     if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File missing on disk" });
 
-    // 4. إعداد الكاش (هنا السر: الرابط أصبح موحداً فالكاش سيعمل للجميع)
+    // 3. إعداد الهيدرز (منع الكاش لضمان الأمان الأقصى)
     const stat = fs.statSync(filePath);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    
+    // منع الكاش لإجبار المتصفح على المرور بالـ Middleware في كل مرة
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(pdfData.title)}.pdf"`);
 
+    // 4. إرسال الملف
     fs.createReadStream(filePath).pipe(res);
 
   } catch (err) {
