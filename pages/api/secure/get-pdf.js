@@ -3,6 +3,14 @@ import { checkUserAccess } from '../../../lib/authHelper';
 import fs from 'fs';
 import path from 'path';
 
+// ✅ هذا هو الحل: إلغاء حد حجم الرد (Response Limit)
+// يسمح هذا بإرسال ملفات أكبر من 4MB عبر الـ API
+export const config = {
+  api: {
+    responseLimit: false,
+  },
+};
+
 export default async (req, res) => {
   const { pdfId, userId, deviceId } = req.query;
   if (!pdfId || !userId || !deviceId) return res.status(400).json({ message: "Missing data" });
@@ -20,28 +28,29 @@ export default async (req, res) => {
     if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File missing" });
 
     // 3. إعداد الكاش والتدفق
-    // 3. إعداد الكاش والتدفق
     const stat = fs.statSync(filePath);
     
-    // ✅ تنظيف الهيدرز التي تمنع الكاش
-    res.removeHeader('Set-Cookie'); // أهم سطر: حذف الكوكيز لمنع Cloudflare من رفض الكاش
-    res.removeHeader('Pragma');     // حذف أي هيدر قديم يمنع الكاش
-    res.removeHeader('Expires');    // الاعتماد فقط على Cache-Control
+    // تنظيف الهيدرز
+    res.removeHeader('Set-Cookie');
+    res.removeHeader('Pragma');
+    res.removeHeader('Expires');
 
-    // ✅ إعدادات الكاش القوية
+    // إعدادات الكاش ونوع الملف
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
-    
-    // كاش للمتصفح (سنة)
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); 
-    
-    // كاش لـ Cloudflare والـ CDNs (سنة)
     res.setHeader('Surrogate-Control', 'public, max-age=31536000'); 
-
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(data.title)}.pdf"`);
 
-    fs.createReadStream(filePath).pipe(res);
+    // إرسال الملف كـ Stream
+    const readStream = fs.createReadStream(filePath);
+    readStream.pipe(res);
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("PDF API Error:", err);
+    // تأكد من عدم إرسال رد JSON إذا كان الـ Stream قد بدأ بالفعل
+    if (!res.headersSent) {
+        res.status(500).json({ message: err.message });
+    }
   }
 };
