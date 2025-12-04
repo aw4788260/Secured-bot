@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { Document, Page, pdfjs } from 'react-pdf';
+import axios from 'axios';
 
-// استيراد تنسيقات react-pdf الضرورية
+// استيراد التنسيقات
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -14,15 +15,13 @@ export default function PdfViewer() {
   const router = useRouter();
   const { pdfId, userId, deviceId, title } = router.query;
 
-  const [numPages, setNumPages] = useState(null);
   const [windowWidth, setWindowWidth] = useState(0);
-  const [pdfUrl, setPdfUrl] = useState(null);
+  const [pdfData, setPdfData] = useState(null); 
+  const [numPages, setNumPages] = useState(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState(null);
-  
-  // ✅ 1. حالة جديدة للتحكم في عدد الصفحات المعروضة (نبدأ بـ 3 صفحات فقط)
   const [renderedPageCount, setRenderedPageCount] = useState(3);
 
-  // ضبط العرض للموبايل
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setWindowWidth(window.innerWidth);
@@ -32,45 +31,56 @@ export default function PdfViewer() {
     }
   }, []);
 
-  // بناء الرابط
   useEffect(() => {
-    if (router.isReady && pdfId && userId && deviceId) {
+    if (router.isReady && pdfId && userId && deviceId && !pdfData) {
         const url = `/api/secure/get-pdf?pdfId=${pdfId}&userId=${userId}&deviceId=${deviceId}`;
-        setPdfUrl(url);
+        fetchPdfAsBlob(url);
     }
   }, [router.isReady, pdfId, userId, deviceId]);
+
+  const fetchPdfAsBlob = async (url) => {
+      try {
+          const response = await axios.get(url, {
+              responseType: 'blob',
+              onDownloadProgress: (progressEvent) => {
+                  const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                  setDownloadProgress(percentCompleted);
+              },
+              headers: {
+                  'x-app-secret': 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only' 
+              }
+          });
+
+          setPdfData(response.data);
+
+      } catch (error) {
+          console.error("Download Error:", error);
+          let msg = "فشل التحميل";
+          if (error.response && error.response.status === 403) msg = "⛔ غير مصرح لك (تأكد من الجهاز والاشتراك)";
+          else if (error.response && error.response.status === 404) msg = "❌ الملف غير موجود";
+          setErrorMessage(msg);
+      }
+  };
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
     setErrorMessage(null);
-    // ✅ عند نجاح التحميل، نعيد تعيين العداد
     setRenderedPageCount(Math.min(3, numPages));
   }
 
-  function onDocumentLoadError(error) {
-    console.error('PDF Load Error:', error);
-    let uiErrorMsg = `تعذر فتح الملف: ${error.message}`;
-    if (error.message.includes('403')) uiErrorMsg = '⛔ غير مصرح لك (تأكد من الاشتراك أو الجهاز).';
-    else if (error.message.includes('404')) uiErrorMsg = '❌ الملف غير موجود.';
-    else if (error.message.includes('500')) uiErrorMsg = '⚠️ خطأ في السيرفر.';
-    setErrorMessage(uiErrorMsg);
-  }
-
-  // ✅ 2. دالة التعامل مع التمرير (Infinite Scroll)
   const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 100; // 100px buffer
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 300;
     if (bottom && numPages && renderedPageCount < numPages) {
-        // تحميل 5 صفحات إضافية عند الوصول للنهاية
         setRenderedPageCount(prev => Math.min(prev + 5, numPages));
     }
   };
 
-  // شاشة الانتظار (قبل جلب الرابط)
-  if (!pdfUrl) {
+  if (!pdfData && !errorMessage) {
       return (
         <div style={{minHeight:'100vh', background:'#1e293b', display:'flex', justifyContent:'center', alignItems:'center', color:'white', flexDirection:'column'}}>
-            <div className="loading-bar" style={{width:'50px', marginBottom:'10px'}}></div>
-            <p>جاري تحضير الملف...</p>
+            <div className="loading-bar" style={{width:'50px', marginBottom:'15px'}}></div>
+            <p style={{fontSize: '18px', fontWeight: 'bold'}}>جاري تحضير الملف...</p>
+            <p style={{color: '#38bdf8', marginTop: '10px', fontSize: '16px', fontWeight: 'bold'}}>{downloadProgress}%</p>
         </div>
       );
   }
@@ -79,7 +89,6 @@ export default function PdfViewer() {
     <div style={{ minHeight: '100vh', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
       <Head><title>{title || 'عرض المستند'}</title></Head>
 
-      {/* الشريط العلوي */}
       <div style={{
         padding: '15px', background: '#0f172a', color: 'white',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -92,11 +101,10 @@ export default function PdfViewer() {
           {title}
         </span>
         <div style={{fontSize:'12px', color:'#94a3b8', minWidth:'40px', textAlign:'left'}}>
-          {numPages ? `${renderedPageCount}/${numPages}` : '--'}
+          {numPages ? `${renderedPageCount} / ${numPages}` : '--'}
         </div>
       </div>
 
-      {/* منطقة عرض الخطأ */}
       {errorMessage ? (
           <div style={{flex:1, display:'flex', justifyContent:'center', alignItems:'center', flexDirection:'column', padding:'20px'}}>
               <h2 style={{color:'#ef4444', marginBottom:'10px'}}>فشل العرض</h2>
@@ -106,23 +114,18 @@ export default function PdfViewer() {
               </button>
           </div>
       ) : (
-        /* ✅ 3. إضافة onScroll للحاوية */
         <div 
             onScroll={handleScroll}
             style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}
         >
             <Document
-                file={pdfUrl}
+                file={pdfData}
                 onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={onDocumentLoadError}
-                loading={<div style={{color:'white', marginTop:'50px'}}>جاري تحميل الملف...</div>}
-                error={<div></div>}
+                loading={<div style={{color:'white', padding:'20px'}}>جاري المعالجة...</div>}
+                error={<div style={{color:'red'}}>خطأ في ملف PDF</div>}
             >
-                {/* ✅ 4. عرض الصفحات بناءً على العداد (renderedPageCount) فقط */}
                 {numPages && Array.from(new Array(renderedPageCount), (el, index) => (
                     <div key={`page_${index + 1}`} style={{ position: 'relative', marginBottom: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
-                        
-                        {/* العلامة المائية */}
                         <div style={{
                             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                             display: 'grid',
@@ -141,8 +144,6 @@ export default function PdfViewer() {
                                 </div>
                             ))}
                         </div>
-                        
-                        {/* الصفحة */}
                         <Page 
                             pageNumber={index + 1} 
                             width={windowWidth > 600 ? 600 : windowWidth} 
@@ -150,16 +151,14 @@ export default function PdfViewer() {
                             renderAnnotationLayer={false}
                             loading={
                                 <div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white', display:'flex', justifyContent:'center', alignItems:'center', color:'#333'}}>
-                                    جاري تحميل الصفحة {index + 1}...
+                                    ...
                                 </div>
                             }
                         />
                     </div>
                 ))}
-                
-                {/* مؤشر التحميل السفلي */}
                 {numPages && renderedPageCount < numPages && (
-                     <div style={{color: '#94a3b8', padding: '20px'}}>جاري تحميل المزيد من الصفحات...</div>
+                     <div style={{color: '#94a3b8', padding: '20px'}}>جاري تحميل المزيد...</div>
                 )}
             </Document>
         </div>
