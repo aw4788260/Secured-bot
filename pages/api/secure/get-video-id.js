@@ -2,7 +2,6 @@ import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
 
-
 const PYTHON_PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 
 export default async (req, res) => {
@@ -13,33 +12,54 @@ export default async (req, res) => {
     }
 
     try {
-        // 1. التحقق الأمني
-        const hasAccess = await checkUserAccess(userId, lessonId, null, null, deviceId);
+        if (!PYTHON_PROXY_BASE_URL) {
+            console.error("Proxy URL missing");
+            return res.status(500).json({ message: "Proxy Config Error" });
+        }
+
+        // =========================================================
+        // 🚀 تحسين 1: تنفيذ التحقق وجلب بيانات الفيديو بالتوازي
+        // =========================================================
+        const [hasAccess, videoDataResult] = await Promise.all([
+            // 1. التحقق الأمني
+            checkUserAccess(userId, lessonId, null, null, deviceId),
+            // 2. جلب بيانات الفيديو (نحتاج youtube_id للخطوة التالية)
+            supabase
+                .from('videos')
+                .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
+                .eq('id', lessonId)
+                .single()
+        ]);
+
+        // التحقق من النتائج
         if (!hasAccess) return res.status(403).json({ message: "Access Denied" });
+        if (videoDataResult.error || !videoDataResult.data) return res.status(404).json({ message: "Video not found" });
 
-        // 2. جلب إعداد الأوفلاين
-        const { data: setting } = await supabase.from('app_settings').select('value').eq('key', 'offline_mode').single();
-        const isOfflineMode = setting ? setting.value === 'true' : true;
+        const data = videoDataResult.data;
 
-        // 3. جلب بيانات الفيديو
-        const { data, error } = await supabase
-            .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
-            .eq('id', lessonId)
-            .single();
-
-        if (error || !data) return res.status(404).json({ message: "Video not found" });
-
-        // 4. الاتصال بالبروكسي
-        if (!PYTHON_PROXY_BASE_URL) return res.status(500).json({ message: "Proxy Config Error" });
-        
-        const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`; 
+        // =========================================================
+        // 🚀 تحسين 2: الاتصال بالبروكسي + جلب الإعدادات بالتوازي
+        // =========================================================
+        const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
         const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
 
-        const proxyResponse = await axios.get(hls_endpoint, { 
-            params: { youtubeId: data.youtube_video_id },
-            headers: proxyHeaders
-        });
+        const [proxyResponse, settingResult] = await Promise.all([
+            // أ) طلب البروكسي (مع زيادة Timeout)
+            axios.get(hls_endpoint, { 
+                params: { youtubeId: data.youtube_video_id },
+                headers: proxyHeaders,
+                timeout: 25000 // ✅ زيادة المهلة لـ 25 ثانية لتجنب أخطاء السكون
+            }),
+            // ب) جلب إعدادات الأوفلاين في نفس الوقت
+            supabase.from('app_settings').select('value').eq('key', 'offline_mode').single()
+        ]);
+
+        // تجهيز قيمة وضع الأوفلاين
+        const isOfflineMode = settingResult.data ? settingResult.data.value === 'true' : true;
+
+        // =========================================================
+        // معالجة الرد (كما هو في الكود الأصلي)
+        // =========================================================
         
         // استخراج الرابط المباشر
         let directUrl = proxyResponse.data.url;
@@ -48,22 +68,17 @@ export default async (req, res) => {
             directUrl = bestQuality.url;
         }
 
-        // =========================================================
-        // ✅ [إصلاح] استخراج المدة بشكل صحيح (مع فك التشفير)
-        // =========================================================
+        // ✅ استخراج المدة (الكود الأصلي السليم)
         let videoDuration = "0";
         try {
             if (proxyResponse.data.availableQualities) {
                 for (const q of proxyResponse.data.availableQualities) {
                     if (q.url) {
-                        // 1. فك تشفير الرابط لتحويل %3D إلى =
                         const decodedUrl = decodeURIComponent(q.url);
-                        
-                        // 2. البحث الآن عن dur= بشكل سليم
                         if (decodedUrl.includes("dur=")) {
                             const match = decodedUrl.match(/dur=([\d.]+)/);
                             if (match && match[1]) {
-                                videoDuration = match[1]; // تم الإمساك بها: 542.069
+                                videoDuration = match[1];
                                 break; 
                             }
                         }
@@ -73,13 +88,12 @@ export default async (req, res) => {
         } catch (e) {
             console.error("Failed to extract duration:", e);
         }
-        // =========================================================
 
-        // 5. إرجاع البيانات
+        // 5. إرجاع البيانات النهائية
         res.status(200).json({ 
             ...proxyResponse.data, 
             url: directUrl, 
-            duration: videoDuration, // ✅ الآن سترسل القيمة الصحيحة
+            duration: videoDuration,
             youtube_video_id: data.youtube_video_id,
             db_video_title: data.title,
             subject_name: data.chapters?.subjects?.title,
@@ -88,6 +102,7 @@ export default async (req, res) => {
         });
 
     } catch (err) {
+        console.error("API Error in get-video-id:", err.message); // تسجيل الخطأ في السيرفر
         res.status(500).json({ message: err.message });
     }
 };
