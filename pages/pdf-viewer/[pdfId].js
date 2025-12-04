@@ -20,7 +20,8 @@ export default function PdfViewer() {
   const [numPages, setNumPages] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [renderedPageCount, setRenderedPageCount] = useState(3);
+  
+  // (تم حذف state: renderedPageCount لأننا سنعرض الكل)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -31,6 +32,7 @@ export default function PdfViewer() {
     }
   }, []);
 
+  // بدء التحميل بمجرد توفر البيانات
   useEffect(() => {
     if (router.isReady && pdfId && userId && deviceId && !pdfData) {
         const url = `/api/secure/get-pdf?pdfId=${pdfId}&userId=${userId}&deviceId=${deviceId}`;
@@ -38,6 +40,7 @@ export default function PdfViewer() {
     }
   }, [router.isReady, pdfId, userId, deviceId]);
 
+  // دالة التحميل الكامل (Blob)
   const fetchPdfAsBlob = async (url) => {
       try {
           const response = await axios.get(url, {
@@ -65,16 +68,12 @@ export default function PdfViewer() {
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
     setErrorMessage(null);
-    setRenderedPageCount(Math.min(3, numPages));
+    // (تم حذف setRenderedPageCount)
   }
 
-  const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 300;
-    if (bottom && numPages && renderedPageCount < numPages) {
-        setRenderedPageCount(prev => Math.min(prev + 5, numPages));
-    }
-  };
+  // (تم حذف دالة handleScroll لأننا لا نحتاج لمراقبة التمرير الآن)
 
+  // شاشة الانتظار (التحميل)
   if (!pdfData && !errorMessage) {
       return (
         <div style={{minHeight:'100vh', background:'#1e293b', display:'flex', justifyContent:'center', alignItems:'center', color:'white', flexDirection:'column'}}>
@@ -89,6 +88,7 @@ export default function PdfViewer() {
     <div style={{ minHeight: '100vh', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
       <Head><title>{title || 'عرض المستند'}</title></Head>
 
+      {/* الشريط العلوي */}
       <div style={{
         padding: '15px', background: '#0f172a', color: 'white',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -101,10 +101,11 @@ export default function PdfViewer() {
           {title}
         </span>
         <div style={{fontSize:'12px', color:'#94a3b8', minWidth:'40px', textAlign:'left'}}>
-          {numPages ? `${renderedPageCount} / ${numPages}` : '--'}
+          {numPages ? `${numPages} صفحة` : '--'}
         </div>
       </div>
 
+      {/* شاشة الخطأ */}
       {errorMessage ? (
           <div style={{flex:1, display:'flex', justifyContent:'center', alignItems:'center', flexDirection:'column', padding:'20px'}}>
               <h2 style={{color:'#ef4444', marginBottom:'10px'}}>فشل العرض</h2>
@@ -114,18 +115,19 @@ export default function PdfViewer() {
               </button>
           </div>
       ) : (
-        <div 
-            onScroll={handleScroll}
-            style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}
-        >
+        /* منطقة العرض (تمت إزالة onScroll) */
+        <div style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}>
             <Document
                 file={pdfData}
                 onLoadSuccess={onDocumentLoadSuccess}
                 loading={<div style={{color:'white', padding:'20px'}}>جاري المعالجة...</div>}
                 error={<div style={{color:'red'}}>خطأ في ملف PDF</div>}
             >
-                {numPages && Array.from(new Array(renderedPageCount), (el, index) => (
+                {/* ✅ عرض جميع الصفحات دفعة واحدة باستخدام numPages */}
+                {numPages && Array.from(new Array(numPages), (el, index) => (
                     <div key={`page_${index + 1}`} style={{ position: 'relative', marginBottom: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
+                        
+                        {/* العلامة المائية */}
                         <div style={{
                             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                             display: 'grid',
@@ -144,22 +146,20 @@ export default function PdfViewer() {
                                 </div>
                             ))}
                         </div>
+                        
+                        {/* الصفحة */}
                         <Page 
                             pageNumber={index + 1} 
                             width={windowWidth > 600 ? 600 : windowWidth} 
                             renderTextLayer={false} 
                             renderAnnotationLayer={false}
+                            // إزالة شاشة التحميل لكل صفحة لأننا نريد عرضاً فورياً
                             loading={
-                                <div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white', display:'flex', justifyContent:'center', alignItems:'center', color:'#333'}}>
-                                    ...
-                                </div>
+                                <div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white'}}></div>
                             }
                         />
                     </div>
                 ))}
-                {numPages && renderedPageCount < numPages && (
-                     <div style={{color: '#94a3b8', padding: '20px'}}>جاري تحميل المزيد...</div>
-                )}
             </Document>
         </div>
       )}
