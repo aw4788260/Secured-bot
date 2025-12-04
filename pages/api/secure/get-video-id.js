@@ -43,6 +43,8 @@ export default async (req, res) => {
         const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
         const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
 
+        console.log(`📡 Connecting to Proxy: ${hls_endpoint} for Video: ${data.youtube_video_id}`);
+
         const [proxyResponse, settingResult] = await Promise.all([
             // أ) طلب البروكسي (مع زيادة Timeout)
             axios.get(hls_endpoint, { 
@@ -102,7 +104,35 @@ export default async (req, res) => {
         });
 
     } catch (err) {
-        console.error("API Error in get-video-id:", err.message); // تسجيل الخطأ في السيرفر
-        res.status(500).json({ message: err.message });
+        // =========================================================
+        // 🛑 منطقة تشخيص الأخطاء التفصيلية (Debug Zone)
+        // =========================================================
+        
+        // طباعة الخطأ كاملاً في التيرمنال
+        console.error("🔥 FULL ERROR DETAILS:", err);
+
+        if (err.response) {
+            // 1. الخطأ جاء من البروكسي (البروكسي رد بكود خطأ مثل 500 أو 400)
+            console.error("❌ Proxy Response Status:", err.response.status);
+            console.error("❌ Proxy Response Data:", err.response.data);
+            
+            return res.status(err.response.status).json({ 
+                message: "Proxy Error", 
+                details: err.response.data 
+            });
+
+        } else if (err.request) {
+            // 2. البروكسي لم يرد أصلاً (مغلق، كراش، أو انتهى الوقت)
+            console.error("❌ No Response from Proxy (Crash or Timeout)");
+            return res.status(503).json({ 
+                message: "Proxy Unreachable (Service Unavailable)",
+                details: "The python proxy did not respond in time or is down."
+            });
+
+        } else {
+            // 3. خطأ في الكود نفسه (Syntax Error أو غيره)
+            console.error("❌ Internal Code Error:", err.message);
+            return res.status(500).json({ message: err.message });
+        }
     }
 };
