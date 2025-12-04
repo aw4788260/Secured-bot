@@ -19,6 +19,14 @@ export default function App() {
   // حالة لتخزين بصمة الجهاز
   const [deviceId, setDeviceId] = useState(null);
 
+  // [✅ جديد] حالة للتحكم في التبويبات (فيديوهات / ملفات)
+  const [activeTab, setActiveTab] = useState('videos'); 
+
+  // [✅ جديد] إعادة تعيين التبويب إلى "فيديوهات" عند الانتقال لشابتر جديد
+  useEffect(() => {
+      setActiveTab('videos');
+  }, [selectedChapter]);
+
   // ---------------------------------------------------------
   // [✅ جديد] التحقق التلقائي من صلاحية الأدمن
   // ---------------------------------------------------------
@@ -302,65 +310,129 @@ export default function App() {
     );
   }
 
-  // --- [ المستوى 3 - عرض الفيديوهات والملفات ] ---
+  // ===================================================================================
+  // 🟢 [تعديل] المستوى 3: عرض الفيديوهات والملفات بنظام التبويبات (مثل الأندرويد)
+  // ===================================================================================
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
         <Head><title>{selectedChapter.title}</title></Head>
+        
+        {/* زر الرجوع */}
         <button className="back-button" onClick={() => setSelectedChapter(null)}>
           &larr; رجوع إلى شباتر {selectedSubject.title}
         </button>
-        <h1>{selectedChapter.title}</h1>
+        
+        <h1 style={{marginBottom: '15px'}}>{selectedChapter.title}</h1>
+
+        {/* ✅ تصميم التبويبات (Tabs UI) */}
+        <div style={{
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            backgroundColor: '#1f2937', // خلفية داكنة للحاوية
+            padding: '5px', 
+            borderRadius: '25px', 
+            marginBottom: '20px',
+            border: '1px solid #374151'
+        }}>
+            {/* زر الفيديوهات */}
+            <button
+                onClick={() => setActiveTab('videos')}
+                style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    backgroundColor: activeTab === 'videos' ? '#38bdf8' : 'transparent', // أزرق عند التفعيل
+                    color: activeTab === 'videos' ? '#000000' : '#ffffff', // نص أسود عند التفعيل
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    fontSize: '1em'
+                }}
+            >
+                فيديوهات 🎬
+            </button>
+
+            {/* زر الملفات */}
+            <button
+                onClick={() => setActiveTab('pdfs')}
+                style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    backgroundColor: activeTab === 'pdfs' ? '#38bdf8' : 'transparent',
+                    color: activeTab === 'pdfs' ? '#000000' : '#ffffff',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    fontSize: '1em'
+                }}
+            >
+                ملفات PDF 📄
+            </button>
+        </div>
+
         <ul className="item-list">
-          {/* 1. عرض الفيديوهات */}
-          {selectedChapter.videos.length > 0 ? (
-            selectedChapter.videos.map(video => {
-              
-              let href = '';
-              const currentDeviceId = deviceId || '';
-              const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${currentDeviceId}`;
-              
-              let linkClassName = 'button-link video-link';
-              let icon = '▶️'; 
-              href = `/watch/${video.id}${queryParams}`;
-
-              return (
-                <li key={`video-${video.id}`}>
-                    <div 
-                        className={linkClassName}
-                        onClick={() => router.push(href)}
-                        style={{ cursor: 'pointer' }}
-                    >
-                      {icon} {video.title}
-                    </div>
-                </li>
-              );
-            })
-          ) : (
-            <p style={{ color: '#aaa', marginBottom:'10px' }}>(لا توجد فيديوهات)</p>
-          )}
-
-          {/* 2. عرض ملفات PDF */}
-          {selectedChapter.pdfs && selectedChapter.pdfs.length > 0 && (
+          
+          {/* ✅ عرض الفيديوهات فقط إذا كان التبويب videos */}
+          {activeTab === 'videos' && (
             <>
-            <h3 style={{marginTop: '25px', color: '#94a3b8', borderBottom:'1px solid #334155', paddingBottom:'5px', fontSize:'1.1em'}}>📄 المذكرات والملفات</h3>
-            {selectedChapter.pdfs.map(pdf => {
-                const currentDeviceId = deviceId || '';
-                return (
-                    <li key={`pdf-${pdf.id}`}>
-                        <div 
-                            className="button-link"
-                            style={{cursor: 'pointer', borderLeft: '4px solid #ef4444'}}
-                            onClick={() => router.push(`/pdf-viewer/${pdf.id}?userId=${user.id}&deviceId=${currentDeviceId}&title=${encodeURIComponent(pdf.title)}`)}
-                        >
-                          📄 {pdf.title}
-                        </div>
-                    </li>
-                );
-            })}
+                {selectedChapter.videos.length > 0 ? (
+                    selectedChapter.videos.map(video => {
+                        let href = '';
+                        const currentDeviceId = deviceId || '';
+                        const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${currentDeviceId}`;
+                        
+                        return (
+                            <li key={`video-${video.id}`}>
+                                <div 
+                                    className="button-link video-link"
+                                    onClick={() => router.push(`/watch/${video.id}${queryParams}`)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    ▶️ {video.title}
+                                </div>
+                            </li>
+                        );
+                    })
+                ) : (
+                    <div style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                        <p>🚫 لا توجد فيديوهات في هذا القسم</p>
+                    </div>
+                )}
             </>
           )}
+
+          {/* ✅ عرض الملفات فقط إذا كان التبويب pdfs */}
+          {activeTab === 'pdfs' && (
+            <>
+                {selectedChapter.pdfs && selectedChapter.pdfs.length > 0 ? (
+                    selectedChapter.pdfs.map(pdf => {
+                        const currentDeviceId = deviceId || '';
+                        return (
+                            <li key={`pdf-${pdf.id}`}>
+                                <div 
+                                    className="button-link"
+                                    style={{cursor: 'pointer', borderRight: '4px solid #ef4444'}} // ميزنا الملفات بلون أحمر جانبي
+                                    onClick={() => router.push(`/pdf-viewer/${pdf.id}?userId=${user.id}&deviceId=${currentDeviceId}&title=${encodeURIComponent(pdf.title)}`)}
+                                >
+                                    📄 {pdf.title}
+                                </div>
+                            </li>
+                        );
+                    })
+                ) : (
+                    <div style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                        <p>🚫 لا توجد ملفات في هذا القسم</p>
+                    </div>
+                )}
+            </>
+          )}
+
         </ul>        
+        
         <footer className="developer-info">
           <p>برمجة وتطوير: A7MeD WaLiD</p>
           <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
