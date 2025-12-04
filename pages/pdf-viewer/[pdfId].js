@@ -18,8 +18,11 @@ export default function PdfViewer() {
   const [windowWidth, setWindowWidth] = useState(0);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  
+  // ✅ 1. حالة جديدة للتحكم في عدد الصفحات المعروضة (نبدأ بـ 3 صفحات فقط)
+  const [renderedPageCount, setRenderedPageCount] = useState(3);
 
-  // 1. ضبط العرض للموبايل
+  // ضبط العرض للموبايل
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setWindowWidth(window.innerWidth);
@@ -29,7 +32,7 @@ export default function PdfViewer() {
     }
   }, []);
 
-  // 2. بناء الرابط
+  // بناء الرابط
   useEffect(() => {
     if (router.isReady && pdfId && userId && deviceId) {
         const url = `/api/secure/get-pdf?pdfId=${pdfId}&userId=${userId}&deviceId=${deviceId}`;
@@ -39,33 +42,30 @@ export default function PdfViewer() {
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
-    setErrorMessage(null); 
+    setErrorMessage(null);
+    // ✅ عند نجاح التحميل، نعيد تعيين العداد
+    setRenderedPageCount(Math.min(3, numPages));
   }
 
-  // 3. معالجة الأخطاء
   function onDocumentLoadError(error) {
     console.error('PDF Load Error:', error);
     let uiErrorMsg = `تعذر فتح الملف: ${error.message}`;
-    
     if (error.message.includes('403')) uiErrorMsg = '⛔ غير مصرح لك (تأكد من الاشتراك أو الجهاز).';
     else if (error.message.includes('404')) uiErrorMsg = '❌ الملف غير موجود.';
     else if (error.message.includes('500')) uiErrorMsg = '⚠️ خطأ في السيرفر.';
-    
     setErrorMessage(uiErrorMsg);
-    
-    if (userId) {
-        fetch('/api/log-client', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                msg: `❌ PDF Failure | PDF ID: ${pdfId} | Error: ${error.message}`, 
-                userId: userId 
-            })
-        }).catch(() => {});
-    }
   }
 
-  // شاشة الانتظار
+  // ✅ 2. دالة التعامل مع التمرير (Infinite Scroll)
+  const handleScroll = (e) => {
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 100; // 100px buffer
+    if (bottom && numPages && renderedPageCount < numPages) {
+        // تحميل 5 صفحات إضافية عند الوصول للنهاية
+        setRenderedPageCount(prev => Math.min(prev + 5, numPages));
+    }
+  };
+
+  // شاشة الانتظار (قبل جلب الرابط)
   if (!pdfUrl) {
       return (
         <div style={{minHeight:'100vh', background:'#1e293b', display:'flex', justifyContent:'center', alignItems:'center', color:'white', flexDirection:'column'}}>
@@ -92,7 +92,7 @@ export default function PdfViewer() {
           {title}
         </span>
         <div style={{fontSize:'12px', color:'#94a3b8', minWidth:'40px', textAlign:'left'}}>
-          {numPages ? `${numPages} صفحة` : '--'}
+          {numPages ? `${renderedPageCount}/${numPages}` : '--'}
         </div>
       </div>
 
@@ -106,8 +106,11 @@ export default function PdfViewer() {
               </button>
           </div>
       ) : (
-        /* منطقة الـ PDF (تمرير عمودي) */
-        <div style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}>
+        /* ✅ 3. إضافة onScroll للحاوية */
+        <div 
+            onScroll={handleScroll}
+            style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}
+        >
             <Document
                 file={pdfUrl}
                 onLoadSuccess={onDocumentLoadSuccess}
@@ -115,25 +118,24 @@ export default function PdfViewer() {
                 loading={<div style={{color:'white', marginTop:'50px'}}>جاري تحميل الملف...</div>}
                 error={<div></div>}
             >
-                {/* عرض جميع الصفحات */}
-                {numPages && Array.from(new Array(numPages), (el, index) => (
+                {/* ✅ 4. عرض الصفحات بناءً على العداد (renderedPageCount) فقط */}
+                {numPages && Array.from(new Array(renderedPageCount), (el, index) => (
                     <div key={`page_${index + 1}`} style={{ position: 'relative', marginBottom: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
                         
-                        {/* ✅ العلامة المائية المعدلة (مرتين فقط وبشفافية عالية) */}
+                        {/* العلامة المائية */}
                         <div style={{
                             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                             display: 'grid',
-                            gridTemplateColumns: '1fr', // عمود واحد
-                            gridTemplateRows: 'repeat(2, 1fr)', // صفين لتوزيع المرتين على طول الصفحة
+                            gridTemplateColumns: '1fr',
+                            gridTemplateRows: 'repeat(2, 1fr)',
                             zIndex: 50, pointerEvents: 'none', overflow: 'hidden',
-                            opacity: 0.08 // ✅ تم تقليل الشفافية لتصبح باهتة جداً
+                            opacity: 0.08
                         }}>
-                            {Array(2).fill(userId).map((uid, i) => ( // ✅ تم تقليل العدد إلى 2 فقط
+                            {Array(2).fill(userId).map((uid, i) => (
                                 <div key={i} style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     transform: 'rotate(-30deg)', color: '#000',
-                                    fontSize: '24px', // ✅ زيادة حجم الخط قليلاً ليكون واضحاً
-                                    fontWeight: 'bold', userSelect: 'none'
+                                    fontSize: '24px', fontWeight: 'bold', userSelect: 'none'
                                 }}>
                                     {uid}
                                 </div>
@@ -154,6 +156,11 @@ export default function PdfViewer() {
                         />
                     </div>
                 ))}
+                
+                {/* مؤشر التحميل السفلي */}
+                {numPages && renderedPageCount < numPages && (
+                     <div style={{color: '#94a3b8', padding: '20px'}}>جاري تحميل المزيد من الصفحات...</div>
+                )}
             </Document>
         </div>
       )}
