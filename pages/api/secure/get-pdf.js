@@ -3,8 +3,7 @@ import { checkUserAccess } from '../../../lib/authHelper';
 import fs from 'fs';
 import path from 'path';
 
-// ✅ هذا هو الحل: إلغاء حد حجم الرد (Response Limit)
-// يسمح هذا بإرسال ملفات أكبر من 4MB عبر الـ API
+// إلغاء حد حجم الرد (4MB) للسماح بإرسال ملفات كبيرة
 export const config = {
   api: {
     responseLimit: false,
@@ -13,43 +12,71 @@ export const config = {
 
 export default async (req, res) => {
   const { pdfId, userId, deviceId } = req.query;
-  if (!pdfId || !userId || !deviceId) return res.status(400).json({ message: "Missing data" });
+
+  if (!pdfId || !userId || !deviceId) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(400).json({ message: "Missing data" });
+  }
 
   try {
-    // 1. التحقق الأمني
-    const hasAccess = await checkUserAccess(userId, null, pdfId, null, deviceId);
-    if (!hasAccess) return res.status(403).json({ message: "Access Denied" });
+    // =========================================================
+    // الخطوة 1: جلب بيانات الملف من قاعدة البيانات مباشرة (في كل مرة)
+    // =========================================================
+    const { data } = await supabase
+        .from('pdfs')
+        .select('file_path, title')
+        .eq('id', pdfId)
+        .single();
 
-    // 2. جلب المسار
-    const { data } = await supabase.from('pdfs').select('file_path, title').eq('id', pdfId).single();
-    if (!data) return res.status(404).json({ message: "Not found" });
+    if (!data) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.status(404).json({ message: "Not found" });
+    }
 
-    const filePath = path.join(process.cwd(), 'storage', 'pdfs', data.file_path);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File missing" });
-
-    // 3. إعداد الكاش والتدفق
-    const stat = fs.statSync(filePath);
+    const fullPath = path.join(process.cwd(), 'storage', 'pdfs', data.file_path);
     
-    // تنظيف الهيدرز
+    if (!fs.existsSync(fullPath)) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.status(404).json({ message: "File missing on server" });
+    }
+
+    const fileInfo = { filePath: fullPath, title: data.title };
+
+    // =========================================================
+    // الخطوة 2: التحقق الأمني
+    // =========================================================
+    const hasAccess = await checkUserAccess(userId, null, pdfId, null, deviceId);
+    
+    if (!hasAccess) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(403).json({ message: "Access Denied" });
+    }
+
+    // =========================================================
+    // الخطوة 3: إرسال الملف (Streaming)
+    // =========================================================
+    const stat = fs.statSync(fileInfo.filePath);
+    
+    // إزالة الهيدرز التي تمنع الكاش
     res.removeHeader('Set-Cookie');
     res.removeHeader('Pragma');
     res.removeHeader('Expires');
 
-    // إعدادات الكاش ونوع الملف
+    // إعدادات الكاش لـ Cloudflare والمتصفح لتقليل تكرار التحميل لنفس الطالب
+    res.setHeader('Cache-Control', 'public, max-age=31536000, s-maxage=31536000, immutable');
+    res.setHeader('Cloudflare-CDN-Cache-Control', 'max-age=31536000');
+    
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); 
-    res.setHeader('Surrogate-Control', 'public, max-age=31536000'); 
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(data.title)}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileInfo.title)}.pdf"`);
 
-    // إرسال الملف كـ Stream
-    const readStream = fs.createReadStream(filePath);
+    const readStream = fs.createReadStream(fileInfo.filePath);
     readStream.pipe(res);
 
   } catch (err) {
     console.error("PDF API Error:", err);
-    // تأكد من عدم إرسال رد JSON إذا كان الـ Stream قد بدأ بالفعل
     if (!res.headersSent) {
+        res.setHeader('Cache-Control', 'no-store');
         res.status(500).json({ message: err.message });
     }
   }
