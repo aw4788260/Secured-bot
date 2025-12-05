@@ -1,7 +1,7 @@
-// pages/api/exams/start-attempt.js
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // [✅] إضافة المحرك الأمني
 
-// (دالة مساعدة لخلط الترتيب)
+// دالة خلط المصفوفة
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -15,14 +15,23 @@ export default async (req, res) => {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { examId, userId, studentName } = req.body;
+  // [✅] التعديل الأمني: قراءة الهوية من الهيدرز
+  const userId = req.headers['x-user-id'];
+  const { examId, studentName } = req.body;
 
   if (!examId || !userId) {
-    return res.status(400).json({ error: 'Missing examId or userId' });
+    return res.status(400).json({ error: 'Missing Data (Check Headers/Body)' });
   }
 
   try {
-    // 1. (تحقق مرة أخرى للأمان)
+    // 1. التحقق الأمني الكامل (بصمة + اشتراك)
+    // نمرر req كاملة للتحقق من الهيدرز والبصمة
+    const hasAccess = await checkUserAccess(req, examId, 'exam');
+    if (!hasAccess) {
+        return res.status(403).json({ error: 'Access Denied: Unauthorized Device or Subscription' });
+    }
+
+    // 2. جلب إعدادات الامتحان
     const { data: exam, error: examError } = await supabase
       .from('exams')
       .select('id, randomize_questions, randomize_options')
@@ -31,7 +40,7 @@ export default async (req, res) => {
 
     if (examError || !exam) return res.status(404).json({ error: 'Exam not found' });
 
-    // (التحقق إذا أكمل الطالب الامتحان "مرة واحدة")
+    // 3. التحقق من المحاولات السابقة (محاولة واحدة فقط)
     const { count } = await supabase
       .from('user_attempts')
       .select('id', { count: 'exact', head: true })
@@ -43,14 +52,14 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل.' });
     }
     
-    // (حذف المحاولات السابقة "غير المكتملة" لضمان محاولة واحدة نظيفة)
+    // (تنظيف المحاولات المعلقة السابقة)
     await supabase.from('user_attempts')
         .delete()
         .eq('user_id', userId)
         .eq('exam_id', examId)
         .eq('status', 'started');
 
-    // 2. إنشاء محاولة جديدة (Attempt)
+    // 4. إنشاء محاولة جديدة
     const { data: newAttempt, error: attemptError } = await supabase
       .from('user_attempts')
       .insert({
@@ -64,7 +73,7 @@ export default async (req, res) => {
 
     if (attemptError) throw attemptError;
 
-    // 3. جلب الأسئلة والاختيارات
+    // 5. جلب الأسئلة
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .select(`
@@ -80,7 +89,7 @@ export default async (req, res) => {
 
     if (qError) throw qError;
 
-    // 4. تطبيق العشوائية (إذا طلب الأدمن)
+    // 6. العشوائية وترتيب الأسئلة
     let processedQuestions = questions;
     if (exam.randomize_questions) {
       processedQuestions = shuffleArray(processedQuestions);
@@ -92,19 +101,15 @@ export default async (req, res) => {
       }));
     }
     
-    // --- [ ✅✅ هذا هو الكود الجديد لحل المشكلة ] ---
-    // 5. حفظ الترتيب الذي سيراه الطالب
+    // حفظ ترتيب الأسئلة
     const questionOrder = processedQuestions.map(q => q.id);
     
-    // (استخدام await هنا لضمان إكمال الحفظ قبل المتابعة)
     const { error: updateOrderError } = await supabase
       .from('user_attempts')
       .update({ question_order: questionOrder }) 
       .eq('id', newAttempt.id);
       
-    // (إذا فشل الحفظ، أبلغ بالخطأ)
     if (updateOrderError) throw updateOrderError;
-    // --- [ نهاية الكود الجديد ] ---
 
     return res.status(200).json({
       attemptId: newAttempt.id,
