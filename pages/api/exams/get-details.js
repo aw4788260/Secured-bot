@@ -1,47 +1,39 @@
-// pages/api/exams/get-details.js
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper';
 
 export default async (req, res) => {
-  const { examId, userId } = req.query;
+  const { examId } = req.query;
+  const userId = req.headers['x-user-id']; // الهوية من الهيدر
 
-  if (!examId || !userId) {
-    return res.status(400).json({ error: 'Missing examId or userId' });
-  }
+  if (!examId) return res.status(400).json({ error: 'Missing examId' });
 
   try {
-    // 1. جلب تفاصيل الامتحان (لم نعد بحاجة لـ allowed_attempts)
+    // 1. التحقق الأمني
+    const hasAccess = await checkUserAccess(req, examId, 'exam');
+    if (!hasAccess) return res.status(403).json({ error: 'Access Denied' });
+
+    // 2. جلب بيانات الامتحان
     const { data: exam, error: examError } = await supabase
       .from('exams')
       .select('id, title, duration_minutes, requires_student_name')
       .eq('id', examId)
       .single();
 
-    if (examError || !exam) {
-      return res.status(404).json({ error: 'Exam not found' });
-    }
+    if (examError || !exam) return res.status(404).json({ error: 'Exam not found' });
 
-    // 2. [✅ تعديل] التحقق إذا أكمل الطالب الامتحان "مرة واحدة"
-    const { count, error: countError } = await supabase
+    // 3. التحقق من المحاولات السابقة (باستخدام userId من الهيدر)
+    const { count } = await supabase
       .from('user_attempts')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('exam_id', examId)
-      .eq('status', 'completed'); 
+      .match({ user_id: userId, exam_id: examId, status: 'completed' }); 
 
-    if (countError) {
-      throw countError;
-    }
-
-    // 3. [✅ تعديل] إذا كان قد امتحن (count > 0)، امنعه
     if (count > 0) {
-      return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل. (محاولة واحدة فقط مسموحة)' });
+      return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل.' });
     }
 
-    // 4. إذا لم يمتحن (count = 0)
     return res.status(200).json({ exam });
 
   } catch (err) {
-    console.error(err);
     return res.status(500).json({ error: err.message });
   }
 };
