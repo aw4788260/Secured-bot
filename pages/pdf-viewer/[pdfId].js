@@ -13,7 +13,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 export default function PdfViewer() {
   const router = useRouter();
-  const { pdfId, userId, deviceId, title } = router.query;
+  // [✅] نقرأ فقط معرف الملف والعنوان من الرابط (بيانات غير حساسة)
+  const { pdfId, title } = router.query;
 
   const [windowWidth, setWindowWidth] = useState(0);
   const [pdfData, setPdfData] = useState(null); 
@@ -21,7 +22,8 @@ export default function PdfViewer() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState(null);
   
-  // (تم حذف state: renderedPageCount لأننا سنعرض الكل)
+  // [✅] حالة لتخزين معرف المستخدم للعلامة المائية
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -32,16 +34,32 @@ export default function PdfViewer() {
     }
   }, []);
 
-  // بدء التحميل بمجرد توفر البيانات
+  // بدء التحميل والتحقق من الهوية
   useEffect(() => {
-    if (router.isReady && pdfId && userId && deviceId && !pdfData) {
-        const url = `/api/secure/get-pdf?pdfId=${pdfId}&userId=${userId}&deviceId=${deviceId}`;
-        fetchPdfAsBlob(url);
-    }
-  }, [router.isReady, pdfId, userId, deviceId]);
+    if (!router.isReady || !pdfId) return;
 
-  // دالة التحميل الكامل (Blob)
-  const fetchPdfAsBlob = async (url) => {
+    // 1. استخراج بيانات الدخول من التخزين الآمن
+    const uid = localStorage.getItem('auth_user_id');
+    const did = localStorage.getItem('auth_device_id');
+
+    if (!uid || !did) {
+        // إذا لم يكن مسجلاً، نطرده لصفحة الدخول
+        router.replace('/login');
+        return;
+    }
+
+    // تعيين المعرف للعلامة المائية
+    setCurrentUserId(uid);
+
+    // إذا لم يتم تحميل البيانات بعد، نبدأ التحميل
+    if (!pdfData) {
+        const url = `/api/secure/get-pdf?pdfId=${pdfId}`; // رابط نظيف
+        fetchPdfAsBlob(url, uid, did);
+    }
+  }, [router.isReady, pdfId]);
+
+  // دالة التحميل الكامل (Blob) مع الهيدرز
+  const fetchPdfAsBlob = async (url, uid, did) => {
       try {
           const response = await axios.get(url, {
               responseType: 'blob',
@@ -49,8 +67,10 @@ export default function PdfViewer() {
                   const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                   setDownloadProgress(percentCompleted);
               },
+              // [✅] إرسال مفاتيح المرور في الهيدرز المخفية
               headers: {
-                  'x-app-secret': 'My_Sup3r_S3cr3t_K3y_For_Android_App_Only' 
+                  'x-user-id': uid,
+                  'x-device-id': did
               }
           });
 
@@ -59,19 +79,28 @@ export default function PdfViewer() {
       } catch (error) {
           console.error("Download Error:", error);
           let msg = "فشل التحميل";
-          if (error.response && error.response.status === 403) msg = "⛔ غير مصرح لك (تأكد من الجهاز والاشتراك)";
-          else if (error.response && error.response.status === 404) msg = "❌ الملف غير موجود";
+          
+          if (error.response) {
+              if (error.response.status === 403) msg = "⛔ تم رفض الوصول (تأكد من الجهاز والاشتراك)";
+              else if (error.response.status === 404) msg = "❌ الملف غير موجود";
+          } else if (error.request) {
+              // خطأ في الشبكة أو CORS
+              msg = "خطأ في الاتصال بالسيرفر";
+          }
+          
           setErrorMessage(msg);
+          
+          // إذا كان الخطأ أمني، يمكن توجيهه للدخول (اختياري)
+          if (error.response && error.response.status === 403) {
+             // setTimeout(() => router.replace('/login'), 3000);
+          }
       }
   };
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
     setErrorMessage(null);
-    // (تم حذف setRenderedPageCount)
   }
-
-  // (تم حذف دالة handleScroll لأننا لا نحتاج لمراقبة التمرير الآن)
 
   // شاشة الانتظار (التحميل)
   if (!pdfData && !errorMessage) {
@@ -115,7 +144,7 @@ export default function PdfViewer() {
               </button>
           </div>
       ) : (
-        /* منطقة العرض (تمت إزالة onScroll) */
+        /* منطقة العرض */
         <div style={{ flex: 1, overflowY: 'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 0', scrollBehavior: 'smooth' }}>
             <Document
                 file={pdfData}
@@ -123,11 +152,11 @@ export default function PdfViewer() {
                 loading={<div style={{color:'white', padding:'20px'}}>جاري المعالجة...</div>}
                 error={<div style={{color:'red'}}>خطأ في ملف PDF</div>}
             >
-                {/* ✅ عرض جميع الصفحات دفعة واحدة باستخدام numPages */}
+                {/* عرض الصفحات */}
                 {numPages && Array.from(new Array(numPages), (el, index) => (
                     <div key={`page_${index + 1}`} style={{ position: 'relative', marginBottom: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
                         
-                        {/* العلامة المائية */}
+                        {/* العلامة المائية (تستخدم المعرف من التخزين) */}
                         <div style={{
                             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                             display: 'grid',
@@ -136,7 +165,8 @@ export default function PdfViewer() {
                             zIndex: 50, pointerEvents: 'none', overflow: 'hidden',
                             opacity: 0.08
                         }}>
-                            {Array(2).fill(userId).map((uid, i) => (
+                            {/* تكرار المعرف مرتين كخلفية مائية */}
+                            {Array(2).fill(currentUserId).map((uid, i) => (
                                 <div key={i} style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     transform: 'rotate(-30deg)', color: '#000',
@@ -147,13 +177,12 @@ export default function PdfViewer() {
                             ))}
                         </div>
                         
-                        {/* الصفحة */}
+                        {/* الصفحة الفعلية */}
                         <Page 
                             pageNumber={index + 1} 
                             width={windowWidth > 600 ? 600 : windowWidth} 
                             renderTextLayer={false} 
                             renderAnnotationLayer={false}
-                            // إزالة شاشة التحميل لكل صفحة لأننا نريد عرضاً فورياً
                             loading={
                                 <div style={{height:'300px', width: windowWidth > 600 ? 600 : windowWidth, background:'white'}}></div>
                             }
