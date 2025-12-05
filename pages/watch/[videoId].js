@@ -1,4 +1,3 @@
-// pages/watch/[videoId].js
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import Head from 'next/head';
@@ -22,7 +21,6 @@ const PlyrWatermark = ({ user, isFullscreen }) => {
             const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
             
             let minTop = 5, maxTop = 80; 
-            // تعديل الحدود في حالة التليجرام والوضع الطولي فقط إذا لم يكن ملء الشاشة
             if (isTelegram && isPortrait && !isFullscreen) { minTop = 38; maxTop = 58; }
             
             const t = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
@@ -242,10 +240,11 @@ const YoutubePlyrPlayer = ({ videoData, user }) => {
 };
 
 // =========================================================================
-// 5. الصفحة الرئيسية
+// 5. الصفحة الرئيسية (معدلة)
 // =========================================================================
 export default function WatchPage() {
     const router = useRouter();
+    // [✅] نقرأ فقط معرف الفيديو من الرابط (غير حساس)
     const { videoId } = router.query;
     
     const [videoData, setVideoData] = useState(null);
@@ -261,36 +260,58 @@ export default function WatchPage() {
     const artPlayerInstanceRef = useRef(null);
     const playerWrapperRef = useRef(null);
 
+    // ---------------------------------------------------------
+    // 1. التحقق من الهوية وجلب البيانات (Headers Only)
+    // ---------------------------------------------------------
     useEffect(() => {
-        const setupUser = (u) => { if (u && u.id) setUser(u); else setError("خطأ: لا يمكن التعرف على المستخدم."); };
-        const params = new URLSearchParams(window.location.search);
-        const urlUserId = params.get("userId");
-        if (urlUserId) {
-            setupUser({ id: urlUserId, first_name: params.get("firstName") || "User" });
-            if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
-        } else if (window.Telegram?.WebApp) {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand(); 
-            const u = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (u) setupUser(u); else setError("يرجى الفتح من تليجرام.");
+        if (!videoId) return; 
+
+        // أ) جلب البيانات من الذاكرة الآمنة
+        const uid = localStorage.getItem('auth_user_id');
+        const did = localStorage.getItem('auth_device_id');
+        const fname = localStorage.getItem('auth_first_name');
+
+        if (!uid || !did) {
+             // طرد المستخدم
+             router.replace('/login');
+             return;
         }
-    }, []);
 
-    useEffect(() => {
-        if (!videoId || !user) return; 
+        // تعيين حالة المستخدم للعرض
+        setUser({ id: uid, first_name: fname || 'User' });
+        
+        // التحقق من بيئة الأندرويد
+        if (typeof window.Android !== 'undefined') setIsNativeAndroid(true);
+
         setLoading(true);
-        const params = new URLSearchParams(window.location.search);
-        const currentDeviceId = params.get('deviceId');
 
-       fetch(`/api/secure/get-video-id?lessonId=${videoId}&userId=${user.id}&deviceId=${currentDeviceId}`)
-            .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message); }))
-            .then(data => {
-                setVideoData(data);
-                setViewMode(data.offline_mode === true ? 'native' : 'youtube');
-                setLoading(false);
-            })
-            .catch(err => { setError(err.message); setLoading(false); });
-    }, [videoId, user]);
+        // ب) طلب بيانات الفيديو بالهيدرز
+        fetch(`/api/secure/get-video-id?lessonId=${videoId}`, {
+            headers: { 
+                'x-user-id': uid,
+                'x-device-id': did
+            }
+        })
+        .then(res => {
+            if (res.status === 403) throw new Error("⛔ تم رفض الوصول (تأكد من الجهاز والاشتراك).");
+            if (!res.ok) return res.json().then(e => { throw new Error(e.message); });
+            return res.json();
+        })
+        .then(data => {
+            setVideoData(data);
+            setViewMode(data.offline_mode === true ? 'native' : 'youtube');
+            setLoading(false);
+        })
+        .catch(err => { 
+            setError(err.message); 
+            setLoading(false); 
+            // إذا كان الخطأ أمني، سجل خروج
+            if (err.message.includes("رفض")) {
+                localStorage.clear();
+                router.replace('/login');
+            }
+        });
+    }, [videoId]);
 
     const handleDownloadClick = () => {
         if (!window.Android) { alert("يرجى تحديث التطبيق."); return; }
