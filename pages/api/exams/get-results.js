@@ -1,124 +1,65 @@
-// pages/api/exams/get-results.js
 import { supabase } from '../../../lib/supabaseClient';
 
 export default async (req, res) => {
   const { attemptId } = req.query;
+  const userId = req.headers['x-user-id']; // [✅]
 
-  if (!attemptId) {
-    return res.status(400).json({ error: 'Missing attemptId' });
-  }
+  if (!attemptId || !userId) return res.status(400).json({ error: 'Missing Data' });
 
   try {
-    // 1. جلب المحاولة ونتيجنها وعنوان الامتحان
-    // --- [ ✅✅ تعديل: جلب العمود الجديد question_order ] ---
-    const { data: attempt, error: attemptError } = await supabase
+    // 1. جلب المحاولة
+    const { data: attempt } = await supabase
       .from('user_attempts')
-      .select(`
-        id,
-        score,
-        question_order, 
-        exams ( id, title )
-      `)
+      .select('id, score, question_order, user_id, exams ( id, title )')
       .eq('id', attemptId)
       .single();
 
-    if (attemptError || !attempt) {
-      return res.status(404).json({ error: 'Results not found' });
+    if (!attempt) return res.status(404).json({ error: 'Results not found' });
+
+    // [🔒] التحقق: هل المستخدم هو صاحب النتيجة؟
+    if (String(attempt.user_id) !== String(userId)) {
+        return res.status(403).json({ error: 'Access Denied: Not your result' });
     }
-    // --- [ نهاية التعديل ] ---
 
-    const examId = attempt.exams.id;
+    // 2. جلب الأسئلة وترتيبها
+    const { data: questions } = await supabase.from('questions')
+      .select(`id, question_text, image_file_id, options ( id, option_text, is_correct )`)
+      .eq('exam_id', attempt.exams.id);
 
-    // 2. جلب الأسئلة الكاملة (بالاختيارات) الخاصة بهذا الامتحان
-    const { data: questions, error: qError } = await supabase
-      .from('questions')
-      .select(`
-        id,
-        question_text,
-        sort_order,
-        image_file_id,
-        options ( id, option_text, is_correct )
-      `)
-      .eq('exam_id', examId);
-      // (تم حذف .order() من هنا)
-
-    if (qError) throw qError;
-
-    // 3. جلب إجابات الطالب لهذه المحاولة
-    const { data: userAnswers, error: aError } = await supabase
-      .from('user_answers')
+    const { data: userAnswers } = await supabase.from('user_answers')
       .select('question_id, selected_option_id, is_correct')
       .eq('attempt_id', attemptId);
 
-    if (aError) throw aError;
+    const userAnsMap = new Map();
+    userAnswers?.forEach(ans => userAnsMap.set(ans.question_id, ans));
 
-    // (تحويل إجابات الطالب إلى خريطة لسهولة الدمج)
-    const userAnswersMap = new Map();
-    userAnswers.forEach(ans => {
-      userAnswersMap.set(ans.question_id, ans);
-    });
-
-    // 4. دمج البيانات (التصحيح)
-    let correctCount = 0;
-    
-    // --- [ ✅✅ هذا هو الكود الجديد لحل المشكلة ] ---
-    // (إعادة ترتيب الأسئلة بناءً على الترتيب المحفوظ)
-    const orderedQuestionIds = attempt.question_order;
-    let corrected_questions = [];
-
-    // (إذا كان الترتيب المحفوظ موجوداً، استخدمه)
-    if (orderedQuestionIds && orderedQuestionIds.length > 0) {
-      // (إنشاء خريطة للأسئلة لسهولة البحث)
-      const questionsMap = new Map(questions.map(q => [q.id, q]));
-      
-      orderedQuestionIds.forEach(qId => {
-        const q = questionsMap.get(qId);
-        if (q) {
-           corrected_questions.push(q);
-        }
-      });
-      
+    // ترتيب الأسئلة حسب ما ظهر للطالب
+    const orderedQuestions = [];
+    if (attempt.question_order) {
+        const qMap = new Map(questions.map(q => [q.id, q]));
+        attempt.question_order.forEach(id => { if (qMap.has(id)) orderedQuestions.push(qMap.get(id)); });
     } else {
-      // (خطة بديلة إذا لم يتم حفظ الترتيب لسبب ما)
-      corrected_questions = questions.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        orderedQuestions.push(...questions); // ترتيب افتراضي
     }
-    // --- [ نهاية الكود الجديد ] ---
 
-
-    // (الآن، نقوم بمعالجة الأسئلة "المرتبة" بنفس الطريقة القديمة)
-    const finalCorrectedQuestions = corrected_questions.map(q => {
-      const userAnswer = userAnswersMap.get(q.id);
-      const correctOption = q.options.find(opt => opt.is_correct === true);
-
-      if (userAnswer && userAnswer.is_correct) {
-        correctCount++;
-      }
-
-      return {
-        id: q.id,
-        question_text: q.question_text,
-        image_file_id: q.image_file_id, // [ ✅✅ جديد ]
-        options: q.options,
-        correct_option_id: correctOption ? correctOption.id : null,
-        user_answer: userAnswer || null 
-      };
+    let correctCount = 0;
+    const finalQuestions = orderedQuestions.map(q => {
+        const ans = userAnsMap.get(q.id);
+        if (ans?.is_correct) correctCount++;
+        return {
+            ...q,
+            correct_option_id: q.options.find(o => o.is_correct)?.id,
+            user_answer: ans || null
+        };
     });
-
-    // 5. إعداد النتيجة النهائية
-    const score_details = {
-      percentage: attempt.score,
-      correct: correctCount,
-      total: questions.length
-    };
 
     return res.status(200).json({
-      exam_title: attempt.exams.title,
-      score_details: score_details,
-      corrected_questions: finalCorrectedQuestions // (إرسال الأسئلة المرتبة)
+        exam_title: attempt.exams.title,
+        score_details: { percentage: attempt.score, correct: correctCount, total: questions.length },
+        corrected_questions: finalQuestions
     });
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };
