@@ -1,8 +1,5 @@
-
-// pages/api/data/get-structured-courses.js
 import { supabase } from '../../../lib/supabaseClient';
 
-// ✅ هذا هو الاستعلام الصحيح (بدون تعليقات داخلية)
 const subjectQuery = `
   id, 
   title,
@@ -35,8 +32,13 @@ const subjectQuery = `
 `;
 
 export default async (req, res) => {
-  const { userId } = req.query;
-  if (!userId) return res.status(400).json({ message: "Missing userId" });
+  // [✅] التعديل الأمني: قراءة الهوية من الهيدرز بدلاً من الرابط
+  const userId = req.headers['x-user-id'];
+  const deviceId = req.headers['x-device-id']; // يمكن استخدامه للتحقق الإضافي
+
+  if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: Missing Identity Headers" });
+  }
 
   try {
     let allowedSubjectIds = new Set();
@@ -47,6 +49,7 @@ export default async (req, res) => {
       .from('user_course_access')
       .select('course_id')
       .eq('user_id', userId);
+
     if (courseErr) throw courseErr;
     
     if (courseAccess && courseAccess.length > 0) {
@@ -71,12 +74,14 @@ export default async (req, res) => {
       .from('user_subject_access')
       .select('subject_id')
       .eq('user_id', userId);
+
     if (subjectErr) throw subjectErr;
     
     if (subjectAccess && subjectAccess.length > 0) {
       const specificSubjectIds = subjectAccess
         .map(s => s.subject_id)
         .filter(id => !allowedSubjectIds.has(id)); 
+      
       if (specificSubjectIds.length > 0) {
         const { data: specificSubjects, error: specificErr } = await supabase
           .from('subjects')
@@ -85,12 +90,13 @@ export default async (req, res) => {
           .order('sort_order', { ascending: true })
           .order('sort_order', { foreignTable: 'chapters', ascending: true })
           .order('sort_order', { foreignTable: 'chapters.videos', ascending: true });
+          
         if (specificErr) throw specificErr;
         finalSubjectsData.push(...specificSubjects);
       }
     }
 
-    // 3. جلب حالة الامتحانات
+    // 3. جلب حالة الامتحانات (المكتملة)
     const { data: userAttempts, error: attemptError } = await supabase
         .from('user_attempts')
         .select('id, exam_id')
@@ -118,9 +124,7 @@ export default async (req, res) => {
                       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                       .map(chapter => ({
                           ...chapter,
-                          // ترتيب الفيديوهات
                           videos: chapter.videos ? chapter.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : [],
-                          // ترتيب ملفات PDF
                           pdfs: chapter.pdfs ? chapter.pdfs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)) : []
                       })),
 
