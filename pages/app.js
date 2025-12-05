@@ -1,56 +1,34 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
-import { useRouter } from 'next/router'; // [✅] استيراد الراوتر
+import { useRouter } from 'next/router';
 
 export default function App() {
-  const router = useRouter(); // [✅] تفعيل الراوتر
+  const router = useRouter();
   
-  const [status, setStatus] = useState('جار فحص معلومات المستخدم...');
+  const [status, setStatus] = useState('جار تحميل البيانات...');
   const [error, setError] = useState(null);
   const [subjects, setSubjects] = useState([]);
+  
+  // حالات التنقل
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedChapter, setSelectedChapter] = useState(null);
-  const [user, setUser] = useState(null);
   const [mode, setMode] = useState(null); 
   
-  // [✅ جديد] حالة لتخزين هل المستخدم أدمن أم لا
+  // بيانات المستخدم
+  const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-
-  // حالة لتخزين بصمة الجهاز
-  const [deviceId, setDeviceId] = useState(null);
-
-  // [✅ جديد] حالة للتحكم في التبويبات (فيديوهات / ملفات)
   const [activeTab, setActiveTab] = useState('videos'); 
 
-  // [✅ جديد] إعادة تعيين التبويب إلى "فيديوهات" عند الانتقال لشابتر جديد
+  // إعادة تعيين التبويب عند تغيير الشابتر
   useEffect(() => {
       setActiveTab('videos');
   }, [selectedChapter]);
 
   // ---------------------------------------------------------
-  // [✅ جديد] التحقق التلقائي من صلاحية الأدمن
-  // ---------------------------------------------------------
-  useEffect(() => {
-    if (user && user.id) {
-        // بمجرد التعرف على المستخدم، نسأل السيرفر هل هو أدمن؟
-        fetch(`/api/auth/check-admin?userId=${user.id}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.isAdmin) {
-                    setIsAdmin(true); // تفعيل الزر
-                }
-            })
-            .catch(err => console.error("Admin check failed", err));
-    }
-  }, [user]); // يعمل كلما تغير المستخدم (عند الدخول)
-
-  // ---------------------------------------------------------
-  // 🛠️ دالة التحقق من التحديثات
+  // 1. التحقق من التحديثات (للأندرويد)
   // ---------------------------------------------------------
   const checkAndTriggerUpdate = async () => {
-    if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) {
-        return;
-    }
+    if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) return;
 
     try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -61,245 +39,101 @@ export default function App() {
         if (!response.ok) return;
         
         const data = await response.json();
-        
         let latestVersionCode = 0;
-        const tagName = data.tag_name; 
-        const match = tagName.match(/\d+/);
+        const match = data.tag_name.match(/\d+/);
         if (match) latestVersionCode = parseInt(match[0]);
 
         if (latestVersionCode > currentAppVersion) {
             const apkAsset = data.assets.find(asset => asset.name.endsWith(".apk"));
             if (!apkAsset) return;
 
-            const msg = `تحديث ضروري متوفر (v${latestVersionCode})!\n\nلضمان عمل التطبيق، يجب التحديث الآن.\n(الضغط على إلغاء سيغلق التطبيق)`;
-            
+            const msg = `تحديث ضروري متوفر (v${latestVersionCode})!\n\nلضمان عمل التطبيق، يجب التحديث الآن.`;
             if (confirm(msg)) {
                 window.Android.updateApp(apkAsset.browser_download_url, String(latestVersionCode));
             } else {
-                if (window.Android.closeApp) {
-                    window.Android.closeApp();
-                } else {
-                    alert("عذراً، لا يمكن استخدام التطبيق بدون تحديث.");
-                    location.reload();
-                }
+                if (window.Android.closeApp) window.Android.closeApp();
+                else location.reload();
             }
         }
     } catch (err) {
         console.error("Update check failed:", err);
     }
   };
-  
-  // --- دالة جلب المواد ---
-  const fetchSubjects = (userIdString, foundUser, urlSubjectId = null, urlMode = null) => {
-    fetch(`/api/data/get-structured-courses?userId=${userIdString}`) 
-      .then(res => res.json())
-      .then(subjectsData => {
-        if (!Array.isArray(subjectsData)) throw new Error(subjectsData.message || 'Failed to load data');
-        
-        setSubjects(subjectsData); 
-        setUser(foundUser);
-        
-        if (urlSubjectId) {
-            const subjectFromUrl = subjectsData.find(s => s.id == urlSubjectId);
-            if (subjectFromUrl) {
-                setSelectedSubject(subjectFromUrl);
-                if (urlMode === 'exams') {
-                    setMode('exams');
-                }
-            }
-        }
-        
-        setStatus(null); 
-      })
-      .catch(err => {
-        setError('حدث خطأ أثناء جلب المواد.');
-        console.error("Error fetching subjects:", err);
-      });
-  };
 
-  // --- دالة فحص الجهاز (API) ---
-  const checkDeviceApi = (userId, deviceFingerprint, foundUser, isAndroidApk, urlSubjectId, urlMode) => {
-    fetch('/api/auth/check-device', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: userId, fingerprint: deviceFingerprint }),
-    })
-    .then(res => res.json())
-    .then(deviceData => {
-      if (!deviceData.success) {
-        setError(deviceData.message);
-      } else {
-        const userIdString = String(userId);
-        
-        if (isAndroidApk) { 
-          fetch(`/api/auth/get-user-name?userId=${userIdString}`)
-            .then(res => res.json())
-            .then(nameData => {
-              const realUser = { id: userId, first_name: nameData.name };
-              fetchSubjects(userIdString, realUser, urlSubjectId, urlMode); 
-            })
-            .catch(err => {
-               const realUser = { id: userId, first_name: `User ${userId}` };
-               fetchSubjects(userIdString, realUser, urlSubjectId, urlMode); 
-            });
-        } else {
-            fetchSubjects(userIdString, foundUser, urlSubjectId, urlMode); 
-        }
-      }
-    })
-    .catch(err => {
-      setError('حدث خطأ أثناء التحقق من الجهاز.');
-      console.error("Error checking device:", err);
-    });
-  };
-  
-  // --- دالة تحميل بصمة المتصفح (مساعدة) ---
-  const getBrowserFingerprint = async () => {
-    try {
-      const FingerprintJS = await import('@fingerprintjs/fingerprintjs');
-      const fp = await FingerprintJS.load();
-      const result = await fp.get();
-      return result.visitorId;
-    } catch (fpError) {
-       console.error("FingerprintJS error:", fpError);
-       return `fallback_${navigator.userAgent.substring(0, 50)}`;
-    }
-  };
-
-  // --- دالة فحص الاشتراك والجهاز ---
-  const checkSubscriptionAndDevice = (foundUser, isAndroidApk = false, androidId = null, urlSubjectId, urlMode) => {
-    fetch('/api/auth/check-subscription', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: foundUser.id }),
-    })
-    .then(res => res.json())
-    .then(subData => {
-      if (!subData.isSubscribed) {
-        setError('أنت غير مشترك أو ليس لديك صلاحية لأي مادة.');
-        return;
-      }
-
-      // منطق التعامل مع البصمة
-      if (isAndroidApk) {
-        setDeviceId(androidId); // حفظ بصمة الأندرويد
-        checkDeviceApi(foundUser.id, androidId, foundUser, true, urlSubjectId, urlMode); 
-      } else {
-        // للمتصفح: نحمل البصمة
-        getBrowserFingerprint().then(fingerprint => {
-            setDeviceId(fingerprint); // حفظ بصمة المتصفح
-            checkDeviceApi(foundUser.id, fingerprint, foundUser, false, urlSubjectId, urlMode); 
-        });
-      }
-    })
-    .catch(err => {
-       setError('حدث خطأ أثناء التحقق من الاشتراك.');
-       console.error("Error checking subscription:", err);
-    });
-  };
-
-
+  // ---------------------------------------------------------
+  // 2. المحرك الرئيسي: التحقق من الهوية وجلب البيانات
+  // ---------------------------------------------------------
   useEffect(() => {
-    try {
-      checkAndTriggerUpdate();
+    // تشغيل فحص التحديث
+    checkAndTriggerUpdate();
 
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlSubjectId = urlParams.get('subjectId');
-      const urlMode = urlParams.get('mode');
-      
-      const androidUserId = urlParams.get('android_user_id');
-      const genericUserId = urlParams.get('userId'); 
-      const androidDeviceId = urlParams.get('android_device_id'); 
-      
-      const urlDeviceId = urlParams.get('deviceId');
+    // أ) استرجاع البيانات من الذاكرة الآمنة
+    const uid = localStorage.getItem('auth_user_id');
+    const did = localStorage.getItem('auth_device_id');
+    const fname = localStorage.getItem('auth_first_name');
 
-      // (الحالة 1: مستخدم APK)
-      if (androidUserId && androidUserId.trim() !== '') {
-        console.log("Running in secure Android WebView wrapper");
-        const apkUser = { id: androidUserId, first_name: "Loading..." }; 
-        checkSubscriptionAndDevice(apkUser, true, androidDeviceId, urlSubjectId, urlMode);
-      
-      // (الحالة 2: مستخدم عائد من صفحة النتائج أو رابط خارجي)
-      } else if (genericUserId && genericUserId.trim() !== '') {
-        console.log("Running as navigated user");
-        const navigatedUser = { id: genericUserId, first_name: "User" }; 
-        
-        fetch('/api/auth/check-subscription', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: navigatedUser.id }),
-        })
-        .then(res => res.json())
-        .then(subData => {
-            if (!subData.isSubscribed) {
-                setError('أنت غير مشترك أو ليس لديك صلاحية لأي مادة.');
-                return;
-            }
-            
-            if (urlDeviceId) {
-                setDeviceId(urlDeviceId);
-                console.log("Device ID recovered from URL:", urlDeviceId);
-            } else {
-                if (!androidDeviceId) {
-                    getBrowserFingerprint().then(fp => {
-                        setDeviceId(fp);
-                    });
-                }
-            }
-
-            fetchSubjects(navigatedUser.id.toString(), navigatedUser, urlSubjectId, urlMode);
-        })
-        .catch(err => {
-           setError('حدث خطأ أثناء التحقق من الاشتراك.');
-        });
-
-      // (الحالة 3: تليجرام ميني آب)
-      } else if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        
-        const platform = window.Telegram.WebApp.platform; 
-        const miniAppUser = window.Telegram.WebApp.initDataUnsafe?.user;
-        
-        if (!miniAppUser || !miniAppUser.id) {
-            setError("لا يمكن التعرف على هويتك من تليجرام.");
-            return;
-        }
-        
-        if (platform === 'ios' || platform === 'macos' || platform === 'tdesktop') {
-          checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
-        
-        } else {
-          fetch(`/api/auth/check-admin?userId=${miniAppUser.id}`)
-            .then(res => res.json())
-            .then(adminData => {
-                if (adminData.isAdmin) {
-                    checkSubscriptionAndDevice(miniAppUser, false, null, urlSubjectId, urlMode);
-                } else {
-                    setError('عذراً، الفتح متاح للآيفون، الماك، والويندوز. مستخدمو الأندرويد يجب عليهم استخدام البرنامج المخصص.');
-                }
-            })
-            .catch(err => {
-                setError('حدث خطأ أثناء التحقق من صلاحيات الأدمن.');
-            });
-        }
-
-      // (الحالة 4: متصفح عادي)
-      } else if (typeof window !== 'undefined') {
-        setError('الرجاء الفتح من البرنامج المخصص (للأندرويد) أو من تليجرام.');
+    // ب) إذا لم نجد بيانات -> طرد للمستخدم
+    if (!uid || !did) {
+        router.replace('/login');
         return;
-      }
-      
-    } catch (e) { 
-      console.error("Fatal error in useEffect:", e);
-      setError(`خطأ فادح: ${e.message}`);
     }
 
-  }, []); 
+    // ج) تعيين بيانات المستخدم
+    setUser({ id: uid, first_name: fname });
+
+    // د) جلب المواد (إرسال الهوية في الهيدرز المخفية)
+    fetch('/api/data/get-structured-courses', {
+        headers: {
+            'x-user-id': uid,
+            'x-device-id': did
+        }
+    })
+    .then(res => {
+        if (res.status === 403) throw new Error("⛔ تم رفض الوصول (جهاز غير مطابق أو حظر)");
+        return res.json();
+    })
+    .then(data => {
+        if (!Array.isArray(data)) throw new Error("بيانات غير صالحة");
+        setSubjects(data);
+        setStatus(null);
+    })
+    .catch(err => {
+        console.error("Fetch Error:", err);
+        setError(err.message);
+        // إذا كان الخطأ أمني، نحوله للدخول
+        if (err.message.includes("رفض")) {
+            localStorage.clear();
+            router.replace('/login');
+        }
+    });
+
+    // هـ) التحقق من صلاحية الأدمن (أيضاً بالهيدرز لزيادة الأمان)
+    // ملاحظة: تأكد أن API `check-admin` يدعم الهيدرز أو استخدم الطريقة القديمة (Query) إذا لم تعدله بعد.
+    // هنا سأفترض أنك ستمرر الـ ID في الكويري لهذا الـ API البسيط، أو يمكنك تحديثه.
+    fetch(`/api/auth/check-admin?userId=${uid}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.isAdmin) setIsAdmin(true);
+        })
+        .catch(e => console.log("Not admin"));
+
+  }, []);
+
+
+  // ---------------------------------------------------------
+  // 3. واجهة المستخدم (UI)
+  // ---------------------------------------------------------
 
   if (error) {
-    return <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}><Head><title>خطأ</title></Head><h1>{error}</h1></div>;
+    return (
+        <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+            <Head><title>خطأ</title></Head>
+            <h1 style={{color:'#ef4444'}}>{error}</h1>
+            <button className="back-button" onClick={() => router.replace('/login')}>تسجيل الدخول مجدداً</button>
+        </div>
+    );
   }
+
   if (status || !user) {
     return (
       <div className="app-container loader-container">
@@ -310,182 +144,130 @@ export default function App() {
     );
   }
 
-  // ===================================================================================
-  // 🟢 [تعديل] المستوى 3: عرض الفيديوهات والملفات بنظام التبويبات (مثل الأندرويد)
-  // ===================================================================================
+  // === المستوى 3: عرض الشابتر (فيديوهات / ملفات) ===
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
         <Head><title>{selectedChapter.title}</title></Head>
         
-        {/* زر الرجوع */}
         <button className="back-button" onClick={() => setSelectedChapter(null)}>
-          &larr; رجوع إلى شباتر {selectedSubject.title}
+          &larr; رجوع إلى {selectedSubject.title}
         </button>
         
         <h1 style={{marginBottom: '15px'}}>{selectedChapter.title}</h1>
 
-        {/* ✅ تصميم التبويبات (Tabs UI) */}
+        {/* التبويبات */}
         <div style={{
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            backgroundColor: '#1f2937', // خلفية داكنة للحاوية
-            padding: '5px', 
-            borderRadius: '25px', 
-            marginBottom: '20px',
-            border: '1px solid #374151'
+            display: 'flex', justifyContent: 'space-between', backgroundColor: '#1f2937',
+            padding: '5px', borderRadius: '25px', marginBottom: '20px', border: '1px solid #374151'
         }}>
-            {/* زر الفيديوهات */}
-            <button
-                onClick={() => setActiveTab('videos')}
+            <button onClick={() => setActiveTab('videos')}
                 style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: '20px',
-                    border: 'none',
-                    backgroundColor: activeTab === 'videos' ? '#38bdf8' : 'transparent', // أزرق عند التفعيل
-                    color: activeTab === 'videos' ? '#000000' : '#ffffff', // نص أسود عند التفعيل
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    fontSize: '1em'
-                }}
-            >
+                    flex: 1, padding: '10px', borderRadius: '20px', border: 'none',
+                    backgroundColor: activeTab === 'videos' ? '#38bdf8' : 'transparent',
+                    color: activeTab === 'videos' ? '#000000' : '#ffffff',
+                    fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s ease'
+                }}>
                 فيديوهات 🎬
             </button>
-
-            {/* زر الملفات */}
-            <button
-                onClick={() => setActiveTab('pdfs')}
+            <button onClick={() => setActiveTab('pdfs')}
                 style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: '20px',
-                    border: 'none',
+                    flex: 1, padding: '10px', borderRadius: '20px', border: 'none',
                     backgroundColor: activeTab === 'pdfs' ? '#38bdf8' : 'transparent',
                     color: activeTab === 'pdfs' ? '#000000' : '#ffffff',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    fontSize: '1em'
-                }}
-            >
+                    fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s ease'
+                }}>
                 ملفات PDF 📄
             </button>
         </div>
 
         <ul className="item-list">
-          
-          {/* ✅ عرض الفيديوهات فقط إذا كان التبويب videos */}
+          {/* الفيديوهات */}
           {activeTab === 'videos' && (
             <>
                 {selectedChapter.videos.length > 0 ? (
-                    selectedChapter.videos.map(video => {
-                        let href = '';
-                        const currentDeviceId = deviceId || '';
-                        const queryParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&deviceId=${currentDeviceId}`;
-                        
-                        return (
-                            <li key={`video-${video.id}`}>
-                                <div 
-                                    className="button-link video-link"
-                                    onClick={() => router.push(`/watch/${video.id}${queryParams}`)}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    ▶️ {video.title}
-                                </div>
-                            </li>
-                        );
-                    })
+                    selectedChapter.videos.map(video => (
+                        <li key={`video-${video.id}`}>
+                            <div 
+                                className="button-link video-link"
+                                // ✅ رابط نظيف تماماً
+                                onClick={() => router.push(`/watch/${video.id}`)}
+                                style={{ cursor: 'pointer' }}
+                            >
+                                ▶️ {video.title}
+                            </div>
+                        </li>
+                    ))
                 ) : (
-                    <div style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
-                        <p>🚫 لا توجد فيديوهات في هذا القسم</p>
-                    </div>
+                    <div style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}><p>🚫 لا توجد فيديوهات</p></div>
                 )}
             </>
           )}
 
-          {/* ✅ عرض الملفات فقط إذا كان التبويب pdfs */}
+          {/* الملفات */}
           {activeTab === 'pdfs' && (
             <>
                 {selectedChapter.pdfs && selectedChapter.pdfs.length > 0 ? (
-                    selectedChapter.pdfs.map(pdf => {
-                        const currentDeviceId = deviceId || '';
-                        return (
-                            <li key={`pdf-${pdf.id}`}>
-                                <div 
-                                    className="button-link"
-                                    style={{cursor: 'pointer', borderRight: '4px solid #ef4444'}} // ميزنا الملفات بلون أحمر جانبي
-                                    onClick={() => router.push(`/pdf-viewer/${pdf.id}?userId=${user.id}&deviceId=${currentDeviceId}&title=${encodeURIComponent(pdf.title)}`)}
-                                >
-                                    📄 {pdf.title}
-                                </div>
-                            </li>
-                        );
-                    })
+                    selectedChapter.pdfs.map(pdf => (
+                        <li key={`pdf-${pdf.id}`}>
+                            <div 
+                                className="button-link"
+                                style={{cursor: 'pointer', borderRight: '4px solid #ef4444'}}
+                                // ✅ رابط نظيف (نرسل العنوان للعرض فقط)
+                                onClick={() => router.push(`/pdf-viewer/${pdf.id}?title=${encodeURIComponent(pdf.title)}`)}
+                            >
+                                📄 {pdf.title}
+                            </div>
+                        </li>
+                    ))
                 ) : (
-                    <div style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
-                        <p>🚫 لا توجد ملفات في هذا القسم</p>
-                    </div>
+                    <div style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}><p>🚫 لا توجد ملفات</p></div>
                 )}
             </>
           )}
-
         </ul>        
         
         <footer className="developer-info">
           <p>برمجة وتطوير: A7MeD WaLiD</p>
-          <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
         </footer>
       </div>
     );
   }
 
-  // (المستوى 2: اختيار الوضع أو عرض المحتوى)
+  // === المستوى 2: اختيار القسم (شرح / امتحانات) ===
   if (selectedSubject) {
-    
-    // --- [ الحالة 2أ: المستخدم لم يختر الوضع بعد ] ---
+    // أ) لم يختر بعد
     if (mode === null) {
       const exams = selectedSubject.exams || []; 
-      
       return (
         <div className="app-container">
           <Head><title>{selectedSubject.title}</title></Head>
-          <button className="back-button" onClick={() => setSelectedSubject(null)}>
-            &larr; رجوع إلى المواد
-          </button>
+          <button className="back-button" onClick={() => setSelectedSubject(null)}>&larr; القائمة الرئيسية</button>
           <h1>{selectedSubject.title}</h1>
-          <p style={{ color: '#aaa', textAlign: 'right', marginBottom: '20px' }}>اختر القسم الذي تريده:</p>
           <ul className="item-list">
             <li>
               <button className="button-link" onClick={() => setMode('lectures')}>
-                📁 الشرح (الشباتر والمحتويات)
+                📁 الشرح والمحتوى
                 <span>({selectedSubject.chapters.length} شابتر)</span>
               </button>
             </li>
             <li>
               <button className="button-link" onClick={() => setMode('exams')}>
-                ✏️ الامتحانات التفاعلية
+                ✏️ الامتحانات
                 <span>({exams.length} امتحان)</span>
               </button>
             </li>
           </ul>
-          <footer className="developer-info">
-            <p>برمجة وتطوير: A7MeD WaLiD</p>
-            <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
-          </footer>
         </div>
       );
     }
     
-    // --- [ الحالة 2ب: المستخدم اختار "الشرح" (lectures) ] ---
+    // ب) قسم الشرح
     if (mode === 'lectures') {
       return (
         <div className="app-container">
-          <Head><title>{selectedSubject.title} - الشرح</title></Head>
-          <button className="back-button" onClick={() => setMode(null)}>
-            &larr; رجوع لاختيار القسم
-          </button>
+          <Head><title>الشرح</title></Head>
+          <button className="back-button" onClick={() => setMode(null)}>&larr; رجوع</button>
           <h1>{selectedSubject.title}</h1>
           <ul className="item-list">
             {selectedSubject.chapters.length > 0 ? (
@@ -498,81 +280,57 @@ export default function App() {
                 </li>
               ))
             ) : (
-              <p style={{ color: '#aaa' }}>لا توجد شباتر في هذه المادة بعد.</p>
+              <p style={{ color: '#aaa' }}>لا توجد محتويات.</p>
             )}
           </ul>
-          <footer className="developer-info">
-             <p>برمجة وتطوير: A7MeD WaLiD</p>
-             <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
-          </footer>
         </div>
       );
     }
 
-    // --- [ الحالة 2ج: المستخدم اختار "الامتحانات" (exams) ] ---
+    // ج) قسم الامتحانات
     if (mode === 'exams') {
       const exams = selectedSubject.exams || []; 
       return (
         <div className="app-container">
-          <Head><title>{selectedSubject.title} - الامتحانات</title></Head>
-          <button className="back-button" onClick={() => setMode(null)}>
-            &larr; رجوع لاختيار القسم
-          </button>
+          <Head><title>الامتحانات</title></Head>
+          <button className="back-button" onClick={() => setMode(null)}>&larr; رجوع</button>
           <h1>الامتحانات المتاحة</h1>
           <ul className="item-list">
             {exams.length > 0 ? (
               exams.map(exam => {
-                
-                let href = '';
-                const currentDeviceId = deviceId || '';
-                const baseParams = `?userId=${user.id}&firstName=${encodeURIComponent(user.first_name)}&subjectId=${selectedSubject.id}&deviceId=${currentDeviceId}`;
-                
-                if (!exam.is_completed) {
-                    href = `/exam/${exam.id}${baseParams}`;
-                } else {
-                    href = `/results/${exam.first_attempt_id}${baseParams}`;
-                }
-                  
+                // ✅ روابط نظيفة للامتحانات
+                const href = !exam.is_completed ? `/exam/${exam.id}` : `/results/${exam.first_attempt_id}`;
                 const examTitle = `✏️ ${exam.title} ${exam.is_completed ? '✅' : ''}`;
-
                 return (
                   <li key={exam.id}>
-                    <div 
-                        className="button-link" 
-                        onClick={() => router.push(href)}
-                        style={{ cursor: 'pointer' }}
-                    >
+                    <div className="button-link" onClick={() => router.push(href)} style={{ cursor: 'pointer' }}>
                       {examTitle}
                     </div>
                   </li>
                 );
               })
             ) : (
-              <p style={{ color: '#aaa' }}>لا توجد امتحانات في هذه المادة بعد.</p>
+              <p style={{ color: '#aaa' }}>لا توجد امتحانات.</p>
             )}
           </ul>
-          <footer className="developer-info">
-             <p>برمجة وتطوير: A7MeD WaLiD</p>
-             <p>للتواصل: <a href="https://t.me/A7MeDWaLiD0" target="_blank" rel="noopener noreferrer">اضغط هنا</a></p>
-          </footer>
         </div>
       );
     }
   }
 
-  // (المستوى 1: عرض المواد)
+  // === المستوى 1: القائمة الرئيسية ===
   return (
     <div className="app-container">
       <Head><title>المواد المتاحة</title></Head>
       
-      {/* [✅ تعديل] زر لوحة تحكم الأدمن (يظهر تلقائياً لأي أدمن مسجل في القاعدة) */}
       {isAdmin && (
         <button 
             className="button-link" 
             style={{background: '#334155', border: '1px dashed #38bdf8', marginBottom: '20px', justifyContent:'center'}}
-            onClick={() => router.push(`/admin/dashboard?userId=${user.id}&firstName=${user.first_name}`)}
+            // رابط الأدمن (يمكنك تنظيفه أيضاً في ملف dashboard)
+            onClick={() => router.push(`/admin/dashboard?userId=${user.id}`)}
         >
-            ⚙️ لوحة تحكم الأدمن
+            ⚙️ لوحة الأدمن
         </button>
       )}
 
@@ -581,17 +339,14 @@ export default function App() {
         {subjects.length > 0 ? (
            subjects.map(subject => (
             <li key={subject.id}>
-              <button className="button-link" onClick={() => {
-                  setSelectedSubject(subject);
-                  setMode(null); 
-              }}>
+              <button className="button-link" onClick={() => { setSelectedSubject(subject); setMode(null); }}>
                 📚 {subject.title} 
                 <span>({subject.chapters.length} شابتر)</span>
               </button>
             </li>
            ))
         ) : (
-           <p style={{ color: '#aaa' }}>لم يتم إسناد أي مواد لك حتى الآن.</p>
+           <p style={{ color: '#aaa' }}>لا توجد مواد متاحة.</p>
         )}
       </ul>
       
