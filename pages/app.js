@@ -108,19 +108,22 @@ export default function App() {
     });
 
   // هـ) التحقق من صلاحية الأدمن (تم التعديل لإرسال الهيدرز)
-    fetch(`/api/auth/check-admin`, { 
+ fetch('/api/auth/check-admin', { 
+        method: 'GET',
         headers: {
-            'x-user-id': uid,
-            'x-device-id': did
+            'x-user-id': uid,    // المفتاح الأول
+            'x-device-id': did   // المفتاح الثاني (البصمة)
         }
     })
     .then(res => res.json())
     .then(data => {
-        if (data.isAdmin) setIsAdmin(true);
+        if (data.isAdmin) {
+            setIsAdmin(true); // ✅ تفعيل الزر إذا كان الأدمن
+        }
     })
-    .catch(e => console.log("Not admin or check failed", e));
-  }, []);
+    .catch(e => console.log("Not admin check failed", e));
 
+  }, []);
 
   // ---------------------------------------------------------
   // 3. واجهة المستخدم (UI)
