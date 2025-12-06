@@ -4,7 +4,6 @@ import Head from 'next/head';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { userId } = router.query; // (للعرض فقط إن وجد، لكن الاعتماد الأساسي على التخزين)
   
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -16,7 +15,8 @@ export default function AdminDashboard() {
 
   // 1. التحقق من الصلاحيات وجلب البيانات (Secure Headers)
   useEffect(() => {
-    if (!router.isReady) return;
+    // التأكد من أن الكود يعمل في المتصفح
+    if (typeof window === 'undefined') return;
 
     // أ) جلب مفاتيح الدخول من الذاكرة
     const uid = localStorage.getItem('auth_user_id');
@@ -24,6 +24,7 @@ export default function AdminDashboard() {
 
     if (!uid || !did) {
         setStatus("⛔ غير مسجل دخول. يرجى الدخول أولاً.");
+        router.replace('/login');
         return;
     }
 
@@ -33,6 +34,7 @@ export default function AdminDashboard() {
     })
       .then(res => {
           if (res.status === 403) throw new Error("⛔ جهاز غير مصرح به.");
+          if (!res.ok) throw new Error("فشل التحقق.");
           return res.json();
       })
       .then(data => {
@@ -50,9 +52,14 @@ export default function AdminDashboard() {
       .then(data => { 
           if(Array.isArray(data)) setCourses(data); 
       })
-      .catch(err => setStatus(err.message))
+      .catch(err => {
+          setStatus(err.message);
+          if (err.message.includes('غير مصرح') || err.message.includes('جهاز')) {
+              setTimeout(() => router.push('/app'), 2000);
+          }
+      })
       .finally(() => setLoading(false));
-  }, [router.isReady]);
+  }, []);
 
   // 2. دالة رفع الملف (Secure Upload)
   const handleUpload = async (e) => {
