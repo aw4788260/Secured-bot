@@ -1,8 +1,15 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // [✅]
 
 export default async (req, res) => {
   const apiName = '[API: check-admin]';
   
+  // 1. التحقق من البصمة أولاً
+  const isAuthorized = await checkUserAccess(req);
+  if (!isAuthorized) {
+      return res.status(403).json({ message: "Unauthorized Device" });
+  }
+
   let userId = req.headers['x-user-id'];
   if (!userId) userId = req.query.userId; 
 
