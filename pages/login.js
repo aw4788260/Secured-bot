@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { localStorage.clear(); }, []); 
+  useEffect(() => { localStorage.clear(); }, []); // تنظيف بيانات الجلسة القديمة
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -56,6 +56,7 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* --- 👇 هذا هو الجزء الجديد الذي يضيف زر طلب الاشتراك 👇 --- */}
         <div style={{marginTop:'25px', paddingTop:'20px', borderTop:'1px solid #334155', textAlign:'center'}}>
           <p style={{color:'#94a3b8', fontSize:'0.9em', marginBottom:'10px'}}>ليس لديك حساب؟</p>
           <button 
@@ -77,6 +78,7 @@ export default function LoginPage() {
             📝 طلب اشتراك جديد
           </button>
         </div>
+        {/* ------------------------------------------------------- */}
 
       </div>
     </div>
