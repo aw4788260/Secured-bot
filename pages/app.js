@@ -25,7 +25,7 @@ export default function App() {
   }, [selectedChapter]);
 
   // ---------------------------------------------------------
-  // 1. التحقق من التحديثات (للأندرويد)
+  // 1. التحقق من التحديثات (للأندرويد - يعمل داخل التطبيق فقط)
   // ---------------------------------------------------------
   const checkAndTriggerUpdate = async () => {
     if (typeof window === 'undefined' || typeof window.Android === 'undefined' || !window.Android.updateApp) return;
@@ -107,8 +107,8 @@ export default function App() {
         }
     });
 
-  // هـ) التحقق من صلاحية الأدمن (تم التعديل لإرسال الهيدرز)
- fetch('/api/auth/check-admin', { 
+  // هـ) التحقق من صلاحية الأدمن + فحص نوع الجهاز (Logic Updated)
+  fetch('/api/auth/check-admin', { 
         method: 'GET',
         headers: {
             'x-user-id': uid,    // المفتاح الأول
@@ -117,9 +117,32 @@ export default function App() {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.isAdmin) {
-            setIsAdmin(true); // ✅ تفعيل الزر إذا كان الأدمن
+        const userIsAdmin = data.isAdmin;
+        if (userIsAdmin) {
+            setIsAdmin(true);
         }
+
+        // ================================================================
+        // 🔥 التعديل الجديد: السماح فقط للأدمن أو الآيفون (وحماية التطبيق)
+        // ================================================================
+        if (typeof window !== 'undefined') {
+            const ua = window.navigator.userAgent.toLowerCase();
+            
+            // 1. هل هو آيفون/آيباد؟
+            const isIos = /iphone|ipad|ipod/.test(ua);
+            
+            // 2. هل هو تطبيق الأندرويد الرسمي؟ (نعرفه بوجود الـ Interface)
+            // هذا الشرط ضروري لكي لا يتوقف التطبيق عن العمل، بينما يتم حظر المتصفح العادي
+            const isAndroidApp = typeof window.Android !== 'undefined';
+
+            // الشرط: إذا لم يكن أدمن.. ولم يكن آيفون.. ولم يكن التطبيق الرسمي -> حظر
+            if (!userIsAdmin && !isIos && !isAndroidApp) {
+                setError("⛔ غير مسموح بالدخول من أندرويد عبر المتصفح/تليجرام. يرجى استخدام التطبيق الرسمي أو جهاز iPhone.");
+                setStatus(null); 
+                return;
+            }
+        }
+        // ================================================================
     })
     .catch(e => console.log("Not admin check failed", e));
 
@@ -133,8 +156,11 @@ export default function App() {
     return (
         <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
             <Head><title>خطأ</title></Head>
-            <h1 style={{color:'#ef4444'}}>{error}</h1>
-            <button className="back-button" onClick={() => router.replace('/login')}>تسجيل الدخول مجدداً</button>
+            <h1 style={{color:'#ef4444', textAlign: 'center', lineHeight: '1.6', padding: '20px'}}>{error}</h1>
+            {/* إخفاء زر العودة إذا كان الخطأ بسبب نوع الجهاز */}
+            {!error.includes("غير مسموح") && (
+                <button className="back-button" onClick={() => router.replace('/login')}>تسجيل الدخول مجدداً</button>
+            )}
         </div>
     );
   }
@@ -195,7 +221,6 @@ export default function App() {
                         <li key={`video-${video.id}`}>
                             <div 
                                 className="button-link video-link"
-                                // ✅ رابط نظيف تماماً
                                 onClick={() => router.push(`/watch/${video.id}`)}
                                 style={{ cursor: 'pointer' }}
                             >
@@ -218,7 +243,6 @@ export default function App() {
                             <div 
                                 className="button-link"
                                 style={{cursor: 'pointer', borderRight: '4px solid #ef4444'}}
-                                // ✅ رابط نظيف (نرسل العنوان للعرض فقط)
                                 onClick={() => router.push(`/pdf-viewer/${pdf.id}?title=${encodeURIComponent(pdf.title)}`)}
                             >
                                 📄 {pdf.title}
@@ -303,7 +327,6 @@ export default function App() {
           <ul className="item-list">
             {exams.length > 0 ? (
               exams.map(exam => {
-                // ✅ روابط نظيفة للامتحانات
                 const href = !exam.is_completed ? `/exam/${exam.id}` : `/results/${exam.first_attempt_id}`;
                 const examTitle = `✏️ ${exam.title} ${exam.is_completed ? '✅' : ''}`;
                 return (
@@ -332,7 +355,6 @@ export default function App() {
         <button 
             className="button-link" 
             style={{background: '#334155', border: '1px dashed #38bdf8', marginBottom: '20px', justifyContent:'center'}}
-            // رابط الأدمن (يمكنك تنظيفه أيضاً في ملف dashboard)
             onClick={() => router.push(`/admin/dashboard?userId=${user.id}`)}
         >
             ⚙️ لوحة الأدمن
