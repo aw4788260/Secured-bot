@@ -1,27 +1,32 @@
 import { supabase } from '../../../lib/supabaseClient';
 
 export default async (req, res) => {
+  const apiName = '[API: get-results]';
   const { attemptId } = req.query;
-  const userId = req.headers['x-user-id']; // [✅]
+  const userId = req.headers['x-user-id'];
+
+  console.log(`${apiName} 🚀 Requesting results for Attempt: ${attemptId} by User: ${userId}`);
 
   if (!attemptId || !userId) return res.status(400).json({ error: 'Missing Data' });
 
   try {
-    // 1. جلب المحاولة
     const { data: attempt } = await supabase
       .from('user_attempts')
       .select('id, score, question_order, user_id, exams ( id, title )')
       .eq('id', attemptId)
       .single();
 
-    if (!attempt) return res.status(404).json({ error: 'Results not found' });
+    if (!attempt) {
+        console.error(`${apiName} ❌ Attempt not found.`);
+        return res.status(404).json({ error: 'Results not found' });
+    }
 
-    // [🔒] التحقق: هل المستخدم هو صاحب النتيجة؟
     if (String(attempt.user_id) !== String(userId)) {
+        console.warn(`${apiName} ⛔ Access Denied. User mismatch.`);
         return res.status(403).json({ error: 'Access Denied: Not your result' });
     }
 
-    // 2. جلب الأسئلة وترتيبها
+    console.log(`${apiName} 📊 Fetching QA data...`);
     const { data: questions } = await supabase.from('questions')
       .select(`id, question_text, image_file_id, options ( id, option_text, is_correct )`)
       .eq('exam_id', attempt.exams.id);
@@ -33,13 +38,13 @@ export default async (req, res) => {
     const userAnsMap = new Map();
     userAnswers?.forEach(ans => userAnsMap.set(ans.question_id, ans));
 
-    // ترتيب الأسئلة حسب ما ظهر للطالب
+    // ترتيب
     const orderedQuestions = [];
     if (attempt.question_order) {
         const qMap = new Map(questions.map(q => [q.id, q]));
         attempt.question_order.forEach(id => { if (qMap.has(id)) orderedQuestions.push(qMap.get(id)); });
     } else {
-        orderedQuestions.push(...questions); // ترتيب افتراضي
+        orderedQuestions.push(...questions);
     }
 
     let correctCount = 0;
@@ -53,6 +58,7 @@ export default async (req, res) => {
         };
     });
 
+    console.log(`${apiName} ✅ Sending results.`);
     return res.status(200).json({
         exam_title: attempt.exams.title,
         score_details: { percentage: attempt.score, correct: correctCount, total: questions.length },
@@ -60,6 +66,7 @@ export default async (req, res) => {
     });
 
   } catch (err) {
+    console.error(`${apiName} 🔥 ERROR:`, err.message);
     res.status(500).json({ error: err.message });
   }
 };
