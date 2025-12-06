@@ -107,16 +107,18 @@ export default function App() {
         }
     });
 
-    // هـ) التحقق من صلاحية الأدمن (أيضاً بالهيدرز لزيادة الأمان)
-    // ملاحظة: تأكد أن API `check-admin` يدعم الهيدرز أو استخدم الطريقة القديمة (Query) إذا لم تعدله بعد.
-    // هنا سأفترض أنك ستمرر الـ ID في الكويري لهذا الـ API البسيط، أو يمكنك تحديثه.
-    fetch(`/api/auth/check-admin?userId=${uid}`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.isAdmin) setIsAdmin(true);
-        })
-        .catch(e => console.log("Not admin"));
-
+  // هـ) التحقق من صلاحية الأدمن (تم التعديل لإرسال الهيدرز)
+    fetch(`/api/auth/check-admin`, { 
+        headers: {
+            'x-user-id': uid,
+            'x-device-id': did
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.isAdmin) setIsAdmin(true);
+    })
+    .catch(e => console.log("Not admin or check failed", e));
   }, []);
 
 
