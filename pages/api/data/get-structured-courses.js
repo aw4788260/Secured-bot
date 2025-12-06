@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // [✅] استدعاء الحارس
 
 const subjectQuery = `
   id, title, sort_order,
@@ -16,8 +17,18 @@ export default async (req, res) => {
   
   console.log(`${apiName} 🚀 Fetching courses for User: ${userId}`);
 
+  // [🔒] الخطوة الجديدة: التحقق الكامل من البصمة والمصدر قبل أي شيء
+  // نمرر (req) فقط، ليقوم بفحص الجهاز والـ Referer
+  const isAuthorized = await checkUserAccess(req);
+  
+  if (!isAuthorized) {
+      console.warn(`${apiName} ⛔ Access Denied: Device or Source Mismatch.`);
+      return res.status(403).json({ message: "Access Denied: Invalid Device" });
+  }
+
+  // إذا وصلنا هنا، فالبصمة مطابقة 100% لقاعدة البيانات
+  
   if (!userId) {
-      console.warn(`${apiName} ❌ Unauthorized: Missing User ID in headers.`);
       return res.status(401).json({ message: "Unauthorized: Missing Headers" });
   }
 
@@ -30,9 +41,7 @@ export default async (req, res) => {
     const { data: courseAccess } = await supabase.from('user_course_access').select('course_id').eq('user_id', userId);
     
     if (courseAccess?.length > 0) {
-      console.log(`${apiName} ✅ User has access to ${courseAccess.length} full courses.`);
       const courseIds = courseAccess.map(c => c.course_id);
-      
       const { data: subjectsFromCourses } = await supabase
         .from('subjects')
         .select(subjectQuery)
@@ -55,7 +64,6 @@ export default async (req, res) => {
       const specificSubjectIds = subjectAccess.map(s => s.subject_id).filter(id => !allowedSubjectIds.has(id)); 
       
       if (specificSubjectIds.length > 0) {
-        console.log(`${apiName} ✅ User has access to ${specificSubjectIds.length} specific subjects.`);
         const { data: specificSubjects } = await supabase
           .from('subjects')
           .select(subjectQuery)
@@ -103,7 +111,7 @@ export default async (req, res) => {
                       }))
     }));
 
-    console.log(`${apiName} 📤 Sending ${structuredData.length} subjects to client.`);
+    console.log(`${apiName} 📤 Sending ${structuredData.length} subjects.`);
     res.status(200).json(structuredData); 
 
   } catch (err) {
