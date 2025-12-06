@@ -4,190 +4,181 @@ import Head from 'next/head';
 
 export default function Register() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
+  const [checkingUser, setCheckingUser] = useState(false); // حالة تحميل فحص الاسم
   
-  // بيانات النموذج
   const [formData, setFormData] = useState({
-    firstName: '',
-    username: '',
-    password: '',
-    confirmPassword: '',
-    phone: '',
-    selectedCourses: [], // IDs
-    receiptFile: null
+    firstName: '', username: '', password: '', phone: '',
+    selectedCourses: [], receiptFile: null
   });
 
-  // جلب الكورسات المتاحة عند فتح الصفحة
   useEffect(() => {
-    // نستخدم الـ API الموجود لديك بالفعل لجلب الكورسات
-    // نرسل هيدرز وهمية لأن هذا الـ API عام ولا يحتاج تسجيل دخول في هذه المرحلة
-    fetch('/api/data/get-structured-courses', { 
-        headers: { 'x-user-id': 'guest', 'x-device-id': 'guest' } 
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(Array.isArray(data)) setCourses(data);
-    })
-    .catch(err => console.error("Failed to load courses", err));
+    fetch('/api/public/get-courses')
+      .then(res => res.json())
+      .then(data => { if(Array.isArray(data)) setCourses(data); })
+      .catch(console.error);
   }, []);
 
-  // دوال التعامل مع الإدخال
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-  
-  const handleCourseToggle = (courseId) => {
-    const selected = formData.selectedCourses.includes(courseId)
-      ? formData.selectedCourses.filter(id => id !== courseId)
-      : [...formData.selectedCourses, courseId];
-    setFormData({ ...formData, selectedCourses: selected });
-  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if(!formData.receiptFile) return alert("يجب رفع صورة الإيصال");
+    if(formData.selectedCourses.length === 0) return alert("اختر كورس واحد على الأقل");
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-        setFormData({ ...formData, receiptFile: e.target.files[0] });
-    }
-  };
-
-  // إرسال النموذج
-  const handleSubmit = async () => {
-    if (!formData.receiptFile) return alert("يرجى رفع صورة الإيصال");
-    
     setLoading(true);
-    const uploadData = new FormData();
-    uploadData.append('firstName', formData.firstName);
-    uploadData.append('username', formData.username);
-    uploadData.append('password', formData.password);
-    uploadData.append('phone', formData.phone);
-    uploadData.append('selectedCourses', JSON.stringify(formData.selectedCourses));
-    uploadData.append('receiptFile', formData.receiptFile);
+    const body = new FormData();
+    Object.keys(formData).forEach(key => {
+      if (key === 'selectedCourses') body.append(key, JSON.stringify(formData[key]));
+      else body.append(key, formData[key]);
+    });
 
-    try {
-        const res = await fetch('/api/public/register', {
-            method: 'POST',
-            body: uploadData
-        });
-        const result = await res.json();
+    const res = await fetch('/api/public/register', { method: 'POST', body });
+    const result = await res.json();
+    setLoading(false);
 
-        if (res.ok) {
-            alert("✅ تم إرسال طلبك بنجاح! سيتم مراجعته من قبل الإدارة وتفعيل حسابك قريباً.");
-            router.push('/login');
-        } else {
-            alert("❌ خطأ: " + result.error);
-        }
-    } catch (err) {
-        alert("حدث خطأ في الاتصال");
-    } finally {
-        setLoading(false);
+    if (res.ok) {
+      alert("✅ تم إرسال طلبك بنجاح! سيتم مراجعته وتفعيل الحساب قريباً.");
+      router.push('/login');
+    } else {
+      alert("❌ خطأ: " + result.error);
     }
   };
 
-  // التحقق قبل الانتقال للخطوة التالية
-  const nextStep = () => {
+  // --- دالة الانتقال للخطوة التالية (المعدلة) ---
+  const nextStep = async () => {
+    // التحقق من الخطوة 1
     if (step === 1) {
         if (!formData.firstName || !formData.username || !formData.password || !formData.phone) {
             return alert("يرجى ملء جميع البيانات");
         }
-        if (formData.password !== formData.confirmPassword) {
-            return alert("كلمة المرور غير متطابقة");
+        if (formData.username.length < 3) {
+            return alert("اسم المستخدم يجب أن يكون 3 أحرف على الأقل");
         }
+
+        // بدء التحقق من السيرفر
+        setCheckingUser(true);
+        try {
+            const res = await fetch('/api/public/check-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: formData.username })
+            });
+            const data = await res.json();
+            
+            setCheckingUser(false);
+
+            if (data.available) {
+                setStep(2); // الانتقال فقط إذا كان الاسم متاحاً
+            } else {
+                alert("⚠️ " + data.message); // رسالة خطأ للمستخدم
+            }
+        } catch (err) {
+            setCheckingUser(false);
+            alert("حدث خطأ أثناء التحقق من الاسم، حاول مرة أخرى.");
+        }
+        return;
     }
-    if (step === 2 && formData.selectedCourses.length === 0) {
-        return alert("يرجى اختيار كورس واحد على الأقل");
+
+    // التحقق من الخطوة 2
+    if (step === 2) {
+        if (formData.selectedCourses.length === 0) {
+            return alert("يرجى اختيار كورس واحد على الأقل");
+        }
+        setStep(3);
     }
-    setStep(step + 1);
   };
 
   return (
-    <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
-      <Head><title>تسجيل طالب جديد</title></Head>
-      
-      <div style={{
-          background: '#1e293b', padding: '30px', borderRadius: '15px', 
-          width: '95%', maxWidth: '500px', border: '1px solid #334155',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-      }}>
-        <h1 style={{ textAlign: 'center', color: '#38bdf8', marginBottom: '20px' }}>
-            {step === 1 ? 'بيانات الطالب' : step === 2 ? 'اختيار الكورسات' : 'تأكيد الدفع'}
-        </h1>
-
-        {/* الخطوة 1: البيانات الأساسية */}
+    <div className="app-container" style={{justifyContent:'center'}}>
+      <Head><title>طلب اشتراك جديد</title></Head>
+      <div style={{background:'#1e293b', padding:'20px', borderRadius:'10px', width:'100%', maxWidth:'500px', border:'1px solid #334155'}}>
+        <h2 style={{textAlign:'center', color:'#38bdf8', marginBottom:'20px'}}>
+            {step === 1 ? '1. بيانات الطالب' : step === 2 ? '2. اختيار الكورسات' : '3. تأكيد الدفع'}
+        </h2>
+        
+        {/* الخطوة 1 */}
         {step === 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <input className="input-field" name="firstName" placeholder="الاسم الثلاثي" onChange={handleChange} value={formData.firstName} />
-                <input className="input-field" name="phone" placeholder="رقم الهاتف (واتساب)" onChange={handleChange} value={formData.phone} />
-                <input className="input-field" name="username" placeholder="اسم المستخدم (للدخول)" onChange={handleChange} value={formData.username} />
-                <input className="input-field" type="password" name="password" placeholder="كلمة المرور" onChange={handleChange} value={formData.password} />
-                <input className="input-field" type="password" name="confirmPassword" placeholder="تأكيد كلمة المرور" onChange={handleChange} value={formData.confirmPassword} />
-                
-                <button className="button-link" style={{ justifyContent: 'center' }} onClick={nextStep}>التالي &larr;</button>
+            <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+              <input className="input-field" placeholder="الاسم الثلاثي" value={formData.firstName}
+                onChange={e=>setFormData({...formData, firstName: e.target.value})} />
+              
+              <input className="input-field" placeholder="رقم الهاتف (واتساب)" value={formData.phone}
+                onChange={e=>setFormData({...formData, phone: e.target.value})} />
+
+              <div style={{display:'flex', gap:'10px'}}>
+                <input className="input-field" placeholder="اسم المستخدم (Username)" value={formData.username}
+                  onChange={e=>setFormData({...formData, username: e.target.value})} />
+                <input className="input-field" type="password" placeholder="كلمة المرور" value={formData.password}
+                  onChange={e=>setFormData({...formData, password: e.target.value})} />
+              </div>
+
+              <button onClick={nextStep} disabled={checkingUser} className="button-link" style={{justifyContent:'center', marginTop:'10px'}}>
+                {checkingUser ? 'جاري التحقق...' : 'التالي ⬅️'}
+              </button>
             </div>
         )}
 
-        {/* الخطوة 2: اختيار الكورسات */}
+        {/* الخطوة 2 */}
         {step === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <p style={{ textAlign: 'center', color: '#cbd5e1' }}>حدد الكورسات التي ترغب بالاشتراك فيها:</p>
-                <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #334155', borderRadius: '8px', padding: '10px' }}>
-                    {courses.length > 0 ? courses.map(course => (
-                        <label key={course.id} style={{ 
-                            display: 'flex', alignItems: 'center', padding: '10px', 
-                            borderBottom: '1px solid #334155', cursor: 'pointer',
-                            background: formData.selectedCourses.includes(course.id) ? '#334155' : 'transparent'
-                        }}>
-                            <input 
-                                type="checkbox" 
-                                checked={formData.selectedCourses.includes(course.id)}
-                                onChange={() => handleCourseToggle(course.id)}
-                                style={{ marginLeft: '10px', width: '18px', height: '18px' }}
-                            />
-                            <span style={{ fontSize: '1.1em' }}>{course.title}</span>
-                            <span style={{ marginRight: 'auto', color: '#38bdf8' }}>{course.price || 0} ج.م</span>
-                        </label>
-                    )) : <p>لا توجد كورسات متاحة حالياً</p>}
-                </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                    <button className="back-button" onClick={() => setStep(1)} style={{ flex: 1 }}>رجوع</button>
-                    <button className="button-link" onClick={nextStep} style={{ flex: 2, justifyContent: 'center' }}>التالي &larr;</button>
-                </div>
+            <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+              <div style={{background:'#0f172a', padding:'10px', borderRadius:'8px', maxHeight:'250px', overflowY:'auto'}}>
+                {courses.length > 0 ? courses.map(c => (
+                  <label key={c.id} style={{display:'flex', justifyContent:'space-between', padding:'10px', borderBottom:'1px solid #334155', cursor:'pointer'}}>
+                    <span>
+                      <input type="checkbox" style={{marginLeft:'8px'}}
+                        checked={formData.selectedCourses.includes(c.id)}
+                        onChange={e => {
+                          const sel = e.target.checked 
+                            ? [...formData.selectedCourses, c.id]
+                            : formData.selectedCourses.filter(id => id !== c.id);
+                          setFormData({...formData, selectedCourses: sel});
+                        }} 
+                      />
+                      {c.title}
+                    </span>
+                    <span style={{color:'#38bdf8'}}>{c.price} ج.م</span>
+                  </label>
+                )) : <p style={{textAlign:'center', padding:'20px', color:'#ccc'}}>لا توجد كورسات متاحة حالياً.</p>}
+              </div>
+
+              <div style={{display:'flex', gap:'10px'}}>
+                <button onClick={()=>setStep(1)} className="button-link" style={{background:'#334155', flex:1, justifyContent:'center'}}>رجوع</button>
+                <button onClick={nextStep} className="button-link" style={{flex:2, justifyContent:'center'}}>التالي ⬅️</button>
+              </div>
             </div>
         )}
 
-        {/* الخطوة 3: الدفع والرفع */}
+        {/* الخطوة 3 */}
         {step === 3 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', textAlign: 'center' }}>
-                <div style={{ background: '#0f172a', padding: '15px', borderRadius: '8px', border: '1px dashed #38bdf8' }}>
-                    <p style={{ color: '#94a3b8', marginBottom: '5px' }}>يرجى تحويل المبلغ الإجمالي على:</p>
-                    <h2 style={{ color: '#fff', direction: 'ltr' }}>010 XXXXX XXXX</h2>
-                    <p style={{ color: '#38bdf8', fontSize: '0.9em' }}>فودافون كاش</p>
-                </div>
+            <form onSubmit={handleSubmit} style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+              <div style={{textAlign:'center', padding:'15px', background:'rgba(56, 189, 248, 0.1)', borderRadius:'8px', border:'1px dashed #38bdf8'}}>
+                 <p style={{marginBottom:'5px'}}>يرجى تحويل المبلغ الإجمالي على فودافون كاش:</p>
+                 <h2 style={{color:'#38bdf8', direction:'ltr'}}>010 XXXXX XXXX</h2>
+              </div>
 
-                <p>ثم قم برفع صورة (Screenshot) لإيصال التحويل:</p>
-                <input type="file" accept="image/*" onChange={handleFileChange} style={{ color: 'white' }} />
+              <div>
+                <p style={{color:'#cbd5e1', fontSize:'0.9em', marginBottom:'5px'}}>صورة إيصال الدفع:</p>
+                <input type="file" accept="image/*" required style={{color:'white'}}
+                  onChange={e=>setFormData({...formData, receiptFile: e.target.files[0]})} />
+              </div>
 
-                <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                    <button className="back-button" onClick={() => setStep(2)} style={{ flex: 1 }}>رجوع</button>
-                    <button 
-                        className="button-link" 
-                        onClick={handleSubmit} 
-                        disabled={loading}
-                        style={{ flex: 2, justifyContent: 'center', background: loading ? '#555' : '#22c55e' }}
-                    >
-                        {loading ? 'جاري الإرسال...' : '✅ إتمام التسجيل'}
-                    </button>
-                </div>
-            </div>
+              <div style={{display:'flex', gap:'10px'}}>
+                <button type="button" onClick={()=>setStep(2)} className="button-link" style={{background:'#334155', flex:1, justifyContent:'center'}}>رجوع</button>
+                <button type="submit" disabled={loading} className="button-link" style={{justifyContent:'center', background:'#22c55e', color:'white', flex:2}}>
+                    {loading ? 'جاري الإرسال...' : '🚀 إرسال الطلب'}
+                </button>
+              </div>
+            </form>
+        )}
+        
+        {step === 1 && (
+            <button type="button" onClick={()=>router.push('/login')} style={{background:'none', border:'none', color:'#94a3b8', cursor:'pointer', marginTop:'15px', width:'100%'}}>
+                العودة لتسجيل الدخول
+            </button>
         )}
       </div>
-
-      {/* تنسيقات إضافية (يمكنك نقلها لملف CSS لاحقاً) */}
-      <style jsx>{`
-        .input-field {
-            width: 100%; padding: 12px; background: #0f172a; border: 1px solid #475569;
-            border-radius: 8px; color: white; outline: none; transition: border 0.3s;
-        }
-        .input-field:focus { border-color: #38bdf8; }
-      `}</style>
+      <style jsx>{`.input-field { padding:12px; background:#0f172a; border:1px solid #475569; borderRadius:5px; color:white; width:100% }`}</style>
     </div>
   );
 }
