@@ -11,7 +11,7 @@ const SecureImage = ({ fileId }) => {
         const uid = localStorage.getItem('auth_user_id');
         const did = localStorage.getItem('auth_device_id');
         
-        if (!uid || !did) return;
+        if (!uid || !did || !fileId) return;
 
         fetch(`/api/exams/get-image?file_id=${fileId}`, { 
             headers: { 'x-user-id': uid, 'x-device-id': did } 
@@ -26,7 +26,7 @@ const SecureImage = ({ fileId }) => {
         return () => { if(src) URL.revokeObjectURL(src); };
     }, [fileId]);
 
-    return src ? <img src={src} className="question-image" alt="Question" /> : <div style={{color:'#aaa'}}>جاري تحميل الصورة...</div>;
+    return src ? <img src={src} className="question-image" alt="Question" /> : <div style={{color:'#aaa', fontSize:'12px'}}>جاري تحميل الصورة...</div>;
 };
 
 // =========================================================
@@ -44,11 +44,11 @@ export default function ResultsPage() {
     useEffect(() => {
         if (!router.isReady || !attemptId) return;
 
-        // 1. استخراج بيانات الدخول من التخزين الآمن
+        // 1. استخراج بيانات الدخول من التخزين الآمن (بدلاً من الرابط)
         const uid = localStorage.getItem('auth_user_id');
         const did = localStorage.getItem('auth_device_id');
 
-        // إذا لم يكن مسجلاً، نطرده
+        // إذا لم يكن مسجلاً، نطرده لصفحة الدخول
         if (!uid || !did) {
              router.replace('/login');
              return;
@@ -76,7 +76,7 @@ export default function ResultsPage() {
         });
     }, [router.isReady, attemptId]);
 
-    // دالة العودة
+    // دالة العودة الذكية
     const handleBackToMenu = () => {
         if (typeof window !== 'undefined' && window.Android && window.Android.closeWebView) {
             window.Android.closeWebView();
