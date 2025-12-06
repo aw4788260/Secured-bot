@@ -10,7 +10,8 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   // 1. التحقق الأمني (بصمة + هوية)
-  const isAuthorized = await checkUserAccess(req); // يفحص الهيدرز والبصمة
+  // نمرر req ليتحقق من الهيدرز والبصمة
+  const isAuthorized = await checkUserAccess(req); 
   if (!isAuthorized) {
       return res.status(403).json({ error: 'Access Denied: Unauthorized Device' });
   }
