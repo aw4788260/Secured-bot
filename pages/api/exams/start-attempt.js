@@ -1,7 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { checkUserAccess } from '../../../lib/authHelper'; // [✅] إضافة المحرك الأمني
+import { checkUserAccess } from '../../../lib/authHelper';
 
-// دالة خلط المصفوفة
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -11,113 +10,72 @@ function shuffleArray(array) {
 }
 
 export default async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  const apiName = '[API: start-attempt]';
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  // [✅] التعديل الأمني: قراءة الهوية من الهيدرز
   const userId = req.headers['x-user-id'];
   const { examId, studentName } = req.body;
 
-  if (!examId || !userId) {
-    return res.status(400).json({ error: 'Missing Data (Check Headers/Body)' });
-  }
+  console.log(`${apiName} 🚀 Starting attempt for Exam: ${examId} by User: ${userId}`);
+
+  if (!examId || !userId) return res.status(400).json({ error: 'Missing Data' });
 
   try {
-    // 1. التحقق الأمني الكامل (بصمة + اشتراك)
-    // نمرر req كاملة للتحقق من الهيدرز والبصمة
+    // 1. التحقق الأمني
     const hasAccess = await checkUserAccess(req, examId, 'exam');
     if (!hasAccess) {
-        return res.status(403).json({ error: 'Access Denied: Unauthorized Device or Subscription' });
+        console.warn(`${apiName} ⛔ Access Denied.`);
+        return res.status(403).json({ error: 'Access Denied' });
     }
 
-    // 2. جلب إعدادات الامتحان
-    const { data: exam, error: examError } = await supabase
-      .from('exams')
-      .select('id, randomize_questions, randomize_options')
-      .eq('id', examId)
-      .single();
-
-    if (examError || !exam) return res.status(404).json({ error: 'Exam not found' });
-
-    // 3. التحقق من المحاولات السابقة (محاولة واحدة فقط)
-    const { count } = await supabase
-      .from('user_attempts')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('exam_id', examId)
-      .eq('status', 'completed');
+    // 2. التحقق من الاكتمال
+    const { count } = await supabase.from('user_attempts').select('id', { count: 'exact', head: true })
+      .match({ user_id: userId, exam_id: examId, status: 'completed' });
     
     if (count > 0) {
-      return res.status(403).json({ error: 'لقد قمت بإنهاء هذا الامتحان من قبل.' });
+        console.warn(`${apiName} ⚠️ Exam already completed.`);
+        return res.status(403).json({ error: 'الامتحان مكتمل سابقاً.' });
     }
     
-    // (تنظيف المحاولات المعلقة السابقة)
-    await supabase.from('user_attempts')
-        .delete()
-        .eq('user_id', userId)
-        .eq('exam_id', examId)
-        .eq('status', 'started');
+    // تنظيف القديم
+    await supabase.from('user_attempts').delete().match({ user_id: userId, exam_id: examId, status: 'started' });
 
-    // 4. إنشاء محاولة جديدة
-    const { data: newAttempt, error: attemptError } = await supabase
-      .from('user_attempts')
-      .insert({
+    // 3. إنشاء المحاولة
+    console.log(`${apiName} 📝 Creating new attempt record...`);
+    const { data: newAttempt, error: attError } = await supabase.from('user_attempts').insert({
         user_id: userId,
         exam_id: examId,
         student_name_input: studentName || null,
         status: 'started'
-      })
-      .select()
-      .single();
+      }).select().single();
 
-    if (attemptError) throw attemptError;
+    if (attError) throw attError;
 
-    // 5. جلب الأسئلة
-    const { data: questions, error: qError } = await supabase
-      .from('questions')
-      .select(`
-        id,
-        question_text,
-        sort_order,
-        image_file_id, 
-        options ( id, question_id, option_text, sort_order )
-      `)
+    // 4. تجهيز الأسئلة
+    console.log(`${apiName} ❓ Fetching and shuffling questions...`);
+    const { data: examConfig } = await supabase.from('exams').select('randomize_questions, randomize_options').eq('id', examId).single();
+    
+    const { data: questions } = await supabase.from('questions')
+      .select(`id, question_text, sort_order, image_file_id, options ( id, question_id, option_text, sort_order )`)
       .eq('exam_id', examId)
       .order('sort_order', { ascending: true })
       .order('sort_order', { foreignTable: 'options', ascending: true });
 
-    if (qError) throw qError;
-
-    // 6. العشوائية وترتيب الأسئلة
-    let processedQuestions = questions;
-    if (exam.randomize_questions) {
-      processedQuestions = shuffleArray(processedQuestions);
+    let finalQuestions = questions;
+    if (examConfig.randomize_questions) finalQuestions = shuffleArray(finalQuestions);
+    if (examConfig.randomize_options) {
+        finalQuestions = finalQuestions.map(q => ({ ...q, options: shuffleArray(q.options) }));
     }
-    if (exam.randomize_options) {
-      processedQuestions = processedQuestions.map(q => ({
-        ...q,
-        options: shuffleArray(q.options)
-      }));
-    }
-    
-    // حفظ ترتيب الأسئلة
-    const questionOrder = processedQuestions.map(q => q.id);
-    
-    const { error: updateOrderError } = await supabase
-      .from('user_attempts')
-      .update({ question_order: questionOrder }) 
-      .eq('id', newAttempt.id);
-      
-    if (updateOrderError) throw updateOrderError;
 
-    return res.status(200).json({
-      attemptId: newAttempt.id,
-      questions: processedQuestions
-    });
+    // حفظ الترتيب
+    const questionOrder = finalQuestions.map(q => q.id);
+    await supabase.from('user_attempts').update({ question_order: questionOrder }).eq('id', newAttempt.id);
+
+    console.log(`${apiName} ✅ Exam started. Attempt ID: ${newAttempt.id}`);
+    return res.status(200).json({ attemptId: newAttempt.id, questions: finalQuestions });
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message });
+    console.error(`${apiName} 🔥 ERROR:`, err.message);
+    res.status(500).json({ error: err.message });
   }
 };
