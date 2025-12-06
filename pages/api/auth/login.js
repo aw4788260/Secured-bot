@@ -5,7 +5,7 @@ export default async (req, res) => {
 
   const { username, password, deviceId } = req.body;
 
-  if (!username || !password || !deviceId) {
+  if (!username || !password) {
     return res.status(400).json({ success: false, message: 'البيانات ناقصة' });
   }
 
@@ -13,7 +13,7 @@ export default async (req, res) => {
     // 1. البحث عن المستخدم
     const { data: user } = await supabase
       .from('users')
-      .select('id, password, first_name')
+      .select('id, password, first_name, is_admin, is_blocked') // جلبنا is_admin
       .eq('username', username) 
       .single();
 
@@ -21,31 +21,33 @@ export default async (req, res) => {
         return res.status(401).json({ success: false, message: 'اسم المستخدم أو كلمة المرور خطأ' });
     }
 
-    // 2. التحقق من ربط الجهاز (Device Lock)
-    const { data: deviceData } = await supabase
-        .from('devices')
-        .select('fingerprint')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    if (deviceData) {
-        // إذا كان له جهاز مسجل، هل هو نفس الجهاز الحالي؟
-        if (deviceData.fingerprint !== deviceId) {
-            return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
-        }
-    } else {
-        // أول مرة يدخل -> نربط الجهاز به
-        await supabase.from('devices').insert({
-            user_id: user.id,
-            fingerprint: deviceId
-        });
+    if (user.is_blocked) {
+        return res.status(403).json({ success: false, message: 'هذا الحساب محظور.' });
     }
 
-    // 3. إرجاع الهوية (ليحفظها التطبيق في الذاكرة)
+    // 2. التحقق من ربط الجهاز (للطلاب فقط - الأدمن لا نربطه بجهاز)
+    if (!user.is_admin && deviceId) {
+        const { data: deviceData } = await supabase
+            .from('devices')
+            .select('fingerprint')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (deviceData) {
+            if (deviceData.fingerprint !== deviceId) {
+                return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
+            }
+        } else {
+            await supabase.from('devices').insert({ user_id: user.id, fingerprint: deviceId });
+        }
+    }
+
+    // 3. إرجاع البيانات (بما فيها حالة الأدمن)
     return res.status(200).json({
         success: true,
         userId: user.id,
-        firstName: user.first_name || username
+        firstName: user.first_name || username,
+        isAdmin: user.is_admin // ✅ معلومة مهمة للتوجيه
     });
 
   } catch (err) {
