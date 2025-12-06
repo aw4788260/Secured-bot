@@ -5,51 +5,73 @@ import { checkUserAccess } from '../../../lib/authHelper';
 const PYTHON_PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 
 export default async (req, res) => {
-    // 1. نقرأ فقط معرف الدرس من الرابط (غير حساس)
-    const { lessonId } = req.query;
+    const apiName = '[API: get-video-id]';
+    console.log(`${apiName} 🚀 Request started.`);
 
-    if (!lessonId) return res.status(400).json({ message: "Missing lessonId" });
+    const { lessonId } = req.query;
+    const userId = req.headers['x-user-id'];
+
+    if (!lessonId) {
+        console.warn(`${apiName} ❌ Missing lessonId.`);
+        return res.status(400).json({ message: "Missing lessonId" });
+    }
+
+    console.log(`${apiName} 👤 User: ${userId} requesting Lesson: ${lessonId}`);
 
     try {
-        // 2. التحقق الأمني (نمرر req كاملة ليقوم authHelper بقراءة الهيدرز)
+        // 1. التحقق الأمني
+        console.log(`${apiName} 🔒 Checking access permissions...`);
         const hasAccess = await checkUserAccess(req, lessonId, 'video');
 
         if (!hasAccess) {
+            console.warn(`${apiName} ⛔ Access Denied for user ${userId}.`);
             return res.status(403).json({ message: "Access Denied: Security Checks Failed" });
         }
+        console.log(`${apiName} ✅ Access Granted.`);
 
-        // 3. جلب بيانات الفيديو من قاعدة البيانات
-        const { data: videoData } = await supabase
+        // 2. جلب بيانات الفيديو
+        console.log(`${apiName} 🔍 Fetching video details from DB...`);
+        const { data: videoData, error } = await supabase
             .from('videos')
             .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
             .eq('id', lessonId)
             .single();
 
-        if (!videoData) return res.status(404).json({ message: "Video not found" });
+        if (error || !videoData) {
+            console.error(`${apiName} ❌ Video not found or DB error:`, error?.message);
+            return res.status(404).json({ message: "Video not found" });
+        }
+        console.log(`${apiName} 🎥 Video Found: ${videoData.title} (YT: ${videoData.youtube_video_id})`);
 
-        // 4. الاتصال بالبروكسي (Python) لجلب الرابط المباشر
+        // 3. الاتصال بالبروكسي + الإعدادات
+        console.log(`${apiName} 📡 Connecting to Python Proxy & Fetching Settings...`);
+        
         const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
         const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
 
-        // جلب الفيديو + إعدادات الأوفلاين بالتوازي
         const [proxyResponse, settingResult] = await Promise.all([
             axios.get(hls_endpoint, { 
                 params: { youtubeId: videoData.youtube_video_id },
                 headers: proxyHeaders,
                 timeout: 25000 
+            }).catch(e => {
+                console.error(`${apiName} ❌ Proxy Error:`, e.message);
+                throw new Error("Proxy Connection Failed");
             }),
             supabase.from('app_settings').select('value').eq('key', 'offline_mode').single()
         ]);
 
+        console.log(`${apiName} ✅ Proxy Response Received.`);
+        
         const isOfflineMode = settingResult.data ? settingResult.data.value === 'true' : true;
         
-        // استخراج أفضل جودة تلقائياً
         let directUrl = proxyResponse.data.url;
         if (!directUrl && proxyResponse.data.availableQualities?.length > 0) {
             directUrl = proxyResponse.data.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
+            console.log(`${apiName} ℹ️ Auto-selected best quality URL.`);
         }
 
-        // 5. الرد النهائي
+        console.log(`${apiName} 📤 Sending response to client.`);
         res.status(200).json({ 
             ...proxyResponse.data, 
             url: directUrl, 
@@ -61,7 +83,7 @@ export default async (req, res) => {
         });
 
     } catch (err) {
-        console.error("Video API Error:", err.message);
+        console.error(`${apiName} 🔥 CRITICAL ERROR:`, err.message);
         res.status(500).json({ message: "Server Error" });
     }
 };
