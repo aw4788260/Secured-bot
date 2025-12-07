@@ -53,10 +53,23 @@ export default function Register() {
 
   const totalPrice = formData.selectedItems.reduce((sum, item) => sum + (item.price || 0), 0);
 
+// الانتقال للخطوة التالية
   const nextStep = async () => {
     if (step === 1) {
-        if (!formData.firstName || !formData.username || !formData.password || !formData.phone) return alert("يرجى ملء جميع البيانات");
-        if (formData.password !== formData.confirmPassword) return alert("كلمة المرور غير متطابقة");
+        // 1. التحقق من أن الحقول ليست فارغة
+        if (!formData.firstName || !formData.username || !formData.password || !formData.phone) {
+            return alert("يرجى ملء جميع البيانات");
+        }
+
+        // 2. [جديد] التحقق من طول كلمة المرور (6 أحرف على الأقل)
+        if (formData.password.length < 6) {
+            return alert("⚠️ كلمة المرور قصيرة جداً! يجب أن تكون 6 أحرف على الأقل.");
+        }
+
+        // 3. التحقق من تطابق كلمتي المرور
+        if (formData.password !== formData.confirmPassword) {
+            return alert("❌ كلمة المرور غير متطابقة");
+        }
         
         setCheckingUser(true);
         try {
