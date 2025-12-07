@@ -1,33 +1,29 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { parse } from 'cookie';
 
 export default async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
-
-  const { userId, sessionToken } = req.body;
-
-  if (!userId || !sessionToken) {
-    return res.status(400).json({ valid: false });
+  // 1. قراءة الكوكيز من الهيدر
+  const cookies = parse(req.headers.cookie || '');
+  const sessionToken = cookies.admin_session;
+  
+  if (!sessionToken) {
+    return res.status(401).json({ valid: false, message: 'No Token' });
   }
 
   try {
-    // جلب التوكن الحالي من قاعدة البيانات
+    // 2. البحث عن المستخدم صاحب هذا التوكن
     const { data: user, error } = await supabase
       .from('users')
-      .select('session_token, is_admin')
-      .eq('id', userId)
+      .select('id, session_token, is_admin')
+      .eq('session_token', sessionToken)
       .single();
 
+    // 3. التحقق من التطابق والصلاحية
     if (error || !user || !user.is_admin) {
       return res.status(401).json({ valid: false });
     }
 
-    // المقارنة: هل التوكن الذي يملكه المتصفح هو نفسه المسجل في القاعدة؟
-    // إذا قام الأدمن بتسجيل الدخول من جهاز آخر، سيتغير التوكن في القاعدة، وبالتالي ستفشل هذه المقارنة
-    if (user.session_token !== sessionToken) {
-      return res.status(401).json({ valid: false, message: 'Session expired (Logged in elsewhere)' });
-    }
-
-    return res.status(200).json({ valid: true });
+    return res.status(200).json({ valid: true, userId: user.id });
 
   } catch (err) {
     return res.status(500).json({ valid: false });
