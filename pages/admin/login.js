@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+// [1] استيراد دالة البصمة
+import { getDeviceFingerprint } from '../../utils/fingerprintHelper';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -9,7 +11,6 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // تنظيف أي جلسة قديمة عند الفتح
   useEffect(() => { localStorage.clear(); }, []);
 
   const handleLogin = async (e) => {
@@ -18,10 +19,14 @@ export default function AdminLogin() {
     setError('');
 
     try {
+      // [2] توليد بصمة الجهاز
+      const deviceId = await getDeviceFingerprint();
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }) // الأدمن لا يحتاج deviceId
+        // [3] إرسال البصمة مع البيانات
+        body: JSON.stringify({ username, password, deviceId })
       });
       const data = await res.json();
 
@@ -31,10 +36,13 @@ export default function AdminLogin() {
             setLoading(false);
             return;
         }
-        // حفظ بيانات الأدمن
+        
+        // [4] حفظ البيانات والبصمة في المتصفح لاستخدامها لاحقاً
         localStorage.setItem('auth_user_id', data.userId);
-        localStorage.setItem('is_admin_session', 'true'); // علامة لتمييز الجلسة
-        router.replace('/admin'); // التوجيه للوحة التحكم
+        localStorage.setItem('auth_device_id', deviceId); // <-- هذا ما كان ناقصاً
+        localStorage.setItem('is_admin_session', 'true');
+        
+        router.replace('/admin');
       } else {
         setError(data.message);
       }
