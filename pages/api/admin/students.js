@@ -11,25 +11,51 @@ export default async (req, res) => {
   if (!adminUser || !adminUser.is_admin) return res.status(403).json({ error: 'Access Denied' });
 
   // ---------------------------------------------------------
-  // GET
+  // GET (Server-Side Pagination & Filtering)
   // ---------------------------------------------------------
   if (req.method === 'GET') {
-    const { courses_filter, subjects_filter, get_details_for_user } = req.query;
+    const { 
+        page = 1, 
+        limit = 30, 
+        search, 
+        courses_filter, 
+        subjects_filter, 
+        get_details_for_user 
+    } = req.query;
 
     try {
+        // أ) جلب تفاصيل طالب واحد (لا تغيير)
         if (get_details_for_user) {
             const { data: userCourses } = await supabase.from('user_course_access').select('course_id, courses(title)').eq('user_id', get_details_for_user);
             const { data: userSubjects } = await supabase.from('user_subject_access').select('subject_id, subjects(title, course_id)').eq('user_id', get_details_for_user);
             return res.status(200).json({ courses: userCourses || [], subjects: userSubjects || [] });
         }
 
-        let query = supabase.from('users').select(`id, first_name, username, phone, created_at, is_blocked, devices(fingerprint)`).eq('is_admin', false).order('created_at', { ascending: false });
+        // ب) إعداد استعلام جلب الطلاب
+        let query = supabase
+            .from('users')
+            .select(`id, first_name, username, phone, created_at, is_blocked, devices(fingerprint)`, { count: 'exact' }) // نطلب العدد الإجمالي
+            .eq('is_admin', false);
 
-        // --- منطق الفلترة المتعددة ---
+        // 1. تطبيق البحث (Search)
+        if (search && search.trim() !== '') {
+            const term = search.trim();
+            // البحث في الاسم، اليوزر، الهاتف. (للبحث بالـ ID نحتاج التحقق أنه رقم)
+            let orQuery = `first_name.ilike.%${term}%,username.ilike.%${term}%,phone.ilike.%${term}%`;
+            
+            // إذا كان البحث رقماً، نضيف البحث بالـ ID
+            if (/^\d+$/.test(term)) {
+                orQuery += `,id.eq.${term}`;
+            }
+            
+            query = query.or(orQuery);
+        }
+
+        // 2. تطبيق الفلترة (Filtering)
         let targetUserIds = new Set();
         let isFiltering = false;
 
-        // 1. فلترة الكورسات (قائمة IDs)
+        // فلترة الكورسات
         if (courses_filter && courses_filter.length > 0) {
             isFiltering = true;
             const cIds = courses_filter.split(',');
@@ -37,17 +63,14 @@ export default async (req, res) => {
             subs?.forEach(s => targetUserIds.add(s.user_id));
         }
 
-        // 2. فلترة المواد (قائمة IDs)
+        // فلترة المواد
         if (subjects_filter && subjects_filter.length > 0) {
             isFiltering = true;
             const sIds = subjects_filter.split(',');
             
-            // أ) المشتركين في المواد مباشرة
             const { data: subSubs } = await supabase.from('user_subject_access').select('user_id').in('subject_id', sIds);
             subSubs?.forEach(s => targetUserIds.add(s.user_id));
 
-            // ب) المشتركين في الكورس الكامل الذي يحتوي هذه المواد
-            // نجلب الـ course_id لهذه المواد
             const { data: subjectsInfo } = await supabase.from('subjects').select('course_id').in('id', sIds);
             const parentCourseIds = subjectsInfo?.map(s => s.course_id).filter(id => id) || [];
             
@@ -57,26 +80,35 @@ export default async (req, res) => {
             }
         }
 
-        // تطبيق الفلتر
+        // إذا تم تفعيل الفلترة، نقصر النتائج على الـ IDs المستخرجة
         if (isFiltering) {
             if (targetUserIds.size > 0) {
                 query = query.in('id', Array.from(targetUserIds));
             } else {
-                return res.status(200).json([]); // لا يوجد نتائج
+                // فلتر نشط لكن لا يوجد طلاب مطابقين
+                return res.status(200).json({ students: [], total: 0 }); 
             }
         }
 
-        const { data, error } = await query;
+        // 3. تطبيق التقسيم (Pagination)
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+        
+        query = query.order('created_at', { ascending: false }).range(from, to);
+
+        const { data, error, count } = await query;
         if (error) throw error;
 
         const formattedData = data.map(user => ({ ...user, device_linked: user.devices && user.devices.length > 0 }));
-        return res.status(200).json(formattedData);
+        
+        // إرجاع البيانات + العدد الإجمالي
+        return res.status(200).json({ students: formattedData, total: count });
 
     } catch (err) { return res.status(500).json({ error: err.message }); }
   }
 
   // ---------------------------------------------------------
-  // POST (نفس المنطق السابق بدون تغيير)
+  // POST (لم يتغير المنطق، فقط نستقبله كما هو)
   // ---------------------------------------------------------
   if (req.method === 'POST') {
     const { action, userIds, userId, newData, grantList } = req.body;
