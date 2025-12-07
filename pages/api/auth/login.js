@@ -13,7 +13,7 @@ export default async (req, res) => {
     // 1. البحث عن المستخدم
     const { data: user } = await supabase
       .from('users')
-      .select('id, password, first_name, is_admin, is_blocked') // جلبنا is_admin
+      .select('id, password, first_name, is_admin, is_blocked')
       .eq('username', username) 
       .single();
 
@@ -25,8 +25,9 @@ export default async (req, res) => {
         return res.status(403).json({ success: false, message: 'هذا الحساب محظور.' });
     }
 
-    // 2. التحقق من ربط الجهاز (للطلاب فقط - الأدمن لا نربطه بجهاز)
-    if (!user.is_admin && deviceId) {
+    // 2. التحقق من ربط الجهاز (للجميع الآن، طلاب وأدمن)
+    // [✅ تم إزالة شرط !user.is_admin لحل المشكلة]
+    if (deviceId) {
         const { data: deviceData } = await supabase
             .from('devices')
             .select('fingerprint')
@@ -34,20 +35,29 @@ export default async (req, res) => {
             .maybeSingle();
 
         if (deviceData) {
+            // إذا كان له جهاز مسجل، هل هو نفس الجهاز الحالي؟
             if (deviceData.fingerprint !== deviceId) {
                 return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
             }
         } else {
-            await supabase.from('devices').insert({ user_id: user.id, fingerprint: deviceId });
+            // تسجيل الجهاز الجديد (للطالب أو الأدمن)
+            const { error: insertError } = await supabase
+                .from('devices')
+                .insert({ user_id: user.id, fingerprint: deviceId });
+            
+            if (insertError) {
+                console.error("Device Insert Error:", insertError);
+                // لن نوقف العملية، لكن نسجل الخطأ
+            }
         }
     }
 
-    // 3. إرجاع البيانات (بما فيها حالة الأدمن)
+    // 3. إرجاع البيانات
     return res.status(200).json({
         success: true,
         userId: user.id,
         firstName: user.first_name || username,
-        isAdmin: user.is_admin // ✅ معلومة مهمة للتوجيه
+        isAdmin: user.is_admin
     });
 
   } catch (err) {
