@@ -3,47 +3,37 @@ import { useState, useEffect } from 'react';
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([]);
-  const [filterOptions, setFilterOptions] = useState([]); // قائمة الكورسات والمواد للفلتر
+  const [allCourses, setAllCourses] = useState([]); 
   const [loading, setLoading] = useState(true);
   
-  // البحث والفلترة
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState(''); // الصيغة: "type_id"
+  const [selectedFilter, setSelectedFilter] = useState('');
 
-  // التصفح (Pagination)
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
-  // التحديد الجماعي
   const [selectedUsers, setSelectedUsers] = useState([]);
 
-  // ملف الطالب (Modal)
+  // مودال ملف الطالب
   const [viewUser, setViewUser] = useState(null);
   const [userSubs, setUserSubs] = useState({ courses: [], subjects: [] });
   const [loadingSubs, setLoadingSubs] = useState(false);
 
-  // --- 1. جلب البيانات الأولية ---
+  // مودال منح الصلاحيات (الجديد)
+  const [showGrantModal, setShowGrantModal] = useState(false);
+  const [grantTarget, setGrantTarget] = useState(null); // 'bulk' or user object
+  const [selectedGrantItems, setSelectedGrantItems] = useState({ courses: [], subjects: [] });
+
+  // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
     try {
-        // جلب خيارات الفلتر (كورسات ومواد)
-        if (filterOptions.length === 0) {
+        if (allCourses.length === 0) {
             const resCourses = await fetch('/api/public/get-courses');
             const coursesData = await resCourses.json();
-            
-            let options = [];
-            coursesData.forEach(c => {
-                options.push({ type: 'course', id: c.id, label: `📦 كورس: ${c.title}` });
-                if (c.subjects) {
-                    c.subjects.forEach(s => {
-                        options.push({ type: 'subject', id: s.id, label: `📄 مادة: ${s.title}` });
-                    });
-                }
-            });
-            setFilterOptions(options);
+            setAllCourses(coursesData);
         }
 
-        // إعداد رابط الجلب مع الفلتر
         let url = '/api/admin/students';
         if (selectedFilter) {
             const [type, id] = selectedFilter.split('_');
@@ -63,7 +53,7 @@ export default function StudentsPage() {
 
   useEffect(() => { fetchData(); }, [selectedFilter]);
 
-  // --- 2. ملف الطالب ---
+  // --- 2. إدارة ملف الطالب ---
   const openUserProfile = async (user) => {
       setViewUser(user);
       setLoadingSubs(true);
@@ -75,14 +65,45 @@ export default function StudentsPage() {
       setLoadingSubs(false);
   };
 
-  const closeUserProfile = () => {
-      setViewUser(null);
-      setUserSubs({ courses: [], subjects: [] });
+  // --- 3. إدارة نافذة منح الصلاحيات (الجديدة) ---
+  const openGrantModal = (target) => {
+      setGrantTarget(target); // target إما كائن المستخدم أو كلمة 'bulk'
+      setSelectedGrantItems({ courses: [], subjects: [] }); // تصفية الاختيارات السابقة
+      setShowGrantModal(true);
   };
 
-  // --- 3. تنفيذ الإجراءات ---
-  const executeAction = async (action, payload, autoClose = false) => {
-      if (!confirm('هل أنت متأكد من تنفيذ هذا الإجراء؟')) return;
+  const toggleGrantItem = (type, id) => {
+      const currentList = selectedGrantItems[type];
+      const newList = currentList.includes(id) 
+          ? currentList.filter(item => item !== id) 
+          : [...currentList, id];
+      setSelectedGrantItems({ ...selectedGrantItems, [type]: newList });
+  };
+
+  const submitGrant = async () => {
+      if (selectedGrantItems.courses.length === 0 && selectedGrantItems.subjects.length === 0) {
+          return alert("يرجى اختيار صلاحية واحدة على الأقل.");
+      }
+
+      const isBulk = grantTarget === 'bulk';
+      const payload = {
+          userIds: isBulk ? selectedUsers : [grantTarget.id],
+          grantList: selectedGrantItems
+      };
+
+      await executeAction('grant_access', payload, false); // false = لا تغلق مودال الطالب لو مفتوح
+      setShowGrantModal(false);
+      
+      // تحديث بيانات مودال الطالب لو كان مفتوحاً
+      if (!isBulk && viewUser && viewUser.id === grantTarget.id) {
+          openUserProfile(viewUser);
+      }
+  };
+
+  // --- 4. تنفيذ الإجراءات ---
+  const executeAction = async (action, payload, autoCloseProfile = false) => {
+      if (action !== 'grant_access' && !confirm('هل أنت متأكد من تنفيذ هذا الإجراء؟')) return;
+      
       try {
           const res = await fetch('/api/admin/students', {
               method: 'POST',
@@ -92,10 +113,10 @@ export default function StudentsPage() {
           const resData = await res.json();
           if (res.ok) {
               alert(resData.message);
-              if (autoClose) closeUserProfile();
-              // إذا كان الإجراء "سحب/منح" داخل المودال، نعيد تحميل بيانات المودال فقط
-              if ((action === 'grant_access' || action === 'revoke_access') && viewUser) {
-                  openUserProfile(viewUser); 
+              if (autoCloseProfile) setViewUser(null);
+              // إذا كان سحب صلاحية، نحدث المودال المفتوح
+              if (action === 'revoke_access' && viewUser) {
+                  openUserProfile(viewUser);
               } else {
                   fetchData();
               }
@@ -103,27 +124,16 @@ export default function StudentsPage() {
       } catch (e) { alert('خطأ اتصال'); }
   };
 
-  // --- دوال المودال ---
   const handlePassChange = () => {
-      const p = prompt('أدخل كلمة المرور الجديدة (سيتم تشفيرها):');
+      const p = prompt('كلمة المرور الجديدة:');
       if (p) executeAction('change_password', { userId: viewUser.id, newData: { password: p } });
   };
   const handleUserChange = () => {
       const u = prompt('اسم المستخدم الجديد:', viewUser.username);
       if (u) executeAction('change_username', { userId: viewUser.id, newData: { username: u } });
   };
-  const handleGrant = () => {
-      // نافذة بسيطة لاختيار ما نريد إضافته
-      const input = prompt('لإضافة كورس أدخل: c_ID (مثال c_5)\nلإضافة مادة أدخل: s_ID (مثال s_10)');
-      if (!input) return;
-      
-      const [type, id] = input.split('_');
-      if (type === 'c') executeAction('grant_access', { userId: viewUser.id, courseId: id });
-      else if (type === 's') executeAction('grant_access', { userId: viewUser.id, subjectId: id });
-      else alert('صيغة خاطئة');
-  };
 
-  // --- 4. العمليات الجماعية ---
+  // --- 5. العمليات الجماعية ---
   const toggleSelectAll = (e) => {
       if (e.target.checked) setSelectedUsers(currentTableData.map(u => u.id));
       else setSelectedUsers([]);
@@ -136,16 +146,11 @@ export default function StudentsPage() {
   const handleBulkAction = (actionType) => {
       if (selectedUsers.length === 0) return;
       
-      if (actionType === 'grant_bulk') {
-          const input = prompt('أدخل ID العنصر لمنحه للجميع:\nللكورس: c_ID\nللمادة: s_ID');
-          if (!input) return;
-          const [type, id] = input.split('_');
-          if (type === 'c') executeAction('grant_access', { userIds: selectedUsers, courseId: id });
-          else if (type === 's') executeAction('grant_access', { userIds: selectedUsers, subjectId: id });
+      if (actionType === 'grant') {
+          openGrantModal('bulk');
       }
       else if (actionType === 'revoke_bulk') {
-          // خاصية ممتازة: سحب الصلاحية التي تم الفلترة بناء عليها
-          if (!selectedFilter) return alert('يجب فلترة الطلاب أولاً لمعرفة ماذا تسحب منهم.');
+          if (!selectedFilter) return alert('يجب فلترة الطلاب أولاً.');
           const [type, id] = selectedFilter.split('_');
           executeAction('revoke_access', { 
               userIds: selectedUsers, 
@@ -156,7 +161,7 @@ export default function StudentsPage() {
       else if (actionType === 'block') executeAction('toggle_block', { userIds: selectedUsers, newData: { is_blocked: true } });
   };
 
-  // --- 5. العرض ---
+  // --- 6. العرض ---
   const filteredStudents = students.filter(s => 
     s.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -166,57 +171,89 @@ export default function StudentsPage() {
   const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
   const currentTableData = filteredStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  const formatDate = (dateString) => {
+      if (!dateString) return '-';
+      return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
   return (
     <AdminLayout title="إدارة الطلاب">
-      {/* التحكمات */}
+      
+      {/* الشريط العلوي */}
       <div className="controls-container">
-          <input className="search-input" placeholder="🔍 بحث..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
+          <input className="search-input" placeholder="🔍 بحث بالاسم، الهاتف..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
           
-          <select className="filter-select" onChange={e => setSelectedFilter(e.target.value)} value={selectedFilter}>
-              <option value="">📂 عرض الكل</option>
-              {filterOptions.map(opt => (
-                  <option key={`${opt.type}_${opt.id}`} value={`${opt.type}_${opt.id}`}>{opt.label}</option>
-              ))}
-          </select>
+          <div className="filter-wrapper">
+            <select className="filter-select" onChange={e => setSelectedFilter(e.target.value)} value={selectedFilter}>
+                <option value="">📂 عرض جميع الطلاب</option>
+                
+                {allCourses.length > 0 && (
+                    <optgroup label="📦 الكورسات الكاملة">
+                        {allCourses.map(c => (
+                            <option key={`course_${c.id}`} value={`course_${c.id}`}>{c.title}</option>
+                        ))}
+                    </optgroup>
+                )}
+
+                {allCourses.some(c => c.subjects?.length > 0) && (
+                    <optgroup label="📄 المواد الفردية">
+                        {allCourses.flatMap(c => c.subjects || []).map(s => (
+                            <option key={`subject_${s.id}`} value={`subject_${s.id}`}>{s.title}</option>
+                        ))}
+                    </optgroup>
+                )}
+            </select>
+          </div>
 
           <button onClick={fetchData} className="btn-refresh">🔄 تحديث</button>
       </div>
 
-      {/* شريط العمليات الجماعية */}
+      {/* شريط الإجراءات الجماعية (الشفاف) */}
       {selectedUsers.length > 0 && (
-          <div className="bulk-bar">
-              <span>{selectedUsers.length} طالب محدد</span>
-              <div className="bulk-btns">
-                  <button onClick={() => handleBulkAction('reset_device')}>🔄 تصفير الأجهزة</button>
-                  <button onClick={() => handleBulkAction('grant_bulk')}>➕ منح صلاحية</button>
-                  {selectedFilter && <button onClick={() => handleBulkAction('revoke_bulk')} className="btn-danger">❌ سحب (المحدد بالفلتر)</button>}
-                  <button onClick={() => handleBulkAction('block')} className="btn-danger">⛔ حظر</button>
+          <div className="bulk-glass-bar">
+              <div className="bulk-info">
+                  <span className="count-badge">{selectedUsers.length}</span>
+                  <span>طالب محدد</span>
+              </div>
+              <div className="bulk-actions">
+                  <button onClick={() => handleBulkAction('reset_device')} className="glass-btn">🔓 إلغاء قفل الأجهزة</button>
+                  <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ إضافة صلاحيات</button>
+                  {selectedFilter && <button onClick={() => handleBulkAction('revoke_bulk')} className="glass-btn danger">❌ سحب المحدد</button>}
+                  <button onClick={() => handleBulkAction('block')} className="glass-btn danger">⛔ حظر</button>
               </div>
           </div>
       )}
 
-      {/* الجدول */}
+      {/* الجدول المحسن */}
       <div className="table-box">
           <table className="std-table">
               <thead>
                   <tr>
-                      <th style={{width:'40px'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedUsers.length === currentTableData.length && currentTableData.length > 0} /></th>
-                      <th>الاسم</th>
-                      <th>User</th>
-                      <th>الهاتف</th>
-                      <th>الحالة</th>
+                      <th style={{width:'40px', textAlign:'center'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedUsers.length === currentTableData.length && currentTableData.length > 0} /></th>
+                      <th style={{width:'60px'}}>ID</th>
+                      <th style={{textAlign:'right'}}>الاسم</th>
+                      <th style={{textAlign:'center'}}>المستخدم</th>
+                      <th style={{textAlign:'center'}}>الهاتف</th>
+                      <th style={{textAlign:'center'}}>التاريخ</th>
+                      <th style={{textAlign:'center', width:'100px'}}>الحالة</th>
                   </tr>
               </thead>
               <tbody>
                   {currentTableData.map(std => (
                       <tr key={std.id} onClick={() => openUserProfile(std)} className="clickable">
-                          <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedUsers.includes(std.id)} onChange={() => toggleSelectUser(std.id)} /></td>
-                          <td>{std.first_name}</td>
-                          <td>{std.username}</td>
-                          <td dir="ltr">{std.phone}</td>
-                          <td>
-                              {std.is_blocked ? <span className="badge red">⛔</span> : <span className="badge green">✅</span>}
-                              {std.device_linked && <span className="badge blue">📱</span>}
+                          <td onClick={e => e.stopPropagation()} style={{textAlign:'center'}}>
+                              <input type="checkbox" checked={selectedUsers.includes(std.id)} onChange={() => toggleSelectUser(std.id)} />
+                          </td>
+                          <td style={{fontWeight:'bold', color:'#94a3b8'}}>{std.id}</td>
+                          <td style={{fontWeight:'600'}}>{std.first_name}</td>
+                          <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#38bdf8'}}>{std.username}</td>
+                          <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace'}}>{std.phone}</td>
+                          <td style={{textAlign:'center', fontSize:'0.85em', color:'#cbd5e1'}}>{formatDate(std.created_at)}</td>
+                          <td style={{textAlign:'center'}}>
+                              <div style={{display:'flex', justifyContent:'center', gap:'5px'}}>
+                                {std.is_blocked ? <span className="status-dot red" title="محظور"></span> : <span className="status-dot green" title="نشط"></span>}
+                                {std.device_linked && <span className="device-icon" title="جهاز مرتبط">📱</span>}
+                              </div>
                           </td>
                       </tr>
                   ))}
@@ -235,48 +272,63 @@ export default function StudentsPage() {
 
       {/* --- Profile Modal --- */}
       {viewUser && (
-          <div className="modal-overlay" onClick={closeUserProfile}>
-              <div className="modal-box" onClick={e => e.stopPropagation()}>
+          <div className="modal-overlay" onClick={() => setViewUser(null)}>
+              <div className="modal-box profile-modal" onClick={e => e.stopPropagation()}>
                   <div className="modal-head">
-                      <h3>👤 {viewUser.first_name}</h3>
-                      <button onClick={closeUserProfile}>✕</button>
-                  </div>
-                  <div className="modal-content">
-                      <div className="info-grid">
-                          <div><strong>ID:</strong> {viewUser.id}</div>
-                          <div><strong>User:</strong> {viewUser.username} <span onClick={handleUserChange} style={{cursor:'pointer'}}>✏️</span></div>
-                          <div><strong>Phone:</strong> {viewUser.phone}</div>
-                          <div><strong>Date:</strong> {new Date(viewUser.created_at).toLocaleDateString()}</div>
+                      <div className="user-avatar-placeholder">{viewUser.first_name[0]}</div>
+                      <div className="head-info">
+                          <h3>{viewUser.first_name}</h3>
+                          <span className="sub-text">ID: {viewUser.id} | {formatDate(viewUser.created_at)}</span>
                       </div>
-                      
-                      <div className="actions-grid">
-                          <button onClick={() => executeAction('reset_device', { userId: viewUser.id })}>🔄 تصفير الجهاز</button>
+                      <button className="close-icon" onClick={() => setViewUser(null)}>✕</button>
+                  </div>
+                  
+                  <div className="modal-content">
+                      <div className="data-row">
+                          <div className="data-item">
+                              <label>اسم المستخدم</label>
+                              <div className="val-box">{viewUser.username} <button onClick={handleUserChange}>✏️</button></div>
+                          </div>
+                          <div className="data-item">
+                              <label>رقم الهاتف</label>
+                              <div className="val-box ltr">{viewUser.phone}</div>
+                          </div>
+                      </div>
+
+                      <div className="actions-row">
+                          <button onClick={() => executeAction('reset_device', { userId: viewUser.id })}>🔓 إلغاء قفل الجهاز</button>
                           <button onClick={handlePassChange}>🔑 تغيير الباسورد</button>
                           <button className={viewUser.is_blocked ? 'btn-green' : 'btn-red'} 
                                   onClick={() => executeAction('toggle_block', { userId: viewUser.id, newData: { is_blocked: !viewUser.is_blocked } }, true)}>
-                              {viewUser.is_blocked ? 'فك الحظر' : 'حظر'}
+                              {viewUser.is_blocked ? 'فك الحظر' : 'حظر الحساب'}
                           </button>
                       </div>
 
-                      <div className="subs-container">
-                          <h4>الصلاحيات والاشتراكات <button className="mini-add" onClick={handleGrant}>+</button></h4>
-                          {loadingSubs ? <p>جاري التحميل...</p> : (
-                              <div className="subs-lists">
-                                  <div>
-                                      <h5>📦 كورسات كاملة:</h5>
+                      <div className="subs-wrapper">
+                          <div className="subs-header">
+                              <h4>الاشتراكات والصلاحيات</h4>
+                              <button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ إضافة صلاحية</button>
+                          </div>
+                          
+                          {loadingSubs ? <div className="loader-line"></div> : (
+                              <div className="subs-grid">
+                                  <div className="sub-column">
+                                      <h5>📦 الكورسات الكاملة</h5>
+                                      {userSubs.courses.length === 0 && <p className="empty-text">لا يوجد</p>}
                                       {userSubs.courses.map(c => (
-                                          <div key={c.course_id} className="sub-item">
-                                              {c.courses?.title}
-                                              <span onClick={() => executeAction('revoke_access', { userId: viewUser.id, courseId: c.course_id })}>❌</span>
+                                          <div key={c.course_id} className="sub-chip">
+                                              <span>{c.courses?.title}</span>
+                                              <button onClick={() => executeAction('revoke_access', { userId: viewUser.id, courseId: c.course_id })}>✕</button>
                                           </div>
                                       ))}
                                   </div>
-                                  <div>
-                                      <h5>📄 مواد محددة:</h5>
+                                  <div className="sub-column">
+                                      <h5>📄 المواد الفردية</h5>
+                                      {userSubs.subjects.length === 0 && <p className="empty-text">لا يوجد</p>}
                                       {userSubs.subjects.map(s => (
-                                          <div key={s.subject_id} className="sub-item">
-                                              {s.subjects?.title}
-                                              <span onClick={() => executeAction('revoke_access', { userId: viewUser.id, subjectId: s.subject_id })}>❌</span>
+                                          <div key={s.subject_id} className="sub-chip">
+                                              <span>{s.subjects?.title}</span>
+                                              <button onClick={() => executeAction('revoke_access', { userId: viewUser.id, subjectId: s.subject_id })}>✕</button>
                                           </div>
                                       ))}
                                   </div>
@@ -288,45 +340,168 @@ export default function StudentsPage() {
           </div>
       )}
 
+      {/* --- Grant Access Modal (الجديد كلياً) --- */}
+      {showGrantModal && (
+          <div className="modal-overlay" onClick={() => setShowGrantModal(false)}>
+              <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
+                  <div className="modal-head">
+                      <h3>➕ إضافة صلاحيات {grantTarget === 'bulk' ? 'جماعية' : 'للطالب'}</h3>
+                      <button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button>
+                  </div>
+                  <div className="modal-content scrollable">
+                      <p className="hint-text">حدد الكورسات أو المواد التي تريد إضافتها ثم اضغط تأكيد.</p>
+                      
+                      {allCourses.map(course => (
+                          <div key={course.id} className="course-group">
+                              <div className="course-check-row">
+                                  <label className="checkbox-container main">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={selectedGrantItems.courses.includes(course.id)}
+                                          onChange={() => toggleGrantItem('courses', course.id)}
+                                      />
+                                      <span className="checkmark"></span>
+                                      <span className="label-text">📦 كورس كامل: {course.title}</span>
+                                  </label>
+                              </div>
+                              
+                              {course.subjects && course.subjects.length > 0 && (
+                                  <div className="subjects-grid">
+                                      {course.subjects.map(subject => (
+                                          <label key={subject.id} className="checkbox-container sub">
+                                              <input 
+                                                  type="checkbox" 
+                                                  checked={selectedGrantItems.subjects.includes(subject.id)}
+                                                  onChange={() => toggleGrantItem('subjects', subject.id)}
+                                                  disabled={selectedGrantItems.courses.includes(course.id)} // تعطيل المادة لو الكورس كله متحدد
+                                              />
+                                              <span className="checkmark"></span>
+                                              <span className="label-text">{subject.title}</span>
+                                          </label>
+                                      ))}
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                  </div>
+                  <div className="modal-footer">
+                      <button className="cancel-btn" onClick={() => setShowGrantModal(false)}>إلغاء</button>
+                      <button className="confirm-btn" onClick={submitGrant}>تأكيد وإضافة ✅</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <style jsx>{`
-        .controls-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
-        .search-input, .filter-select { padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; flex: 1; min-width: 200px; }
-        .btn-refresh { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 0 20px; border-radius: 6px; cursor: pointer; }
+        /* --- General Layout --- */
+        .controls-container { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .search-input { flex: 2; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; min-width: 200px; }
+        .filter-wrapper { flex: 1; min-width: 200px; position: relative; }
+        .filter-select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; appearance: none; cursor: pointer; }
+        .btn-refresh { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 12px 25px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-refresh:hover { background: #38bdf8; color: #0f172a; }
+
+        /* --- Bulk Glass Bar --- */
+        .bulk-glass-bar {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 800px;
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 16px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            z-index: 50; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes slideUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
         
-        .bulk-bar { background: #38bdf8; color: #0f172a; padding: 10px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .bulk-btns button { margin-left: 8px; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: white; color: #0f172a; }
-        .bulk-btns .btn-danger { background: #ef4444; color: white; }
+        .bulk-info { display: flex; align-items: center; gap: 10px; color: white; font-weight: bold; }
+        .count-badge { background: #38bdf8; color: #0f172a; padding: 2px 8px; border-radius: 10px; font-size: 0.9em; }
+        .bulk-actions { display: flex; gap: 10px; }
+        .glass-btn { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9em; transition: 0.2s; }
+        .glass-btn:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+        .glass-btn.danger { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+        .glass-btn.danger:hover { background: rgba(239, 68, 68, 0.4); }
 
-        .table-box { background: #1e293b; border-radius: 8px; border: 1px solid #334155; overflow-x: auto; }
-        .std-table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        .std-table th { background: #0f172a; padding: 12px; text-align: right; color: #94a3b8; border-bottom: 1px solid #334155; }
-        .std-table td { padding: 12px; border-bottom: 1px solid #334155; color: #e2e8f0; }
-        .clickable:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
-        .badge { margin-left: 5px; font-size: 0.9em; }
-
-        .pagination { display: flex; justify-content: center; gap: 15px; margin-top: 20px; color: #94a3b8; }
-        .pagination button { padding: 5px 15px; background: #334155; color: white; border: none; borderRadius: 4px; cursor: pointer; }
-        .pagination button:disabled { opacity: 0.5; }
-
-        /* Modal Styles */
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-        .modal-box { background: #1e293b; width: 90%; max-width: 600px; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
-        .modal-head { background: #0f172a; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
-        .modal-head h3 { margin: 0; color: #38bdf8; }
-        .modal-head button { background: none; border: none; color: #ef4444; font-size: 20px; cursor: pointer; }
-        .modal-content { padding: 20px; }
+        /* --- Table Styling --- */
+        .table-box { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow-x: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .std-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        .std-table th { background: #0f172a; padding: 15px; color: #94a3b8; border-bottom: 1px solid #334155; font-size: 0.9em; white-space: nowrap; }
+        .std-table td { padding: 15px; border-bottom: 1px solid #334155; color: #e2e8f0; vertical-align: middle; }
+        .clickable { cursor: pointer; transition: background 0.1s; }
+        .clickable:hover { background: rgba(56, 189, 248, 0.05); }
         
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; color: #cbd5e1; }
-        .actions-grid { display: flex; gap: 10px; margin-bottom: 20px; }
-        .actions-grid button { flex: 1; padding: 10px; border: none; borderRadius: 6px; cursor: pointer; background: #334155; color: white; font-weight: bold; }
-        .actions-grid .btn-red { background: #ef4444; } .actions-grid .btn-green { background: #22c55e; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
+        .status-dot.green { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
+        .status-dot.red { background: #ef4444; }
+        .device-icon { font-size: 1.1em; cursor: help; }
 
-        .subs-container h4 { border-bottom: 1px solid #334155; padding-bottom: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; }
-        .mini-add { background: #38bdf8; border: none; width: 24px; height: 24px; borderRadius: 50%; cursor: pointer; color: black; font-weight: bold; }
-        .subs-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .subs-lists h5 { color: #94a3b8; margin: 0 0 10px 0; }
-        .sub-item { background: #0f172a; padding: 8px; margin-bottom: 5px; borderRadius: 4px; display: flex; justify-content: space-between; font-size: 0.9em; }
-        .sub-item span { color: #ef4444; cursor: pointer; font-weight: bold; }
+        /* --- Pagination --- */
+        .pagination { display: flex; justify-content: center; gap: 20px; margin-top: 25px; padding-bottom: 50px; color: #cbd5e1; align-items: center; }
+        .pagination button { padding: 8px 16px; background: #334155; color: white; border: none; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .pagination button:hover:not(:disabled) { background: #38bdf8; color: #0f172a; }
+        .pagination button:disabled { opacity: 0.5; cursor: default; }
+
+        /* --- Common Modal --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal-box { background: #1e293b; width: 90%; max-height: 90vh; border-radius: 16px; border: 1px solid #475569; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        .profile-modal { max-width: 600px; }
+        .grant-modal { max-width: 700px; }
+        
+        .modal-head { background: #0f172a; padding: 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #334155; }
+        .user-avatar-placeholder { width: 50px; height: 50px; background: #38bdf8; color: #0f172a; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.5em; font-weight: bold; }
+        .head-info h3 { margin: 0; font-size: 1.2em; color: white; }
+        .sub-text { font-size: 0.85em; color: #94a3b8; }
+        .close-icon { margin-right: auto; background: none; border: none; color: #cbd5e1; font-size: 20px; cursor: pointer; padding: 5px; }
+        
+        .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 15px 25px; background: #0f172a; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #334155; }
+
+        /* --- Profile Modal Styles --- */
+        .data-row { display: flex; gap: 20px; margin-bottom: 25px; }
+        .data-item { flex: 1; }
+        .data-item label { display: block; font-size: 0.85em; color: #94a3b8; margin-bottom: 5px; }
+        .val-box { background: #0f172a; padding: 10px; border-radius: 6px; border: 1px solid #334155; color: white; display: flex; justify-content: space-between; align-items: center; }
+        .val-box.ltr { direction: ltr; font-family: monospace; }
+        .val-box button { background: none; border: none; cursor: pointer; }
+
+        .actions-row { display: flex; gap: 10px; margin-bottom: 30px; }
+        .actions-row button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; background: #334155; color: white; transition: 0.2s; }
+        .actions-row button:hover { background: #475569; }
+        .btn-red { background: #ef4444 !important; } .btn-red:hover { background: #dc2626 !important; }
+        .btn-green { background: #22c55e !important; }
+
+        .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px dashed #475569; padding-bottom: 10px; }
+        .add-sub-btn { background: #38bdf8; color: #0f172a; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em; }
+        .subs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .sub-column h5 { margin: 0 0 10px 0; color: #94a3b8; font-size: 0.9em; }
+        .sub-chip { background: #0f172a; border: 1px solid #334155; padding: 8px 12px; border-radius: 20px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
+        .sub-chip button { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; padding: 0 5px; }
+        .empty-text { font-size: 0.8em; color: #64748b; font-style: italic; }
+
+        /* --- Grant Modal Styles --- */
+        .hint-text { color: #cbd5e1; margin-bottom: 20px; font-size: 0.95em; background: rgba(56, 189, 248, 0.1); padding: 10px; border-radius: 6px; border: 1px dashed #38bdf8; }
+        .course-group { background: #0f172a; border-radius: 8px; border: 1px solid #334155; padding: 15px; margin-bottom: 15px; }
+        .course-check-row { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #1e293b; }
+        .subjects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+
+        /* Checkbox Custom Styling */
+        .checkbox-container { display: flex; align-items: center; cursor: pointer; position: relative; padding-right: 30px; user-select: none; }
+        .checkbox-container input { position: absolute; opacity: 0; cursor: pointer; }
+        .checkmark { position: absolute; top: 0; right: 0; height: 20px; width: 20px; background-color: #1e293b; border: 2px solid #475569; border-radius: 4px; }
+        .checkbox-container:hover input ~ .checkmark { background-color: #334155; }
+        .checkbox-container input:checked ~ .checkmark { background-color: #38bdf8; border-color: #38bdf8; }
+        .checkmark:after { content: ""; position: absolute; display: none; }
+        .checkbox-container input:checked ~ .checkmark:after { display: block; }
+        .checkbox-container .checkmark:after { left: 6px; top: 2px; width: 5px; height: 10px; border: solid #0f172a; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+        .checkbox-container.main .label-text { font-weight: bold; color: #fff; }
+        .checkbox-container.sub .label-text { font-size: 0.9em; color: #cbd5e1; }
+        .checkbox-container input:disabled ~ .checkmark { background-color: #334155; border-color: #334155; opacity: 0.5; }
+        .checkbox-container input:disabled ~ .label-text { color: #64748b; text-decoration: line-through; }
+
+        .confirm-btn { background: #22c55e; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .cancel-btn { background: transparent; color: #cbd5e1; border: 1px solid #475569; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
       `}</style>
     </AdminLayout>
   );
