@@ -5,12 +5,11 @@ export default async (req, res) => {
 
   const { username, password, deviceId } = req.body;
 
-  if (!username || !password) {
+  if (!username || !password || !deviceId) {
     return res.status(400).json({ success: false, message: 'البيانات ناقصة' });
   }
 
   try {
-    // 1. البحث عن المستخدم
     const { data: user } = await supabase
       .from('users')
       .select('id, password, first_name, is_admin, is_blocked')
@@ -18,45 +17,34 @@ export default async (req, res) => {
       .single();
 
     if (!user || user.password !== password) {
-        return res.status(401).json({ success: false, message: 'اسم المستخدم أو كلمة المرور خطأ' });
+        return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
 
     if (user.is_blocked) {
         return res.status(403).json({ success: false, message: 'هذا الحساب محظور.' });
     }
 
-    // 2. معالجة الجهاز (المنطق الجديد)
-    if (deviceId) {
-        if (user.is_admin) {
-             // ✅ للأدمن فقط: تحديث البصمة دائماً (Allows Login from ANY device)
-             // هذا يلغي قفل الجهاز للأدمن، ويسمح لك بالتنقل بين الأجهزة بحرية
-             const { error: upsertError } = await supabase
-                .from('devices')
-                .upsert({ user_id: user.id, fingerprint: deviceId }, { onConflict: 'user_id' });
-             
-             if (upsertError) console.error('Admin Device Update Error:', upsertError);
+    // --- نظام قفل الجهاز (يطبق على الكل: طلاب وأدمن) ---
+    // الغرض: حماية المحتوى التعليمي
+    const { data: deviceData } = await supabase
+        .from('devices')
+        .select('fingerprint')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-        } else {
-             // ⛔ للطلاب: التحقق الصارم (Device Lock) كما هو
-             const { data: deviceData } = await supabase
-                .from('devices')
-                .select('fingerprint')
-                .eq('user_id', user.id)
-                .maybeSingle();
-
-             if (deviceData) {
-                // إذا كان الطالب مسجلاً بجهاز، ويحاول الدخول من جهاز آخر -> رفض
-                if (deviceData.fingerprint !== deviceId) {
-                    return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
-                }
-             } else {
-                // أول مرة للطالب -> تسجيل الجهاز
-                await supabase.from('devices').insert({ user_id: user.id, fingerprint: deviceId });
-            }
+    if (deviceData) {
+        // إذا كان للجهاز بصمة مسجلة، يجب أن تطابق الحالية
+        if (deviceData.fingerprint !== deviceId) {
+            return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر. لا يمكن الدخول من هنا.' });
         }
+    } else {
+        // أول مرة دخول -> ربط الجهاز بالحساب
+        await supabase.from('devices').insert({
+            user_id: user.id,
+            fingerprint: deviceId
+        });
     }
 
-    // 3. إرجاع البيانات
     return res.status(200).json({
         success: true,
         userId: user.id,
