@@ -25,8 +25,8 @@ export default async (req, res) => {
         return res.status(403).json({ success: false, message: 'هذا الحساب محظور.' });
     }
 
-    // 2. التحقق من ربط الجهاز (للجميع الآن، طلاب وأدمن)
-    // [✅ تم إزالة شرط !user.is_admin لحل المشكلة]
+    // 2. معالجة بصمة الجهاز (للجميع: طلاب وأدمن)
+    // [✅ تم إزالة استثناء الأدمن لضمان توافق النظام]
     if (deviceId) {
         const { data: deviceData } = await supabase
             .from('devices')
@@ -40,15 +40,11 @@ export default async (req, res) => {
                 return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
             }
         } else {
-            // تسجيل الجهاز الجديد (للطالب أو الأدمن)
-            const { error: insertError } = await supabase
-                .from('devices')
-                .insert({ user_id: user.id, fingerprint: deviceId });
-            
-            if (insertError) {
-                console.error("Device Insert Error:", insertError);
-                // لن نوقف العملية، لكن نسجل الخطأ
-            }
+            // تسجيل الجهاز الجديد (لأول مرة)
+            await supabase.from('devices').insert({
+                user_id: user.id,
+                fingerprint: deviceId
+            });
         }
     }
 
