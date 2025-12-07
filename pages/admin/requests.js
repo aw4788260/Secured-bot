@@ -6,11 +6,9 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   
-  // حالات النافذة المنبثقة (Modal) لعرض الصورة
+  // حالة المودال (تحمل رابط الصورة المراد تكبيرها)
   const [modalImage, setModalImage] = useState(null);
-  const [loadingImage, setLoadingImage] = useState(false);
 
-  // دالة جلب البيانات
   const fetchRequests = async () => {
     setLoading(true);
     try {
@@ -28,19 +26,7 @@ export default function RequestsPage() {
     fetchRequests();
   }, []);
 
- // --- دالة عرض الصورة السريعة ---
-  const viewReceiptSecurely = (filename) => {
-    // نضع الرابط المباشر، المتصفح سيتولى التحميل السريع والكاش
-    const url = `/api/admin/file-proxy?type=receipts&filename=${filename}`;
-    setModalImage(url);
-  };
-
-  // إغلاق المودال وتنظيف الذاكرة
- const closeModal = () => {
-      setModalImage(null);
-  };
-
-  // دالة التعامل مع القبول/الرفض
+  // دالة المعالجة (قبول/رفض)
   const handleAction = async (requestId, action) => {
     let reason = null;
     if (action === 'reject') {
@@ -89,84 +75,87 @@ export default function RequestsPage() {
         </div>
       ) : (
         <div className="requests-grid">
-          {requests.map(req => (
-            <div key={req.id} className="request-card">
-              <div className="card-header">
-                <span className="req-id">#{req.id}</span>
-                <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
-              </div>
-
-              <div className="card-body">
-                <div className="info-row">
-                    <span className="label">👤 الاسم:</span>
-                    <span className="value">{req.user_name}</span>
-                </div>
-                <div className="info-row">
-                    <span className="label">📱 الهاتف:</span>
-                    <span className="value" dir="ltr">{req.phone}</span>
-                </div>
-                <div className="info-row">
-                    <span className="label">💰 المبلغ:</span>
-                    <span className="value price">{req.total_price} ج.م</span>
-                </div>
-                
-                <div className="items-box">
-                    <p className="label">🛒 المطلوب:</p>
-                    <p className="value">{req.course_title}</p>
+          {requests.map(req => {
+            // نجهز الرابط المباشر للصورة هنا
+            const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
+            
+            return (
+                <div key={req.id} className="request-card">
+                <div className="card-header">
+                    <span className="req-id">#{req.id}</span>
+                    <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
                 </div>
 
-                {/* --- [تعديل] قسم الصورة --- */}
-                <div className="receipt-section">
-                    <p className="label">📄 إيصال الدفع:</p>
-                    {/* تم إزالة الرابط المباشر <a> واستبداله بحدث onClick */}
-                    <div 
-                        className="receipt-preview-container" 
-                        onClick={() => viewReceiptSecurely(req.payment_file_path)}
-                    >
-                        <span style={{fontSize:'30px'}}>👁️</span>
-                        <span style={{marginTop:'5px', fontSize:'0.9em'}}>عرض الإيصال</span>
+                <div className="card-body">
+                    <div className="info-row">
+                        <span className="label">👤 الاسم:</span>
+                        <span className="value">{req.user_name}</span>
+                    </div>
+                    <div className="info-row">
+                        <span className="label">📱 الهاتف:</span>
+                        <span className="value" dir="ltr">{req.phone}</span>
+                    </div>
+                    <div className="info-row">
+                        <span className="label">💰 المبلغ:</span>
+                        <span className="value price">{req.total_price} ج.م</span>
+                    </div>
+                    
+                    <div className="items-box">
+                        <p className="label">🛒 المطلوب:</p>
+                        <p className="value">{req.course_title}</p>
+                    </div>
+
+                    {/* 🔥 التعديل هنا: عرض الصورة مباشرة بدلاً من الزر */}
+                    <div className="receipt-section">
+                        <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع (اضغط للتكبير):</p>
+                        <div 
+                            className="receipt-thumbnail-wrapper"
+                            onClick={() => setModalImage(receiptUrl)} // عند الضغط، نرسل الرابط للمودال
+                        >
+                            <img 
+                                src={receiptUrl} 
+                                alt="Receipt" 
+                                className="receipt-thumbnail" 
+                                loading="lazy" // لتحسين الأداء
+                            />
+                            <div className="zoom-hint">🔍</div>
+                        </div>
                     </div>
                 </div>
-              </div>
 
-              <div className="card-actions">
-                <button 
-                    onClick={() => handleAction(req.id, 'approve')} 
-                    disabled={processingId === req.id}
-                    className="btn approve"
-                >
-                    ✅ موافقة وتفعيل
-                </button>
-                <button 
-                    onClick={() => handleAction(req.id, 'reject')} 
-                    disabled={processingId === req.id}
-                    className="btn reject"
-                >
-                    ❌ رفض
-                </button>
-              </div>
-            </div>
-          ))}
+                <div className="card-actions">
+                    <button 
+                        onClick={() => handleAction(req.id, 'approve')} 
+                        disabled={processingId === req.id}
+                        className="btn approve"
+                    >
+                        ✅ موافقة
+                    </button>
+                    <button 
+                        onClick={() => handleAction(req.id, 'reject')} 
+                        disabled={processingId === req.id}
+                        className="btn reject"
+                    >
+                        ❌ رفض
+                    </button>
+                </div>
+                </div>
+            );
+          })}
         </div>
       )}
 
-      {/* --- [جديد] النافذة المنبثقة (Modal) لعرض الصورة --- */}
+      {/* --- النافذة المنبثقة (Modal) --- */}
       {modalImage && (
-          <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-overlay" onClick={() => setModalImage(null)}>
               <div className="modal-content" onClick={e => e.stopPropagation()}>
-                  <button className="close-modal" onClick={closeModal}>✕</button>
-                  
-                  {modalImage === 'loading' || loadingImage ? (
-                      <div style={{color:'white', padding:'20px'}}>جاري جلب الصورة بشكل آمن...</div>
-                  ) : (
-                      <img src={modalImage} alt="Receipt Full" className="modal-img" />
-                  )}
+                  <button className="close-modal" onClick={() => setModalImage(null)}>✕</button>
+                  <img src={modalImage} alt="Full Receipt" className="modal-img" />
               </div>
           </div>
       )}
 
       <style jsx>{`
-        /* ... (نفس التنسيقات السابقة للبطاقات) ... */
         .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
         .request-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; }
         .request-card:hover { transform: translateY(-5px); border-color: #38bdf8; }
@@ -184,65 +173,66 @@ export default function RequestsPage() {
         .btn.approve { background: #22c55e; color: white; }
         .btn.reject { background: #ef4444; color: white; }
         .refresh-btn { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
-        
-        /* --- تنسيقات زر المعاينة الجديد --- */
-        .receipt-section { text-align: center; margin-top: 10px; }
-        .receipt-preview-container {
-            background: rgba(56, 189, 248, 0.1);
-            border: 1px dashed #38bdf8;
+
+        /* --- تنسيق الصورة المصغرة الجديد --- */
+        .receipt-section { margin-top: 15px; text-align: center; }
+        .receipt-thumbnail-wrapper {
+            position: relative;
+            height: 200px; /* ارتفاع ثابت للبطاقة */
+            width: 100%;
+            background: #0f172a;
             border-radius: 8px;
-            padding: 15px;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #38bdf8;
-            transition: all 0.2s;
-            margin-top: 5px;
+            overflow: hidden;
+            cursor: zoom-in;
+            border: 1px solid #334155;
         }
-        .receipt-preview-container:hover {
-            background: rgba(56, 189, 248, 0.2);
-            transform: scale(1.02);
+        .receipt-thumbnail {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* لملء المربع دون تشويه */
+            transition: transform 0.3s;
+        }
+        .receipt-thumbnail-wrapper:hover .receipt-thumbnail {
+            transform: scale(1.05);
+            opacity: 0.8;
+        }
+        .zoom-hint {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 30px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .receipt-thumbnail-wrapper:hover .zoom-hint {
+            opacity: 1;
         }
 
-        /* --- تنسيقات النافذة المنبثقة (Modal) --- */
+        /* --- تنسيق المودال --- */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
+            background: rgba(0,0,0,0.9);
             z-index: 1000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            display: flex; justify-content: center; align-items: center;
             padding: 20px;
             backdrop-filter: blur(5px);
         }
         .modal-content {
             position: relative;
-            max-width: 90%;
-            max-height: 90%;
-            background: #0f172a;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            border: 1px solid #334155;
+            max-width: 95%; max-height: 95%;
             display: flex; justify-content: center; align-items: center;
         }
         .modal-img {
-            max-width: 100%;
-            max-height: 80vh;
+            max-width: 100%; max-height: 90vh;
             border-radius: 5px;
-            object-fit: contain;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
         .close-modal {
-            position: absolute;
-            top: -15px; right: -15px;
-            background: #ef4444; color: white;
-            border: none; border-radius: 50%;
-            width: 30px; height: 30px;
-            font-weight: bold; cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            display: flex; align-items: center; justify-content: center;
+            position: absolute; top: -40px; right: 0px;
+            background: white; color: black; border: none;
+            width: 30px; height: 30px; border-radius: 50%;
+            font-weight: bold; cursor: pointer; font-size: 18px;
         }
       `}</style>
     </AdminLayout>
