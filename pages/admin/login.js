@@ -10,11 +10,38 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
 
   // تنظيف الجلسة المحلية عند الدخول
-  useEffect(() => { 
-      localStorage.removeItem('auth_user_id');
-      localStorage.removeItem('is_admin_session');
-      // استدعاء API الخروج لمسح الكوكيز أيضاً
+ useEffect(() => {
+    // بدلاً من الحذف الفوري، نتحقق أولاً
+    const checkExistingSession = async () => {
+      const userId = localStorage.getItem('auth_user_id');
+      const isAdmin = localStorage.getItem('is_admin_session');
+
+      if (userId && isAdmin) {
+        // إذا وجدنا بيانات، نتأكد من السيرفر أنها صالحة
+        try {
+          const res = await fetch('/api/auth/check-session', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ userId })
+          });
+          const data = await res.json();
+          
+          if (res.ok && data.valid) {
+             // الجلسة سليمة؟ وجهه للوحة التحكم فوراً ووفر عليه الكتابة
+             router.replace('/admin');
+             return; 
+          }
+        } catch(e) {
+          // خطأ اتصال.. أكمل ليمسح البيانات
+        }
+      }
+
+      // إذا وصلنا هنا، يعني لا توجد جلسة صالحة -> امسح كل شيء
+      localStorage.clear();
       fetch('/api/auth/logout');
+    };
+
+    checkExistingSession();
   }, []);
 
   const handleLogin = async (e) => {
