@@ -25,26 +25,34 @@ export default async (req, res) => {
         return res.status(403).json({ success: false, message: 'هذا الحساب محظور.' });
     }
 
-    // 2. معالجة بصمة الجهاز (للجميع: طلاب وأدمن)
-    // [✅ تم إزالة استثناء الأدمن لضمان توافق النظام]
+    // 2. معالجة الجهاز (المنطق الجديد)
     if (deviceId) {
-        const { data: deviceData } = await supabase
-            .from('devices')
-            .select('fingerprint')
-            .eq('user_id', user.id)
-            .maybeSingle();
+        if (user.is_admin) {
+             // ✅ للأدمن فقط: تحديث البصمة دائماً (Allows Login from ANY device)
+             // هذا يلغي قفل الجهاز للأدمن، ويسمح لك بالتنقل بين الأجهزة بحرية
+             const { error: upsertError } = await supabase
+                .from('devices')
+                .upsert({ user_id: user.id, fingerprint: deviceId }, { onConflict: 'user_id' });
+             
+             if (upsertError) console.error('Admin Device Update Error:', upsertError);
 
-        if (deviceData) {
-            // إذا كان له جهاز مسجل، هل هو نفس الجهاز الحالي؟
-            if (deviceData.fingerprint !== deviceId) {
-                return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
-            }
         } else {
-            // تسجيل الجهاز الجديد (لأول مرة)
-            await supabase.from('devices').insert({
-                user_id: user.id,
-                fingerprint: deviceId
-            });
+             // ⛔ للطلاب: التحقق الصارم (Device Lock) كما هو
+             const { data: deviceData } = await supabase
+                .from('devices')
+                .select('fingerprint')
+                .eq('user_id', user.id)
+                .maybeSingle();
+
+             if (deviceData) {
+                // إذا كان الطالب مسجلاً بجهاز، ويحاول الدخول من جهاز آخر -> رفض
+                if (deviceData.fingerprint !== deviceId) {
+                    return res.status(403).json({ success: false, message: '⛔ هذا الحساب مربوط بجهاز آخر.' });
+                }
+             } else {
+                // أول مرة للطالب -> تسجيل الجهاز
+                await supabase.from('devices').insert({ user_id: user.id, fingerprint: deviceId });
+            }
         }
     }
 
