@@ -86,11 +86,14 @@ export default async (req, res) => {
             return res.status(200).json({ success: true, message: 'تم تغيير اسم المستخدم.' });
         }
 
-        // --- [تحديث] منح صلاحيات متعددة ---
+        // [جديد] تغيير الهاتف
+        if (action === 'change_phone') {
+            await supabase.from('users').update({ phone: newData.phone }).eq('id', userId);
+            return res.status(200).json({ success: true, message: 'تم تحديث رقم الهاتف.' });
+        }
+
         if (action === 'grant_access') {
-            // grantList يتوقع أن يكون: { courses: [id, id], subjects: [id, id] }
             const { courses = [], subjects = [] } = grantList || {};
-            
             const courseInserts = [];
             const subjectInserts = [];
 
