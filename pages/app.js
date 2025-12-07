@@ -355,7 +355,7 @@ export default function App() {
         <button 
             className="button-link" 
             style={{background: '#334155', border: '1px dashed #38bdf8', marginBottom: '20px', justifyContent:'center'}}
-            onClick={() => router.push(`/admin/dashboard?userId=${user.id}`)}
+            onClick={() => router.push('/admin')}
         >
             ⚙️ لوحة الأدمن
         </button>
