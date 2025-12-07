@@ -110,7 +110,7 @@ export default function Register() {
   };
 
   return (
-    <div className="app-container" style={{justifyContent: 'center', minHeight: '100vh', overflowY: 'auto'}}>
+    <div className="app-container" style={{justifyContent: 'center', alignItems: 'center', minHeight: '100vh'}}>
       <Head><title>طلب اشتراك</title></Head>
       
       <div className="form-box">
