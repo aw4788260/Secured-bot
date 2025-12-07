@@ -9,7 +9,6 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // تنظيف الجلسة عند فتح الصفحة لتجنب التداخل
   useEffect(() => { localStorage.clear(); }, []);
 
   const handleLogin = async (e) => {
@@ -18,27 +17,18 @@ export default function AdminLogin() {
     setError('');
 
     try {
-      // ✅ التعديل هنا: بدلاً من جلب بصمة الجهاز المعقدة، ننشئ معرف جلسة عشوائي
-      // هذا المعرف سيتم حفظه في المتصفح لضمان استمرار الدخول
-      const sessionDeviceId = `admin_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      const res = await fetch('/api/auth/login', {
+      // نستخدم API الأدمن الجديد
+      const res = await fetch('/api/auth/admin-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, deviceId: sessionDeviceId })
+        body: JSON.stringify({ username, password })
       });
       const data = await res.json();
 
       if (data.success) {
-        if (!data.isAdmin) {
-            setError("⛔ هذا الحساب ليس حساب مسؤول.");
-            setLoading(false);
-            return;
-        }
-        
-        // ✅ حفظ بيانات الجلسة لكي لا تضطر للدخول كل مرة
+        // حفظ التوكن الجديد
         localStorage.setItem('auth_user_id', data.userId);
-        localStorage.setItem('auth_device_id', sessionDeviceId); // حفظنا المعرف العشوائي كبصمة
+        localStorage.setItem('admin_session_token', data.sessionToken); // اسم مميز للتوكن
         localStorage.setItem('is_admin_session', 'true');
         
         router.replace('/admin');
