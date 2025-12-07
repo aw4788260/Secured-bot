@@ -8,7 +8,7 @@ export default async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
 
-    // 2. عدد الطلاب (غير الأدمن)
+    // 2. عدد الطلاب
     const { count: usersCount } = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })
@@ -19,11 +19,20 @@ export default async (req, res) => {
       .from('courses')
       .select('*', { count: 'exact', head: true });
 
-    // إرجاع الأرقام
+    // 4. [جديد] حساب إجمالي الأرباح (للطلبات المقبولة فقط)
+    const { data: earningsData } = await supabase
+      .from('subscription_requests')
+      .select('total_price')
+      .eq('status', 'approved');
+
+    // جمع المبالغ
+    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
+
     res.status(200).json({ 
         requests: pendingCount || 0, 
         users: usersCount || 0, 
-        courses: coursesCount || 0 
+        courses: coursesCount || 0,
+        earnings: totalEarnings // القيمة الجديدة
     });
 
   } catch (err) {
