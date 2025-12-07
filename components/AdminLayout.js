@@ -5,20 +5,59 @@ import Head from 'next/head';
 export default function AdminLayout({ children, title }) {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isChecking, setIsChecking] = useState(true); // حالة تحميل للتحقق
 
   useEffect(() => {
-    const isAdmin = localStorage.getItem('is_admin_session');
-    if (!isAdmin) router.replace('/admin/login');
+    const checkSession = async () => {
+      // 1. قراءة البيانات المحلية
+      const isAdminSession = localStorage.getItem('is_admin_session');
+      const userId = localStorage.getItem('auth_user_id');
+      const deviceId = localStorage.getItem('auth_device_id');
 
+      // إذا كانت البيانات ناقصة محلياً -> طرد فوراً
+      if (!isAdminSession || !userId || !deviceId) {
+        handleLogout();
+        return;
+      }
+
+      try {
+        // 2. التحقق من السيرفر (هل البصمة ما زالت صالحة؟)
+        const res = await fetch('/api/auth/check-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, deviceId })
+        });
+        
+        const data = await res.json();
+
+        if (!res.ok || !data.valid) {
+          // إذا رفض السيرفر الجلسة -> طرد
+          console.warn("Session invalid:", data.message);
+          handleLogout();
+        } else {
+          // الجلسة سليمة -> السماح بالعرض
+          setIsChecking(false);
+        }
+
+      } catch (err) {
+        console.error("Session check failed (Network):", err);
+        // في حال انقطاع النت، يمكننا السماح بالبقاء مؤقتاً أو الطرد (حسب سياستك)
+        // هنا سنطرد للأمان القصوى، أو يمكنك وضع setIsChecking(false) للسماح
+        handleLogout(); 
+      }
+    };
+
+    // ضبط القائمة الجانبية
     const handleResize = () => {
         if (window.innerWidth <= 768) setIsSidebarOpen(false);
         else setIsSidebarOpen(true);
     };
-
-    // ضبط الحالة الأولية
     if (window.innerWidth <= 768) setIsSidebarOpen(false);
-
     window.addEventListener('resize', handleResize);
+
+    // بدء التحقق
+    checkSession();
+
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -34,6 +73,15 @@ export default function AdminLayout({ children, title }) {
     { name: '📚 إدارة المحتوى', path: '/admin/content' },
     { name: '👮 المشرفين', path: '/admin/admins' },
   ];
+
+  // أثناء التحقق، نعرض شاشة تحميل فارغة أو بسيطة لمنع وميض المحتوى
+  if (isChecking) {
+      return (
+        <div style={{minHeight:'100vh', background:'#0f172a', display:'flex', justifyContent:'center', alignItems:'center', color:'#38bdf8'}}>
+            <h3>جاري التحقق من الأمان... 🔐</h3>
+        </div>
+      );
+  }
 
   return (
     <div className="layout-container">
@@ -89,7 +137,7 @@ export default function AdminLayout({ children, title }) {
         body { margin: 0; background: #0f172a; font-family: sans-serif; overflow-x: hidden; }
         .layout-container { display: flex; flex-direction: column; min-height: 100vh; }
 
-        /* --- الشريط العلوي (ثابت دائماً) --- */
+        /* --- الشريط العلوي --- */
         .top-header {
             height: 60px;
             background: #1e293b;
@@ -114,7 +162,7 @@ export default function AdminLayout({ children, title }) {
             borderRadius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em;
         }
 
-        /* --- القائمة الجانبية (Sidebar) --- */
+        /* --- القائمة الجانبية --- */
         .sidebar {
             width: 260px;
             background: #1e293b;
@@ -124,9 +172,8 @@ export default function AdminLayout({ children, title }) {
             transition: transform 0.3s ease-in-out;
             overflow-y: auto;
         }
-        /* حالات القائمة */
         .sidebar.open { transform: translateX(0); }
-        .sidebar.closed { transform: translateX(100%); } /* تختفي لليمين */
+        .sidebar.closed { transform: translateX(100%); }
 
         .nav-container { display: flex; flex-direction: column; gap: 8px; }
 
@@ -140,40 +187,23 @@ export default function AdminLayout({ children, title }) {
         .nav-item:hover { background: rgba(56, 189, 248, 0.1); color: #38bdf8; transform: translateX(-5px); }
         .nav-item.active { background: #38bdf8; color: #0f172a; }
 
-        /* --- المحتوى الرئيسي (Main Content) --- */
+        /* --- المحتوى الرئيسي --- */
         .main-content {
-            margin-top: 60px; /* لتفادي الهيدر */
+            margin-top: 60px;
             padding: 30px;
-            /* [هام] إزالة width: 100% واستبدالها بـ flex-grow أو auto */
-            /* هذا يمنع المحتوى من الخروج عن الشاشة عند الفتح */
             flex-grow: 1; 
-            transition: margin-right 0.3s ease-in-out; /* تزامن الحركة مع القائمة */
+            transition: margin-right 0.3s ease-in-out;
         }
 
-        /* --- تنسيقات خاصة بالكمبيوتر (Desktop) --- */
         @media (min-width: 769px) {
-            /* عندما تكون القائمة مفتوحة، ادفع المحتوى لليسار */
-            .main-content.shifted {
-                margin-right: 260px; 
-            }
-            /* عندما تكون مغلقة، استغل المساحة كاملة */
-            .main-content {
-                margin-right: 0;
-            }
+            .main-content.shifted { margin-right: 260px; }
+            .main-content { margin-right: 0; }
             .mobile-overlay { display: none; }
         }
 
-        /* --- تنسيقات خاصة بالموبايل (Mobile) --- */
         @media (max-width: 768px) {
-            .main-content {
-                margin-right: 0 !important; /* لا تدفع المحتوى أبداً */
-                padding: 20px;
-            }
-            .sidebar {
-                box-shadow: -5px 0 15px rgba(0,0,0,0.5); /* ظل لإبراز القائمة */
-                width: 75%; max-width: 280px;
-            }
-            /* طبقة التعتيم */
+            .main-content { margin-right: 0 !important; padding: 20px; }
+            .sidebar { box-shadow: -5px 0 15px rgba(0,0,0,0.5); width: 75%; max-width: 280px; }
             .mobile-overlay {
                 position: fixed; top: 60px; bottom: 0; left: 0; right: 0;
                 background: rgba(0,0,0,0.6); z-index: 45;
