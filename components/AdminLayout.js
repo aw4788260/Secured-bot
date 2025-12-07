@@ -11,26 +11,29 @@ export default function AdminLayout({ children, title }) {
   // 1. التحقق من صحة الجلسة والتوكن
   useEffect(() => {
     const checkSession = async () => {
+      // لم نعد نحتاج لقراءة التوكن من LocalStorage لأنه في الكوكيز
+      // نحتاج فقط لمعرفة هل المستخدم مسجل دخول "كأدمن" في المتصفح أم لا
       const userId = localStorage.getItem('auth_user_id');
-      const sessionToken = localStorage.getItem('admin_session_token');
+      const isAdminSession = localStorage.getItem('is_admin_session');
 
-      // إذا لم توجد بيانات جلسة -> توجيه للدخول
-      if (!userId || !sessionToken) {
+      // إذا لم توجد علامات الجلسة المحلية -> توجيه للدخول
+      if (!userId || !isAdminSession) {
         handleLogout();
         return;
       }
 
       try {
+        // نرسل طلب للتحقق (الكوكيز تُرسل تلقائياً)
         const res = await fetch('/api/auth/check-session', {
-          method: 'POST',
+          method: 'POST', // أو GET حسب تصميم الـ API
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, sessionToken })
+          body: JSON.stringify({ userId }) // إرسال المعرف (اختياري لو الكوكي فيه كل حاجة)
         });
         
         const data = await res.json();
 
         if (!res.ok || !data.valid) {
-          // التوكن غير صالح (تم الدخول من مكان آخر) -> خروج
+          // التوكن غير صالح (تم الدخول من مكان آخر أو انتهت الجلسة) -> خروج
           handleLogout();
         } else {
           // الجلسة سليمة
@@ -61,7 +64,11 @@ export default function AdminLayout({ children, title }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // استدعاء API لمسح الكوكي من السيرفر
+    try { await fetch('/api/auth/logout'); } catch(e) {}
+    
+    // مسح البيانات المحلية
     localStorage.clear();
     router.replace('/admin/login');
   };
@@ -76,7 +83,11 @@ export default function AdminLayout({ children, title }) {
 
   // شاشة تحميل مؤقتة أثناء التحقق
   if (isChecking) {
-      return <div style={{minHeight:'100vh', background:'#0f172a', display:'flex', justifyContent:'center', alignItems:'center', color:'#38bdf8'}}>جاري التحقق...</div>;
+      return (
+        <div style={{minHeight:'100vh', background:'#0f172a', display:'flex', justifyContent:'center', alignItems:'center', color:'#38bdf8'}}>
+            <h3>جاري التحقق من الأمان... 🔐</h3>
+        </div>
+      );
   }
 
   return (
@@ -149,7 +160,7 @@ export default function AdminLayout({ children, title }) {
             background: transparent; border: 1px solid #334155; 
             color: #38bdf8; font-size: 20px; cursor: pointer; 
             padding: 5px 10px; borderRadius: 6px;
-            transition: all 0.2s; margin-left: 15px; /* مسافة عن العنوان */
+            transition: all 0.2s; margin-left: 15px;
         }
         .hamburger-btn:hover { background: #334155; }
         .logout-btn-header {
