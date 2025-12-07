@@ -9,7 +9,13 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { localStorage.clear(); }, []);
+  // تنظيف الجلسة المحلية عند الدخول
+  useEffect(() => { 
+      localStorage.removeItem('auth_user_id');
+      localStorage.removeItem('is_admin_session');
+      // استدعاء API الخروج لمسح الكوكيز أيضاً
+      fetch('/api/auth/logout');
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -17,7 +23,6 @@ export default function AdminLogin() {
     setError('');
 
     try {
-      // نستخدم API الأدمن الجديد
       const res = await fetch('/api/auth/admin-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -26,11 +31,9 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (data.success) {
-        // حفظ التوكن الجديد
+        // نحفظ فقط المعرف والعلامة (للتوجيه)، أما التوكن فهو في الكوكيز الآن
         localStorage.setItem('auth_user_id', data.userId);
-        localStorage.setItem('admin_session_token', data.sessionToken); // اسم مميز للتوكن
         localStorage.setItem('is_admin_session', 'true');
-        
         router.replace('/admin');
       } else {
         setError(data.message);
@@ -44,24 +47,15 @@ export default function AdminLogin() {
 
   return (
     <div style={{minHeight:'100vh', background:'#0f172a', display:'flex', justifyContent:'center', alignItems:'center', color:'white'}}>
-      <Head><title>دخول الإدارة</title></Head>
-      <div style={{background:'#1e293b', padding:'40px', borderRadius:'15px', width:'100%', maxWidth:'400px', border:'1px solid #334155', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
+      <Head><title>دخول الإدارة (Secure)</title></Head>
+      <div style={{background:'#1e293b', padding:'40px', borderRadius:'15px', width:'100%', maxWidth:'400px', border:'1px solid #334155'}}>
         <h2 style={{textAlign:'center', color:'#38bdf8', marginBottom:'30px'}}>🛡️ لوحة التحكم</h2>
-        {error && <div style={{background:'rgba(239,68,68,0.2)', color:'#ef4444', padding:'10px', borderRadius:'5px', marginBottom:'20px', textAlign:'center'}}>{error}</div>}
+        {error && <div style={{color:'#ef4444', textAlign:'center', marginBottom:'15px'}}>{error}</div>}
         <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:'20px'}}>
-          <div>
-            <label style={{display:'block', marginBottom:'8px', color:'#94a3b8'}}>اسم المستخدم</label>
-            <input type="text" value={username} onChange={e=>setUsername(e.target.value)} 
-              style={{width:'100%', padding:'12px', background:'#0f172a', border:'1px solid #475569', borderRadius:'5px', color:'white', outline:'none'}} required />
-          </div>
-          <div>
-            <label style={{display:'block', marginBottom:'8px', color:'#94a3b8'}}>كلمة المرور</label>
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} 
-              style={{width:'100%', padding:'12px', background:'#0f172a', border:'1px solid #475569', borderRadius:'5px', color:'white', outline:'none'}} required />
-          </div>
-          <button type="submit" disabled={loading} 
-            style={{padding:'15px', background:'#38bdf8', border:'none', borderRadius:'5px', color:'#0f172a', fontWeight:'bold', cursor:'pointer', fontSize:'16px', marginTop:'10px'}}>
-            {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
+          <input placeholder="اسم المستخدم" value={username} onChange={e=>setUsername(e.target.value)} style={{padding:'12px', borderRadius:'5px'}} />
+          <input type="password" placeholder="كلمة المرور" value={password} onChange={e=>setPassword(e.target.value)} style={{padding:'12px', borderRadius:'5px'}} />
+          <button type="submit" disabled={loading} style={{padding:'15px', background:'#38bdf8', borderRadius:'5px', fontWeight:'bold', cursor:'pointer'}}>
+            {loading ? 'جاري التحقق...' : 'دخول'}
           </button>
         </form>
       </div>
