@@ -1,32 +1,22 @@
 import AdminLayout from '../../components/AdminLayout';
-import { supabase } from '../../lib/supabaseClient';
 import { useState, useEffect } from 'react';
 
 export default function AdminHome() {
   const [stats, setStats] = useState({ requests: 0, users: 0, courses: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadStats() {
-      // 1. عدد الطلبات المعلقة
-      const { count: pendingCount } = await supabase
-        .from('subscription_requests')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
-
-      // 2. عدد الطلاب (غير الأدمن)
-      const { count: usersCount } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_admin', false);
-
-      // 3. عدد الكورسات
-      const { count: coursesCount } = await supabase
-        .from('courses')
-        .select('*', { count: 'exact', head: true });
-
-      setStats({ requests: pendingCount || 0, users: usersCount || 0, courses: coursesCount || 0 });
-    }
-    loadStats();
+    // طلب البيانات من الـ API بدلاً من قاعدة البيانات مباشرة
+    fetch('/api/admin/stats')
+      .then(res => res.json())
+      .then(data => {
+        setStats(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to load stats", err);
+        setLoading(false);
+      });
   }, []);
 
   return (
@@ -38,21 +28,27 @@ export default function AdminHome() {
         {/* بطاقة الطلبات */}
         <div style={{background:'#1e293b', padding:'25px', borderRadius:'10px', border:'1px solid #334155'}}>
             <h3 style={{color:'#94a3b8', marginBottom:'10px'}}>الطلبات المعلقة</h3>
-            <div style={{fontSize:'32px', fontWeight:'bold', color:'#facc15'}}>{stats.requests}</div>
+            <div style={{fontSize:'32px', fontWeight:'bold', color:'#facc15'}}>
+                {loading ? '...' : stats.requests}
+            </div>
             <p style={{fontSize:'12px', color:'#64748b', marginTop:'5px'}}>بانتظار المراجعة</p>
         </div>
 
         {/* بطاقة الطلاب */}
         <div style={{background:'#1e293b', padding:'25px', borderRadius:'10px', border:'1px solid #334155'}}>
             <h3 style={{color:'#94a3b8', marginBottom:'10px'}}>إجمالي الطلاب</h3>
-            <div style={{fontSize:'32px', fontWeight:'bold', color:'#38bdf8'}}>{stats.users}</div>
+            <div style={{fontSize:'32px', fontWeight:'bold', color:'#38bdf8'}}>
+                {loading ? '...' : stats.users}
+            </div>
             <p style={{fontSize:'12px', color:'#64748b', marginTop:'5px'}}>مستخدم مسجل</p>
         </div>
 
         {/* بطاقة الكورسات */}
         <div style={{background:'#1e293b', padding:'25px', borderRadius:'10px', border:'1px solid #334155'}}>
             <h3 style={{color:'#94a3b8', marginBottom:'10px'}}>الكورسات النشطة</h3>
-            <div style={{fontSize:'32px', fontWeight:'bold', color:'#4ade80'}}>{stats.courses}</div>
+            <div style={{fontSize:'32px', fontWeight:'bold', color:'#4ade80'}}>
+                {loading ? '...' : stats.courses}
+            </div>
             <p style={{fontSize:'12px', color:'#64748b', marginTop:'5px'}}>كورس متاح</p>
         </div>
 
