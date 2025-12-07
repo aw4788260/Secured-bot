@@ -28,41 +28,16 @@ export default function RequestsPage() {
     fetchRequests();
   }, []);
 
-  // --- [جديد] دالة عرض الصورة بشكل آمن (Blob) ---
-  const viewReceiptSecurely = async (filename) => {
-    setLoadingImage(true);
-    // إظهار المودال فوراً مع مؤشر تحميل
-    setModalImage('loading'); 
-
-    try {
-        // نطلب الملف في الخلفية (لا يظهر الرابط في المتصفح)
-        const res = await fetch(`/api/admin/file-proxy?type=receipts&filename=${filename}`);
-        
-        if (!res.ok) throw new Error("فشل تحميل الصورة");
-
-        // تحويل البيانات إلى Blob (كتلة بيانات ثنائية)
-        const blob = await res.blob();
-        
-        // إنشاء رابط مؤقت محلي (blob:http://...)
-        // هذا الرابط يخفي المصدر الحقيقي ولا يعمل إلا في هذه الجلسة
-        const secureUrl = URL.createObjectURL(blob);
-        
-        setModalImage(secureUrl);
-        setLoadingImage(false);
-
-    } catch (err) {
-        alert("تعذر تحميل الصورة");
-        closeModal();
-    }
+ // --- دالة عرض الصورة السريعة ---
+  const viewReceiptSecurely = (filename) => {
+    // نضع الرابط المباشر، المتصفح سيتولى التحميل السريع والكاش
+    const url = `/api/admin/file-proxy?type=receipts&filename=${filename}`;
+    setModalImage(url);
   };
 
   // إغلاق المودال وتنظيف الذاكرة
-  const closeModal = () => {
-      if (modalImage && modalImage !== 'loading') {
-          URL.revokeObjectURL(modalImage); // تنظيف الرابط المؤقت
-      }
+ const closeModal = () => {
       setModalImage(null);
-      setLoadingImage(false);
   };
 
   // دالة التعامل مع القبول/الرفض
