@@ -41,6 +41,9 @@ export default function StudentCourses() {
       return false;
   };
 
+  // ✅ تصفية الكورسات: عرض الكورسات التي "لم" يشترك فيها الطالب اشتراكاً كاملاً
+  const visibleCourses = courses.filter(course => !isSubscribed('course', course.id));
+
   const handleSubscribeClick = (item, type) => {
       setSelectedItem({ ...item, type });
       setShowModal(true);
@@ -63,6 +66,8 @@ export default function StudentCourses() {
           if (res.ok) {
               alert(result.message);
               setShowModal(false);
+              // تحديث الصفحة لإخفاء الكورس المشترى
+              router.reload();
           } else { alert("خطأ: " + result.error); }
       } catch (err) { alert("فشل الاتصال بالسيرفر"); } 
       finally { setUploading(false); }
@@ -79,55 +84,63 @@ export default function StudentCourses() {
       </header>
 
       <div className="grid-container">
-          {loading ? <div className="loader">جاري تحميل المتجر...</div> : courses.map(course => (
-              <div key={course.id} className={`store-card ${isSubscribed('course', course.id) ? 'owned-card' : ''}`}>
-                  <div className="card-banner">
-                      <span className="category-badge">كورس كامل</span>
-                      {isSubscribed('course', course.id) && <span className="owned-badge">✅ مملوك</span>}
-                  </div>
-                  
-                  <div className="card-content">
-                      <h2>{course.title}</h2>
-                      <div className="price-row">
-                          <span className="label">السعر:</span>
-                          <span className="price">{course.price ? `${course.price} ج.م` : 'مجاني'}</span>
+          {loading ? (
+              <div className="loader">جاري تحميل المتجر...</div>
+          ) : visibleCourses.length > 0 ? (
+              visibleCourses.map(course => (
+                  <div key={course.id} className="store-card">
+                      <div className="card-banner">
+                          {/* ✅ تم إزالة كلمة "كورس كامل" من هنا */}
+                      </div>
+                      
+                      <div className="card-content">
+                          <h2>{course.title}</h2>
+                          <div className="price-row">
+                              <span className="label">سعر الكورس:</span>
+                              <span className="price">{course.price ? `${course.price} ج.م` : 'مجاني'}</span>
+                          </div>
+
+                          <button onClick={() => handleSubscribeClick(course, 'course')} className="buy-btn">
+                              🛒 اشتراك في الكورس
+                          </button>
                       </div>
 
-                      {/* المنطق الجديد: إخفاء زر الدخول */}
-                      {isSubscribed('course', course.id) ? (
-                          <div className="owned-status">
-                              <p>هذا الكورس موجود في مكتبتك</p>
+                      {/* المواد الفرعية */}
+                      {course.subjects && course.subjects.length > 0 && (
+                          <div className="sub-items">
+                              <h4>أو اشترِ مادة منفصلة:</h4>
+                              {course.subjects.map(sub => {
+                                  const isOwned = isSubscribed('subject', sub.id); // (الكورس الكامل تم إخفاؤه بالفعل)
+                                  return (
+                                      <div key={sub.id} className="sub-row">
+                                          <div style={{flex: 1}}>
+                                              <span>📄 {sub.title}</span>
+                                              {/* ✅ عرض سعر المادة المنفصلة هنا */}
+                                              <span style={{fontSize:'0.85em', color:'#4ade80', marginRight:'5px', fontWeight:'bold'}}>
+                                                  ({sub.price || 0} ج.م)
+                                              </span>
+                                          </div>
+                                          
+                                          {isOwned ? (
+                                              <span className="mini-owned">✅ مملوك</span>
+                                          ) : (
+                                              <button onClick={() => handleSubscribeClick(sub, 'subject')} className="mini-buy">
+                                                  شراء
+                                              </button>
+                                          )}
+                                      </div>
+                                  );
+                              })}
                           </div>
-                      ) : (
-                          <button onClick={() => handleSubscribeClick(course, 'course')} className="buy-btn">
-                              🛒 اشتراك الآن
-                          </button>
                       )}
                   </div>
-
-                  {/* المواد الفرعية */}
-                  {course.subjects && course.subjects.length > 0 && (
-                      <div className="sub-items">
-                          <h4>أو اشترِ مادة منفصلة:</h4>
-                          {course.subjects.map(sub => {
-                              const isOwned = isSubscribed('subject', sub.id) || isSubscribed('course', course.id);
-                              return (
-                                  <div key={sub.id} className="sub-row">
-                                      <span>📄 {sub.title}</span>
-                                      {isOwned ? (
-                                          <span className="mini-owned">✅</span>
-                                      ) : (
-                                          <button onClick={() => handleSubscribeClick(sub, 'subject')} className="mini-buy">
-                                              شراء
-                                          </button>
-                                      )}
-                                  </div>
-                              );
-                          })}
-                      </div>
-                  )}
+              ))
+          ) : (
+              <div className="empty-store">
+                  <p>🎉 لقد اشتركت في جميع الكورسات المتاحة!</p>
+                  <button onClick={() => router.push('/')} className="back-home-btn">الذهاب لمكتبتي</button>
               </div>
-          ))}
+          )}
       </div>
 
       {/* Modal */}
@@ -166,12 +179,9 @@ export default function StudentCourses() {
         
         .store-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
         .store-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.3); border-color: #38bdf8; }
-        .owned-card { border-color: #22c55e; opacity: 0.9; }
 
-        .card-banner { height: 100px; background: linear-gradient(45deg, #334155, #475569); position: relative; display: flex; align-items: center; justify-content: center; font-size: 3em; }
-        .category-badge { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 12px; font-size: 0.75em; color: #cbd5e1; }
-        .owned-badge { position: absolute; bottom: 10px; left: 10px; background: #22c55e; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.85em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-
+        .card-banner { height: 80px; background: linear-gradient(45deg, #334155, #475569); position: relative; display: flex; align-items: center; justify-content: center; }
+        
         .card-content { padding: 20px; text-align: center; flex: 1; }
         .card-content h2 { margin: 0 0 15px; font-size: 1.4em; }
         .price-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; align-items: center; background: #0f172a; padding: 10px; border-radius: 8px; }
@@ -180,14 +190,17 @@ export default function StudentCourses() {
         .buy-btn { width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.3); }
         .buy-btn:hover { background: #7dd3fc; transform: scale(1.02); }
         
-        .owned-status { background: rgba(34, 197, 94, 0.1); color: #22c55e; padding: 10px; border-radius: 8px; border: 1px dashed #22c55e; font-size: 0.9em; font-weight: bold; }
-
         .sub-items { background: #0f172a; padding: 15px; border-top: 1px solid #334155; }
         .sub-items h4 { margin: 0 0 10px; color: #94a3b8; font-size: 0.85em; text-align: right; }
         .sub-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 0.9em; }
         .sub-row:last-child { border-bottom: none; }
-        .mini-buy { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
+        
+        .mini-buy { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: bold; }
         .mini-buy:hover { background: #38bdf8; color: #0f172a; }
+        .mini-owned { color: #94a3b8; font-size: 0.85em; font-style: italic; }
+
+        .empty-store { grid-column: 1 / -1; text-align: center; padding: 50px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-top: 20px; }
+        .back-home-btn { margin-top: 20px; background: #38bdf8; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
 
         /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
