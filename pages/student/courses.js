@@ -12,8 +12,9 @@ export default function StudentCourses() {
   const [showModal, setShowModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   
-  // حالة الصورة (مثل صفحة التسجيل)
+  // States for Upload & Note
   const [receiptFile, setReceiptFile] = useState(null);
+  const [userNote, setUserNote] = useState(''); // [✅] حالة للملاحظة
   const [uploading, setUploading] = useState(false);
 
   // جلب البيانات
@@ -54,25 +55,35 @@ export default function StudentCourses() {
       return false;
   };
 
-  const visibleCourses = courses.filter(course => !isSubscribed('course', course.id));
+  // [✅] التصفية الذكية:
+  // نخفي الكورس إذا كان الطالب يمتلك "اشتراك كامل" فيه
+  // أو إذا كان يمتلك "جميع المواد" الموجودة بداخله
+  const visibleCourses = courses.filter(course => {
+      const hasFullCourse = isSubscribed('course', course.id);
+      const hasAllSubjects = course.subjects && course.subjects.length > 0 && course.subjects.every(sub => isSubscribed('subject', sub.id));
+      
+      // إذا كان يمتلك الكورس بالكامل أو كل مواده -> نخفيه
+      return !(hasFullCourse || hasAllSubjects);
+  });
 
   const handleSubscribeClick = (item, type) => {
       setSelectedItem({ ...item, type });
-      setReceiptFile(null); // تصفية الملف القديم
+      setReceiptFile(null);
+      setUserNote(''); // تصفير الملاحظة
       setShowModal(true);
   };
 
   const handleSubmit = async (e) => {
       e.preventDefault();
       
-      // التحقق من الملف
       if (!receiptFile) return alert("يرجى إرفاق صورة التحويل");
 
       setUploading(true);
       const formData = new FormData();
       
-      // ✅ استخدام نفس الاسم والطريقة كما في التسجيل
       formData.append('receiptFile', receiptFile);
+      // [✅] إرسال الملاحظة
+      formData.append('user_note', userNote);
       
       const uid = localStorage.getItem('auth_user_id'); 
       if (selectedItem.type === 'course') formData.append('courseId', selectedItem.id);
@@ -119,8 +130,6 @@ export default function StudentCourses() {
               visibleCourses.map(course => (
                   <div key={course.id} className="store-card">
                       
-                      {/* ✅ تم حذف البانر تماماً */}
-                      
                       <div className="card-content">
                           <h2>{course.title}</h2>
                           <div className="price-row">
@@ -163,7 +172,7 @@ export default function StudentCourses() {
               ))
           ) : (
               <div className="empty-store">
-                  <p>🎉 لا توجد كورسات جديدة للاشتراك!</p>
+                  <p>🎉 لا توجد كورسات جديدة! أنت تمتلك كل شيء.</p>
                   <button onClick={() => router.push('/')} className="back-home-btn">الذهاب لمكتبتي</button>
               </div>
           )}
@@ -182,7 +191,6 @@ export default function StudentCourses() {
                   
                   <form onSubmit={handleSubmit}>
                       <label>إرفاق صورة التحويل:</label>
-                      {/* ✅ استخدام onChange لتحديث الحالة */}
                       <input 
                         type="file" 
                         accept="image/*" 
@@ -190,6 +198,17 @@ export default function StudentCourses() {
                         required 
                         className="file-in" 
                       />
+
+                      {/* [✅] حقل الملاحظة الجديد */}
+                      <label>ملاحظة (اختياري):</label>
+                      <textarea 
+                        className="note-in"
+                        placeholder="أكتب أي ملاحظة للأدمن هنا..."
+                        value={userNote}
+                        onChange={(e) => setUserNote(e.target.value)}
+                        rows="3"
+                      ></textarea>
+
                       <div className="modal-acts">
                           <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">إلغاء</button>
                           <button type="submit" disabled={uploading} className="btn-confirm">
@@ -213,8 +232,6 @@ export default function StudentCourses() {
         .store-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
         .store-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.3); border-color: #38bdf8; }
 
-        /* ✅ إزالة كود .card-banner السابق */
-        
         .card-content { padding: 20px; text-align: center; flex: 1; border-bottom: 1px solid #334155; }
         .card-content h2 { margin: 0 0 15px; font-size: 1.4em; }
         .price-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; align-items: center; background: #0f172a; padding: 10px; border-radius: 8px; }
@@ -242,7 +259,11 @@ export default function StudentCourses() {
         .bill-info p { margin: 5px 0; display: flex; justify-content: space-between; }
         .pay-hint { font-size: 0.9em; color: #cbd5e1; margin-bottom: 15px; text-align: center; }
         .phone { color: #fca5a5; font-weight: bold; font-family: monospace; letter-spacing: 1px; }
-        .file-in { width: 100%; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: white; margin-bottom: 20px; }
+        
+        .file-in { width: 100%; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: white; margin-bottom: 15px; }
+        .note-in { width: 100%; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: white; margin-bottom: 20px; font-family: inherit; resize: vertical; min-height: 60px; }
+        .note-in:focus { border-color: #38bdf8; outline: none; }
+
         .modal-acts { display: flex; gap: 10px; }
         .btn-confirm { flex: 2; background: #22c55e; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-cancel { flex: 1; background: transparent; border: 1px solid #64748b; color: #94a3b8; padding: 12px; border-radius: 8px; cursor: pointer; }
