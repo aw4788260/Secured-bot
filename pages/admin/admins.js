@@ -10,7 +10,7 @@ export default function AdminsPage() {
   const [showWebModal, setShowWebModal] = useState(false);
   const [targetAdmin, setTargetAdmin] = useState(null);
   
-  const [promptData, setPromptData] = useState({ show: false, title: '', onSubmit: null });
+  const [promptData, setPromptData] = useState({ show: false, title: '', placeholder: '', onSubmit: null });
   const [confirmData, setConfirmData] = useState({ show: false, message: '', onConfirm: null });
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
 
@@ -18,7 +18,7 @@ export default function AdminsPage() {
       setToast({ show: true, message: msg, type });
       setTimeout(() => setToast({ show:false, message:'', type:'' }), 3000);
   };
-  const showPrompt = (title, cb) => setPromptData({ show: true, title, onSubmit: cb });
+  const showPrompt = (title, ph, cb) => setPromptData({ show: true, title, placeholder: ph, onSubmit: cb });
   const showConfirm = (msg, cb) => setConfirmData({ show: true, message: msg, onConfirm: cb });
 
   const fetchData = async () => {
@@ -57,11 +57,12 @@ export default function AdminsPage() {
       } catch (e) { showToast('خطأ اتصال', 'error'); }
   };
 
-  // Handlers
+  // 1. [تعديل] إضافة مشرف باليوزرنيم
   const handlePromote = () => {
-      showPrompt('أدخل ID المستخدم لترقيته لمشرف:', (val) => {
+      showPrompt('أدخل اسم المستخدم (Username) للمشرف الجديد:', 'مثال: ahmed_student', (val) => {
           if (!val) return;
-          handleAction('promote', { userId: val });
+          // نرسل username بدلاً من userId
+          handleAction('promote', { username: val.trim() });
       });
   };
 
@@ -105,8 +106,8 @@ export default function AdminsPage() {
                   <tr>
                       <th>ID</th>
                       <th>الاسم</th>
-                      <th>دخول الويب (Username)</th>
-                      <th>الهاتف</th>
+                      <th>دخول الويب (User)</th>
+                      <th style={{textAlign:'center'}}>الهاتف</th>
                       <th>الصلاحية</th>
                       <th>إجراءات</th>
                   </tr>
@@ -115,7 +116,7 @@ export default function AdminsPage() {
                   {admins.map(admin => (
                       <tr key={admin.id} className={admin.is_main ? 'main-admin-row' : ''}>
                           <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{admin.id}</td>
-                          <td style={{fontWeight:'bold'}}>{admin.first_name || 'بدون اسم'}</td>
+                          <td style={{fontWeight:'bold'}}>{admin.first_name || 'بدون اسم'} <span className="username-hint">(@{admin.username})</span></td>
                           <td>
                               {admin.has_web_access ? (
                                   <span className="web-tag active">{admin.admin_username}</span>
@@ -123,18 +124,15 @@ export default function AdminsPage() {
                                   <span className="web-tag inactive">غير مفعل</span>
                               )}
                           </td>
-                          <td dir="ltr">{admin.phone}</td>
+                          {/* ✅ إصلاح محاذاة الهاتف */}
+                          <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#e2e8f0'}}>{admin.phone}</td>
                           <td>
                               {admin.is_main ? <span className="role-badge main">👑 المالك</span> : <span className="role-badge sub">مشرف</span>}
                           </td>
                           <td>
-                              {/* المنطق الجديد للأزرار */}
                               {isMainAdmin && (
                                   <div className="actions">
-                                      {/* زر التعديل يظهر للجميع (بما فيهم المالك) */}
                                       <button onClick={() => openWebModal(admin)} className="act-btn web" title="تعديل بيانات الدخول">✏️</button>
-                                      
-                                      {/* زر الحذف يظهر للجميع ما عدا المالك نفسه */}
                                       {!admin.is_main && (
                                           <button onClick={() => handleDemote(admin)} className="act-btn demote" title="إزالة المشرف">🗑️</button>
                                       )}
@@ -153,7 +151,7 @@ export default function AdminsPage() {
           <div className="modal-overlay" onClick={() => setShowWebModal(false)}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
                   <h3>🌐 بيانات دخول اللوحة: {targetAdmin?.first_name}</h3>
-                  <p className="hint">قم بتعيين/تحديث اسم المستخدم وكلمة المرور للدخول للوحة التحكم.</p>
+                  <p className="hint">قم بتعيين اسم المستخدم وكلمة المرور للدخول.</p>
                   
                   <form onSubmit={submitWebAccess}>
                       <label>اسم المستخدم (User):</label>
@@ -164,7 +162,7 @@ export default function AdminsPage() {
                       
                       <div className="modal-actions">
                           <button type="button" className="cancel" onClick={() => setShowWebModal(false)}>إلغاء</button>
-                          <button type="submit" className="save">حفظ البيانات ✅</button>
+                          <button type="submit" className="save">حفظ ✅</button>
                       </div>
                   </form>
               </div>
@@ -172,7 +170,7 @@ export default function AdminsPage() {
       )}
 
       {/* --- Alerts --- */}
-      {promptData.show && <div className="modal-overlay alert"><div className="modal-box small"><h3>{promptData.title}</h3><input id="pIn" autoFocus className="prompt-in" /><div className="modal-actions"><button type="button" className="cancel" onClick={()=>setPromptData({...promptData,show:false})}>إلغاء</button><button onClick={()=>{promptData.onSubmit(document.getElementById('pIn').value); setPromptData({...promptData,show:false})}} className="save">موافق</button></div></div></div>}
+      {promptData.show && <div className="modal-overlay alert"><div className="modal-box small"><h3>{promptData.title}</h3><input id="pIn" autoFocus className="prompt-in" placeholder={promptData.placeholder} /><div className="modal-actions"><button type="button" className="cancel" onClick={()=>setPromptData({...promptData,show:false})}>إلغاء</button><button onClick={()=>{promptData.onSubmit(document.getElementById('pIn').value); setPromptData({...promptData,show:false})}} className="save">موافق</button></div></div></div>}
       {confirmData.show && <div className="modal-overlay alert"><div className="modal-box small"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="modal-actions"><button type="button" className="cancel" onClick={()=>setConfirmData({...confirmData,show:false})}>إلغاء</button><button onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}} className="save red">نعم</button></div></div></div>}
 
       <style jsx>{`
@@ -191,6 +189,8 @@ export default function AdminsPage() {
         .admin-table td { padding: 15px; border-bottom: 1px solid #334155; color: #e2e8f0; vertical-align: middle; }
         .admin-table tr:hover { background: rgba(255,255,255,0.03); }
         .main-admin-row { background: rgba(251, 191, 36, 0.05); }
+
+        .username-hint { color: #64748b; font-size: 0.85em; font-weight: normal; margin-right: 5px; font-family: monospace; }
 
         .web-tag { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500; display: inline-block; font-family: monospace; }
         .web-tag.active { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid #22c55e; }
