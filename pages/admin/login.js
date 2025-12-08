@@ -9,15 +9,12 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // تنظيف الجلسة المحلية عند الدخول
- useEffect(() => {
-    // بدلاً من الحذف الفوري، نتحقق أولاً
+  useEffect(() => {
     const checkExistingSession = async () => {
       const userId = localStorage.getItem('auth_user_id');
       const isAdmin = localStorage.getItem('is_admin_session');
 
       if (userId && isAdmin) {
-        // إذا وجدنا بيانات، نتأكد من السيرفر أنها صالحة
         try {
           const res = await fetch('/api/auth/check-session', {
              method: 'POST',
@@ -27,17 +24,19 @@ export default function AdminLogin() {
           const data = await res.json();
           
           if (res.ok && data.valid) {
-             // الجلسة سليمة؟ وجهه للوحة التحكم فوراً ووفر عليه الكتابة
              router.replace('/admin');
              return; 
           }
-        } catch(e) {
-          // خطأ اتصال.. أكمل ليمسح البيانات
-        }
+        } catch(e) { }
       }
 
-      // إذا وصلنا هنا، يعني لا توجد جلسة صالحة -> امسح كل شيء
-      localStorage.clear();
+      // 🔴 التعديل هنا: تنظيف آمن
+      localStorage.removeItem('is_admin_session');
+      // إذا كنت تريد فصل جلسة الأدمن عن الطالب تماماً، يمكنك ترك auth_user_id
+      // أو حذفه إذا كان الأدمن يجب أن يسجل دخول من جديد
+      
+      // لا نستخدم localStorage.clear() هنا أبداً
+      
       fetch('/api/auth/logout');
     };
 
@@ -58,7 +57,6 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (data.success) {
-        // نحفظ فقط المعرف والعلامة (للتوجيه)، أما التوكن فهو في الكوكيز الآن
         localStorage.setItem('auth_user_id', data.userId);
         localStorage.setItem('is_admin_session', 'true');
         router.replace('/admin');
