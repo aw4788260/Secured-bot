@@ -14,7 +14,6 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'Access Denied' });
   }
 
-  // [تعديل] استخدام المتغير الجديد للمالك
   const PANEL_OWNER_ID = process.env.PANEL_OWNER_ID; 
   const isMainAdmin = String(currentUser.id) === String(PANEL_OWNER_ID);
 
@@ -33,13 +32,13 @@ export default async (req, res) => {
 
         const formatted = admins.map(admin => ({
             ...admin,
-            is_main: String(admin.id) === String(PANEL_OWNER_ID), // هل هذا الصف هو المالك؟
+            is_main: String(admin.id) === String(PANEL_OWNER_ID),
             has_web_access: !!admin.admin_username
         }));
 
         return res.status(200).json({ 
             admins: formatted, 
-            isCurrentUserMain: isMainAdmin // هل المتصفح حالياً هو المالك؟
+            isCurrentUserMain: isMainAdmin 
         });
 
     } catch (err) { return res.status(500).json({ error: err.message }); }
@@ -50,18 +49,29 @@ export default async (req, res) => {
   // ---------------------------------------------------------
   if (req.method === 'POST') {
       if (!isMainAdmin) {
-          return res.status(403).json({ error: 'عذراً، هذه الصلاحية لمالك اللوحة (Panel Owner) فقط.' });
+          return res.status(403).json({ error: 'عذراً، هذه الصلاحية لمالك اللوحة فقط.' });
       }
 
-      const { action, userId, webData } = req.body;
+      const { action, userId, username, webData } = req.body;
 
       try {
-          // ترقية
+          // [تعديل] ترقية باستخدام اسم المستخدم (Username)
           if (action === 'promote') {
-              const { data: user } = await supabase.from('users').select('id').eq('id', userId).single();
-              if (!user) return res.status(404).json({ error: 'المستخدم غير موجود.' });
-              await supabase.from('users').update({ is_admin: true }).eq('id', userId);
-              return res.status(200).json({ success: true, message: 'تمت الترقية لمشرف.' });
+              if (!username) return res.status(400).json({ error: 'يرجى إدخال اسم المستخدم' });
+
+              // البحث عن المستخدم باليوزرنيم
+              const { data: user } = await supabase
+                .from('users')
+                .select('id, is_admin')
+                .eq('username', username) // البحث بالاسم
+                .single();
+
+              if (!user) return res.status(404).json({ error: 'المستخدم غير موجود، تأكد من الاسم الصحيح.' });
+              if (user.is_admin) return res.status(400).json({ error: 'هذا المستخدم مشرف بالفعل.' });
+
+              // الترقية
+              await supabase.from('users').update({ is_admin: true }).eq('id', user.id);
+              return res.status(200).json({ success: true, message: `تم ترقية @${username} لمشرف بنجاح.` });
           }
 
           // تنزيل (إزالة إشراف)
@@ -72,23 +82,22 @@ export default async (req, res) => {
                   is_admin: false, 
                   admin_username: null, 
                   admin_password: null,
-                  session_token: null // طرده فوراً
+                  session_token: null
               }).eq('id', userId);
               
               return res.status(200).json({ success: true, message: 'تم سحب الصلاحية.' });
           }
 
-          // [تعديل/إنشاء] بيانات الويب (يعمل للمالك وللآخرين)
+          // بيانات الويب
           if (action === 'set_web_access') {
               if (!webData.username || !webData.password) return res.status(400).json({ error: 'بيانات ناقصة' });
               if (webData.password.length < 6) return res.status(400).json({ error: 'كلمة المرور قصيرة' });
 
-              // التأكد أن الاسم غير مأخوذ (باستثناء نفس الشخص)
               const { data: existing } = await supabase
                   .from('users')
                   .select('id')
                   .eq('admin_username', webData.username)
-                  .neq('id', userId) // استثناء المستخدم الحالي عند التعديل
+                  .neq('id', userId)
                   .maybeSingle();
               
               if (existing) return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل.' });
