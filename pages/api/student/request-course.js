@@ -10,47 +10,57 @@ export const config = {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  // 1. التحقق من المستخدم (عبر الهيدر فقط)
+  // 1. التحقق من الهوية (Header Only)
   let user = null;
   const headerUserId = req.headers['x-user-id'];
 
   if (headerUserId) {
-      // جلب بيانات المستخدم من القاعدة للتأكد أنه موجود
       const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('id', headerUserId).single();
       user = data;
   }
 
-  // إذا لم نجد مستخدم بهذا الآيدي -> رفض الطلب
   if (!user) {
-      return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً (فشل التحقق من الهوية)' });
+      return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً' });
   }
 
-  // 2. إعداد مجلد الحفظ
+  // 2. إعداد المجلد
   const uploadDir = path.join(process.cwd(), 'storage', 'receipts');
-  try {
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-  } catch (err) {
-    return res.status(500).json({ error: 'فشل في إنشاء مجلد التخزين' });
-  }
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-  const form = new formidable.IncomingForm({
+  // ✅ استخدام نفس إعدادات formidable في صفحة التسجيل
+  const form = formidable({
     uploadDir,
     keepExtensions: true,
-    maxFileSize: 10 * 1024 * 1024, // 10MB
+    maxFileSize: 10 * 1024 * 1024,
+    filename: (name, ext, part) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      return `receipt_${uniqueSuffix}${ext}`;
+    }
   });
 
   form.parse(req, async (err, fields, files) => {
     if (err) return res.status(500).json({ error: 'فشل رفع الملف' });
 
     try {
-      const courseId = fields.courseId ? fields.courseId[0] : null;
-      const subjectId = fields.subjectId ? fields.subjectId[0] : null;
-      const price = fields.price ? fields.price[0] : '0';
-      const itemTitle = fields.itemTitle ? fields.itemTitle[0] : 'اشتراك';
+      // دوال مساعدة لضمان استخراج البيانات بشكل صحيح (مصفوفة أو قيمة)
+      const getValue = (key) => {
+          const val = fields[key];
+          return Array.isArray(val) ? val[0] : val;
+      };
       
-      const receiptFile = files.receipt ? files.receipt[0] : null;
+      const getFile = (key) => {
+          const file = files[key];
+          return Array.isArray(file) ? file[0] : file;
+      };
+
+      const courseId = getValue('courseId');
+      const subjectId = getValue('subjectId');
+      const price = getValue('price') || '0';
+      const itemTitle = getValue('itemTitle') || 'اشتراك';
+      
+      // ✅ قراءة الملف باسم receiptFile (مطابق لصفحة التسجيل)
+      const receiptFile = getFile('receiptFile'); 
+      
       if (!receiptFile) return res.status(400).json({ error: 'صورة الإيصال مطلوبة' });
 
       const fileName = path.basename(receiptFile.filepath);
@@ -77,7 +87,7 @@ export default async (req, res) => {
 
       if (dbError) throw dbError;
 
-      return res.status(200).json({ success: true, message: 'تم إرسال طلب الاشتراك بنجاح! سيتم تفعيله قريباً.' });
+      return res.status(200).json({ success: true, message: 'تم إرسال طلب الاشتراك بنجاح! سيتم مراجعته.' });
 
     } catch (error) {
       console.error(error);
