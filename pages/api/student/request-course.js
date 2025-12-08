@@ -3,6 +3,7 @@ import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 
+// إعدادات Next.js لتعطيل الـ Body Parser الافتراضي (مهم جداً للملفات)
 export const config = {
   api: { bodyParser: false },
 };
@@ -10,21 +11,20 @@ export const config = {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  // 1. التحقق من المستخدم (عبر الهيدر فقط)
+  // 1. التحقق من الهوية (عبر الهيدر)
   let user = null;
   const headerUserId = req.headers['x-user-id'];
 
   if (headerUserId) {
-      // جلب بيانات المستخدم
       const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('id', headerUserId).single();
       user = data;
   }
 
   if (!user) {
-      return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً (فشل التحقق من الهوية)' });
+      return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً' });
   }
 
-  // 2. إعداد مجلد الحفظ
+  // 2. إعداد مجلد الحفظ (نفس طريقة register.js)
   const uploadDir = path.join(process.cwd(), 'storage', 'receipts');
   try {
     if (!fs.existsSync(uploadDir)) {
@@ -34,8 +34,9 @@ export default async (req, res) => {
     return res.status(500).json({ error: 'فشل في إنشاء مجلد التخزين' });
   }
 
-  const form = new formidable.IncomingForm({
-    uploadDir,
+  // ✅ التصحيح هنا: استخدام formidable مباشرة كدالة (وليس كـ Class)
+  const form = formidable({
+    uploadDir: uploadDir,
     keepExtensions: true,
     maxFileSize: 10 * 1024 * 1024, // 10MB
     filename: (name, ext, part) => {
@@ -44,10 +45,15 @@ export default async (req, res) => {
     }
   });
 
+  // 3. معالجة الطلب
   form.parse(req, async (err, fields, files) => {
-    if (err) return res.status(500).json({ error: 'فشل رفع الملف' });
+    if (err) {
+        console.error("Formidable Error:", err);
+        return res.status(500).json({ error: 'فشل معالجة الملف المرفوع' });
+    }
 
     try {
+      // دوال مساعدة لاستخراج البيانات (لأن formidable قد يعيد مصفوفات)
       const getValue = (key) => {
           const val = fields[key];
           return Array.isArray(val) ? val[0] : val;
@@ -63,7 +69,7 @@ export default async (req, res) => {
       const price = getValue('price') || '0';
       const itemTitle = getValue('itemTitle') || 'اشتراك';
       
-      const receiptFile = getFile('receiptFile'); 
+      const receiptFile = getFile('receiptFile'); // الاسم المتطابق مع الفرونت إند
       
       if (!receiptFile) return res.status(400).json({ error: 'صورة الإيصال مطلوبة' });
 
@@ -76,7 +82,7 @@ export default async (req, res) => {
           price: price
       }];
 
-      // ✅ التعديل هنا: إزالة payment_method لتوافق الجدول
+      // الإدخال في قاعدة البيانات (متوافق مع السكيما)
       const { error: dbError } = await supabase.from('subscription_requests').insert({
         user_id: user.id,
         user_name: user.first_name,
@@ -84,21 +90,19 @@ export default async (req, res) => {
         phone: user.phone,
         
         course_title: itemTitle,
-        total_price: parseInt(price), // التأكد أنه رقم (integer)
+        total_price: parseInt(price) || 0,
         
-        // payment_method: 'vodafone_cash', // ❌ تم حذفه لأنه غير موجود في الجدول
-        payment_file_path: fileName,     // ✅ هذا العمود موجود
-        
+        payment_file_path: fileName, // تخزين اسم الملف فقط
         status: 'pending',
         requested_data: requestedData
       });
 
       if (dbError) throw dbError;
 
-      return res.status(200).json({ success: true, message: 'تم إرسال الطلب بنجاح! سيتم مراجعته.' });
+      return res.status(200).json({ success: true, message: 'تم إرسال طلب الاشتراك بنجاح! سيتم مراجعته.' });
 
     } catch (error) {
-      console.error("Database Error:", error);
+      console.error("Server Error:", error);
       return res.status(500).json({ error: error.message });
     }
   });
