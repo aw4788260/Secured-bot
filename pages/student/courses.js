@@ -17,6 +17,14 @@ export default function StudentCourses() {
   const [userNote, setUserNote] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  // [✅] حالة الإشعارات (Toast) بدلاً من alert
+  const [toast, setToast] = useState({ show: false, message: '', type: '' });
+
+  const showToast = (msg, type = 'success') => {
+      setToast({ show: true, message: msg, type });
+      setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
+  };
+
   // جلب البيانات
   useEffect(() => {
     const fetchData = async () => {
@@ -52,7 +60,7 @@ export default function StudentCourses() {
       return false;
   };
 
-  // [✅] دوال إدارة السلة
+  // دوال إدارة السلة
   const isInCart = (type, id) => cart.some(item => item.id === id && item.type === type);
 
   const toggleCart = (item, type) => {
@@ -61,13 +69,12 @@ export default function StudentCourses() {
           setCart(cart.filter(i => !(i.id === item.id && i.type === type)));
       } else {
           // إضافة للسلة
-          // 1. إذا كان كورس كامل، نحذف أي مواد بداخله كانت مضافة للسلة منعاً للتكرار
           let newCart = [...cart];
+          // إذا كان كورس كامل، نحذف أي مواد بداخله كانت مضافة للسلة
           if (type === 'course' && item.subjects) {
               const subIds = item.subjects.map(s => s.id);
               newCart = newCart.filter(i => !(i.type === 'subject' && subIds.includes(i.id)));
           }
-          // 2. إضافة العنصر
           newCart.push({ ...item, type });
           setCart(newCart);
       }
@@ -76,7 +83,7 @@ export default function StudentCourses() {
   const handleSubjectToggle = (subject, courseId) => {
       // منع إضافة مادة إذا كان الكورس الأصلي مضافاً للسلة
       if (isInCart('course', courseId)) {
-          alert("لقد اخترت الكورس الكامل بالفعل، فهو يشمل هذه المادة.");
+          showToast("لقد اخترت الكورس الكامل بالفعل، فهو يشمل هذه المادة.", "error"); // ✅ استبدال alert
           return;
       }
       toggleCart(subject, 'subject');
@@ -85,7 +92,7 @@ export default function StudentCourses() {
   // حساب الإجمالي
   const cartTotal = cart.reduce((sum, item) => sum + (parseInt(item.price) || 0), 0);
 
-  // [✅] التصفية: إخفاء الكورسات المملوكة بالكامل
+  // التصفية: إخفاء الكورسات المملوكة بالكامل
   const visibleCourses = courses.filter(course => {
       const hasFullCourse = isSubscribed('course', course.id);
       const hasAllSubjects = course.subjects && course.subjects.length > 0 && course.subjects.every(sub => isSubscribed('subject', sub.id));
@@ -95,8 +102,8 @@ export default function StudentCourses() {
   const handleSubmit = async (e) => {
       e.preventDefault();
       
-      if (!receiptFile) return alert("يرجى إرفاق صورة التحويل");
-      if (cart.length === 0) return alert("السلة فارغة!");
+      if (!receiptFile) return showToast("يرجى إرفاق صورة التحويل", "error"); // ✅ استبدال alert
+      if (cart.length === 0) return showToast("السلة فارغة!", "error"); // ✅ استبدال alert
 
       setUploading(true);
       const formData = new FormData();
@@ -104,7 +111,7 @@ export default function StudentCourses() {
       formData.append('receiptFile', receiptFile);
       formData.append('user_note', userNote);
       
-      // [✅] إرسال السلة كاملة كـ JSON
+      // إرسال السلة كاملة كـ JSON
       formData.append('selectedItems', JSON.stringify(cart));
       
       const uid = localStorage.getItem('auth_user_id'); 
@@ -117,15 +124,16 @@ export default function StudentCourses() {
           });
           const result = await res.json();
           if (res.ok) {
-              alert(result.message);
-              setCart([]); // تصفير السلة
+              showToast(result.message, "success"); // ✅ استبدال alert
+              setCart([]); 
               setShowModal(false);
-              router.reload();
+              // تأخير التحديث قليلاً ليقرأ المستخدم الرسالة
+              setTimeout(() => router.reload(), 2000);
           } else { 
-              alert("خطأ: " + (result.error || "فشل الرفع")); 
+              showToast("خطأ: " + (result.error || "فشل الرفع"), "error"); // ✅ استبدال alert
           }
       } catch (err) { 
-          alert("فشل الاتصال بالسيرفر"); 
+          showToast("فشل الاتصال بالسيرفر", "error"); 
       } finally { 
           setUploading(false); 
       }
@@ -135,6 +143,12 @@ export default function StudentCourses() {
     <div className="store-container" dir="rtl">
       <Head><title>متجر الكورسات</title></Head>
       
+      {/* [✅] مكون الإشعار (Toast) */}
+      <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
+          {toast.type === 'success' ? '✅ ' : '⚠️ '}
+          {toast.message}
+      </div>
+
       <header className="store-header">
           <button onClick={() => router.push('/')} className="back-btn">🏠 مكتبتي</button>
           <h1>💎 متجر الكورسات</h1>
@@ -203,7 +217,7 @@ export default function StudentCourses() {
           )}
       </div>
 
-      {/* [✅] شريط الدفع السفلي */}
+      {/* شريط الدفع السفلي */}
       {cart.length > 0 && (
           <div className="checkout-bar">
               <div className="cart-info">
@@ -319,6 +333,12 @@ export default function StudentCourses() {
         .btn-confirm { flex: 2; background: #22c55e; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-cancel { flex: 1; background: transparent; border: 1px solid #64748b; color: #94a3b8; padding: 12px; border-radius: 8px; cursor: pointer; }
         
+        /* [✅] Toast Styles */
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #334155; z-index: 2000; transition: transform 0.3s ease; font-weight: bold; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.success { border-color: #22c55e; color: #22c55e; }
+        .toast.error { border-color: #ef4444; color: #ef4444; }
+
         @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
       `}</style>
     </div>
