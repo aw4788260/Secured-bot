@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+// 👇 استيراد دالة البصمة الخاصة بك
+import { getDeviceFingerprint } from '../utils/fingerprintHelper';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -9,14 +11,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 1. تعديل: التحقق مما إذا كان المستخدم مسجل دخول بالفعل
-  useEffect(() => { 
-    const uid = localStorage.getItem('auth_user_id');
-    // إذا وجدنا بيانات، نوجهه للصفحة الرئيسية الجديدة فوراً
-    if (uid) {
-        router.replace('/'); 
-    }
-  }, []); 
+  // 1. تنظيف البيانات القديمة عند فتح الصفحة (لكسر الـ Loop)
+  useEffect(() => {
+    localStorage.removeItem('auth_user_id');
+    localStorage.removeItem('auth_first_name');
+    // لا نمسح auth_device_id لأن دالة البصمة تعتمد عليه لثبات الجهاز
+    
+    document.cookie = "student_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -24,12 +26,8 @@ export default function LoginPage() {
     setError('');
     
     try {
-      // 2. تعديل: الحصول على بصمة الجهاز (أو توليدها إذا لم توجد)
-      let deviceId = localStorage.getItem('auth_device_id');
-      if (!deviceId) {
-          // توليد بصمة عشوائية للمتصفح
-          deviceId = 'web-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-      }
+      // 2. الحصول على البصمة باستخدام ملفك المساعد
+      const deviceId = await getDeviceFingerprint();
 
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -38,65 +36,163 @@ export default function LoginPage() {
       });
       const data = await res.json();
 
-      // دعم صيغ الرد المختلفة (سواء كانت success أو HTTP 200)
       if (res.ok || data.success) {
-        // تخزين البيانات (مع التعامل مع اختلاف هيكل البيانات المحتمل)
+        // تخزين البيانات
         localStorage.setItem('auth_user_id', data.userId || data.user?.id);
         localStorage.setItem('auth_device_id', deviceId);
         localStorage.setItem('auth_first_name', data.firstName || data.user?.first_name);
         
-        // 3. التعديل الأهم: التوجيه للصفحة الرئيسية (المكتبة) بدلاً من app
+        // التوجيه للمكتبة
         router.push('/');
       } else {
-        setError(data.message || data.error || 'فشل تسجيل الدخول');
+        setError(data.message || data.error || 'بيانات الدخول غير صحيحة');
       }
     } catch (err) { 
-        setError('خطأ في الاتصال بالسيرفر'); 
+        setError('تعذر الاتصال بالسيرفر، تأكد من الإنترنت'); 
     } 
     finally { setLoading(false); }
   };
 
   return (
-    <div className="app-container" style={{justifyContent:'center', alignItems:'center', minHeight:'100vh', display:'flex', background:'#0f172a'}}>
+    <div className="login-wrapper">
       <Head><title>تسجيل الدخول</title></Head>
-      <div style={{background:'#1e293b', padding:'30px', borderRadius:'10px', width:'100%', maxWidth:'400px', border:'1px solid #334155', boxShadow:'0 4px 15px rgba(0,0,0,0.5)'}}>
+      
+      <div className="login-card">
+        <h1 className="title">تسجيل الدخول</h1>
+        <p className="subtitle">منصة التعليم الإلكتروني</p>
         
-        <h1 style={{textAlign:'center', color:'#38bdf8', marginBottom:'20px'}}>تسجيل الدخول</h1>
+        {error && <div className="alert-error">{error}</div>}
         
-        {error && <div style={{background:'rgba(239,68,68,0.2)', color:'#ef4444', padding:'10px', borderRadius:'5px', marginBottom:'15px', textAlign:'center', border:'1px solid #ef4444'}}>{error}</div>}
-        
-        <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-          <input placeholder="اسم المستخدم" value={username} onChange={e=>setUsername(e.target.value)} style={{padding:'12px', borderRadius:'5px', border:'1px solid #475569', background:'#0f172a', color:'white'}} required />
-          <input type="password" placeholder="كلمة المرور" value={password} onChange={e=>setPassword(e.target.value)} style={{padding:'12px', borderRadius:'5px', border:'1px solid #475569', background:'#0f172a', color:'white'}} required />
+        <form onSubmit={handleLogin} className="login-form">
+          <div className="form-group">
+            <input 
+              placeholder="اسم المستخدم" 
+              value={username} 
+              onChange={e=>setUsername(e.target.value)} 
+              required 
+            />
+          </div>
+          <div className="form-group">
+            <input 
+              type="password" 
+              placeholder="كلمة المرور" 
+              value={password} 
+              onChange={e=>setPassword(e.target.value)} 
+              required 
+            />
+          </div>
           
-          <button type="submit" disabled={loading} className="button-link" style={{display:'flex', justifyContent:'center', padding:'12px', background: 'linear-gradient(45deg, #3b82f6, #2563eb)', border:'none', borderRadius:'5px', color:'white', fontWeight:'bold', cursor:'pointer'}}>
-            {loading ? 'جاري التحقق...' : 'تسجيل الدخول 🚀'}
+          <button type="submit" disabled={loading} className="submit-btn">
+            {loading ? 'جاري التحقق...' : 'دخول'}
           </button>
         </form>
 
-        <div style={{marginTop:'25px', paddingTop:'20px', borderTop:'1px solid #334155', textAlign:'center'}}>
-          <p style={{color:'#94a3b8', fontSize:'0.9em', marginBottom:'10px'}}>ليس لديك حساب؟</p>
-          <button 
-            onClick={() => router.push('/register')} 
-            style={{
-              background: 'transparent', 
-              border: '1px solid #38bdf8', 
-              color: '#38bdf8', 
-              padding: '10px 20px', 
-              borderRadius: '5px', 
-              cursor: 'pointer',
-              fontSize: '0.95em',
-              width: '100%',
-              transition: 'all 0.2s'
-            }}
-            onMouseOver={(e) => e.target.style.background = 'rgba(56, 189, 248, 0.1)'}
-            onMouseOut={(e) => e.target.style.background = 'transparent'}
-          >
-            📝 إنشاء حساب جديد
+        <div className="footer">
+          <span>ليس لديك حساب؟</span>
+          <button onClick={() => router.push('/register')} className="link-btn">
+            إنشاء حساب جديد
           </button>
         </div>
-
       </div>
+
+      <style jsx>{`
+        .login-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #0f172a;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .login-card {
+            background: #1e293b;
+            padding: 40px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            border: 1px solid #334155;
+            text-align: center;
+        }
+        .title {
+            color: #f8fafc;
+            margin: 0 0 10px;
+            font-size: 1.8rem;
+        }
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 30px;
+            font-size: 0.95rem;
+        }
+        .alert-error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            font-size: 0.9rem;
+        }
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px;
+            background: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            transition: 0.2s;
+            outline: none;
+        }
+        .form-group input:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+        }
+        .submit-btn {
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 10px;
+        }
+        .submit-btn:hover:not(:disabled) {
+            background: #7dd3fc;
+        }
+        .submit-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #334155;
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+        .link-btn {
+            background: none;
+            border: none;
+            color: #38bdf8;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 5px;
+            text-decoration: underline;
+        }
+        .link-btn:hover {
+            color: #7dd3fc;
+        }
+      `}</style>
     </div>
   );
 }
