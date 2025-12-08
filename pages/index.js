@@ -5,7 +5,6 @@ import { useRouter } from 'next/router';
 export default function App() {
   const router = useRouter();
   
-  // States
   const [status, setStatus] = useState('جار فحص البيانات وتجهيز المكتبة...');
   const [error, setError] = useState(null);
   const [subjects, setSubjects] = useState([]);
@@ -15,19 +14,19 @@ export default function App() {
   const [selectedChapter, setSelectedChapter] = useState(null);
   
   // Tabs States
-  const [subjectTab, setSubjectTab] = useState('lectures'); // lectures | exams
-  const [chapterTab, setChapterTab] = useState('videos');   // videos | pdfs
+  const [subjectTab, setSubjectTab] = useState('lectures'); 
+  const [chapterTab, setChapterTab] = useState('videos');   
   
   // User Data
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Reset tabs on navigation
+  // Reset tabs
   useEffect(() => { setSubjectTab('lectures'); }, [selectedSubject]);
   useEffect(() => { setChapterTab('videos'); }, [selectedChapter]);
 
   // ---------------------------------------------------------
-  // Logic: Force Logout & Updates & Checks
+  // Logic
   // ---------------------------------------------------------
   const forceLogout = () => {
       localStorage.removeItem('auth_user_id');
@@ -66,7 +65,6 @@ export default function App() {
     if (!uid || !did) { forceLogout(); return; }
     setUser({ id: uid, first_name: fname });
 
-    // Fetch Data
     fetch('/api/data/get-structured-courses', { headers: { 'x-user-id': uid, 'x-device-id': did } })
     .then(res => {
         if (res.status === 403 || res.status === 401) throw new Error("SESSION_EXPIRED");
@@ -82,7 +80,6 @@ export default function App() {
         else setError("حدث خطأ في الاتصال. تأكد من الإنترنت.");
     });
 
-    // Admin Check
     fetch('/api/auth/check-admin', { headers: { 'x-user-id': uid, 'x-device-id': did } })
     .then(r=>r.json()).then(d=> { 
         if(d.isAdmin) setIsAdmin(true); 
@@ -103,13 +100,13 @@ export default function App() {
   // ---------------------------------------------------------
 
   if (error) return (
-    <div className="center-screen">
+    <div className="center-fixed">
         <div className="icon-error">⚠️</div>
         <h3>تنبيه</h3>
         <p>{error}</p>
         {!error.includes("غير مسموح") && <button className="btn-action" onClick={forceLogout}>إعادة المحاولة</button>}
         <style jsx>{`
-            .center-screen { height: 100vh; display: flex; flex-direction: column; justify-content: center; alignItems: center; text-align: center; color: white; background: #0f172a; padding: 20px; }
+            .center-fixed { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; alignItems: center; text-align: center; color: white; background: #0f172a; z-index: 9999; padding: 20px; }
             .icon-error { font-size: 3rem; margin-bottom: 10px; }
             h3 { color: #ef4444; margin: 0 0 10px; font-size: 1.5rem; }
             p { color: #cbd5e1; margin-bottom: 20px; }
@@ -119,18 +116,18 @@ export default function App() {
   );
 
   if (status || !user) return (
-    <div className="center-screen">
+    <div className="center-fixed">
         <div className="spinner"></div>
-        <p style={{marginTop: '20px', color: '#38bdf8', fontWeight: '500'}}>{status}</p>
+        <p style={{marginTop: '20px', color: '#38bdf8', fontWeight: '500', fontSize: '1.1rem'}}>{status}</p>
         <style jsx>{`
-            .center-screen { height: 100vh; display: flex; flex-direction: column; justify-content: center; alignItems: center; background: #0f172a; }
+            .center-fixed { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; alignItems: center; background: #0f172a; z-index: 9999; }
             .spinner { width: 50px; height: 50px; border: 4px solid #1e293b; border-top: 4px solid #38bdf8; border-radius: 50%; animation: spin 1s infinite; }
             @keyframes spin { 100% { transform: rotate(360deg); } }
         `}</style>
     </div>
   );
 
-  // 🔴 المستوى 3: عرض الفصل (Videos / PDFs)
+  // 🔴 المستوى 3: عرض الفصل
   if (selectedSubject && selectedChapter) {
     return (
       <div className="app-container">
@@ -143,7 +140,6 @@ export default function App() {
             <h2 className="header-title">{selectedChapter.title}</h2>
         </header>
 
-        {/* Tabs */}
         <div className="tabs-container">
             <button onClick={() => setChapterTab('videos')} className={`tab ${chapterTab === 'videos' ? 'active' : ''}`}>
                 فيديوهات 🎬
@@ -153,7 +149,6 @@ export default function App() {
             </button>
         </div>
 
-        {/* Content */}
         <div className="content-area">
           {chapterTab === 'videos' && (
             selectedChapter.videos.length > 0 ? selectedChapter.videos.map(v => (
@@ -190,7 +185,7 @@ export default function App() {
     );
   }
 
-  // 🟠 المستوى 2: داخل المادة (Chapters / Exams)
+  // 🟠 المستوى 2: داخل المادة
   if (selectedSubject) {
     return (
       <div className="app-container">
@@ -203,7 +198,6 @@ export default function App() {
             <h1 className="header-title">{selectedSubject.title}</h1>
         </header>
 
-        {/* Subject Tabs */}
         <div className="tabs-container">
             <button onClick={() => setSubjectTab('lectures')} className={`tab ${subjectTab === 'lectures' ? 'active' : ''}`}>
                 الفصول الدراسية 📁
@@ -214,7 +208,6 @@ export default function App() {
         </div>
 
         <div className="content-area">
-            {/* عرض الفصول */}
             {subjectTab === 'lectures' && (
                 <div className="grid-list">
                     {selectedSubject.chapters.map(ch => (
@@ -233,7 +226,6 @@ export default function App() {
                 </div>
             )}
 
-            {/* عرض الامتحانات */}
             {subjectTab === 'exams' && (
                 <div className="grid-list">
                     {selectedSubject.exams?.map(ex => (
@@ -259,18 +251,18 @@ export default function App() {
     );
   }
 
-  // 🟢 المستوى 1: الصفحة الرئيسية (مكتبة الطالب) - تصميم حديث
+  // 🟢 المستوى 1: الصفحة الرئيسية (مكتبتي)
   return (
     <div className="app-container">
       <Head><title>مكتبتي</title></Head>
       
-      {/* Header */}
       <header className="main-header">
           <div className="welcome">
               <span className="greet">أهلاً بك 👋</span>
               <h1 className="username">{user?.first_name}</h1>
           </div>
           <div className="header-controls">
+              {/* زر المتجر (سلة) */}
               <button className="icon-btn store" onClick={() => router.push('/student/courses')} title="متجر الكورسات">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
               </button>
@@ -282,14 +274,7 @@ export default function App() {
           </div>
       </header>
 
-      {/* Store Banner */}
-      <div className="store-banner" onClick={() => router.push('/student/courses')}>
-          <div className="banner-content">
-              <h3>متجر الكورسات 🛒</h3>
-              <p>تصفح واشترك في مواد جديدة</p>
-          </div>
-          <div className="banner-arrow">⬅</div>
-      </div>
+      {/* تم إزالة بانر المتجر الكبير هنا */}
 
       <h3 className="section-head">مكتبتي التعليمية</h3>
 
@@ -310,6 +295,7 @@ export default function App() {
         ) : (
            <div className="empty-state">
                <p>لا توجد مواد مشتركة حالياً.</p>
+               <button className="btn-small" onClick={() => router.push('/student/courses')}>تصفح المتجر</button>
            </div>
         )}
       </div>
@@ -323,18 +309,16 @@ export default function App() {
 }
 
 // ============================================
-// CSS Styles (موحد لكل الواجهات)
+// CSS Styles
 // ============================================
 const styles = `
-  /* Global Reset & Base */
   body { margin: 0; background: #0f172a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
   .app-container { min-height: 100vh; padding: 20px; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; }
   
-  /* --- Headers --- */
+  /* Header */
   .main-header { padding: 10px 0 20px; display: flex; justify-content: space-between; align-items: center; }
   .welcome .greet { font-size: 0.9em; color: #94a3b8; display: block; margin-bottom: 2px; }
   .welcome .username { font-size: 1.4em; margin: 0; color: #f8fafc; font-weight: 700; }
-  
   .header-controls { display: flex; gap: 10px; }
   
   .modern-header {
@@ -351,19 +335,7 @@ const styles = `
   .icon-btn:active { background: #334155; color: #38bdf8; }
   .icon-btn.store { color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
 
-  /* --- Banner --- */
-  .store-banner {
-      background: linear-gradient(135deg, #3b82f6, #2563eb); border-radius: 16px; padding: 20px;
-      color: white; display: flex; justify-content: space-between; align-items: center;
-      cursor: pointer; margin-bottom: 30px; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
-      transition: transform 0.2s;
-  }
-  .store-banner:active { transform: scale(0.98); }
-  .banner-content h3 { margin: 0 0 5px; font-size: 1.2em; }
-  .banner-content p { margin: 0; font-size: 0.9em; opacity: 0.9; }
-  .banner-arrow { font-size: 1.5em; background: rgba(255,255,255,0.2); width: 40px; height: 40px; display: flex; justify-content: center; align-items: center; border-radius: 50%; }
-
-  /* --- Tabs System --- */
+  /* Tabs */
   .tabs-container {
       display: flex; gap: 10px; padding: 15px 20px; background: #0f172a;
       position: sticky; top: 70px; z-index: 5; border-bottom: 1px solid #1e293b; margin: 0 -20px;
@@ -374,7 +346,7 @@ const styles = `
   }
   .tab.active { color: #38bdf8; border-bottom-color: #38bdf8; background: rgba(56, 189, 248, 0.05); }
 
-  /* --- Cards & Lists (Unified Design) --- */
+  /* Cards & Grid */
   .section-head { margin: 0 0 15px; color: #cbd5e1; font-size: 1.1em; border-right: 4px solid #38bdf8; padding-right: 10px; }
   .library-grid, .grid-list { display: flex; flex-direction: column; gap: 15px; }
   .content-area { padding: 20px 0; }
@@ -403,11 +375,9 @@ const styles = `
   .status-orange { color: #fbbf24; font-size: 0.8rem; }
   .arrow-icon { color: #475569; }
   
-  /* --- Footer & States --- */
   .developer-info { text-align: center; margin-top: 40px; color: #64748b; font-size: 0.9em; border-top: 1px solid #334155; padding-top: 20px; }
   .developer-info a { color: #38bdf8; text-decoration: none; }
   
   .empty-state { text-align: center; color: #64748b; padding: 40px 0; font-size: 0.9rem; background: rgba(255,255,255,0.02); border-radius: 12px; }
-  .spinner { width: 40px; height: 40px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s infinite; margin-bottom: 20px; }
-  @keyframes spin { 100% { transform: rotate(360deg); } }
+  .btn-small { background: #38bdf8; color: #0f172a; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; margin-top: 10px; cursor: pointer; }
 `;
