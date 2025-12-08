@@ -115,13 +115,39 @@ export default function App() {
     </div>
   );
 
-  if (status || !user) return (
+if (status || !user) return (
     <div className="center-fixed">
         <div className="spinner"></div>
-        <p style={{marginTop: '20px', color: '#38bdf8', fontWeight: '500', fontSize: '1.1rem'}}>{status}</p>
+        <p className="loading-text">{status}</p>
         <style jsx>{`
-            .center-fixed { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; alignItems: center; background: #0f172a; z-index: 9999; }
-            .spinner { width: 50px; height: 50px; border: 4px solid #1e293b; border-top: 4px solid #38bdf8; border-radius: 50%; animation: spin 1s infinite; }
+            .center-fixed { 
+                position: fixed; 
+                top: 0; 
+                left: 0; 
+                width: 100%; 
+                height: 100vh; 
+                display: flex; 
+                flex-direction: column; 
+                justify-content: center; 
+                align-items: center; /* تم التصحيح هنا */
+                background: #0f172a; 
+                z-index: 9999; 
+            }
+            .loading-text {
+                margin-top: 20px;
+                color: #38bdf8;
+                font-weight: 500;
+                font-size: 1.1rem;
+                text-align: center;
+            }
+            .spinner { 
+                width: 50px; 
+                height: 50px; 
+                border: 4px solid #1e293b; 
+                border-top: 4px solid #38bdf8; 
+                border-radius: 50%; 
+                animation: spin 1s infinite; 
+            }
             @keyframes spin { 100% { transform: rotate(360deg); } }
         `}</style>
     </div>
