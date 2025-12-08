@@ -109,24 +109,17 @@ export default function AdminsPage() {
                       <th>يوزر اللوحة (أدمن)</th>
                       <th style={{textAlign:'center'}}>الهاتف</th>
                       <th>الصلاحية</th>
-                      <th style={{minWidth:'250px'}}>الإجراءات</th>
+                      <th style={{minWidth:'280px'}}>الإجراءات</th>
                   </tr>
               </thead>
               <tbody>
                   {admins.map(admin => (
                       <tr key={admin.id} className={admin.is_main ? 'main-admin-row' : ''}>
-                          {/* ID */}
                           <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{admin.id}</td>
-                          
-                          {/* الاسم */}
                           <td style={{fontWeight:'bold'}}>{admin.first_name || 'بدون اسم'}</td>
                           
-                          {/* يوزر الكورس (حساب الطالب) */}
-                          <td>
-                              <span className="user-tag student">@{admin.username}</span>
-                          </td>
+                          <td><span className="user-tag student">@{admin.username}</span></td>
 
-                          {/* يوزر اللوحة (حساب الأدمن) */}
                           <td>
                               {admin.has_web_access ? (
                                   <span className="user-tag admin">{admin.admin_username}</span>
@@ -135,15 +128,12 @@ export default function AdminsPage() {
                               )}
                           </td>
                           
-                          {/* الهاتف */}
                           <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#e2e8f0'}}>{admin.phone}</td>
                           
-                          {/* الصلاحية */}
                           <td>
                               {admin.is_main ? <span className="role-badge main">👑 المالك</span> : <span className="role-badge sub">مشرف</span>}
                           </td>
                           
-                          {/* الإجراءات (أزرار نصية) */}
                           <td>
                               {isMainAdmin && (
                                   <div className="actions">
@@ -194,6 +184,7 @@ export default function AdminsPage() {
       {confirmData.show && <div className="modal-overlay alert"><div className="modal-box small"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="modal-actions"><button type="button" className="cancel" onClick={()=>setConfirmData({...confirmData,show:false})}>إلغاء</button><button onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}} className="save red">نعم، متأكد</button></div></div></div>}
 
       <style jsx>{`
+        /* التنسيقات الأساسية */
         .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; transform: translateX(150%); transition: transform 0.3s; z-index: 9999; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .toast.show { transform: translateX(0); } .toast.success { background: #22c55e; } .toast.error { background: #ef4444; }
 
@@ -220,9 +211,34 @@ export default function AdminsPage() {
         .role-badge.main { background: #fbbf24; color: #000; box-shadow: 0 0 10px rgba(251, 191, 36, 0.3); }
         .role-badge.sub { background: #334155; color: #cbd5e1; border: 1px solid #475569; }
 
-        /* Text Buttons */
-        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .text-btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85em; font-weight: bold; transition: 0.2s; white-space: nowrap; }
+        /* --- [التعديل الرئيسي هنا] حاوية الأزرار --- */
+        .actions { 
+            display: flex; 
+            gap: 8px; 
+            flex-wrap: nowrap; /* يمنع نزول الأزرار لسطر جديد */
+            overflow-x: auto; /* يسمح بالتمرير إذا ضاق المكان */
+            padding-bottom: 5px; /* مسافة لشريط التمرير */
+            align-items: center;
+        }
+        
+        /* تجميل شريط التمرير للأزرار */
+        .actions::-webkit-scrollbar { height: 4px; }
+        .actions::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .actions::-webkit-scrollbar-track { background: transparent; }
+
+        .text-btn { 
+            padding: 8px 12px; 
+            border-radius: 6px; 
+            border: none; 
+            cursor: pointer; 
+            font-size: 0.85em; 
+            font-weight: bold; 
+            transition: 0.2s; 
+            white-space: nowrap; /* يمنع تكسير النص داخل الزر */
+            display: flex; 
+            align-items: center;
+            gap: 5px;
+        }
         .text-btn.blue { background: #3b82f6; color: white; } .text-btn.blue:hover { background: #2563eb; }
         .text-btn.red { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); } .text-btn.red:hover { background: #ef4444; color: white; }
 
