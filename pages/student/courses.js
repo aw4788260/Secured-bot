@@ -11,12 +11,14 @@ export default function StudentCourses() {
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  
+  // حالة الصورة (مثل صفحة التسجيل)
+  const [receiptFile, setReceiptFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   // جلب البيانات
   useEffect(() => {
     const fetchData = async () => {
-      // قراءة بيانات الطالب المخزنة
       const uid = localStorage.getItem('auth_user_id');
       const did = localStorage.getItem('auth_device_id');
 
@@ -28,12 +30,8 @@ export default function StudentCourses() {
       try {
         const [resCourses, resAccess] = await Promise.all([
             fetch('/api/public/get-courses'),
-            // ✅ إرسال الهيدرز لضمان قراءة البيانات الصحيحة
             fetch('/api/student/my-access', {
-                headers: {
-                    'x-user-id': uid,
-                    'x-device-id': did
-                }
+                headers: { 'x-user-id': uid, 'x-device-id': did }
             })
         ]);
         const coursesData = await resCourses.json();
@@ -56,21 +54,27 @@ export default function StudentCourses() {
       return false;
   };
 
-  // ✅ تصفية: استبعاد الكورسات التي يمتلك الطالب فيها اشتراكاً كاملاً
   const visibleCourses = courses.filter(course => !isSubscribed('course', course.id));
 
   const handleSubscribeClick = (item, type) => {
       setSelectedItem({ ...item, type });
+      setReceiptFile(null); // تصفية الملف القديم
       setShowModal(true);
   };
 
   const handleSubmit = async (e) => {
       e.preventDefault();
+      
+      // التحقق من الملف
+      if (!receiptFile) return alert("يرجى إرفاق صورة التحويل");
+
       setUploading(true);
       const formData = new FormData();
-      formData.append('receipt', e.target.receipt.files[0]);
       
-      const uid = localStorage.getItem('auth_user_id'); // التأكد من هوية المرسل
+      // ✅ استخدام نفس الاسم والطريقة كما في التسجيل
+      formData.append('receiptFile', receiptFile);
+      
+      const uid = localStorage.getItem('auth_user_id'); 
       if (selectedItem.type === 'course') formData.append('courseId', selectedItem.id);
       else formData.append('subjectId', selectedItem.id);
       
@@ -81,16 +85,21 @@ export default function StudentCourses() {
           const res = await fetch('/api/student/request-course', { 
               method: 'POST', 
               body: formData,
-              headers: { 'x-user-id': uid } // إرسال الهوية
+              headers: { 'x-user-id': uid } 
           });
           const result = await res.json();
           if (res.ok) {
               alert(result.message);
               setShowModal(false);
               router.reload();
-          } else { alert("خطأ: " + result.error); }
-      } catch (err) { alert("فشل الاتصال بالسيرفر"); } 
-      finally { setUploading(false); }
+          } else { 
+              alert("خطأ: " + (result.error || "فشل الرفع")); 
+          }
+      } catch (err) { 
+          alert("فشل الاتصال بالسيرفر"); 
+      } finally { 
+          setUploading(false); 
+      }
   };
 
   return (
@@ -110,7 +119,7 @@ export default function StudentCourses() {
               visibleCourses.map(course => (
                   <div key={course.id} className="store-card">
                       
-                      {/* ❌ تم حذف الـ Banner تماماً من هنا */}
+                      {/* ✅ تم حذف البانر تماماً */}
                       
                       <div className="card-content">
                           <h2>{course.title}</h2>
@@ -124,18 +133,15 @@ export default function StudentCourses() {
                           </button>
                       </div>
 
-                      {/* المواد الفرعية */}
                       {course.subjects && course.subjects.length > 0 && (
                           <div className="sub-items">
                               <h4>أو اشترِ مادة منفصلة:</h4>
                               {course.subjects.map(sub => {
-                                  // (الكورس الكامل تم إخفاؤه أصلاً، لذا نفحص المادة فقط)
                                   const isOwned = isSubscribed('subject', sub.id);
                                   return (
                                       <div key={sub.id} className="sub-row">
                                           <div style={{flex: 1}}>
                                               <span>📄 {sub.title}</span>
-                                              {/* ✅ عرض سعر المادة */}
                                               <span style={{fontSize:'0.85em', color:'#4ade80', marginRight:'5px', fontWeight:'bold'}}>
                                                   ({sub.price || 0} ج.م)
                                               </span>
@@ -176,7 +182,14 @@ export default function StudentCourses() {
                   
                   <form onSubmit={handleSubmit}>
                       <label>إرفاق صورة التحويل:</label>
-                      <input type="file" name="receipt" accept="image/*" required className="file-in" />
+                      {/* ✅ استخدام onChange لتحديث الحالة */}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={(e) => setReceiptFile(e.target.files[0])}
+                        required 
+                        className="file-in" 
+                      />
                       <div className="modal-acts">
                           <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">إلغاء</button>
                           <button type="submit" disabled={uploading} className="btn-confirm">
@@ -200,9 +213,9 @@ export default function StudentCourses() {
         .store-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
         .store-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.3); border-color: #38bdf8; }
 
-        /* ❌ تم حذف كلاس .card-banner تماماً */
+        /* ✅ إزالة كود .card-banner السابق */
         
-        .card-content { padding: 20px; text-align: center; flex: 1; }
+        .card-content { padding: 20px; text-align: center; flex: 1; border-bottom: 1px solid #334155; }
         .card-content h2 { margin: 0 0 15px; font-size: 1.4em; }
         .price-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; align-items: center; background: #0f172a; padding: 10px; border-radius: 8px; }
         .price { color: #4ade80; font-weight: bold; font-size: 1.2em; }
@@ -210,7 +223,7 @@ export default function StudentCourses() {
         .buy-btn { width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.3); }
         .buy-btn:hover { background: #7dd3fc; transform: scale(1.02); }
         
-        .sub-items { background: #0f172a; padding: 15px; border-top: 1px solid #334155; }
+        .sub-items { background: #0f172a; padding: 15px; }
         .sub-items h4 { margin: 0 0 10px; color: #94a3b8; font-size: 0.85em; text-align: right; }
         .sub-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 0.9em; }
         .sub-row:last-child { border-bottom: none; }
@@ -222,7 +235,6 @@ export default function StudentCourses() {
         .empty-store { grid-column: 1 / -1; text-align: center; padding: 50px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-top: 20px; }
         .back-home-btn { margin-top: 20px; background: #38bdf8; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
 
-        /* Modal Styles (نفس السابق) */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-box { background: #1e293b; width: 90%; max-width: 400px; padding: 25px; border-radius: 20px; border: 1px solid #475569; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .modal-box h3 { margin-top: 0; color: #38bdf8; text-align: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
