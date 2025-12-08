@@ -4,28 +4,47 @@ import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 
-// إعدادات formidable لرفع الملفات
 export const config = {
   api: { bodyParser: false },
 };
 
 export default async (req, res) => {
-  // 1. التحقق من جلسة الطالب
-  const cookies = parse(req.headers.cookie || '');
-  const sessionToken = cookies.student_session; // أو أي اسم تستخدمه لتوكن الطالب
-
-  if (!sessionToken) return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً' });
-
-  // جلب بيانات الطالب
-  const { data: user } = await supabase.from('users').select('id, username, first_name, phone').eq('session_token', sessionToken).single();
-  
-  if (!user) return res.status(403).json({ error: 'مستخدم غير صالح' });
-
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  // 1. التحقق من المستخدم (دعم الهيدر + الكوكيز)
+  let user = null;
+
+  // أ) المحاولة الأولى: قراءة الهيدر (من LocalStorage)
+  const headerUserId = req.headers['x-user-id'];
+  if (headerUserId) {
+      const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('id', headerUserId).single();
+      user = data;
+  }
+
+  // ب) المحاولة الثانية: قراءة الكوكي (احتياطي)
+  if (!user) {
+      const cookies = parse(req.headers.cookie || '');
+      const sessionToken = cookies.student_session;
+      if (sessionToken) {
+          const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('session_token', sessionToken).single();
+          user = data;
+      }
+  }
+
+  // إذا فشلت المحاولتان -> رفض الطلب
+  if (!user) {
+      return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً (فشل التحقق من الهوية)' });
+  }
 
   // 2. إعداد مجلد الحفظ
   const uploadDir = path.join(process.cwd(), 'storage', 'receipts');
-  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  try {
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: 'فشل في إنشاء مجلد التخزين' });
+  }
 
   const form = new formidable.IncomingForm({
     uploadDir,
@@ -37,7 +56,6 @@ export default async (req, res) => {
     if (err) return res.status(500).json({ error: 'فشل رفع الملف' });
 
     try {
-      // استخراج البيانات
       const courseId = fields.courseId ? fields.courseId[0] : null;
       const subjectId = fields.subjectId ? fields.subjectId[0] : null;
       const price = fields.price ? fields.price[0] : '0';
@@ -48,10 +66,6 @@ export default async (req, res) => {
 
       const fileName = path.basename(receiptFile.filepath);
 
-      // 3. التحقق: هل يوجد طلب "معلق" لنفس الكورس؟ (لمنع التكرار)
-      // (يمكنك تجاوز هذه الخطوة إذا كنت تريد السماح بطلبات متعددة)
-
-      // 4. تجهيز هيكل البيانات (JSON) كما يتوقعه الأدمن
       const requestedData = [{
           id: courseId || subjectId,
           type: courseId ? 'course' : 'subject',
@@ -59,17 +73,16 @@ export default async (req, res) => {
           price: price
       }];
 
-      // 5. الحفظ في قاعدة البيانات
       const { error: dbError } = await supabase.from('subscription_requests').insert({
-        user_id: user.id, // ربط الطلب بالطالب الموجود
+        user_id: user.id, // استخدام ID المستخدم الذي تم التحقق منه
         user_name: user.first_name,
         user_username: user.username,
         phone: user.phone,
         
-        course_title: itemTitle, // للعرض السريع
+        course_title: itemTitle,
         total_price: price,
         
-        payment_method: 'vodafone_cash', // أو حسب اختيار الطالب
+        payment_method: 'vodafone_cash',
         payment_file_path: fileName,
         
         status: 'pending',
