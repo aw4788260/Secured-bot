@@ -1,5 +1,4 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { parse } from 'cookie';
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
@@ -11,27 +10,17 @@ export const config = {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  // 1. التحقق من المستخدم (دعم الهيدر + الكوكيز)
+  // 1. التحقق من المستخدم (عبر الهيدر فقط)
   let user = null;
-
-  // أ) المحاولة الأولى: قراءة الهيدر (من LocalStorage)
   const headerUserId = req.headers['x-user-id'];
+
   if (headerUserId) {
+      // جلب بيانات المستخدم من القاعدة للتأكد أنه موجود
       const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('id', headerUserId).single();
       user = data;
   }
 
-  // ب) المحاولة الثانية: قراءة الكوكي (احتياطي)
-  if (!user) {
-      const cookies = parse(req.headers.cookie || '');
-      const sessionToken = cookies.student_session;
-      if (sessionToken) {
-          const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('session_token', sessionToken).single();
-          user = data;
-      }
-  }
-
-  // إذا فشلت المحاولتان -> رفض الطلب
+  // إذا لم نجد مستخدم بهذا الآيدي -> رفض الطلب
   if (!user) {
       return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً (فشل التحقق من الهوية)' });
   }
@@ -74,17 +63,14 @@ export default async (req, res) => {
       }];
 
       const { error: dbError } = await supabase.from('subscription_requests').insert({
-        user_id: user.id, // استخدام ID المستخدم الذي تم التحقق منه
+        user_id: user.id,
         user_name: user.first_name,
         user_username: user.username,
         phone: user.phone,
-        
         course_title: itemTitle,
         total_price: price,
-        
         payment_method: 'vodafone_cash',
         payment_file_path: fileName,
-        
         status: 'pending',
         requested_data: requestedData
       });
