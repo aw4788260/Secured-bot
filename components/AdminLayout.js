@@ -8,19 +8,23 @@ export default function AdminLayout({ children, title }) {
   const [isChecking, setIsChecking] = useState(true);
   const [adminName, setAdminName] = useState('');
   
-  // [جديد] حالة نافذة تأكيد الخروج
+  // حالة نافذة تأكيد الخروج
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // 1. التحقق من الجلسة
   useEffect(() => {
     const checkSession = async () => {
       setIsChecking(true);
+      
+      // ✅ 1. جلب البيانات بالمفاتيح الصحيحة
       const adminId = localStorage.getItem('admin_user_id');
       const isAdminSession = localStorage.getItem('is_admin_session');
       const storedName = localStorage.getItem('admin_name');
+      
       if (storedName) setAdminName(storedName);
 
-      if (!userId || !isAdminSession) {
+      // ✅ 2. تصحيح الخطأ: التحقق من adminId بدلاً من userId
+      if (!adminId || !isAdminSession) {
         performLogout(); // خروج فوري إذا لم توجد بيانات
         return;
       }
@@ -29,7 +33,8 @@ export default function AdminLayout({ children, title }) {
         const res = await fetch('/api/auth/check-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId }) 
+          // ✅ 3. تصحيح الخطأ: إرسال adminId باسم userId للسيرفر (لأن السيرفر يتوقع userId)
+          body: JSON.stringify({ userId: adminId }) 
         });
         const data = await res.json();
 
@@ -69,7 +74,12 @@ export default function AdminLayout({ children, title }) {
   // [محدث] دالة تنفيذ الخروج الفعلي
   const performLogout = async () => {
     try { await fetch('/api/auth/logout'); } catch(e) {}
-    localStorage.clear();
+    
+    // ✅ تنظيف بيانات الأدمن فقط (حماية لبيانات الطالب)
+    localStorage.removeItem('admin_user_id');
+    localStorage.removeItem('is_admin_session');
+    localStorage.removeItem('admin_name');
+    
     router.replace('/admin/login');
   };
 
@@ -77,7 +87,7 @@ export default function AdminLayout({ children, title }) {
     { name: '🏠 الرئيسية', path: '/admin' },
     { name: '📥 طلبات الاشتراك', path: '/admin/requests' },
     { name: '👥 إدارة الطلاب', path: '/admin/students' },
-    { name: '📚 إدارة المحتوى', path: '/admin/content' },
+    { name: '📚 إدارة المحتوى', path: '/admin/content' }, // تأكد أن هذا المسار موجود أو عدله
     { name: '👮 المشرفين', path: '/admin/admins' },
   ];
 
@@ -107,7 +117,7 @@ export default function AdminLayout({ children, title }) {
              {adminName && <span className="admin-name-badge">👤 {adminName}</span>}
           </div>
           
-          {/* زر الخروج: يفتح المودال بدلاً من الخروج المباشر */}
+          {/* زر الخروج */}
           <button onClick={() => setShowLogoutModal(true)} className="logout-btn-header" title="تسجيل الخروج">
              <span className="logout-text">خروج</span>
              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{transform: 'rotate(180deg)'}}>
@@ -144,7 +154,7 @@ export default function AdminLayout({ children, title }) {
           </main>
       </div>
 
-      {/* [جديد] نافذة تأكيد الخروج */}
+      {/* نافذة تأكيد الخروج */}
       {showLogoutModal && (
           <div className="logout-modal-overlay">
               <div className="logout-modal-box">
