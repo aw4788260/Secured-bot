@@ -15,7 +15,7 @@ export default function AdminLayout({ children, title }) {
   useEffect(() => {
     const checkSession = async () => {
       setIsChecking(true);
-      const userId = localStorage.getItem('auth_user_id');
+      const adminId = localStorage.getItem('admin_user_id');
       const isAdminSession = localStorage.getItem('is_admin_session');
       const storedName = localStorage.getItem('admin_name');
       if (storedName) setAdminName(storedName);
