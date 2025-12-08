@@ -6,7 +6,6 @@ export default function AdminsPage() {
   const [isMainAdmin, setIsMainAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Modal State
   const [showWebModal, setShowWebModal] = useState(false);
   const [targetAdmin, setTargetAdmin] = useState(null);
   
@@ -57,7 +56,6 @@ export default function AdminsPage() {
       } catch (e) { showToast('خطأ اتصال', 'error'); }
   };
 
-  // Handlers
   const handlePromote = () => {
       showPrompt('أدخل اسم المستخدم (Username) للمشرف الجديد:', 'مثال: ahmed_student', (val) => {
           if (!val) return;
@@ -79,9 +77,12 @@ export default function AdminsPage() {
   const submitWebAccess = async (e) => {
       e.preventDefault();
       const username = e.target.username.value;
-      const password = e.target.password.value;
+      const password = e.target.password.value; // قد يكون فارغاً
       
-      const success = await handleAction('set_web_access', { userId: targetAdmin.id, webData: { username, password } });
+      const success = await handleAction('set_web_access', { 
+          userId: targetAdmin.id, 
+          webData: { username, password } 
+      });
       if (success) setShowWebModal(false);
   };
 
@@ -109,7 +110,7 @@ export default function AdminsPage() {
                       <th>يوزر اللوحة (أدمن)</th>
                       <th style={{textAlign:'center'}}>الهاتف</th>
                       <th>الصلاحية</th>
-                      <th style={{minWidth:'280px'}}>الإجراءات</th>
+                      <th style={{minWidth:'250px'}}>الإجراءات</th>
                   </tr>
               </thead>
               <tbody>
@@ -138,7 +139,7 @@ export default function AdminsPage() {
                               {isMainAdmin && (
                                   <div className="actions">
                                       <button onClick={() => openWebModal(admin)} className="text-btn blue">
-                                          تغيير دخول اللوحة 🔑
+                                          تغيير بيانات اللوحة 🔑
                                       </button>
                                       
                                       {!admin.is_main && (
@@ -161,18 +162,28 @@ export default function AdminsPage() {
           <div className="modal-overlay" onClick={() => setShowWebModal(false)}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
                   <h3>🌐 بيانات دخول اللوحة: {targetAdmin?.first_name}</h3>
-                  <p className="hint">قم بتعيين اسم المستخدم وكلمة المرور الخاصة بدخول لوحة التحكم فقط.</p>
+                  <p className="hint">يمكنك تغيير اسم المستخدم، أو ترك كلمة المرور فارغة للاحتفاظ بالقديمة.</p>
                   
                   <form onSubmit={submitWebAccess}>
                       <label>اسم المستخدم (Panel User):</label>
-                      <input name="username" defaultValue={targetAdmin?.admin_username || ''} required placeholder="username" />
+                      <input 
+                        name="username" 
+                        defaultValue={targetAdmin?.admin_username || ''} 
+                        required 
+                        placeholder="username" 
+                      />
                       
                       <label>كلمة المرور الجديدة (Pass):</label>
-                      <input name="password" type="password" required placeholder="******" />
+                      <input 
+                        name="password" 
+                        type="password" 
+                        placeholder="اتركه فارغاً لعدم التغيير" 
+                        // ❌ تم إزالة required
+                      />
                       
                       <div className="modal-actions">
                           <button type="button" className="cancel" onClick={() => setShowWebModal(false)}>إلغاء</button>
-                          <button type="submit" className="save">حفظ البيانات ✅</button>
+                          <button type="submit" className="save">حفظ وتحديث ✅</button>
                       </div>
                   </form>
               </div>
@@ -184,7 +195,6 @@ export default function AdminsPage() {
       {confirmData.show && <div className="modal-overlay alert"><div className="modal-box small"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="modal-actions"><button type="button" className="cancel" onClick={()=>setConfirmData({...confirmData,show:false})}>إلغاء</button><button onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}} className="save red">نعم، متأكد</button></div></div></div>}
 
       <style jsx>{`
-        /* التنسيقات الأساسية */
         .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; transform: translateX(150%); transition: transform 0.3s; z-index: 9999; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .toast.show { transform: translateX(0); } .toast.success { background: #22c55e; } .toast.error { background: #ef4444; }
 
@@ -201,7 +211,6 @@ export default function AdminsPage() {
         .admin-table tr:hover { background: rgba(255,255,255,0.03); }
         .main-admin-row { background: rgba(251, 191, 36, 0.05); }
 
-        /* User Tags */
         .user-tag { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500; display: inline-block; font-family: monospace; }
         .user-tag.student { color: #38bdf8; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); }
         .user-tag.admin { color: #4ade80; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.2); }
@@ -211,38 +220,15 @@ export default function AdminsPage() {
         .role-badge.main { background: #fbbf24; color: #000; box-shadow: 0 0 10px rgba(251, 191, 36, 0.3); }
         .role-badge.sub { background: #334155; color: #cbd5e1; border: 1px solid #475569; }
 
-        /* --- [التعديل الرئيسي هنا] حاوية الأزرار --- */
-        .actions { 
-            display: flex; 
-            gap: 8px; 
-            flex-wrap: nowrap; /* يمنع نزول الأزرار لسطر جديد */
-            overflow-x: auto; /* يسمح بالتمرير إذا ضاق المكان */
-            padding-bottom: 5px; /* مسافة لشريط التمرير */
-            align-items: center;
-        }
-        
-        /* تجميل شريط التمرير للأزرار */
+        .actions { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; align-items: center; }
         .actions::-webkit-scrollbar { height: 4px; }
         .actions::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         .actions::-webkit-scrollbar-track { background: transparent; }
 
-        .text-btn { 
-            padding: 8px 12px; 
-            border-radius: 6px; 
-            border: none; 
-            cursor: pointer; 
-            font-size: 0.85em; 
-            font-weight: bold; 
-            transition: 0.2s; 
-            white-space: nowrap; /* يمنع تكسير النص داخل الزر */
-            display: flex; 
-            align-items: center;
-            gap: 5px;
-        }
+        .text-btn { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85em; font-weight: bold; transition: 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
         .text-btn.blue { background: #3b82f6; color: white; } .text-btn.blue:hover { background: #2563eb; }
         .text-btn.red { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); } .text-btn.red:hover { background: #ef4444; color: white; }
 
-        /* Modals */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
         .modal-box { background: #1e293b; width: 90%; max-width: 500px; padding: 25px; border-radius: 16px; border: 1px solid #475569; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .modal-box.small { max-width: 400px; }
