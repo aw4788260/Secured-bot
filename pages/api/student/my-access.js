@@ -1,23 +1,42 @@
-// pages/api/student/my-access.js
 import { supabase } from '../../../lib/supabaseClient';
 import { parse } from 'cookie';
 
 export default async (req, res) => {
-  const cookies = parse(req.headers.cookie || '');
-  const sessionToken = cookies.student_session; // توكن الطالب
+  // 1. الأولوية: قراءة الـ Header المرسل من المتصفح (localStorage)
+  let userId = req.headers['x-user-id'];
 
-  if (!sessionToken) return res.status(200).json({ courses: [], subjects: [] });
+  // 2. احتياطي: إذا لم يُرسل الهيدر، نحاول قراءة الكوكي (للأمان)
+  if (!userId) {
+      const cookies = parse(req.headers.cookie || '');
+      const sessionToken = cookies.student_session;
+      
+      if (sessionToken) {
+          const { data: user } = await supabase.from('users').select('id').eq('session_token', sessionToken).single();
+          if (user) userId = user.id;
+      }
+  }
 
-  const { data: user } = await supabase.from('users').select('id').eq('session_token', sessionToken).single();
-  if (!user) return res.status(200).json({ courses: [], subjects: [] });
+  // إذا لم نجد مستخدم، نعيد مصفوفات فارغة
+  if (!userId) return res.status(200).json({ courses: [], subjects: [] });
 
-  // جلب الكورسات
-  const { data: courses } = await supabase.from('user_course_access').select('course_id').eq('user_id', user.id);
-  // جلب المواد
-  const { data: subjects } = await supabase.from('user_subject_access').select('subject_id').eq('user_id', user.id);
+  try {
+      // 3. جلب الكورسات المشترك بها
+      const { data: courses } = await supabase
+          .from('user_course_access')
+          .select('course_id')
+          .eq('user_id', userId);
 
-  return res.status(200).json({
-      courses: courses.map(c => c.course_id),
-      subjects: subjects.map(s => s.subject_id)
-  });
+      // 4. جلب المواد المشترك بها
+      const { data: subjects } = await supabase
+          .from('user_subject_access')
+          .select('subject_id')
+          .eq('user_id', userId);
+
+      return res.status(200).json({
+          courses: courses ? courses.map(c => c.course_id) : [],
+          subjects: subjects ? subjects.map(s => s.subject_id) : []
+      });
+  } catch (err) {
+      return res.status(500).json({ error: err.message });
+  }
 };
