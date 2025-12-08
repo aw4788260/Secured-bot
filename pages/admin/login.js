@@ -11,15 +11,17 @@ export default function AdminLogin() {
 
   useEffect(() => {
     const checkExistingSession = async () => {
-      const userId = localStorage.getItem('auth_user_id');
+      // 1. استخدام مفتاح خاص بالأدمن فقط (admin_user_id)
+      const adminId = localStorage.getItem('admin_user_id');
       const isAdmin = localStorage.getItem('is_admin_session');
 
-      if (userId && isAdmin) {
+      if (adminId && isAdmin) {
         try {
-          const res = await fetch('/api/auth/check-session', {
+          // نتحقق من جلسة الأدمن حصراً
+          const res = await fetch('/api/auth/check-session', { // تأكد أن هذا الـ API يدعم فحص الأدمن
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ userId })
+             body: JSON.stringify({ userId: adminId, type: 'admin' }) 
           });
           const data = await res.json();
           
@@ -30,14 +32,11 @@ export default function AdminLogin() {
         } catch(e) { }
       }
 
-      // 🔴 التعديل هنا: تنظيف آمن
+      // 2. إذا لم تكن هناك جلسة أدمن، نزيل علامة الأدمن فقط
+      // ❌ لا نمسح auth_user_id (الخاص بالطالب)
+      // ❌ لا نستدعي logout عام من السيرفر حتى لا يحذف كوكي الطالب
       localStorage.removeItem('is_admin_session');
-      // إذا كنت تريد فصل جلسة الأدمن عن الطالب تماماً، يمكنك ترك auth_user_id
-      // أو حذفه إذا كان الأدمن يجب أن يسجل دخول من جديد
-      
-      // لا نستخدم localStorage.clear() هنا أبداً
-      
-      fetch('/api/auth/logout');
+      localStorage.removeItem('admin_user_id');
     };
 
     checkExistingSession();
@@ -57,8 +56,10 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (data.success) {
-        localStorage.setItem('auth_user_id', data.userId);
+        // 3. تخزين الآيدي في مفتاح خاص بالأدمن
+        localStorage.setItem('admin_user_id', data.userId);
         localStorage.setItem('is_admin_session', 'true');
+        
         router.replace('/admin');
       } else {
         setError(data.message);
