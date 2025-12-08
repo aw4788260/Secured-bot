@@ -7,6 +7,9 @@ export default function AdminLayout({ children, title }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isChecking, setIsChecking] = useState(true);
   const [adminName, setAdminName] = useState('');
+  
+  // [جديد] حالة نافذة تأكيد الخروج
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // 1. التحقق من الجلسة
   useEffect(() => {
@@ -18,7 +21,7 @@ export default function AdminLayout({ children, title }) {
       if (storedName) setAdminName(storedName);
 
       if (!userId || !isAdminSession) {
-        handleLogout();
+        performLogout(); // خروج فوري إذا لم توجد بيانات
         return;
       }
 
@@ -31,7 +34,7 @@ export default function AdminLayout({ children, title }) {
         const data = await res.json();
 
         if (!res.ok || !data.valid) {
-          handleLogout();
+          performLogout();
         } else {
           if (data.name) {
               setAdminName(data.name);
@@ -40,39 +43,31 @@ export default function AdminLayout({ children, title }) {
           setIsChecking(false);
         }
       } catch (err) {
-        handleLogout(); 
+        performLogout(); 
       }
     };
     checkSession();
   }, [router.pathname]); 
 
 
-  // 2. ضبط حجم الشاشة (تم إصلاح مشكلة السكرول هنا) ✅
+  // 2. ضبط حجم الشاشة
   useEffect(() => {
-    // نحفظ العرض الحالي لنقارنه لاحقاً
     let lastWidth = window.innerWidth;
-
     const handleResize = () => {
         const currentWidth = window.innerWidth;
-        
-        // 🛑 تجاهل الحدث إذا كان العرض لم يتغير (يعني التغيير كان في الطول بسبب السكرول)
         if (currentWidth === lastWidth) return;
-        
-        lastWidth = currentWidth; // تحديث العرض المحفوظ
-
+        lastWidth = currentWidth;
         if (currentWidth <= 768) setIsSidebarOpen(false);
         else setIsSidebarOpen(true);
     };
-    
-    // الضبط الأولي عند فتح الصفحة
     if (window.innerWidth <= 768) setIsSidebarOpen(false);
-    
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
 
-  const handleLogout = async () => {
+  // [محدث] دالة تنفيذ الخروج الفعلي
+  const performLogout = async () => {
     try { await fetch('/api/auth/logout'); } catch(e) {}
     localStorage.clear();
     router.replace('/admin/login');
@@ -112,8 +107,8 @@ export default function AdminLayout({ children, title }) {
              {adminName && <span className="admin-name-badge">👤 {adminName}</span>}
           </div>
           
-          {/* زر خروج الجديد */}
-          <button onClick={handleLogout} className="logout-btn-header" title="تسجيل الخروج">
+          {/* زر الخروج: يفتح المودال بدلاً من الخروج المباشر */}
+          <button onClick={() => setShowLogoutModal(true)} className="logout-btn-header" title="تسجيل الخروج">
              <span className="logout-text">خروج</span>
              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{transform: 'rotate(180deg)'}}>
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -149,6 +144,21 @@ export default function AdminLayout({ children, title }) {
           </main>
       </div>
 
+      {/* [جديد] نافذة تأكيد الخروج */}
+      {showLogoutModal && (
+          <div className="logout-modal-overlay">
+              <div className="logout-modal-box">
+                  <div className="modal-icon">👋</div>
+                  <h3>تسجيل الخروج</h3>
+                  <p>هل أنت متأكد من أنك تريد إنهاء الجلسة والخروج؟</p>
+                  <div className="modal-actions">
+                      <button className="btn-cancel" onClick={() => setShowLogoutModal(false)}>تراجع</button>
+                      <button className="btn-confirm" onClick={performLogout}>نعم، خروج</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <style jsx global>{`
         body { margin: 0; background: #0f172a; font-family: sans-serif; overflow-x: hidden; }
         .layout-container { display: flex; flex-direction: column; min-height: 100vh; }
@@ -159,21 +169,7 @@ export default function AdminLayout({ children, title }) {
         
         .admin-name-badge { color: #94a3b8; font-size: 0.9em; margin-right: 20px; font-weight: bold; border-right: 1px solid #334155; padding-right: 15px; }
 
-        /* تنسيق زر الخروج الجديد */
-        .logout-btn-header { 
-            background: rgba(239, 68, 68, 0.15); 
-            color: #fca5a5; 
-            border: 1px solid rgba(239, 68, 68, 0.3); 
-            padding: 6px 12px; 
-            borderRadius: 6px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            font-size: 0.9em; 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            transition: all 0.2s; 
-        }
+        .logout-btn-header { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 12px; borderRadius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
         .logout-btn-header:hover { background: #ef4444; color: white; border-color: #ef4444; }
 
         .sidebar { width: 260px; background: #1e293b; border-left: 1px solid #334155; position: fixed; top: 60px; bottom: 0; right: 0; z-index: 50; padding: 20px 10px; transition: transform 0.3s ease-in-out; overflow-y: auto; }
@@ -186,14 +182,46 @@ export default function AdminLayout({ children, title }) {
         .main-content { margin-top: 60px; padding: 30px; flex-grow: 1; transition: margin-right 0.3s ease-in-out; }
         
         @media (min-width: 769px) { .main-content.shifted { margin-right: 260px; } .main-content { margin-right: 0; } .mobile-overlay { display: none; } }
-        
         @media (max-width: 768px) { 
             .main-content { margin-right: 0 !important; padding: 20px; } 
             .sidebar { box-shadow: -5px 0 15px rgba(0,0,0,0.5); width: 75%; max-width: 280px; } 
             .mobile-overlay { position: fixed; top: 60px; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); z-index: 45; backdrop-filter: blur(2px); } 
             .admin-name-badge { display: none; }
-            .logout-text { display: none; } /* إخفاء كلمة خروج في الموبايل والاكتفاء بالأيقونة */
+            .logout-text { display: none; } 
         }
+
+        /* --- تصميم نافذة الخروج --- */
+        .logout-modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            display: flex; justify-content: center; align-items: center;
+            backdrop-filter: blur(4px);
+            animation: fadeIn 0.2s;
+        }
+        .logout-modal-box {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid #475569;
+            width: 90%; max-width: 380px;
+            text-align: center;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .modal-icon { font-size: 3em; margin-bottom: 10px; }
+        .logout-modal-box h3 { margin: 0 0 10px 0; color: #f87171; font-size: 1.4em; }
+        .logout-modal-box p { color: #cbd5e1; margin-bottom: 25px; line-height: 1.5; }
+        
+        .modal-actions { display: flex; gap: 12px; justify-content: center; }
+        .modal-actions button { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.95em; }
+        .btn-cancel { background: transparent; color: #cbd5e1; border: 1px solid #475569 !important; }
+        .btn-cancel:hover { background: rgba(255,255,255,0.05); color: white; }
+        .btn-confirm { background: #ef4444; color: white; }
+        .btn-confirm:hover { background: #dc2626; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4); }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes popIn { from { transform: scale(0.9) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
       `}</style>
     </div>
   );
