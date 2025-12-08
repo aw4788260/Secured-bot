@@ -6,6 +6,9 @@ export default function Register() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   
+  // حالة الإشعارات (Toast)
+  const [toast, setToast] = useState({ show: false, message: '', type: '' });
+
   const [formData, setFormData] = useState({
     firstName: '',
     username: '',
@@ -14,15 +17,22 @@ export default function Register() {
     phone: ''
   });
 
+  // دالة عرض الإشعار
+  const showToast = (msg, type = 'success') => {
+      setToast({ show: true, message: msg, type });
+      // إخفاء الإشعار تلقائياً بعد 3 ثواني
+      setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // التحقق البسيط
+    // التحقق من صحة البيانات
     if (formData.password !== formData.confirmPassword) {
-        return alert("❌ كلمة المرور غير متطابقة");
+        return showToast("❌ كلمة المرور غير متطابقة", "error");
     }
     if (formData.password.length < 6) {
-        return alert("⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+        return showToast("⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل", "error");
     }
 
     setLoading(true);
@@ -42,13 +52,16 @@ export default function Register() {
         const result = await res.json();
 
         if (res.ok) {
-            alert("✅ " + result.message);
-            router.push('/login'); // التوجيه لصفحة الدخول
+            showToast("✅ " + result.message, "success");
+            // تأخير التوجيه قليلاً ليقرأ المستخدم الرسالة
+            setTimeout(() => {
+                router.push('/login');
+            }, 2000);
         } else {
-            alert("❌ خطأ: " + result.message);
+            showToast("❌ " + result.message, "error");
         }
     } catch (err) {
-        alert("فشل الاتصال بالسيرفر");
+        showToast("فشل الاتصال بالسيرفر", "error");
     } finally {
         setLoading(false);
     }
@@ -57,6 +70,11 @@ export default function Register() {
   return (
     <div className="app-container" style={{justifyContent: 'center', alignItems: 'center', minHeight: '100vh'}}>
       <Head><title>إنشاء حساب جديد</title></Head>
+      
+      {/* مكون الإشعار (Toast) */}
+      <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
+          {toast.message}
+      </div>
       
       <div className="form-box">
         <h2 className="title">📝 إنشاء حساب جديد</h2>
@@ -162,6 +180,30 @@ export default function Register() {
 
         .login-link { text-align: center; margin-top: 20px; color: #94a3b8; font-size: 0.9em; }
         .login-link span { color: #38bdf8; cursor: pointer; text-decoration: underline; font-weight: bold; }
+
+        /* Toast Styles */
+        .toast { 
+            position: fixed; 
+            top: 20px; 
+            left: 50%; 
+            transform: translateX(-50%) translateY(-100px); 
+            background: #1e293b; 
+            color: white; 
+            padding: 12px 24px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
+            border: 1px solid #334155; 
+            z-index: 2000; 
+            transition: transform 0.3s ease; 
+            font-weight: bold; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            white-space: nowrap; 
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.success { border-color: #22c55e; color: #22c55e; }
+        .toast.error { border-color: #ef4444; color: #ef4444; }
       `}</style>
     </div>
   );
