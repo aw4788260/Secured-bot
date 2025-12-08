@@ -9,13 +9,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 1. تنظيف البيانات القديمة عند فتح الصفحة (لكسر الـ Loop)
+  // 1. التعديل هنا: أزلنا كود الحذف (removeItem)
+  // وبدلاً منه نتحقق فقط: هل أنت مسجل؟ إذا نعم، اذهب للرئيسية
   useEffect(() => {
-    localStorage.removeItem('auth_user_id');
-    localStorage.removeItem('auth_first_name');
-    // ملاحظة: لا نمسح auth_device_id لنحافظ على ثبات الجهاز لنفس المتصفح
+    const uid = localStorage.getItem('auth_user_id');
+    const token = document.cookie.includes('student_session');
     
-    document.cookie = "student_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+    // إذا كانت البيانات موجودة، لا تبقَ في صفحة الدخول، اذهب للمكتبة
+    if (uid && token) {
+        router.replace('/'); 
+    }
   }, []);
 
   const handleLogin = async (e) => {
@@ -24,11 +27,8 @@ export default function LoginPage() {
     setError('');
     
     try {
-      // 2. منطق البصمة الجديد (داخل الصفحة مباشرة)
-      // نبحث أولاً هل توجد بصمة محفوظة؟
+      // منطق البصمة (كما هو)
       let deviceId = localStorage.getItem('auth_device_id');
-
-      // إذا لم توجد (أول مرة أو تم مسح الكاش)، نولد واحدة جديدة بالمعادلة المطلوبة
       if (!deviceId) {
           deviceId = 'web-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
           localStorage.setItem('auth_device_id', deviceId);
@@ -42,10 +42,8 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok || data.success) {
-        // تخزين البيانات
         localStorage.setItem('auth_user_id', data.userId || data.user?.id);
-        // نعيد حفظ الـ deviceId للتأكيد (رغم أنه محفوظ بالأعلى)
-        localStorage.setItem('auth_device_id', deviceId);
+        localStorage.setItem('auth_device_id', deviceId); // تأكيد حفظ البصمة
         localStorage.setItem('auth_first_name', data.firstName || data.user?.first_name);
         
         // التوجيه للمكتبة
