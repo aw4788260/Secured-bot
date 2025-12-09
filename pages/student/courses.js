@@ -8,44 +8,39 @@ export default function StudentCourses() {
   const [myAccess, setMyAccess] = useState({ courses: [], subjects: [] });
   const [loading, setLoading] = useState(true);
 
-  // [✅] حالة السلة (لتخزين عدة عناصر)
+  // السلة
   const [cart, setCart] = useState([]);
   
-  // Modal State
+  // Modals
   const [showModal, setShowModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false); // ✅ جديد: نافذة الطلبات
+  const [myRequests, setMyRequests] = useState([]); // ✅ جديد: قائمة الطلبات
+  
   const [receiptFile, setReceiptFile] = useState(null);
   const [userNote, setUserNote] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  // [✅] حالة الإشعارات (Toast) بدلاً من alert
+  // Toast
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
-
   const showToast = (msg, type = 'success') => {
       setToast({ show: true, message: msg, type });
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
 
-  // جلب البيانات
   useEffect(() => {
     const fetchData = async () => {
       const uid = localStorage.getItem('auth_user_id');
       const did = localStorage.getItem('auth_device_id');
 
-      if (!uid) {
-          router.replace('/login');
-          return;
-      }
+      if (!uid) { router.replace('/login'); return; }
 
       try {
         const [resCourses, resAccess] = await Promise.all([
             fetch('/api/public/get-courses'),
-            fetch('/api/student/my-access', {
-                headers: { 'x-user-id': uid, 'x-device-id': did }
-            })
+            fetch('/api/student/my-access', { headers: { 'x-user-id': uid, 'x-device-id': did } })
         ]);
         const coursesData = await resCourses.json();
         const accessData = await resAccess.json();
-
         setCourses(coursesData);
         setMyAccess(accessData);
       } catch (err) { console.error(err); } 
@@ -54,23 +49,41 @@ export default function StudentCourses() {
     fetchData();
   }, []);
 
+  // ✅ دالة جلب الطلبات السابقة
+  const fetchMyRequests = async () => {
+      const uid = localStorage.getItem('auth_user_id');
+      try {
+          const res = await fetch('/api/student/my-requests', {
+              headers: { 'x-user-id': uid }
+          });
+          const data = await res.json();
+          setMyRequests(data);
+          setShowHistoryModal(true);
+      } catch (e) { showToast("فشل جلب السجل", "error"); }
+  };
+
+  // ✅ زر الرجوع الذكي
+  const handleBack = () => {
+      if (typeof window !== 'undefined' && window.Android && window.Android.closeWebView) {
+          window.Android.closeWebView(); // إغلاق الـ Activity في الأندرويد
+      } else {
+          router.push('/'); // العودة للمكتبة في المتصفح
+      }
+  };
+
   const isSubscribed = (type, id) => {
       if (type === 'course') return myAccess.courses.includes(id);
       if (type === 'subject') return myAccess.subjects.includes(id); 
       return false;
   };
 
-  // دوال إدارة السلة
   const isInCart = (type, id) => cart.some(item => item.id === id && item.type === type);
 
   const toggleCart = (item, type) => {
       if (isInCart(type, item.id)) {
-          // حذف من السلة
           setCart(cart.filter(i => !(i.id === item.id && i.type === type)));
       } else {
-          // إضافة للسلة
           let newCart = [...cart];
-          // إذا كان كورس كامل، نحذف أي مواد بداخله كانت مضافة للسلة
           if (type === 'course' && item.subjects) {
               const subIds = item.subjects.map(s => s.id);
               newCart = newCart.filter(i => !(i.type === 'subject' && subIds.includes(i.id)));
@@ -81,18 +94,15 @@ export default function StudentCourses() {
   };
 
   const handleSubjectToggle = (subject, courseId) => {
-      // منع إضافة مادة إذا كان الكورس الأصلي مضافاً للسلة
       if (isInCart('course', courseId)) {
-          showToast("لقد اخترت الكورس الكامل بالفعل، فهو يشمل هذه المادة.", "error"); // ✅ استبدال alert
+          showToast("الكورس الكامل يشمل هذه المادة", "error");
           return;
       }
       toggleCart(subject, 'subject');
   };
 
-  // حساب الإجمالي
   const cartTotal = cart.reduce((sum, item) => sum + (parseInt(item.price) || 0), 0);
 
-  // التصفية: إخفاء الكورسات المملوكة بالكامل
   const visibleCourses = courses.filter(course => {
       const hasFullCourse = isSubscribed('course', course.id);
       const hasAllSubjects = course.subjects && course.subjects.length > 0 && course.subjects.every(sub => isSubscribed('subject', sub.id));
@@ -101,57 +111,58 @@ export default function StudentCourses() {
 
   const handleSubmit = async (e) => {
       e.preventDefault();
-      
-      if (!receiptFile) return showToast("يرجى إرفاق صورة التحويل", "error"); // ✅ استبدال alert
-      if (cart.length === 0) return showToast("السلة فارغة!", "error"); // ✅ استبدال alert
+      if (!receiptFile) return showToast("يرجى إرفاق صورة التحويل", "error");
+      if (cart.length === 0) return showToast("السلة فارغة!", "error");
 
       setUploading(true);
       const formData = new FormData();
-      
       formData.append('receiptFile', receiptFile);
       formData.append('user_note', userNote);
-      
-      // إرسال السلة كاملة كـ JSON
       formData.append('selectedItems', JSON.stringify(cart));
       
       const uid = localStorage.getItem('auth_user_id'); 
 
       try {
           const res = await fetch('/api/student/request-course', { 
-              method: 'POST', 
-              body: formData,
-              headers: { 'x-user-id': uid } 
+              method: 'POST', body: formData, headers: { 'x-user-id': uid } 
           });
           const result = await res.json();
           if (res.ok) {
-              showToast(result.message, "success"); // ✅ استبدال alert
-              setCart([]); 
-              setShowModal(false);
-              // تأخير التحديث قليلاً ليقرأ المستخدم الرسالة
+              showToast(result.message, "success");
+              setCart([]); setShowModal(false);
               setTimeout(() => router.reload(), 2000);
           } else { 
-              showToast("خطأ: " + (result.error || "فشل الرفع"), "error"); // ✅ استبدال alert
+              showToast("خطأ: " + (result.error || "فشل الرفع"), "error");
           }
-      } catch (err) { 
-          showToast("فشل الاتصال بالسيرفر", "error"); 
-      } finally { 
-          setUploading(false); 
-      }
+      } catch (err) { showToast("فشل الاتصال بالسيرفر", "error"); } 
+      finally { setUploading(false); }
+  };
+
+  // دوال مساعدة لحالة الطلب
+  const getStatusLabel = (status) => {
+      if (status === 'approved') return { text: 'مقبول ✅', color: '#22c55e' };
+      if (status === 'rejected') return { text: 'مرفوض ❌', color: '#ef4444' };
+      return { text: 'قيد المراجعة ⏳', color: '#f59e0b' };
   };
 
   return (
     <div className="store-container" dir="rtl">
       <Head><title>متجر الكورسات</title></Head>
       
-      {/* [✅] مكون الإشعار (Toast) */}
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
-          {toast.type === 'success' ? '✅ ' : '⚠️ '}
-          {toast.message}
+          {toast.type === 'success' ? '✅ ' : '⚠️ '} {toast.message}
       </div>
 
       <header className="store-header">
-          <button onClick={() => router.push('/')} className="back-btn">🏠 مكتبتي</button>
+          {/* ✅ زر الرجوع الجديد */}
+          <button onClick={handleBack} className="back-btn">رجوع</button>
+          
           <h1>💎 متجر الكورسات</h1>
+          
+          {/* ✅ زر الطلبات السابقة */}
+          <button onClick={fetchMyRequests} className="history-btn">
+             📜 طلباتي
+          </button>
       </header>
 
       <div className="grid-container">
@@ -160,29 +171,22 @@ export default function StudentCourses() {
           ) : visibleCourses.length > 0 ? (
               visibleCourses.map(course => (
                   <div key={course.id} className={`store-card ${isInCart('course', course.id) ? 'active-card' : ''}`}>
-                      
                       <div className="card-content">
                           <h2>{course.title}</h2>
                           <div className="price-row">
                               <span className="label">سعر الكورس:</span>
                               <span className="price">{course.price ? `${course.price} ج.م` : 'مجاني'}</span>
                           </div>
-
-                          <button 
-                            onClick={() => toggleCart(course, 'course')} 
-                            className={`buy-btn ${isInCart('course', course.id) ? 'remove-btn' : ''}`}
-                          >
+                          <button onClick={() => toggleCart(course, 'course')} className={`buy-btn ${isInCart('course', course.id) ? 'remove-btn' : ''}`}>
                               {isInCart('course', course.id) ? '❌ إلغاء الكورس' : '🛒 إضافة الكورس للسلة'}
                           </button>
                       </div>
-
                       {course.subjects && course.subjects.length > 0 && (
                           <div className="sub-items">
                               <h4>أو اختر مواد منفصلة:</h4>
                               {course.subjects.map(sub => {
                                   const isOwned = isSubscribed('subject', sub.id);
                                   const inCart = isInCart('subject', sub.id);
-                                  
                                   return (
                                       <div key={sub.id} className={`sub-row ${inCart ? 'selected-sub' : ''}`}>
                                           <div style={{flex: 1}}>
@@ -191,14 +195,10 @@ export default function StudentCourses() {
                                                   ({sub.price || 0} ج.م)
                                               </span>
                                           </div>
-                                          
                                           {isOwned ? (
                                               <span className="mini-owned">✅ مملوك</span>
                                           ) : (
-                                              <button 
-                                                onClick={() => handleSubjectToggle(sub, course.id)} 
-                                                className={`mini-buy ${inCart ? 'mini-remove' : ''}`}
-                                              >
+                                              <button onClick={() => handleSubjectToggle(sub, course.id)} className={`mini-buy ${inCart ? 'mini-remove' : ''}`}>
                                                   {inCart ? 'حذف' : 'إضافة'}
                                               </button>
                                           )}
@@ -212,12 +212,11 @@ export default function StudentCourses() {
           ) : (
               <div className="empty-store">
                   <p>🎉 لا توجد كورسات جديدة للاشتراك!</p>
-                  <button onClick={() => router.push('/')} className="back-home-btn">الذهاب لمكتبتي</button>
+                  <button onClick={handleBack} className="back-home-btn">العودة للمكتبة</button>
               </div>
           )}
       </div>
 
-      {/* شريط الدفع السفلي */}
       {cart.length > 0 && (
           <div className="checkout-bar">
               <div className="cart-info">
@@ -230,12 +229,11 @@ export default function StudentCourses() {
           </div>
       )}
 
-      {/* Modal */}
+      {/* --- نافذة الطلب (Modal) --- */}
       {showModal && (
           <div className="modal-overlay" onClick={() => setShowModal(false)}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
                   <h3>تأكيد الطلب 📝</h3>
-                  
                   <div className="cart-summary-list">
                       {cart.map((item, idx) => (
                           <div key={idx} className="summary-item">
@@ -243,32 +241,14 @@ export default function StudentCourses() {
                               <span>{item.price} ج.م</span>
                           </div>
                       ))}
-                      <div className="summary-total">
-                          الإجمالي المطلوب: {cartTotal} ج.م
-                      </div>
+                      <div className="summary-total">الإجمالي المطلوب: {cartTotal} ج.م</div>
                   </div>
-
                   <p className="pay-hint">حول المبلغ على فودافون كاش: <span className="phone">010XXXXXXXX</span></p>
-                  
                   <form onSubmit={handleSubmit}>
                       <label>إرفاق صورة التحويل:</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={(e) => setReceiptFile(e.target.files[0])}
-                        required 
-                        className="file-in" 
-                      />
-
+                      <input type="file" accept="image/*" onChange={(e) => setReceiptFile(e.target.files[0])} required className="file-in" />
                       <label>ملاحظة (اختياري):</label>
-                      <textarea 
-                        className="note-in"
-                        placeholder="أكتب أي ملاحظة للأدمن هنا..."
-                        value={userNote}
-                        onChange={(e) => setUserNote(e.target.value)}
-                        rows="3"
-                      ></textarea>
-
+                      <textarea className="note-in" placeholder="أكتب أي ملاحظة للأدمن هنا..." value={userNote} onChange={(e) => setUserNote(e.target.value)} rows="3"></textarea>
                       <div className="modal-acts">
                           <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">إلغاء</button>
                           <button type="submit" disabled={uploading} className="btn-confirm">
@@ -280,22 +260,58 @@ export default function StudentCourses() {
           </div>
       )}
 
+      {/* --- ✅ نافذة الطلبات السابقة (History Modal) --- */}
+      {showHistoryModal && (
+          <div className="modal-overlay" onClick={() => setShowHistoryModal(false)}>
+              <div className="modal-box history-box" onClick={e => e.stopPropagation()}>
+                  <h3>📜 سجل طلباتي</h3>
+                  <div className="history-list">
+                      {myRequests.length === 0 ? (
+                          <p style={{textAlign:'center', color:'#aaa'}}>لا توجد طلبات سابقة.</p>
+                      ) : (
+                          myRequests.map(req => {
+                              const status = getStatusLabel(req.status);
+                              return (
+                                  <div key={req.id} className="history-item">
+                                      <div className="req-header">
+                                          <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
+                                          <span className="req-status" style={{color: status.color}}>{status.text}</span>
+                                      </div>
+                                      <p className="req-title text-wrap">{req.course_title}</p>
+                                      {/* عرض سبب الرفض إن وجد */}
+                                      {req.status === 'rejected' && req.rejection_reason && (
+                                          <div className="rejection-box">
+                                              🛑 <b>سبب الرفض:</b> {req.rejection_reason}
+                                          </div>
+                                      )}
+                                      <span className="req-price">{req.total_price} ج.م</span>
+                                  </div>
+                              );
+                          })
+                      )}
+                  </div>
+                  <button onClick={() => setShowHistoryModal(false)} className="btn-cancel full-width">إغلاق</button>
+              </div>
+          </div>
+      )}
+
       <style jsx>{`
         .store-container { min-height: 100vh; background: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; padding-bottom: 100px; }
         .store-header { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); padding: 30px 20px; text-align: center; border-bottom: 1px solid #334155; position: relative; }
         .store-header h1 { margin: 10px 0 5px; color: #38bdf8; font-size: 2rem; }
+        
+        /* أزرار الهيدر */
         .back-btn { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        .history-btn { position: absolute; top: 20px; left: 20px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4); color: #fcd34d; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
         .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 30px 20px; max-width: 1200px; margin: 0 auto; }
         
         .store-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; transition: transform 0.2s; display: flex; flex-direction: column; }
         .store-card.active-card { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
-        
         .card-content { padding: 20px; text-align: center; flex: 1; border-bottom: 1px solid #334155; }
         .card-content h2 { margin: 0 0 15px; font-size: 1.4em; }
         .price-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; align-items: center; background: #0f172a; padding: 10px; border-radius: 8px; }
         .price { color: #4ade80; font-weight: bold; font-size: 1.2em; }
-        
         .buy-btn { width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; transition: 0.2s; }
         .buy-btn.remove-btn { background: #ef4444; color: white; }
         
@@ -304,12 +320,10 @@ export default function StudentCourses() {
         .sub-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid #1e293b; font-size: 0.9em; border-radius: 6px; }
         .sub-row.selected-sub { background: rgba(56, 189, 248, 0.15); }
         .sub-row:last-child { border-bottom: none; }
-        
         .mini-buy { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: bold; }
         .mini-buy.mini-remove { border-color: #ef4444; color: #ef4444; }
         .mini-owned { color: #94a3b8; font-size: 0.85em; font-style: italic; }
 
-        /* Checkout Bar */
         .checkout-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 600px; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid #38bdf8; padding: 15px 25px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 100; animation: slideUp 0.3s; }
         .cart-info { display: flex; flex-direction: column; }
         .total-price { color: #4ade80; font-weight: bold; font-size: 1.1em; }
@@ -317,6 +331,7 @@ export default function StudentCourses() {
 
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-box { background: #1e293b; width: 90%; max-width: 450px; padding: 25px; border-radius: 20px; border: 1px solid #475569; max-height: 90vh; overflow-y: auto; }
+        .history-box { max-width: 500px; }
         .modal-box h3 { margin-top: 0; color: #38bdf8; text-align: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         
         .cart-summary-list { background: #0f172a; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
@@ -332,8 +347,17 @@ export default function StudentCourses() {
         .modal-acts { display: flex; gap: 10px; }
         .btn-confirm { flex: 2; background: #22c55e; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-cancel { flex: 1; background: transparent; border: 1px solid #64748b; color: #94a3b8; padding: 12px; border-radius: 8px; cursor: pointer; }
-        
-        /* [✅] Toast Styles */
+        .btn-cancel.full-width { width: 100%; margin-top: 15px; }
+
+        /* History Items */
+        .history-list { max-height: 60vh; overflow-y: auto; }
+        .history-item { background: #0f172a; border: 1px solid #334155; padding: 15px; border-radius: 10px; margin-bottom: 10px; }
+        .req-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85em; color: #94a3b8; }
+        .req-status { font-weight: bold; }
+        .req-title { margin: 0 0 8px; font-size: 0.95em; white-space: pre-wrap; }
+        .rejection-box { background: rgba(239, 68, 68, 0.1); color: #fca5a5; padding: 8px; border-radius: 6px; font-size: 0.9em; margin-bottom: 8px; border: 1px dashed rgba(239, 68, 68, 0.3); }
+        .req-price { display: block; text-align: left; color: #4ade80; font-weight: bold; font-size: 1.1em; }
+
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #334155; z-index: 2000; transition: transform 0.3s ease; font-weight: bold; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
         .toast.show { transform: translateX(-50%) translateY(0); }
         .toast.success { border-color: #22c55e; color: #22c55e; }
