@@ -84,11 +84,11 @@ export default function AdminLayout({ children, title }) {
   };
 
   const menuItems = [
-    { name: '🏠 الرئيسية', path: '/admin' },
-    { name: '📥 طلبات الاشتراك', path: '/admin/requests' },
-    { name: '👥 إدارة الطلاب', path: '/admin/students' },
-    { name: '📚 إدارة المحتوى', path: '/admin/content' }, // تأكد أن هذا المسار موجود أو عدله
-    { name: '👮 المشرفين', path: '/admin/admins' },
+    { name: ' الرئيسية', path: '/admin' },
+    { name: ' طلبات الاشتراك', path: '/admin/requests' },
+    { name: ' إدارة الطلاب', path: '/admin/students' },
+    { name: ' إدارة المحتوى', path: '/admin/content' }, // تأكد أن هذا المسار موجود أو عدله
+    { name: ' المشرفين', path: '/admin/admins' },
   ];
 
   if (isChecking) {
