@@ -20,7 +20,7 @@ export default function AdminHome() {
 
   return (
     <AdminLayout title="الرئيسية">
-      <h1 style={{marginBottom:'30px', borderBottom:'1px solid #334155', paddingBottom:'15px'}}>أهلاً بك في لوحة التحكم 👋</h1>
+      <h1 style={{marginBottom:'30px', borderBottom:'1px solid #334155', paddingBottom:'15px'}}>أهلاً بك في لوحة التحكم </h1>
       
       <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:'20px'}}>
         
