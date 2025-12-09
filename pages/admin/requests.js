@@ -14,6 +14,9 @@ export default function RequestsPage() {
 
   // حالة نافذة التأكيد (Confirm Modal)
   const [confirmModal, setConfirmModal] = useState({ show: false, id: null, action: null });
+  
+  // [✅] حالة جديدة لتخزين سبب الرفض
+  const [rejectionReason, setRejectionReason] = useState('');
 
   // دالة عرض الإشعار
   const showToast = (msg, type = 'success') => {
@@ -39,8 +42,9 @@ export default function RequestsPage() {
     fetchRequests();
   }, []);
 
-  // 1. فتح نافذة التأكيد بدلاً من window.confirm
+  // 1. فتح نافذة التأكيد
   const initiateAction = (requestId, action) => {
+      setRejectionReason(''); // [✅] تصفير السبب عند فتح النافذة
       setConfirmModal({ show: true, id: requestId, action });
   };
 
@@ -51,17 +55,21 @@ export default function RequestsPage() {
     setProcessingId(requestId);
 
     try {
-      // ✅ تم حذف prompt سبب الرفض، وإرسال null مكانه
       const res = await fetch('/api/admin/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId, action, rejectionReason: null })
+        // [✅] إرسال سبب الرفض (إذا كان الإجراء رفض)
+        body: JSON.stringify({ 
+            requestId, 
+            action, 
+            rejectionReason: action === 'reject' ? rejectionReason : null 
+        })
       });
       
       const result = await res.json();
       
       if (res.ok) {
-        showToast(result.message, 'success'); // ✅ رسالة جميلة بدلاً من alert
+        showToast(result.message, 'success');
         setRequests(requests.filter(r => r.id !== requestId));
       } else {
         showToast(result.error, 'error');
@@ -104,7 +112,6 @@ export default function RequestsPage() {
                     </div>
 
                     <div className="card-body">
-                        {/* ✅ تعديل التصميم: كل عنصر في بلوك منفصل */}
                         <div className="info-block">
                             <span className="label">👤 اسم الطالب</span>
                             <span className="value">{req.user_name}</span>
@@ -184,6 +191,18 @@ export default function RequestsPage() {
                         ? 'هل أنت متأكد من تفعيل هذا الاشتراك؟' 
                         : 'هل أنت متأكد من رفض هذا الطلب وحذفه؟'}
                   </p>
+
+                  {/* [✅] حقل إدخال سبب الرفض (يظهر فقط عند الرفض) */}
+                  {confirmModal.action === 'reject' && (
+                      <textarea
+                          className="reason-input"
+                          placeholder="اكتب سبب الرفض هنا (اختياري)..."
+                          value={rejectionReason}
+                          onChange={(e) => setRejectionReason(e.target.value)}
+                          rows="3"
+                      ></textarea>
+                  )}
+
                   <div className="alert-actions">
                       <button className="cancel-btn" onClick={() => setConfirmModal({ show: false })}>تراجع</button>
                       <button 
@@ -208,7 +227,6 @@ export default function RequestsPage() {
         .card-header { background: #0f172a; padding: 12px 20px; display: flex; justify-content: space-between; border-bottom: 1px solid #334155; color: #94a3b8; font-size: 0.9em; }
         .card-body { padding: 20px; flex: 1; }
 
-        /* ✅ التنسيق الجديد: كل معلومة في سطر */
         .info-block { margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; }
         .info-block.box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         
@@ -249,6 +267,21 @@ export default function RequestsPage() {
         .alert-box { background: #1e293b; padding: 25px; border-radius: 16px; border: 1px solid #475569; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .alert-box h3 { margin-top: 0; color: #38bdf8; }
         .alert-box p { color: #cbd5e1; font-size: 1.1em; margin-bottom: 25px; }
+        
+        /* [✅] ستايل حقل سبب الرفض */
+        .reason-input { 
+            width: 100%; 
+            padding: 10px; 
+            background: #0f172a; 
+            border: 1px solid #475569; 
+            border-radius: 8px; 
+            color: white; 
+            margin-bottom: 20px; 
+            resize: vertical; 
+            font-family: inherit;
+        }
+        .reason-input:focus { border-color: #ef4444; outline: none; }
+
         .alert-actions { display: flex; gap: 10px; justify-content: center; }
         .alert-actions button { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; font-size: 1em; }
         .cancel-btn { background: transparent; border: 1px solid #64748b; color: #94a3b8; }
