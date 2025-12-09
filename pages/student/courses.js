@@ -13,8 +13,8 @@ export default function StudentCourses() {
   
   // Modals
   const [showModal, setShowModal] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false); // ✅ جديد: نافذة الطلبات
-  const [myRequests, setMyRequests] = useState([]); // ✅ جديد: قائمة الطلبات
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [myRequests, setMyRequests] = useState([]);
   
   const [receiptFile, setReceiptFile] = useState(null);
   const [userNote, setUserNote] = useState('');
@@ -49,7 +49,6 @@ export default function StudentCourses() {
     fetchData();
   }, []);
 
-  // ✅ دالة جلب الطلبات السابقة
   const fetchMyRequests = async () => {
       const uid = localStorage.getItem('auth_user_id');
       try {
@@ -62,12 +61,11 @@ export default function StudentCourses() {
       } catch (e) { showToast("فشل جلب السجل", "error"); }
   };
 
-  // ✅ زر الرجوع الذكي
   const handleBack = () => {
       if (typeof window !== 'undefined' && window.Android && window.Android.closeWebView) {
-          window.Android.closeWebView(); // إغلاق الـ Activity في الأندرويد
+          window.Android.closeWebView();
       } else {
-          router.push('/'); // العودة للمكتبة في المتصفح
+          router.push('/');
       }
   };
 
@@ -138,7 +136,6 @@ export default function StudentCourses() {
       finally { setUploading(false); }
   };
 
-  // دوال مساعدة لحالة الطلب
   const getStatusLabel = (status) => {
       if (status === 'approved') return { text: 'مقبول ✅', color: '#22c55e' };
       if (status === 'rejected') return { text: 'مرفوض ❌', color: '#ef4444' };
@@ -153,16 +150,22 @@ export default function StudentCourses() {
           {toast.type === 'success' ? '✅ ' : '⚠️ '} {toast.message}
       </div>
 
+      {/* ✅ الهيدر المحسن والمتجاوب */}
       <header className="store-header">
-          {/* ✅ زر الرجوع الجديد */}
-          <button onClick={handleBack} className="back-btn">رجوع</button>
-          
-          <h1>💎 متجر الكورسات</h1>
-          
-          {/* ✅ زر الطلبات السابقة */}
-          <button onClick={fetchMyRequests} className="history-btn">
-             📜 طلباتي
-          </button>
+          <div className="header-content">
+              {/* زر الطلبات (يمين) */}
+              <button onClick={fetchMyRequests} className="icon-btn history-btn">
+                  📜 <span className="btn-text">طلباتي</span>
+              </button>
+
+              {/* العنوان (وسط) */}
+              <h1 className="header-title">المتجر 💎</h1>
+
+              {/* زر الرجوع (يسار) */}
+              <button onClick={handleBack} className="icon-btn back-btn">
+                  🔙 <span className="btn-text">رجوع</span>
+              </button>
+          </div>
       </header>
 
       <div className="grid-container">
@@ -229,7 +232,7 @@ export default function StudentCourses() {
           </div>
       )}
 
-      {/* --- نافذة الطلب (Modal) --- */}
+      {/* --- نافذة الطلب --- */}
       {showModal && (
           <div className="modal-overlay" onClick={() => setShowModal(false)}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -260,7 +263,7 @@ export default function StudentCourses() {
           </div>
       )}
 
-      {/* --- ✅ نافذة الطلبات السابقة (History Modal) --- */}
+      {/* --- نافذة الطلبات السابقة --- */}
       {showHistoryModal && (
           <div className="modal-overlay" onClick={() => setShowHistoryModal(false)}>
               <div className="modal-box history-box" onClick={e => e.stopPropagation()}>
@@ -278,7 +281,6 @@ export default function StudentCourses() {
                                           <span className="req-status" style={{color: status.color}}>{status.text}</span>
                                       </div>
                                       <p className="req-title text-wrap">{req.course_title}</p>
-                                      {/* عرض سبب الرفض إن وجد */}
                                       {req.status === 'rejected' && req.rejection_reason && (
                                           <div className="rejection-box">
                                               🛑 <b>سبب الرفض:</b> {req.rejection_reason}
@@ -297,14 +299,54 @@ export default function StudentCourses() {
 
       <style jsx>{`
         .store-container { min-height: 100vh; background: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; padding-bottom: 100px; }
-        .store-header { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); padding: 30px 20px; text-align: center; border-bottom: 1px solid #334155; position: relative; }
-        .store-header h1 { margin: 10px 0 5px; color: #38bdf8; font-size: 2rem; }
         
-        /* أزرار الهيدر */
-        .back-btn { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; }
-        .history-btn { position: absolute; top: 20px; left: 20px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4); color: #fcd34d; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        /* ✅ الهيدر الجديد المتجاوب */
+        .store-header { 
+            background: #1e293b; 
+            padding: 15px; 
+            border-bottom: 1px solid #334155; 
+            position: sticky; top: 0; z-index: 50; 
+        }
+        .header-content {
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            max-width: 1200px; 
+            margin: 0 auto;
+        }
+        .header-title { 
+            margin: 0; 
+            color: #38bdf8; 
+            font-size: 1.5rem; 
+            white-space: nowrap; 
+        }
 
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 30px 20px; max-width: 1200px; margin: 0 auto; }
+        .icon-btn { 
+            background: rgba(255,255,255,0.05); 
+            border: 1px solid rgba(255,255,255,0.1); 
+            color: white; 
+            padding: 8px 15px; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            display: flex; 
+            align-items: center; 
+            gap: 5px;
+            font-size: 0.9rem;
+            transition: 0.2s;
+        }
+        .icon-btn:active { transform: scale(0.95); }
+        
+        .history-btn { color: #fcd34d; border-color: rgba(245, 158, 11, 0.3); }
+        .back-btn { color: #e2e8f0; }
+
+        @media (max-width: 480px) {
+            .header-title { font-size: 1.2rem; }
+            .btn-text { display: none; } /* إخفاء النص في الشاشات الصغيرة جداً والاكتفاء بالأيقونة */
+            .icon-btn { padding: 8px; }
+        }
+
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 20px; max-width: 1200px; margin: 0 auto; }
         
         .store-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; transition: transform 0.2s; display: flex; flex-direction: column; }
         .store-card.active-card { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
@@ -349,7 +391,6 @@ export default function StudentCourses() {
         .btn-cancel { flex: 1; background: transparent; border: 1px solid #64748b; color: #94a3b8; padding: 12px; border-radius: 8px; cursor: pointer; }
         .btn-cancel.full-width { width: 100%; margin-top: 15px; }
 
-        /* History Items */
         .history-list { max-height: 60vh; overflow-y: auto; }
         .history-item { background: #0f172a; border: 1px solid #334155; padding: 15px; border-radius: 10px; margin-bottom: 10px; }
         .req-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85em; color: #94a3b8; }
