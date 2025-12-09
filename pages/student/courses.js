@@ -144,26 +144,26 @@ export default function StudentCourses() {
 
   return (
     <div className="store-container" dir="rtl">
-      <Head><title>متجر الكورسات</title></Head>
+      <Head><title>المتجر</title></Head>
       
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           {toast.type === 'success' ? '✅ ' : '⚠️ '} {toast.message}
       </div>
 
-      {/* ✅ الهيدر المحسن والمتجاوب */}
+      {/* ✅ الهيدر المعدل */}
       <header className="store-header">
           <div className="header-content">
-              {/* زر الطلبات (يمين) */}
+              {/* زر الطلبات */}
               <button onClick={fetchMyRequests} className="icon-btn history-btn">
-                  📜 <span className="btn-text">طلباتي</span>
+                  📜 طلباتي
               </button>
 
-              {/* العنوان (وسط) */}
-              <h1 className="header-title">المتجر 💎</h1>
+              {/* العنوان الجديد */}
+              <h1 className="header-title">💎 المتجر</h1>
 
-              {/* زر الرجوع (يسار) */}
+              {/* زر الرجوع */}
               <button onClick={handleBack} className="icon-btn back-btn">
-                  🔙 <span className="btn-text">رجوع</span>
+                  🔙 رجوع
               </button>
           </div>
       </header>
@@ -300,10 +300,10 @@ export default function StudentCourses() {
       <style jsx>{`
         .store-container { min-height: 100vh; background: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; padding-bottom: 100px; }
         
-        /* ✅ الهيدر الجديد المتجاوب */
+        /* الهيدر المتجاوب */
         .store-header { 
             background: #1e293b; 
-            padding: 15px; 
+            padding: 15px 10px; 
             border-bottom: 1px solid #334155; 
             position: sticky; top: 0; z-index: 50; 
         }
@@ -319,13 +319,15 @@ export default function StudentCourses() {
             color: #38bdf8; 
             font-size: 1.5rem; 
             white-space: nowrap; 
+            flex: 1; /* للسماح بالتوسط */
+            text-align: center;
         }
 
         .icon-btn { 
             background: rgba(255,255,255,0.05); 
             border: 1px solid rgba(255,255,255,0.1); 
             color: white; 
-            padding: 8px 15px; 
+            padding: 8px 12px; 
             border-radius: 12px; 
             cursor: pointer; 
             font-weight: bold; 
@@ -334,16 +336,17 @@ export default function StudentCourses() {
             gap: 5px;
             font-size: 0.9rem;
             transition: 0.2s;
+            white-space: nowrap;
         }
         .icon-btn:active { transform: scale(0.95); }
         
         .history-btn { color: #fcd34d; border-color: rgba(245, 158, 11, 0.3); }
         .back-btn { color: #e2e8f0; }
 
+        /* تعديلات الشاشات الصغيرة لضمان ظهور النص */
         @media (max-width: 480px) {
-            .header-title { font-size: 1.2rem; }
-            .btn-text { display: none; } /* إخفاء النص في الشاشات الصغيرة جداً والاكتفاء بالأيقونة */
-            .icon-btn { padding: 8px; }
+            .header-title { font-size: 1.1rem; margin: 0 5px; }
+            .icon-btn { padding: 6px 8px; font-size: 0.8rem; }
         }
 
         .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 20px; max-width: 1200px; margin: 0 auto; }
@@ -400,7 +403,7 @@ export default function StudentCourses() {
         .req-price { display: block; text-align: left; color: #4ade80; font-weight: bold; font-size: 1.1em; }
 
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: white; padding: 12px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #334155; z-index: 2000; transition: transform 0.3s ease; font-weight: bold; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
         .toast.success { border-color: #22c55e; color: #22c55e; }
         .toast.error { border-color: #ef4444; color: #ef4444; }
 
