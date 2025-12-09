@@ -13,6 +13,6 @@ jobs:
       - name: Send API Request to Supabase
         run: |
           curl -X GET \
-          'https://guoobhdvfiqlvdomrbvo.supabase.co/rest/v1/users?select=id&limit=1' \
+          'https://nrdaboohojhchpqgooec.supabase.co/rest/v1/users?select=id&limit=1' \
           -H 'apikey: ${{ secrets.SUPABASE_ANON_KEY }}' \
           -H 'Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}'
