@@ -34,7 +34,6 @@ const SecureImage = ({ fileId }) => {
 // =========================================================
 export default function ResultsPage() {
     const router = useRouter();
-    // [✅] نقرأ فقط معرف المحاولة (attemptId) من الرابط
     const { attemptId } = router.query;
     
     const [results, setResults] = useState(null);
@@ -44,17 +43,16 @@ export default function ResultsPage() {
     useEffect(() => {
         if (!router.isReady || !attemptId) return;
 
-        // 1. استخراج بيانات الدخول من التخزين الآمن (بدلاً من الرابط)
+        // 1. استخراج بيانات الدخول
         const uid = localStorage.getItem('auth_user_id');
         const did = localStorage.getItem('auth_device_id');
 
-        // إذا لم يكن مسجلاً، نطرده لصفحة الدخول
         if (!uid || !did) {
              router.replace('/login');
              return;
         }
         
-        // 2. طلب النتائج مع إرسال الهيدرز (الحل لمشكلة Missing Data)
+        // 2. طلب النتائج
         fetch(`/api/exams/get-results?attemptId=${attemptId}`, {
             headers: { 
                 'x-user-id': uid,
@@ -76,12 +74,14 @@ export default function ResultsPage() {
         });
     }, [router.isReady, attemptId]);
 
-    // دالة العودة الذكية
-    const handleBackToMenu = () => {
+    // ✅ دالة العودة الذكية (تغلق الويب في الأندرويد أو تعود للرئيسية في المتصفح)
+    const handleSmartExit = () => {
         if (typeof window !== 'undefined' && window.Android && window.Android.closeWebView) {
+            // نحن في تطبيق الأندرويد -> أغلق الـ WebView
             window.Android.closeWebView();
         } else {
-            router.push('/app'); // العودة للرئيسية
+            // نحن في المتصفح -> عد للمكتبة
+            router.push('/'); 
         }
     };
 
@@ -100,7 +100,7 @@ export default function ResultsPage() {
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
                 <Head><title>خطأ</title></Head>
                 <h1 style={{color: '#ef4444'}}>خطأ: {error}</h1>
-                <button className="back-button" onClick={handleBackToMenu}>&larr; العودة</button>
+                <button className="back-button" onClick={handleSmartExit}>&larr; خروج</button>
             </div>
         );
     }
@@ -112,7 +112,19 @@ export default function ResultsPage() {
         <div className="app-container">
             <Head><title>النتيجة: {results.exam_title}</title></Head>
             
-            <h1 style={{marginBottom:'10px'}}>{results.exam_title}</h1>
+            {/* ✅ زر خروج علوي */}
+            <button 
+                onClick={handleSmartExit} 
+                style={{
+                    position: 'absolute', top: '20px', left: '20px',
+                    background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
+                    width: '35px', height: '35px', color: '#fff', fontSize: '18px', cursor: 'pointer'
+                }}
+            >
+                ✕
+            </button>
+
+            <h1 style={{marginBottom:'10px', marginTop:'40px'}}>{results.exam_title}</h1>
             
             {/* دائرة الدرجة */}
             <div style={{textAlign:'center', margin:'20px 0'}}>
@@ -174,8 +186,9 @@ export default function ResultsPage() {
                 );
             })}
             
-            <button className="button-link" style={{marginTop: '20px', justifyContent:'center'}} onClick={handleBackToMenu}>
-                العودة للقائمة الرئيسية
+            {/* ✅ زر خروج سفلي واضح */}
+            <button className="button-link" style={{marginTop: '20px', justifyContent:'center', background: '#38bdf8', color: '#000'}} onClick={handleSmartExit}>
+                الخروج والعودة للقائمة
             </button>
         </div>
     );
