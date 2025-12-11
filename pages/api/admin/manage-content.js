@@ -59,6 +59,26 @@ export default async (req, res) => {
       const { action, payload } = req.body;
 
       try {
+        // --- 1. إضافة كورس جديد (جديد) ---
+        if (action === 'add_course') {
+            await supabase.from('courses').insert({
+                title: payload.title,
+                sort_order: 999 // قيمة افتراضية للترتيب
+            });
+            return res.status(200).json({ success: true });
+        }
+
+        // --- 2. إضافة مادة جديدة (جديد) ---
+        if (action === 'add_subject') {
+            await supabase.from('subjects').insert({
+                course_id: payload.courseId, // الربط بالكورس
+                title: payload.title,
+                sort_order: 999
+            });
+            return res.status(200).json({ success: true });
+        }
+
+        // --- 3. إضافة فصل ---
         if (action === 'add_chapter') {
             await supabase.from('chapters').insert({
                 subject_id: payload.subjectId,
@@ -68,6 +88,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
+        // --- 4. إضافة فيديو ---
         if (action === 'add_video') {
             const { title, url, chapterId } = payload;
             const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -82,7 +103,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- حفظ أو تعديل الامتحان ---
+        // --- 5. حفظ أو تعديل الامتحان ---
         if (action === 'save_exam') {
             const { 
                 id, // إذا وجد ID فهذا تعديل
@@ -93,7 +114,7 @@ export default async (req, res) => {
             
             let examId = id;
 
-            // 1. إنشاء أو تحديث بيانات الامتحان الأساسية
+            // أ. إنشاء أو تحديث بيانات الامتحان الأساسية
             const examData = {
                 title,
                 duration_minutes: parseInt(duration),
@@ -116,12 +137,12 @@ export default async (req, res) => {
                 examId = newExam.id;
             }
 
-            // 2. حذف الأسئلة المحذوفة
+            // ب. حذف الأسئلة المحذوفة
             if (deletedQuestionIds && deletedQuestionIds.length > 0) {
                 await supabase.from('questions').delete().in('id', deletedQuestionIds);
             }
 
-            // 3. معالجة الأسئلة (إضافة جديد أو تحديث موجود)
+            // ج. معالجة الأسئلة (إضافة جديد أو تحديث موجود)
             for (let i = 0; i < questions.length; i++) {
                 const q = questions[i];
                 let questionId = q.id; // إذا كان السؤال له ID فهو موجود مسبقاً
@@ -159,6 +180,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
+        // --- 6. حذف عنصر عام ---
         if (action === 'delete_item') {
             await supabase.from(payload.type).delete().eq('id', payload.id);
             return res.status(200).json({ success: true });
