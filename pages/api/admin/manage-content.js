@@ -58,24 +58,42 @@ export default async (req, res) => {
       const { action, payload } = req.body;
 
       try {
-        // --- 1. إضافة كورس جديد (مع السعر) ---
+        // --- 1. إضافة كورس ---
         if (action === 'add_course') {
             await supabase.from('courses').insert({
                 title: payload.title,
-                price: parseInt(payload.price) || 0, // حفظ السعر
+                price: parseInt(payload.price) || 0,
                 sort_order: 999 
             });
             return res.status(200).json({ success: true });
         }
 
-        // --- 2. إضافة مادة جديدة (مع السعر) ---
+        // --- [جديد] تعديل كورس ---
+        if (action === 'edit_course') {
+            await supabase.from('courses').update({
+                title: payload.title,
+                price: parseInt(payload.price) || 0
+            }).eq('id', payload.id);
+            return res.status(200).json({ success: true });
+        }
+
+        // --- 2. إضافة مادة ---
         if (action === 'add_subject') {
             await supabase.from('subjects').insert({
                 course_id: payload.courseId, 
                 title: payload.title,
-                price: parseInt(payload.price) || 0, // حفظ السعر
+                price: parseInt(payload.price) || 0,
                 sort_order: 999
             });
+            return res.status(200).json({ success: true });
+        }
+
+        // --- [جديد] تعديل مادة ---
+        if (action === 'edit_subject') {
+            await supabase.from('subjects').update({
+                title: payload.title,
+                price: parseInt(payload.price) || 0
+            }).eq('id', payload.id);
             return res.status(200).json({ success: true });
         }
 
@@ -86,6 +104,14 @@ export default async (req, res) => {
                 title: payload.title,
                 sort_order: 999
             });
+            return res.status(200).json({ success: true });
+        }
+
+        // --- [جديد] تعديل فصل ---
+        if (action === 'edit_chapter') {
+            await supabase.from('chapters').update({
+                title: payload.title
+            }).eq('id', payload.id);
             return res.status(200).json({ success: true });
         }
 
@@ -114,7 +140,6 @@ export default async (req, res) => {
             
             let examId = id;
 
-            // أ. إنشاء أو تحديث بيانات الامتحان الأساسية
             const examData = {
                 title,
                 duration_minutes: parseInt(duration),
@@ -135,12 +160,10 @@ export default async (req, res) => {
                 examId = newExam.id;
             }
 
-            // ب. حذف الأسئلة المحذوفة
             if (deletedQuestionIds && deletedQuestionIds.length > 0) {
                 await supabase.from('questions').delete().in('id', deletedQuestionIds);
             }
 
-            // ج. معالجة الأسئلة
             for (let i = 0; i < questions.length; i++) {
                 const q = questions[i];
                 let questionId = q.id;
@@ -173,11 +196,8 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 6. حذف عنصر (يعمل الآن مع الكورسات والمواد) ---
+        // --- 6. حذف عنصر ---
         if (action === 'delete_item') {
-            // ملاحظة: تأكد من أن قاعدة البيانات تدعم "Cascade Delete" للعلاقات،
-            // وإلا ستحتاج لحذف الابناء يدوياً هنا.
-            // إذا كان "ON DELETE CASCADE" مفعلاً في Supabase، سيعمل هذا السطر بشكل ممتاز.
             await supabase.from(payload.type).delete().eq('id', payload.id);
             return res.status(200).json({ success: true });
         }
