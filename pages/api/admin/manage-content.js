@@ -10,7 +10,7 @@ export default async (req, res) => {
   if (!adminUser || !adminUser.is_admin) return res.status(403).json({ error: 'Access Denied' });
 
   // ---------------------------------------------------------
-  // GET: جلب الهيكل بالكامل (بما في ذلك تفاصيل الامتحانات)
+  // GET: جلب الهيكل بالكامل
   // ---------------------------------------------------------
   if (req.method === 'GET') {
       try {
@@ -35,7 +35,6 @@ export default async (req, res) => {
                       )
                   )
               `)
-              // الترتيب لضمان ظهور المحتوى بشكل صحيح
               .order('sort_order', { ascending: true })
               .order('sort_order', { foreignTable: 'subjects', ascending: true })
               .order('sort_order', { foreignTable: 'subjects.chapters', ascending: true })
@@ -59,20 +58,22 @@ export default async (req, res) => {
       const { action, payload } = req.body;
 
       try {
-        // --- 1. إضافة كورس جديد (جديد) ---
+        // --- 1. إضافة كورس جديد (مع السعر) ---
         if (action === 'add_course') {
             await supabase.from('courses').insert({
                 title: payload.title,
-                sort_order: 999 // قيمة افتراضية للترتيب
+                price: parseInt(payload.price) || 0, // حفظ السعر
+                sort_order: 999 
             });
             return res.status(200).json({ success: true });
         }
 
-        // --- 2. إضافة مادة جديدة (جديد) ---
+        // --- 2. إضافة مادة جديدة (مع السعر) ---
         if (action === 'add_subject') {
             await supabase.from('subjects').insert({
-                course_id: payload.courseId, // الربط بالكورس
+                course_id: payload.courseId, 
                 title: payload.title,
+                price: parseInt(payload.price) || 0, // حفظ السعر
                 sort_order: 999
             });
             return res.status(200).json({ success: true });
@@ -106,9 +107,8 @@ export default async (req, res) => {
         // --- 5. حفظ أو تعديل الامتحان ---
         if (action === 'save_exam') {
             const { 
-                id, // إذا وجد ID فهذا تعديل
-                subjectId, title, duration, 
-                requiresName, randQ, randO, // الإعدادات الجديدة
+                id, subjectId, title, duration, 
+                requiresName, randQ, randO, 
                 questions, deletedQuestionIds 
             } = payload;
             
@@ -124,10 +124,8 @@ export default async (req, res) => {
             };
 
             if (examId) {
-                // تحديث
                 await supabase.from('exams').update(examData).eq('id', examId);
             } else {
-                // إنشاء جديد
                 const { data: newExam, error: createError } = await supabase.from('exams').insert({
                     ...examData,
                     subject_id: subjectId,
@@ -142,10 +140,10 @@ export default async (req, res) => {
                 await supabase.from('questions').delete().in('id', deletedQuestionIds);
             }
 
-            // ج. معالجة الأسئلة (إضافة جديد أو تحديث موجود)
+            // ج. معالجة الأسئلة
             for (let i = 0; i < questions.length; i++) {
                 const q = questions[i];
-                let questionId = q.id; // إذا كان السؤال له ID فهو موجود مسبقاً
+                let questionId = q.id;
 
                 const questionData = {
                     exam_id: examId,
@@ -155,19 +153,14 @@ export default async (req, res) => {
                 };
 
                 if (questionId && !String(questionId).startsWith('temp')) {
-                    // تحديث سؤال موجود
                     await supabase.from('questions').update(questionData).eq('id', questionId);
-                    
-                    // تحديث الاختيارات: الأسهل هو حذف القديم وإضافة الجديد لضمان الترتيب والمطابقة
                     await supabase.from('options').delete().eq('question_id', questionId);
                 } else {
-                    // إضافة سؤال جديد
                     const { data: newQ, error: qErr } = await supabase.from('questions').insert(questionData).select().single();
                     if (qErr) throw qErr;
                     questionId = newQ.id;
                 }
 
-                // إضافة الاختيارات
                 const optionsData = q.options.map((optText, idx) => ({
                     question_id: questionId,
                     option_text: optText,
@@ -180,8 +173,11 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 6. حذف عنصر عام ---
+        // --- 6. حذف عنصر (يعمل الآن مع الكورسات والمواد) ---
         if (action === 'delete_item') {
+            // ملاحظة: تأكد من أن قاعدة البيانات تدعم "Cascade Delete" للعلاقات،
+            // وإلا ستحتاج لحذف الابناء يدوياً هنا.
+            // إذا كان "ON DELETE CASCADE" مفعلاً في Supabase، سيعمل هذا السطر بشكل ممتاز.
             await supabase.from(payload.type).delete().eq('id', payload.id);
             return res.status(200).json({ success: true });
         }
