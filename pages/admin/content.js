@@ -914,6 +914,35 @@ export default function ContentManager() {
             }
         }
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* --- تحسين شبكة البطاقات للهواتف --- */
+        @media (max-width: 600px) {
+            .grid-cards {
+                /* جعل البطاقات تملأ العرض المتاح (عمود واحد) لتجنب مشاكل الأبعاد */
+                grid-template-columns: 1fr; 
+                gap: 15px;
+            }
+            
+            /* تقليل الحواف الداخلية للبطاقة قليلاً لتوفير مساحة */
+            .folder-card {
+                padding: 15px;
+            }
+            
+            /* تحسين عرض الهيدر */
+            .header-bar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .actions-area {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .btn-secondary {
+                font-size: 0.85rem;
+                padding: 8px 12px;
+            }
+        }
       `}</style>
     </AdminLayout>
   );
