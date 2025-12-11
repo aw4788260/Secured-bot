@@ -3,8 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Head from 'next/head';
 
 // =========================================================
-// 🔒 مكون الصور الآمن (SecureImage)
-// يقوم بجلب الصورة عبر الهيدرز المخفية بدلاً من وضع التوكن في الرابط
+// 🔒 مكون الصور الآمن (SecureImage) - نسخة التخزين المؤقت (Cached)
 // =========================================================
 const SecureImage = ({ fileId }) => {
     const [imgSrc, setImgSrc] = useState(null);
@@ -13,18 +12,33 @@ const SecureImage = ({ fileId }) => {
 
     useEffect(() => {
         let isMounted = true;
+        const CACHE_NAME = 'exam-secure-images-v1'; // اسم حاوية الكاش
+        const requestUrl = `/api/exams/get-image?file_id=${fileId}`;
+
         const fetchImage = async () => {
             try {
-                const uid = localStorage.getItem('auth_user_id');
-                const did = localStorage.getItem('auth_device_id');
+                // 1. محاولة فتح الكاش والبحث عن الصورة
+                const cache = await caches.open(CACHE_NAME);
+                let response = await cache.match(requestUrl);
+
+                // 2. إذا لم تكن موجودة في الكاش، نطلبها من السيرفر
+                if (!response) {
+                    const uid = localStorage.getItem('auth_user_id');
+                    const did = localStorage.getItem('auth_device_id');
+                    
+                    response = await fetch(requestUrl, {
+                        headers: { 'x-user-id': uid, 'x-device-id': did }
+                    });
+
+                    // 3. إذا نجح الطلب، نقوم بتخزين نسخة في الكاش فوراً
+                    if (response.ok) {
+                        await cache.put(requestUrl, response.clone());
+                    }
+                }
+
+                if (!response.ok) throw new Error('Failed to load image');
                 
-                const res = await fetch(`/api/exams/get-image?file_id=${fileId}`, {
-                    headers: { 'x-user-id': uid, 'x-device-id': did }
-                });
-                
-                if (!res.ok) throw new Error('Failed to load image');
-                
-                const blob = await res.blob();
+                const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 
                 if (isMounted) {
@@ -32,6 +46,7 @@ const SecureImage = ({ fileId }) => {
                     setLoading(false);
                 }
             } catch (e) {
+                console.error("Image load error:", e);
                 if (isMounted) {
                     setError(true);
                     setLoading(false);
@@ -43,7 +58,7 @@ const SecureImage = ({ fileId }) => {
 
         return () => {
             isMounted = false;
-            if (imgSrc) URL.revokeObjectURL(imgSrc); // تنظيف الذاكرة
+            if (imgSrc) URL.revokeObjectURL(imgSrc); // تنظيف الذاكرة العشوائية
         };
     }, [fileId]);
 
