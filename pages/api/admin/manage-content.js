@@ -62,13 +62,13 @@ export default async (req, res) => {
         if (action === 'add_course') {
             await supabase.from('courses').insert({
                 title: payload.title,
-                price: parseInt(payload.price) || 0,
+                price: parseInt(payload.price) || 0, // حفظ السعر
                 sort_order: 999 
             });
             return res.status(200).json({ success: true });
         }
 
-        // --- [جديد] تعديل كورس ---
+        // --- 2. تعديل كورس ---
         if (action === 'edit_course') {
             await supabase.from('courses').update({
                 title: payload.title,
@@ -77,18 +77,18 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 2. إضافة مادة ---
+        // --- 3. إضافة مادة ---
         if (action === 'add_subject') {
             await supabase.from('subjects').insert({
                 course_id: payload.courseId, 
                 title: payload.title,
-                price: parseInt(payload.price) || 0,
+                price: parseInt(payload.price) || 0, // حفظ السعر
                 sort_order: 999
             });
             return res.status(200).json({ success: true });
         }
 
-        // --- [جديد] تعديل مادة ---
+        // --- 4. تعديل مادة ---
         if (action === 'edit_subject') {
             await supabase.from('subjects').update({
                 title: payload.title,
@@ -97,7 +97,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 3. إضافة فصل ---
+        // --- 5. إضافة فصل ---
         if (action === 'add_chapter') {
             await supabase.from('chapters').insert({
                 subject_id: payload.subjectId,
@@ -107,7 +107,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- [جديد] تعديل فصل ---
+        // --- 6. تعديل فصل ---
         if (action === 'edit_chapter') {
             await supabase.from('chapters').update({
                 title: payload.title
@@ -115,7 +115,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 4. إضافة فيديو ---
+        // --- 7. إضافة فيديو ---
         if (action === 'add_video') {
             const { title, url, chapterId } = payload;
             const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -130,7 +130,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 5. حفظ أو تعديل الامتحان ---
+        // --- 8. حفظ أو تعديل الامتحان (مع إصلاح الحفاظ على الإجابات) ---
         if (action === 'save_exam') {
             const { 
                 id, subjectId, title, duration, 
@@ -140,6 +140,7 @@ export default async (req, res) => {
             
             let examId = id;
 
+            // أ. إنشاء أو تحديث بيانات الامتحان الأساسية
             const examData = {
                 title,
                 duration_minutes: parseInt(duration),
@@ -160,10 +161,12 @@ export default async (req, res) => {
                 examId = newExam.id;
             }
 
+            // ب. حذف الأسئلة المحذوفة
             if (deletedQuestionIds && deletedQuestionIds.length > 0) {
                 await supabase.from('questions').delete().in('id', deletedQuestionIds);
             }
 
+            // ج. معالجة الأسئلة
             for (let i = 0; i < questions.length; i++) {
                 const q = questions[i];
                 let questionId = q.id;
@@ -176,27 +179,66 @@ export default async (req, res) => {
                 };
 
                 if (questionId && !String(questionId).startsWith('temp')) {
+                    // 1. تحديث بيانات السؤال
                     await supabase.from('questions').update(questionData).eq('id', questionId);
-                    await supabase.from('options').delete().eq('question_id', questionId);
+                    
+                    // --- [الإصلاح: تحديث الاختيارات بدلاً من الحذف الكامل] ---
+                    
+                    // جلب الاختيارات الحالية للحفاظ على الـ IDs (وبالتالي الحفاظ على إجابات الطلاب)
+                    const { data: existingOptions } = await supabase
+                        .from('options')
+                        .select('id')
+                        .eq('question_id', questionId)
+                        .order('sort_order', { ascending: true });
+
+                    const existingIds = existingOptions ? existingOptions.map(o => o.id) : [];
+                    
+                    // التكرار على الاختيارات الجديدة من الـ Payload
+                    for (let idx = 0; idx < q.options.length; idx++) {
+                        const optText = q.options[idx];
+                        const optionData = {
+                            question_id: questionId,
+                            option_text: optText,
+                            is_correct: idx === parseInt(q.correctIndex),
+                            sort_order: idx
+                        };
+
+                        if (idx < existingIds.length) {
+                            // إذا كان هناك اختيار موجود في هذا الموقع، نقوم بتحديثه
+                            await supabase.from('options').update(optionData).eq('id', existingIds[idx]);
+                        } else {
+                            // إذا كانت اختيارات جديدة (تمت إضافتها)، نقوم بإدراجها
+                            await supabase.from('options').insert(optionData);
+                        }
+                    }
+
+                    // حذف الاختيارات الزائدة (إذا قل عدد الاختيارات عن السابق)
+                    if (existingIds.length > q.options.length) {
+                        const idsToDelete = existingIds.slice(q.options.length);
+                        await supabase.from('options').delete().in('id', idsToDelete);
+                    }
+                    // --- [نهاية الإصلاح] ---
+
                 } else {
+                    // إضافة سؤال جديد (لا توجد مشكلة هنا لأنها بيانات جديدة)
                     const { data: newQ, error: qErr } = await supabase.from('questions').insert(questionData).select().single();
                     if (qErr) throw qErr;
                     questionId = newQ.id;
-                }
 
-                const optionsData = q.options.map((optText, idx) => ({
-                    question_id: questionId,
-                    option_text: optText,
-                    is_correct: idx === parseInt(q.correctIndex),
-                    sort_order: idx
-                }));
-                await supabase.from('options').insert(optionsData);
+                    const optionsData = q.options.map((optText, idx) => ({
+                        question_id: questionId,
+                        option_text: optText,
+                        is_correct: idx === parseInt(q.correctIndex),
+                        sort_order: idx
+                    }));
+                    await supabase.from('options').insert(optionsData);
+                }
             }
 
             return res.status(200).json({ success: true });
         }
 
-        // --- 6. حذف عنصر ---
+        // --- 9. حذف عنصر ---
         if (action === 'delete_item') {
             await supabase.from(payload.type).delete().eq('id', payload.id);
             return res.status(200).json({ success: true });
