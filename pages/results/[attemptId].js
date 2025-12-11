@@ -3,30 +3,66 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 
 // =========================================================
-// 🔒 مكون الصور الآمن (لعرض صور الأسئلة في النتائج)
+// 🔒 مكون الصور الآمن (SecureImage) - نسخة النتائج (Cached)
 // =========================================================
 const SecureImage = ({ fileId }) => {
     const [src, setSrc] = useState(null);
-    useEffect(() => {
-        const uid = localStorage.getItem('auth_user_id');
-        const did = localStorage.getItem('auth_device_id');
-        
-        if (!uid || !did || !fileId) return;
+    const [loading, setLoading] = useState(true);
 
-        fetch(`/api/exams/get-image?file_id=${fileId}`, { 
-            headers: { 'x-user-id': uid, 'x-device-id': did } 
-        })
-        .then(res => {
-            if (res.ok) return res.blob();
-            throw new Error('Failed to load image');
-        })
-        .then(blob => setSrc(URL.createObjectURL(blob)))
-        .catch(err => console.error(err));
-        
-        return () => { if(src) URL.revokeObjectURL(src); };
+    useEffect(() => {
+        let isMounted = true;
+        const CACHE_NAME = 'exam-secure-images-v1'; // نفس اسم الكاش المستخدم في الامتحان
+        const requestUrl = `/api/exams/get-image?file_id=${fileId}`;
+
+        const fetchImage = async () => {
+            try {
+                // 1. البحث في الكاش أولاً
+                const cache = await caches.open(CACHE_NAME);
+                let response = await cache.match(requestUrl);
+
+                if (!response) {
+                    // 2. إذا لم تكن في الكاش، نطلبها من السيرفر
+                    const uid = localStorage.getItem('auth_user_id');
+                    const did = localStorage.getItem('auth_device_id');
+                    
+                    if (!uid || !did) return;
+
+                    response = await fetch(requestUrl, {
+                        headers: { 'x-user-id': uid, 'x-device-id': did }
+                    });
+
+                    // 3. تخزينها في الكاش للمستقبل
+                    if (response.ok) {
+                        await cache.put(requestUrl, response.clone());
+                    }
+                }
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    if (isMounted) {
+                        setSrc(url);
+                        setLoading(false);
+                    }
+                } else {
+                    throw new Error('Failed load');
+                }
+            } catch (err) {
+                console.error("Image load error:", err);
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        if (fileId) fetchImage();
+
+        return () => {
+            isMounted = false;
+            if (src) URL.revokeObjectURL(src);
+        };
     }, [fileId]);
 
-    return src ? <img src={src} className="question-image" alt="Question" /> : <div style={{color:'#aaa', fontSize:'12px'}}>جاري تحميل الصورة...</div>;
+    if (loading) return <div style={{color:'#aaa', fontSize:'12px'}}>جاري تحميل الصورة...</div>;
+    return src ? <img src={src} className="question-image" alt="Question" /> : <div style={{color:'#ef4444', fontSize:'12px'}}>❌ الصورة غير متوفرة</div>;
 };
 
 // =========================================================
