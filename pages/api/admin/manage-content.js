@@ -28,6 +28,9 @@ export default async (req, res) => {
                       exams (
                           id, title, duration_minutes, sort_order, 
                           requires_student_name, randomize_questions, randomize_options,
+                          
+                          user_attempts (count),
+
                           questions (
                               id, question_text, image_file_id, sort_order,
                               options (id, option_text, is_correct, sort_order)
@@ -45,7 +48,21 @@ export default async (req, res) => {
               .order('sort_order', { foreignTable: 'subjects.exams.questions.options', ascending: true });
 
           if (error) throw error;
-          return res.status(200).json(courses);
+
+          // معالجة البيانات لإضافة attempts_count
+          const processedCourses = courses.map(course => ({
+              ...course,
+              subjects: course.subjects.map(subject => ({
+                  ...subject,
+                  exams: subject.exams.map(exam => ({
+                      ...exam,
+                      // حساب عدد المحاولات (للتحقق في الواجهة الأمامية)
+                      attempts_count: exam.user_attempts ? exam.user_attempts.length : 0
+                  }))
+              }))
+          }));
+
+          return res.status(200).json(processedCourses);
       } catch (err) {
           return res.status(500).json({ error: err.message });
       }
@@ -58,11 +75,11 @@ export default async (req, res) => {
       const { action, payload } = req.body;
 
       try {
-        // --- 1. إضافة كورس ---
+        // --- 1. إضافة كورس (مع السعر) ---
         if (action === 'add_course') {
             await supabase.from('courses').insert({
                 title: payload.title,
-                price: parseInt(payload.price) || 0, // حفظ السعر
+                price: parseInt(payload.price) || 0,
                 sort_order: 999 
             });
             return res.status(200).json({ success: true });
@@ -77,12 +94,12 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 3. إضافة مادة ---
+        // --- 3. إضافة مادة (مع السعر) ---
         if (action === 'add_subject') {
             await supabase.from('subjects').insert({
                 course_id: payload.courseId, 
                 title: payload.title,
-                price: parseInt(payload.price) || 0, // حفظ السعر
+                price: parseInt(payload.price) || 0,
                 sort_order: 999
             });
             return res.status(200).json({ success: true });
@@ -130,7 +147,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 8. حفظ أو تعديل الامتحان (مع إصلاح الحفاظ على الإجابات) ---
+        // --- 8. حفظ أو تعديل الامتحان ---
         if (action === 'save_exam') {
             const { 
                 id, subjectId, title, duration, 
@@ -184,7 +201,7 @@ export default async (req, res) => {
                     
                     // --- [الإصلاح: تحديث الاختيارات بدلاً من الحذف الكامل] ---
                     
-                    // جلب الاختيارات الحالية للحفاظ على الـ IDs (وبالتالي الحفاظ على إجابات الطلاب)
+                    // جلب الاختيارات الحالية للحفاظ على الـ IDs
                     const { data: existingOptions } = await supabase
                         .from('options')
                         .select('id')
@@ -204,15 +221,15 @@ export default async (req, res) => {
                         };
 
                         if (idx < existingIds.length) {
-                            // إذا كان هناك اختيار موجود في هذا الموقع، نقوم بتحديثه
+                            // تحديث الاختيار الموجود بنفس الترتيب
                             await supabase.from('options').update(optionData).eq('id', existingIds[idx]);
                         } else {
-                            // إذا كانت اختيارات جديدة (تمت إضافتها)، نقوم بإدراجها
+                            // إضافة اختيار جديد
                             await supabase.from('options').insert(optionData);
                         }
                     }
 
-                    // حذف الاختيارات الزائدة (إذا قل عدد الاختيارات عن السابق)
+                    // حذف الاختيارات الزائدة
                     if (existingIds.length > q.options.length) {
                         const idsToDelete = existingIds.slice(q.options.length);
                         await supabase.from('options').delete().in('id', idsToDelete);
@@ -220,7 +237,7 @@ export default async (req, res) => {
                     // --- [نهاية الإصلاح] ---
 
                 } else {
-                    // إضافة سؤال جديد (لا توجد مشكلة هنا لأنها بيانات جديدة)
+                    // إضافة سؤال جديد بالكامل
                     const { data: newQ, error: qErr } = await supabase.from('questions').insert(questionData).select().single();
                     if (qErr) throw qErr;
                     questionId = newQ.id;
