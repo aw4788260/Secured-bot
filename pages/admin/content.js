@@ -865,21 +865,26 @@ export default function ContentManager() {
             .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
 
             /* --- إصلاح الوضع الأفقي (Landscape) للهواتف --- */
+            /* --- إصلاح الوضع الأفقي (Landscape) للهواتف --- */
             @media (orientation: landscape) {
                 .editor-sidebar {
-                    display: block; /* إلغاء الـ Flex لتفعيل السكرول الطبيعي */
-                    overflow-y: auto; /* تفعيل السكرول العمودي */
+                    display: block; /* إلغاء نظام Flex للسماح بالسكرول الطبيعي */
+                    overflow-y: auto; /* تفعيل السكرول للشريط الجانبي بالكامل */
+                    height: 100%; /* ضمان ملء الشاشة */
                 }
+                
                 .q-list-scroll {
                     flex: none; /* إيقاف التمدد التلقائي */
-                    height: auto;
-                    max-height: 200px; /* تحديد ارتفاع أقصى لقائمة الأسئلة */
+                    height: auto; /* السماح للقائمة بالطول حسب عدد الأسئلة */
+                    max-height: none; /* ✅ إلغاء الحد الأقصى للطول (الحل الجذري) */
+                    overflow-y: visible; /* ✅ إلغاء السكرول الداخلي */
                     border-bottom: 1px solid #334155;
                 }
+                
                 .sidebar-footer {
-                    position: static; /* جعل الفوتر يظهر في نهاية السكرول وليس مثبتاً في الأسفل */
-                    margin-top: 20px;
-                    padding-bottom: 20px;
+                    position: static; /* جعل الزر يظهر في نهاية الصفحة بشكل طبيعي */
+                    margin-top: 30px;
+                    padding-bottom: 40px; /* مساحة إضافية في الأسفل لسهولة الضغط */
                 }
             }
         }
