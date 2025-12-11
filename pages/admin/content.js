@@ -634,8 +634,14 @@ export default function ContentManager() {
                           <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
                           <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
                           <div className="image-upload">
-                              <label>{Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}<input type="file" hidden accept="image/*" onChange={handleImageUpload} /></label>
-                              {uploadingImg && <span className="loading-text">جاري الرفع...</span>}
+                              <label style={{ opacity: uploadingImg ? 0.5 : 1, pointerEvents: uploadingImg ? 'none' : 'auto', cursor: uploadingImg ? 'wait' : 'pointer' }}>
+                                  {Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}
+                                  <input type="file" hidden accept="image/*" onChange={handleImageUpload} disabled={uploadingImg} />
+                              </label>
+                              
+                              {/* [تعديل] نص التحميل يظهر بوضوح */}
+                              {uploadingImg && <span style={{marginLeft: '10px', color: '#38bdf8', fontSize: '0.9em', fontWeight: 'bold'}}>جاري رفع الصورة... ⏳</span>}
+                              
                               {currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
                           </div>
                           <div className="options-section">
