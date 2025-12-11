@@ -1,213 +1,120 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { parse } from 'cookie';
+import bcrypt from 'bcryptjs';
 
 export default async (req, res) => {
   const cookies = parse(req.headers.cookie || '');
   const sessionToken = cookies.admin_session;
   if (!sessionToken) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { data: adminUser } = await supabase.from('users').select('is_admin').eq('session_token', sessionToken).single();
-  if (!adminUser || !adminUser.is_admin) return res.status(403).json({ error: 'Access Denied' });
+  // التحقق من هوية المتصل
+  const { data: currentUser } = await supabase.from('users').select('id, is_admin').eq('session_token', sessionToken).single();
+  
+  if (!currentUser || !currentUser.is_admin) {
+      return res.status(403).json({ error: 'Access Denied' });
+  }
+
+  const PANEL_OWNER_ID = process.env.PANEL_OWNER_ID; 
+  const isMainAdmin = String(currentUser.id) === String(PANEL_OWNER_ID);
 
   // ---------------------------------------------------------
-  // GET: جلب الهيكل بالكامل
+  // GET
   // ---------------------------------------------------------
   if (req.method === 'GET') {
-      try {
-          const { data: courses, error } = await supabase
-              .from('courses')
-              .select(`
-                  id, title, sort_order, price,
-                  subjects (
-                      id, title, sort_order, price,
-                      chapters (
-                          id, title, sort_order,
-                          videos (id, title, sort_order, youtube_video_id),
-                          pdfs (id, title, sort_order, file_path)
-                      ),
-                      exams (
-                          id, title, duration_minutes, sort_order, 
-                          requires_student_name, randomize_questions, randomize_options,
-                          questions (
-                              id, question_text, image_file_id, sort_order,
-                              options (id, option_text, is_correct, sort_order)
-                          )
-                      )
-                  )
-              `)
-              .order('sort_order', { ascending: true })
-              .order('sort_order', { foreignTable: 'subjects', ascending: true })
-              .order('sort_order', { foreignTable: 'subjects.chapters', ascending: true })
-              .order('sort_order', { foreignTable: 'subjects.chapters.videos', ascending: true })
-              .order('sort_order', { foreignTable: 'subjects.chapters.pdfs', ascending: true })
-              .order('sort_order', { foreignTable: 'subjects.exams', ascending: true })
-              .order('sort_order', { foreignTable: 'subjects.exams.questions', ascending: true })
-              .order('sort_order', { foreignTable: 'subjects.exams.questions.options', ascending: true });
+    try {
+        const { data: admins, error } = await supabase
+            .from('users')
+            .select('id, first_name, username, phone, created_at, admin_username')
+            .eq('is_admin', true)
+            .order('created_at', { ascending: true });
 
-          if (error) throw error;
-          return res.status(200).json(courses);
-      } catch (err) {
-          return res.status(500).json({ error: err.message });
-      }
+        if (error) throw error;
+
+        const formatted = admins.map(admin => ({
+            ...admin,
+            is_main: String(admin.id) === String(PANEL_OWNER_ID),
+            has_web_access: !!admin.admin_username
+        }));
+
+        return res.status(200).json({ 
+            admins: formatted, 
+            isCurrentUserMain: isMainAdmin 
+        });
+
+    } catch (err) { return res.status(500).json({ error: err.message }); }
   }
 
   // ---------------------------------------------------------
-  // POST: العمليات (إضافة / تعديل / حذف)
+  // POST
   // ---------------------------------------------------------
   if (req.method === 'POST') {
-      const { action, payload } = req.body;
+      if (!isMainAdmin) {
+          return res.status(403).json({ error: 'عذراً، هذه الصلاحية لمالك اللوحة فقط.' });
+      }
+
+      const { action, userId, username, webData } = req.body;
 
       try {
-        // --- 1. إضافة كورس (مع السعر) ---
-        if (action === 'add_course') {
-            await supabase.from('courses').insert({
-                title: payload.title,
-                price: parseInt(payload.price) || 0, // حفظ السعر
-                sort_order: 999 
-            });
-            return res.status(200).json({ success: true });
-        }
+          // 1. ترقية مشرف جديد
+          if (action === 'promote') {
+              if (!username) return res.status(400).json({ error: 'يرجى إدخال اسم المستخدم' });
 
-        // --- 2. تعديل كورس (جديد) ---
-        if (action === 'edit_course') {
-            await supabase.from('courses').update({
-                title: payload.title,
-                price: parseInt(payload.price) || 0
-            }).eq('id', payload.id);
-            return res.status(200).json({ success: true });
-        }
+              const { data: user } = await supabase.from('users').select('id, is_admin').eq('username', username).single();
 
-        // --- 3. إضافة مادة (مع السعر) ---
-        if (action === 'add_subject') {
-            await supabase.from('subjects').insert({
-                course_id: payload.courseId, 
-                title: payload.title,
-                price: parseInt(payload.price) || 0, // حفظ السعر
-                sort_order: 999
-            });
-            return res.status(200).json({ success: true });
-        }
+              if (!user) return res.status(404).json({ error: 'المستخدم غير موجود.' });
+              if (user.is_admin) return res.status(400).json({ error: 'هذا المستخدم مشرف بالفعل.' });
 
-        // --- 4. تعديل مادة (جديد) ---
-        if (action === 'edit_subject') {
-            await supabase.from('subjects').update({
-                title: payload.title,
-                price: parseInt(payload.price) || 0
-            }).eq('id', payload.id);
-            return res.status(200).json({ success: true });
-        }
+              await supabase.from('users').update({ is_admin: true }).eq('id', user.id);
+              return res.status(200).json({ success: true, message: `تم ترقية @${username} لمشرف بنجاح.` });
+          }
 
-        // --- 5. إضافة فصل ---
-        if (action === 'add_chapter') {
-            await supabase.from('chapters').insert({
-                subject_id: payload.subjectId,
-                title: payload.title,
-                sort_order: 999
-            });
-            return res.status(200).json({ success: true });
-        }
+          // 2. إزالة مشرف
+          if (action === 'demote') {
+              if (String(userId) === String(PANEL_OWNER_ID)) return res.status(400).json({ error: 'لا يمكنك حذف نفسك!' });
+              
+              await supabase.from('users').update({ 
+                  is_admin: false, 
+                  admin_username: null, 
+                  admin_password: null,
+                  session_token: null // 🔥 طرده فوراً من النظام
+              }).eq('id', userId);
+              
+              return res.status(200).json({ success: true, message: 'تم سحب الصلاحية.' });
+          }
 
-        // --- 6. تعديل فصل (جديد) ---
-        if (action === 'edit_chapter') {
-            await supabase.from('chapters').update({
-                title: payload.title
-            }).eq('id', payload.id);
-            return res.status(200).json({ success: true });
-        }
+          // 3. [محدث] تعديل بيانات الدخول (ذكي وآمن)
+          if (action === 'set_web_access') {
+              // التحقق من أننا نملك يوزرنيم على الأقل
+              if (!webData.username) return res.status(400).json({ error: 'اسم المستخدم مطلوب.' });
 
-        // --- 7. إضافة فيديو ---
-        if (action === 'add_video') {
-            const { title, url, chapterId } = payload;
-            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-            const match = url.match(regExp);
-            const youtubeId = (match && match[2].length === 11) ? match[2] : null;
+              // التحقق من عدم تكرار الاسم (مع استثناء المستخدم نفسه)
+              const { data: existing } = await supabase
+                  .from('users')
+                  .select('id')
+                  .eq('admin_username', webData.username)
+                  .neq('id', userId)
+                  .maybeSingle();
+              
+              if (existing) return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل.' });
 
-            if (!youtubeId) return res.status(400).json({ error: 'رابط يوتيوب غير صالح' });
+              // تجهيز كائن التحديث
+              const updates = {
+                  admin_username: webData.username,
+                  session_token: null // 🔥 إنهاء الجلسة فوراً لإجباره على الدخول بالبيانات الجديدة
+              };
 
-            await supabase.from('videos').insert({
-                title, chapter_id: chapterId, youtube_video_id: youtubeId, type: 'youtube', sort_order: 999
-            });
-            return res.status(200).json({ success: true });
-        }
+              // تحديث الباسورد فقط إذا تم إرساله
+              if (webData.password && webData.password.trim() !== '') {
+                  if (webData.password.length < 6) return res.status(400).json({ error: 'كلمة المرور قصيرة جداً.' });
+                  updates.admin_password = await bcrypt.hash(webData.password, 10);
+              }
 
-        // --- 8. حفظ أو تعديل الامتحان ---
-        if (action === 'save_exam') {
-            const { 
-                id, subjectId, title, duration, 
-                requiresName, randQ, randO, 
-                questions, deletedQuestionIds 
-            } = payload;
-            
-            let examId = id;
+              // تنفيذ التحديث
+              await supabase.from('users').update(updates).eq('id', userId);
 
-            // أ. إنشاء أو تحديث بيانات الامتحان الأساسية
-            const examData = {
-                title,
-                duration_minutes: parseInt(duration),
-                requires_student_name: requiresName,
-                randomize_questions: randQ,
-                randomize_options: randO
-            };
+              return res.status(200).json({ success: true, message: 'تم تحديث البيانات وإنهاء الجلسة القديمة.' });
+          }
 
-            if (examId) {
-                await supabase.from('exams').update(examData).eq('id', examId);
-            } else {
-                const { data: newExam, error: createError } = await supabase.from('exams').insert({
-                    ...examData,
-                    subject_id: subjectId,
-                    sort_order: 999
-                }).select().single();
-                if (createError) throw createError;
-                examId = newExam.id;
-            }
-
-            // ب. حذف الأسئلة المحذوفة
-            if (deletedQuestionIds && deletedQuestionIds.length > 0) {
-                await supabase.from('questions').delete().in('id', deletedQuestionIds);
-            }
-
-            // ج. معالجة الأسئلة
-            for (let i = 0; i < questions.length; i++) {
-                const q = questions[i];
-                let questionId = q.id;
-
-                const questionData = {
-                    exam_id: examId,
-                    question_text: q.text,
-                    image_file_id: q.image || null,
-                    sort_order: i
-                };
-
-                if (questionId && !String(questionId).startsWith('temp')) {
-                    await supabase.from('questions').update(questionData).eq('id', questionId);
-                    await supabase.from('options').delete().eq('question_id', questionId);
-                } else {
-                    const { data: newQ, error: qErr } = await supabase.from('questions').insert(questionData).select().single();
-                    if (qErr) throw qErr;
-                    questionId = newQ.id;
-                }
-
-                const optionsData = q.options.map((optText, idx) => ({
-                    question_id: questionId,
-                    option_text: optText,
-                    is_correct: idx === parseInt(q.correctIndex),
-                    sort_order: idx
-                }));
-                await supabase.from('options').insert(optionsData);
-            }
-
-            return res.status(200).json({ success: true });
-        }
-
-        // --- 9. حذف عنصر ---
-        if (action === 'delete_item') {
-            await supabase.from(payload.type).delete().eq('id', payload.id);
-            return res.status(200).json({ success: true });
-        }
-
-      } catch (err) {
-          console.error("Manage Content Error:", err);
-          return res.status(500).json({ error: err.message });
-      }
+      } catch (err) { return res.status(500).json({ error: err.message }); }
   }
 };
