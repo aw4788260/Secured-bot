@@ -270,7 +270,17 @@ export default function ContentManager() {
       setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   };
   const saveQuestion = () => {
-      if (!currentQ.text) return showAlert('error', 'نص السؤال مطلوب');
+      // 1. التحقق من نص السؤال
+      if (!currentQ.text || !currentQ.text.trim()) {
+          return showAlert('error', 'نص السؤال مطلوب');
+      }
+      
+      // 2. التحقق من أن جميع الاختيارات ممتلئة
+      const hasEmptyOption = currentQ.options.some(opt => !opt || !opt.trim());
+      if (hasEmptyOption) {
+          return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة. املأ جميع الخيارات أو احذف الزائد منها.');
+      }
+
       const newQs = [...examForm.questions];
       if (editingQIndex >= 0) newQs[editingQIndex] = currentQ;
       else newQs.push(currentQ);
@@ -507,13 +517,15 @@ export default function ContentManager() {
           </Modal>
       )}
       {/* 2. PDF Modal */}
-      {modalType === 'add_pdf' && (
+    {modalType === 'add_pdf' && (
           <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
               <form onSubmit={async (e) => {
                   e.preventDefault();
                   const file = e.target.file.files[0];
                   if(!file) return showAlert('error', 'اختر الملف');
-                  setLoading(true);
+                  
+                  setLoading(true); // تفعيل التحميل
+                  
                   const fd = new FormData();
                   fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
                   try {
@@ -521,7 +533,8 @@ export default function ContentManager() {
                       if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
                       else showAlert('error', 'فشل الرفع');
                   } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
-                  setLoading(false);
+                  
+                  setLoading(false); // إيقاف التحميل
               }}>
                   <div className="form-group">
                       <label>اسم الملف</label>
@@ -533,12 +546,15 @@ export default function ContentManager() {
                   </div>
                   <div className="acts">
                       <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                      <button type="submit" className="btn-primary">رفع</button>
+                      
+                      {/* [تعديل] الزر يظهر حالة الرفع ويتم تعطيله أثناء التحميل */}
+                      <button type="submit" className="btn-primary" disabled={loading}>
+                          {loading ? 'جاري الرفع... ⏳' : 'رفع'}
+                      </button>
                   </div>
               </form>
           </Modal>
       )}
-
       {/* 3. Stats Modal */}
       {modalType === 'stats' && examStats && (
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
