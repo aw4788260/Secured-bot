@@ -55,7 +55,7 @@ export default function ContentManager() {
         const data = await res.json();
         setCourses(data);
         
-        // Refresh Current View Data to keep user in place
+        // Refresh Current View (Keep user in same place)
         if (selectedCourse) {
             const updatedC = data.find(c => c.id === selectedCourse.id);
             setSelectedCourse(updatedC);
@@ -74,62 +74,6 @@ export default function ContentManager() {
 
   useEffect(() => { fetchContent(); }, []);
 
-  // --- Drag & Drop Handlers ---
-  const onDragStart = (e, index) => {
-      dragItem.current = index;
-      e.target.closest('.draggable-item').classList.add('dragging');
-  };
-
-  const onDragEnter = (e, index) => {
-      dragOverItem.current = index;
-  };
-
-  const onDragEnd = async (e, listType) => { 
-      e.target.closest('.draggable-item').classList.remove('dragging');
-      
-      // Determine which list we are reordering
-      let list = [];
-      if (listType === 'courses') list = [...courses];
-      else if (listType === 'subjects') list = [...selectedCourse.subjects];
-      else if (listType === 'chapters') list = [...selectedSubject.chapters];
-      else if (listType === 'exams') list = [...selectedSubject.exams]; // [NEW] Exams Support
-      else if (listType === 'videos') list = [...selectedChapter.videos];
-      else if (listType === 'pdfs') list = [...selectedChapter.pdfs];
-
-      if (!list.length) return;
-
-      // Reorder logic
-      const draggedItemContent = list[dragItem.current];
-      list.splice(dragItem.current, 1);
-      list.splice(dragOverItem.current, 0, draggedItemContent);
-
-      dragItem.current = null;
-      dragOverItem.current = null;
-
-      // Update UI Immediately [FIX: Added exams support]
-      if (listType === 'courses') setCourses(list);
-      else if (listType === 'subjects') setSelectedCourse({ ...selectedCourse, subjects: list });
-      else if (listType === 'chapters') setSelectedSubject({ ...selectedSubject, chapters: list });
-      else if (listType === 'exams') setSelectedSubject({ ...selectedSubject, exams: list }); // [NEW]
-      else if (listType === 'videos') setSelectedChapter({ ...selectedChapter, videos: list });
-      else if (listType === 'pdfs') setSelectedChapter({ ...selectedChapter, pdfs: list });
-
-      // Prepare Data for API
-      const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
-      
-      // Call API
-      try {
-          await fetch('/api/admin/reorder', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ type: listType, items: updatedItems })
-          });
-      } catch (err) {
-          showAlert('error', 'فشل حفظ الترتيب');
-          fetchContent(); // Revert on error
-      }
-  };
-
   // --- Helpers ---
   const showAlert = (type, msg) => {
       setAlertData({ show: true, type, msg });
@@ -144,10 +88,65 @@ export default function ContentManager() {
       setConfirmData({ show: false, msg: '', onConfirm: null });
   };
 
-  const handleBack = () => {
+  // [تعديل هام] تحديث البيانات عند الرجوع لضمان ظهور الترتيب الصحيح
+  const handleBack = async () => {
+      await fetchContent(); // Refresh Data from Server
+      
       if (selectedChapter) setSelectedChapter(null);
       else if (selectedSubject) setSelectedSubject(null);
       else if (selectedCourse) setSelectedCourse(null);
+  };
+
+  // --- Drag & Drop ---
+  const onDragStart = (e, index) => {
+      dragItem.current = index;
+      e.target.closest('.draggable-item').classList.add('dragging');
+  };
+
+  const onDragEnter = (e, index) => {
+      dragOverItem.current = index;
+  };
+
+  const onDragEnd = async (e, listType) => { 
+      e.target.closest('.draggable-item').classList.remove('dragging');
+      
+      let list = [];
+      if (listType === 'courses') list = [...courses];
+      else if (listType === 'subjects') list = [...selectedCourse.subjects];
+      else if (listType === 'chapters') list = [...selectedSubject.chapters];
+      else if (listType === 'exams') list = [...selectedSubject.exams];
+      else if (listType === 'videos') list = [...selectedChapter.videos];
+      else if (listType === 'pdfs') list = [...selectedChapter.pdfs];
+
+      if (!list.length) return;
+
+      const draggedItemContent = list[dragItem.current];
+      list.splice(dragItem.current, 1);
+      list.splice(dragOverItem.current, 0, draggedItemContent);
+
+      dragItem.current = null;
+      dragOverItem.current = null;
+
+      // Update UI Immediately
+      if (listType === 'courses') setCourses(list);
+      else if (listType === 'subjects') setSelectedCourse({ ...selectedCourse, subjects: list });
+      else if (listType === 'chapters') setSelectedSubject({ ...selectedSubject, chapters: list });
+      else if (listType === 'exams') setSelectedSubject({ ...selectedSubject, exams: list });
+      else if (listType === 'videos') setSelectedChapter({ ...selectedChapter, videos: list });
+      else if (listType === 'pdfs') setSelectedChapter({ ...selectedChapter, pdfs: list });
+
+      const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
+      
+      try {
+          await fetch('/api/admin/reorder', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ type: listType, items: updatedItems })
+          });
+      } catch (err) {
+          showAlert('error', 'فشل حفظ الترتيب');
+          fetchContent();
+      }
   };
 
   // --- API Actions ---
@@ -174,7 +173,6 @@ export default function ContentManager() {
   // --- Modal Opening ---
   const openModal = (type, data = {}) => {
       setFormData({ title: '', url: '' });
-      
       if (type === 'exam_editor') {
           setShowExamSidebar(false);
           if (data.id) {
@@ -212,7 +210,6 @@ export default function ContentManager() {
       setUploadingImg(false);
   };
 
-  // [New] Dynamic Options Handlers
   const handleOptionChange = (index, value) => {
       const newOpts = [...currentQ.options];
       newOpts[index] = value;
@@ -234,7 +231,6 @@ export default function ContentManager() {
 
   const resetCurrentQuestion = () => {
       setEditingQIndex(-1);
-      // Default 4 options for new questions
       setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   };
 
@@ -292,13 +288,13 @@ export default function ContentManager() {
               </div>
           </div>
           {(selectedCourse || selectedSubject || selectedChapter) && (
-              <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع للخلف</button>
+              <button className="btn-secondary" onClick={handleBack}>{Icons.back} تحديث ورجوع</button>
           )}
       </div>
 
       {loading && <div className="loader-line"></div>}
 
-      {/* 1. Courses List (Draggable) */}
+      {/* 1. Courses List */}
       {!selectedCourse && (
           <div className="grid-cards">
               {courses.map((c, index) => (
@@ -320,7 +316,7 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 2. Subjects List (Draggable) */}
+      {/* 2. Subjects List */}
       {selectedCourse && !selectedSubject && (
           <div className="grid-cards">
               {selectedCourse.subjects.map((s, index) => (
@@ -342,7 +338,7 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 3. Subject Details (Chapters & Exams Draggable) */}
+      {/* 3. Subject Details */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -402,7 +398,7 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 4. Chapter Content (Videos & PDFs Draggable) */}
+      {/* 4. Chapter Content */}
       {selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -512,7 +508,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Exam Editor (Enhanced & Sidebar Layout) */}
+      {/* Exam Editor */}
       {modalType === 'exam_editor' && (
           <div className="editor-overlay">
               <div className="editor-container">
@@ -527,7 +523,7 @@ export default function ContentManager() {
                   </div>
                   
                   <div className="editor-body">
-                      {/* Left: Enhanced Sidebar */}
+                      {/* Left: Sidebar */}
                       <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
                           <div className="meta-section styled">
                               <label className="field-label">عنوان الامتحان</label>
@@ -575,7 +571,7 @@ export default function ContentManager() {
                       {/* Overlay for mobile sidebar */}
                       {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
 
-                      {/* Right: Editor */}
+                      {/* Right: Main Editor */}
                       <div className="editor-main">
                           <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
                           <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
@@ -613,9 +609,7 @@ export default function ContentManager() {
                           </div>
                           
                           <div className="editor-actions">
-                              <button className="btn-primary full" onClick={saveQuestion}>
-                                  {editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}
-                              </button>
+                              <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}</button>
                           </div>
                       </div>
                   </div>
@@ -623,7 +617,7 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* Stats Modal (Updated [FIXED]) */}
+      {/* Stats Modal */}
       {modalType === 'stats' && examStats && (
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
               <div className="stats-summary">
@@ -651,18 +645,7 @@ export default function ContentManager() {
 
       {/* Alerts */}
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
-      {confirmData.show && (
-          <div className="modal-overlay">
-              <div className="modal-box">
-                  <h3>تأكيد</h3>
-                  <p style={{textAlign:'center', color:'#cbd5e1'}}>{confirmData.msg}</p>
-                  <div className="acts">
-                      <button className="btn-cancel" onClick={closeConfirm}>إلغاء</button>
-                      <button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button>
-                  </div>
-              </div>
-          </div>
-      )}
+      {confirmData.show && <div className="modal-overlay"><div className="modal-box"><h3>تأكيد</h3><p style={{textAlign:'center', color:'#cbd5e1'}}>{confirmData.msg}</p><div className="acts"><button className="btn-cancel" onClick={closeConfirm}>إلغاء</button><button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button></div></div></div>}
 
       <style jsx>{`
         /* General Layout */
@@ -779,11 +762,9 @@ export default function ContentManager() {
         .editor-main h4 { color: #38bdf8; margin-top: 0; }
         .input.area { resize: vertical; margin-bottom: 15px; }
         .input.small { padding: 10px; width: 100%; }
-        
         .image-upload { margin-bottom: 20px; }
         .image-upload label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #1e293b; padding: 8px 15px; border-radius: 6px; border: 1px solid #334155; color: #cbd5e1; }
         .image-upload img { max-height: 150px; margin-top: 10px; border-radius: 8px; border: 1px solid #334155; display: block; }
-
         .options-section { margin-bottom: 30px; }
         .section-label { display: block; margin-bottom: 10px; color: #cbd5e1; font-size: 0.95rem; }
         .options-container.dynamic { display: flex; flex-direction: column; gap: 10px; }
@@ -794,10 +775,7 @@ export default function ContentManager() {
         .dot { width: 10px; height: 10px; background: #22c55e; border-radius: 50%; }
         .btn-remove-opt { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; }
         .btn-add-opt { background: #1e293b; color: #38bdf8; border: 1px dashed #38bdf8; padding: 8px; width: 100%; border-radius: 6px; margin-top: 10px; cursor: pointer; }
-
         .editor-actions { padding-top: 20px; border-top: 1px solid #1e293b; }
-
-        /* Stats Table */
         .stats-summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
         .stat-card { flex: 1; min-width: 100px; background: #0f172a; padding: 15px; border-radius: 8px; text-align: center; }
         .stat-card span { display: block; color: #94a3b8; font-size: 0.8rem; }
@@ -806,18 +784,15 @@ export default function ContentManager() {
         table { width: 100%; border-collapse: collapse; }
         th { text-align: right; padding: 10px; color: #94a3b8; border-bottom: 1px solid #334155; }
         td { padding: 10px; color: white; border-bottom: 1px solid #334155; }
-
         .alert-toast { position: fixed; bottom: 30px; left: 30px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; z-index: 3000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .alert-toast.success { background: #22c55e; color: #0f172a; }
         .alert-toast.error { background: #ef4444; }
-
         @media (max-width: 768px) {
             .mobile-toggle { display: flex; align-items: center; gap: 5px; }
             .editor-sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: 85%; z-index: 50; transform: translateX(100%); box-shadow: -5px 0 20px rgba(0,0,0,0.5); }
             .editor-sidebar.mobile-visible { transform: translateX(0); }
             .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
         }
-
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       `}</style>
     </AdminLayout>
