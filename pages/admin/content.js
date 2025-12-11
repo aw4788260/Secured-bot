@@ -32,7 +32,7 @@ export default function ContentManager() {
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
   // Exam Editor
-  const [showExamSidebar, setShowExamSidebar] = useState(false); // Mobile toggle
+  const [showExamSidebar, setShowExamSidebar] = useState(false);
   const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
@@ -89,7 +89,7 @@ export default function ContentManager() {
       else if (selectedCourse) setSelectedCourse(null);
   };
 
-  // --- API ---
+  // --- API Actions ---
   const apiCall = async (action, payload) => {
       setLoading(true);
       try {
@@ -107,12 +107,13 @@ export default function ContentManager() {
 
   const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
       await apiCall('delete_item', { type, id });
-      closeConfirm(); // إغلاق النافذة فوراً
+      closeConfirm();
   });
 
   // --- Modal Opening ---
   const openModal = (type, data = {}) => {
       setFormData({ title: '', url: '' });
+      
       if (type === 'exam_editor') {
           setShowExamSidebar(false);
           if (data.id) {
@@ -129,7 +130,8 @@ export default function ContentManager() {
           } else {
               setExamForm({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
           }
-          setDeletedQIds([]); setEditingQIndex(-1); setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+          setDeletedQIds([]); setEditingQIndex(-1); 
+          setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
       }
       setModalType(type);
   };
@@ -149,14 +151,39 @@ export default function ContentManager() {
       setUploadingImg(false);
   };
 
+  // [New] Dynamic Options Handlers
+  const handleOptionChange = (index, value) => {
+      const newOpts = [...currentQ.options];
+      newOpts[index] = value;
+      setCurrentQ({ ...currentQ, options: newOpts });
+  };
+
+  const addOption = () => {
+      setCurrentQ({ ...currentQ, options: [...currentQ.options, ''] });
+  };
+
+  const removeOption = (index) => {
+      if (currentQ.options.length <= 2) return showAlert('error', 'يجب أن يكون هناك خياران على الأقل');
+      const newOpts = currentQ.options.filter((_, i) => i !== index);
+      let newCorrect = currentQ.correctIndex;
+      if (index < currentQ.correctIndex) newCorrect--;
+      if (index === currentQ.correctIndex) newCorrect = 0;
+      setCurrentQ({ ...currentQ, options: newOpts, correctIndex: newCorrect });
+  };
+
+  const resetCurrentQuestion = () => {
+      setEditingQIndex(-1);
+      // Default 4 options for new questions
+      setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+  };
+
   const saveQuestion = () => {
       if (!currentQ.text) return showAlert('error', 'نص السؤال مطلوب');
       const newQs = [...examForm.questions];
       if (editingQIndex >= 0) newQs[editingQIndex] = currentQ;
       else newQs.push(currentQ);
       setExamForm({ ...examForm, questions: newQs });
-      setEditingQIndex(-1);
-      setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+      resetCurrentQuestion();
   };
 
   const editQuestion = (i) => {
@@ -169,10 +196,7 @@ export default function ContentManager() {
       const q = examForm.questions[i];
       if (q.id) setDeletedQIds([...deletedQIds, q.id]);
       setExamForm({ ...examForm, questions: examForm.questions.filter((_, idx) => idx !== i) });
-      if (editingQIndex === i) {
-          setEditingQIndex(-1);
-          setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
-      }
+      if (editingQIndex === i) resetCurrentQuestion();
   };
 
   const submitExam = async () => {
@@ -319,105 +343,65 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* --- Modals (New Style) --- */}
+      {/* --- Unified Modal Components --- */}
 
-      {/* Simple Input Modals (Chapter, Video) */}
+      {/* Chapter & Video */}
       {(modalType === 'add_chapter' || modalType === 'add_video') && (
-          <div className="modal-overlay">
-              <div className="modal-box">
-                  <h3>{modalType === 'add_chapter' ? 'فصل جديد' : 'فيديو جديد'}</h3>
-                  
-                  <div className="form-group">
-                      <label>العنوان</label>
-                      <input className="input" autoFocus value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} placeholder="العنوان هنا..." />
-                  </div>
-                  
-                  {modalType === 'add_video' && (
-                      <div className="form-group">
-                          <label>رابط يوتيوب</label>
-                          <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
-                      </div>
-                  )}
-
-                  <div className="acts">
-                      <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                      <button className="btn-primary" onClick={() => {
-                          if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title });
-                          else apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url });
-                      }}>حفظ</button>
-                  </div>
+          <Modal title={modalType === 'add_chapter' ? 'فصل جديد' : 'فيديو جديد'} onClose={() => setModalType(null)}>
+              <div className="form-group">
+                  <label>العنوان</label>
+                  <input className="input" autoFocus value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} placeholder="اكتب العنوان..." />
               </div>
-          </div>
+              {modalType === 'add_video' && (
+                  <div className="form-group">
+                      <label>رابط يوتيوب</label>
+                      <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
+                  </div>
+              )}
+              <div className="acts">
+                  <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+                  <button className="btn-primary" onClick={() => {
+                      if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title });
+                      else apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url });
+                  }}>حفظ</button>
+              </div>
+          </Modal>
       )}
 
       {/* PDF Modal */}
       {modalType === 'add_pdf' && (
-          <div className="modal-overlay">
-              <div className="modal-box">
-                  <h3>رفع ملف PDF</h3>
-                  <form onSubmit={async (e) => {
-                      e.preventDefault();
-                      const file = e.target.file.files[0];
-                      if(!file) return showAlert('error', 'اختر الملف');
-                      setLoading(true);
-                      const fd = new FormData();
-                      fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
-                      try {
-                          const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
-                          if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
-                          else showAlert('error', 'فشل الرفع');
-                      } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
-                      setLoading(false);
-                  }}>
-                      <div className="form-group">
-                          <label>اسم الملف</label>
-                          <input className="input" name="title" required placeholder="مثال: ملزمة الشرح" />
-                      </div>
-                      <div className="form-group">
-                          <label>الملف</label>
-                          <input className="input file" type="file" name="file" accept="application/pdf" required />
-                      </div>
-                      <div className="acts">
-                          <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                          <button type="submit" className="btn-primary">رفع</button>
-                      </div>
-                  </form>
-              </div>
-          </div>
+          <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
+              <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const file = e.target.file.files[0];
+                  if(!file) return showAlert('error', 'اختر الملف');
+                  setLoading(true);
+                  const fd = new FormData();
+                  fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
+                  try {
+                      const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+                      if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
+                      else showAlert('error', 'فشل الرفع');
+                  } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
+                  setLoading(false);
+              }}>
+                  <div className="form-group">
+                      <label>اسم الملف</label>
+                      <input className="input" name="title" required placeholder="اسم الملف..." />
+                  </div>
+                  <div className="form-group">
+                      <label>اختر الملف</label>
+                      <input className="input file" type="file" name="file" accept="application/pdf" required />
+                  </div>
+                  <div className="acts">
+                      <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+                      <button type="submit" className="btn-primary">رفع</button>
+                  </div>
+              </form>
+          </Modal>
       )}
 
-      {/* Stats Modal */}
-      {modalType === 'stats' && examStats && (
-          <div className="modal-overlay">
-              <div className="modal-box">
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                      <h3>الإحصائيات</h3>
-                      <button onClick={() => setModalType(null)} className="close-btn">✕</button>
-                  </div>
-                  
-                  <div className="stats-summary">
-                      <div className="stat-card"><span>الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
-                      <div className="stat-card"><span>المتوسط</span><strong style={{color:'#facc15'}}>{examStats.averageScore}%</strong></div>
-                  </div>
-                  <div className="table-wrap">
-                      <table>
-                          <thead><tr><th>الطالب</th><th>الدرجة</th><th>التاريخ</th></tr></thead>
-                          <tbody>
-                              {examStats.attempts.map((a, i) => (
-                                  <tr key={i}>
-                                      <td>{a.student_name_input}</td>
-                                      <td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td>
-                                      <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Exam Editor (Full Screen with Fixed Sidebar) */}
+      {/* Exam Editor (Enhanced & Sidebar Layout) */}
       {modalType === 'exam_editor' && (
           <div className="editor-overlay">
               <div className="editor-container">
@@ -432,72 +416,134 @@ export default function ContentManager() {
                   </div>
                   
                   <div className="editor-body">
-                      {/* Sidebar */}
+                      {/* Left: Enhanced Sidebar */}
                       <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
-                          <div className="meta-section">
-                              <input className="input" placeholder="عنوان الامتحان" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} />
-                              <div className="row">
-                                  <input className="input" type="number" placeholder="دقيقة" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} style={{width:'80px'}} />
-                                  <label className="check"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /> اسم الطالب</label>
+                          <div className="meta-section styled">
+                              <label className="field-label">عنوان الامتحان</label>
+                              <input className="input" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} placeholder="العنوان..." />
+                              
+                              <label className="field-label">المدة (بالدقائق)</label>
+                              <div className="duration-input">
+                                  <input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} />
+                                  <span>دقيقة</span>
                               </div>
-                              <div className="row">
-                                  <label className="check"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /> عشوائية س</label>
-                                  <label className="check"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /> عشوائية ج</label>
+
+                              <div className="toggles-group">
+                                  <div className="toggle-row">
+                                      <span>طلب اسم الطالب</span>
+                                      <label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label>
+                                  </div>
+                                  <div className="toggle-row">
+                                      <span>عشوائية الأسئلة</span>
+                                      <label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label>
+                                  </div>
+                                  <div className="toggle-row">
+                                      <span>عشوائية الاختيارات</span>
+                                      <label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label>
+                                  </div>
                               </div>
                           </div>
                           
                           <div className="q-list-scroll">
+                              <h4 className="list-title">قائمة الأسئلة ({examForm.questions.length})</h4>
                               {examForm.questions.map((q, i) => (
                                   <div key={i} className={`q-item ${editingQIndex === i ? 'active' : ''}`} onClick={() => editQuestion(i)}>
-                                      <span>{i+1}. {q.text.substring(0, 15)}...</span>
+                                      <span className="q-num">{i+1}</span>
+                                      <span className="q-text">{q.text.substring(0, 15)}...</span>
                                       <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button>
                                   </div>
                               ))}
-                              <button className="add-q-btn" onClick={() => { setEditingQIndex(-1); setCurrentQ({id:null, text:'', image:null, options:['','','',''], correctIndex:0}); setShowExamSidebar(false); }}>+ سؤال جديد</button>
+                              <button className="add-q-btn" onClick={() => { resetCurrentQuestion(); setShowExamSidebar(false); }}>{Icons.add} سؤال جديد</button>
                           </div>
                           
-                          <button className="btn-save-exam" onClick={submitExam}>حفظ الامتحان</button>
+                          <div className="sidebar-footer">
+                              <button className="btn-save-exam" onClick={submitExam}>حفظ وإنهاء</button>
+                          </div>
                       </div>
 
-                      {/* Main Editor */}
+                      {/* Overlay for mobile sidebar */}
+                      {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
+
+                      {/* Right: Editor */}
                       <div className="editor-main">
-                          <h4>{editingQIndex === -1 ? 'سؤال جديد' : `تعديل السؤال ${editingQIndex + 1}`}</h4>
-                          <textarea className="input area" placeholder="نص السؤال" value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
+                          <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
+                          <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
                           
                           <div className="image-upload">
                               <label>
                                   {Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}
                                   <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
                               </label>
-                              {uploadingImg && <span>جاري الرفع...</span>}
+                              {uploadingImg && <span className="loading-text">جاري الرفع...</span>}
                               {currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
                           </div>
 
-                          <div className="options-container">
-                              {currentQ.options.map((opt, i) => (
-                                  <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
-                                      <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}></div>
-                                      <input className="input small" value={opt} onChange={e => {
-                                          const newOpts = [...currentQ.options]; newOpts[i] = e.target.value;
-                                          setCurrentQ({...currentQ, options: newOpts});
-                                      }} placeholder={`الخيار ${i+1}`} />
-                                  </div>
-                              ))}
+                          <div className="options-section">
+                              <label className="section-label">الاختيارات (حدد الإجابة الصحيحة):</label>
+                              <div className="options-container dynamic">
+                                  {currentQ.options.map((opt, i) => (
+                                      <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
+                                          <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>
+                                              {currentQ.correctIndex === i && <div className="dot"></div>}
+                                          </div>
+                                          <input 
+                                              className="input small" 
+                                              value={opt} 
+                                              onChange={e => handleOptionChange(i, e.target.value)} 
+                                              placeholder={`الخيار ${i+1}`} 
+                                          />
+                                          {currentQ.options.length > 2 && (
+                                              <button className="btn-remove-opt" onClick={() => removeOption(i)} title="حذف">×</button>
+                                          )}
+                                      </div>
+                                  ))}
+                              </div>
+                              <button className="btn-add-opt" onClick={addOption}>+ إضافة خيار</button>
                           </div>
                           
-                          <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة للقائمة' : 'تحديث السؤال'}</button>
+                          <div className="editor-actions">
+                              <button className="btn-primary full" onClick={saveQuestion}>
+                                  {editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}
+                              </button>
+                          </div>
                       </div>
                   </div>
               </div>
           </div>
       )}
 
+      {/* Stats Modal (Updated) */}
+      {modalType === 'stats' && examStats && (
+          <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
+              <div className="stats-summary">
+                  <div className="stat-card"><span>الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
+                  <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averageScore}%</strong></div>
+                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{(examStats.averageScore).toFixed(1)} / 100</strong></div>
+              </div>
+              <div className="table-wrap">
+                  <table>
+                      <thead><tr><th>الطالب</th><th>النسبة</th><th>الدرجة</th><th>التاريخ</th></tr></thead>
+                      <tbody>
+                          {examStats.attempts.map((a, i) => (
+                              <tr key={i}>
+                                  <td>{a.student_name_input || 'غير معروف'}</td>
+                                  <td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td>
+                                  <td>{a.score}</td>
+                                  <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </Modal>
+      )}
+
       {/* Alerts */}
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
-      {confirmData.show && <div className="modal-overlay"><div className="modal-box"><h3>تأكيد</h3><p>{confirmData.msg}</p><div className="acts"><button className="btn-cancel" onClick={closeConfirm}>إلغاء</button><button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button></div></div></div>}
+      {confirmData.show && <div className="modal-overlay"><div className="modal-box"><h3>تأكيد</h3><p style={{textAlign:'center', color:'#cbd5e1'}}>{confirmData.msg}</p><div className="acts"><button className="btn-cancel" onClick={closeConfirm}>إلغاء</button><button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button></div></div></div>}
 
       <style jsx>{`
-        /* General */
+        /* General Layout */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
         .breadcrumbs { color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
@@ -512,7 +558,7 @@ export default function ContentManager() {
         .folder-card .icon.blue { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .folder-card .icon.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
         
-        /* Layout */
+        /* Content Panel */
         .content-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
         .panel { background: #111827; border-radius: 12px; }
         .panel-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 15px; }
@@ -532,7 +578,6 @@ export default function ContentManager() {
 
         /* Media & Exam Grids */
         .exam-grid, .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; }
-        
         .exam-card-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 15px; }
         .exam-icon { color: #facc15; background: rgba(250, 204, 21, 0.1); padding: 10px; border-radius: 8px; }
         .exam-info h4 { margin: 0; color: white; font-size: 1rem; }
@@ -548,10 +593,12 @@ export default function ContentManager() {
         .media-body { padding: 10px; display: flex; justify-content: space-between; align-items: center; }
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
-        /* --- Modals (Centered Box) --- */
+        /* --- Unified Modal Styling --- */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
-        .modal-box { background: #1e293b; width: 90%; max-width: 450px; border-radius: 16px; border: 1px solid #475569; padding: 25px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
-        .modal-box h3 { margin: 0 0 20px 0; color: #38bdf8; font-size: 1.4rem; text-align: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+        .modal-box { background: #1e293b; width: 95%; max-width: 450px; border-radius: 16px; border: 1px solid #475569; padding: 25px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .modal-header { display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 20px; align-items: center; }
+        .modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
+        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
         
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 0.9rem; }
@@ -563,53 +610,73 @@ export default function ContentManager() {
         .btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-primary.danger { background: #ef4444; color: white; }
         .btn-cancel { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
-        
-        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
 
-        /* --- Exam Editor (Fixed Sidebar Layout) --- */
+        /* --- Exam Editor (Fixed Sidebar) --- */
         .editor-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 10000; display: flex; flex-direction: column; }
         .editor-container { display: flex; flex-direction: column; height: 100vh; }
-        
-        .editor-header { background: #1e293b; padding: 15px 25px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
-        .editor-header h3 { margin: 0; color: white; }
+        .editor-header { background: #1e293b; padding: 15px 25px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         .header-actions { display: flex; gap: 15px; }
         .mobile-toggle { display: none; background: #334155; border: none; color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
 
         .editor-body { flex: 1; display: flex; overflow: hidden; position: relative; }
         
-        /* Sidebar Styling */
-        .editor-sidebar { width: 300px; background: #111827; border-left: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; transition: transform 0.3s ease; }
-        .meta-section { padding: 20px; border-bottom: 1px solid #334155; }
-        .row { display: flex; gap: 10px; margin-bottom: 10px; }
-        .check { font-size: 0.8rem; color: #cbd5e1; display: flex; align-items: center; gap: 5px; }
+        .editor-sidebar { width: 320px; background: #111827; border-left: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; height: 100%; transition: transform 0.3s ease; z-index: 50; }
+        .meta-section.styled { padding: 20px; border-bottom: 1px solid #334155; background: #162032; margin: 10px; border-radius: 8px; }
+        .field-label { display: block; color: #94a3b8; font-size: 0.85rem; margin-bottom: 5px; }
         
-        .q-list-scroll { flex: 1; overflow-y: auto; padding: 10px; }
-        .q-item { padding: 10px; background: #1f2937; border-radius: 6px; margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; color: #cbd5e1; font-size: 0.9rem; }
-        .q-item.active { border: 1px solid #38bdf8; background: #334155; color: white; }
-        .del-btn { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; }
-        .add-q-btn { width: 100%; padding: 10px; background: transparent; border: 1px dashed #475569; color: #38bdf8; border-radius: 6px; cursor: pointer; margin-top: 10px; }
-        .btn-save-exam { margin: 15px; background: #22c55e; color: #0f172a; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .duration-input { display: flex; align-items: center; gap: 10px; background: #0f172a; padding: 5px 10px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px; }
+        .duration-input input { background: transparent; border: none; color: white; width: 50px; font-weight: bold; text-align: center; font-size: 1rem; }
+        .duration-input span { color: #64748b; font-size: 0.85rem; }
 
-        /* Main Editor Area */
+        .toggles-group { display: flex; flex-direction: column; gap: 12px; }
+        .toggle-row { display: flex; justify-content: space-between; align-items: center; }
+        .toggle-row span { color: #cbd5e1; font-size: 0.9rem; }
+
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #38bdf8; }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        .q-list-scroll { flex: 1; overflow-y: auto; padding: 10px; }
+        .list-title { color: #94a3b8; font-size: 0.85rem; margin: 0 0 10px; border-bottom: 1px dashed #334155; padding-bottom: 5px; }
+        .q-item { padding: 10px; background: #1f2937; border-radius: 6px; margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; color: #cbd5e1; font-size: 0.9rem; border: 1px solid transparent; }
+        .q-item:hover, .q-item.active { background: #334155; border-color: #38bdf8; color: white; }
+        .q-num { background: #0f172a; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }
+        .del-btn { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; }
+        .add-q-btn { width: 100%; padding: 10px; background: transparent; border: 1px dashed #475569; color: #38bdf8; border-radius: 6px; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        
+        .sidebar-footer { padding: 15px; border-top: 1px solid #334155; }
+        .btn-save-exam { width: 100%; background: #22c55e; color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
         .editor-main { flex: 1; padding: 30px; overflow-y: auto; background: #0f172a; }
         .editor-main h4 { color: #38bdf8; margin-top: 0; }
         .input.area { resize: vertical; margin-bottom: 15px; }
-        .input.small { padding: 10px; }
+        .input.small { padding: 10px; width: 100%; }
         
         .image-upload { margin-bottom: 20px; }
         .image-upload label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #1e293b; padding: 8px 15px; border-radius: 6px; border: 1px solid #334155; color: #cbd5e1; }
         .image-upload img { max-height: 150px; margin-top: 10px; border-radius: 8px; border: 1px solid #334155; display: block; }
 
-        .options-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
-        .option-row { display: flex; align-items: center; gap: 10px; background: #1e293b; padding: 10px; border-radius: 8px; border: 1px solid transparent; }
+        .options-section { margin-bottom: 30px; }
+        .section-label { display: block; margin-bottom: 10px; color: #cbd5e1; font-size: 0.95rem; }
+        .options-container.dynamic { display: flex; flex-direction: column; gap: 10px; }
+        .option-row { display: flex; align-items: center; gap: 10px; background: #162032; padding: 8px 12px; border-radius: 8px; border: 1px solid #334155; }
         .option-row.correct { border-color: #22c55e; background: rgba(34, 197, 94, 0.05); }
-        .radio { width: 20px; height: 20px; border: 2px solid #475569; border-radius: 50%; cursor: pointer; }
-        .option-row.correct .radio { background: #22c55e; border-color: #22c55e; }
+        .radio { width: 22px; height: 22px; border: 2px solid #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+        .option-row.correct .radio { border-color: #22c55e; background: rgba(34, 197, 94, 0.2); }
+        .dot { width: 10px; height: 10px; background: #22c55e; border-radius: 50%; }
+        .btn-remove-opt { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; }
+        .btn-add-opt { background: #1e293b; color: #38bdf8; border: 1px dashed #38bdf8; padding: 8px; width: 100%; border-radius: 6px; margin-top: 10px; cursor: pointer; }
+
+        .editor-actions { padding-top: 20px; border-top: 1px solid #1e293b; }
 
         /* Stats Table */
-        .stats-summary { display: flex; gap: 20px; margin-bottom: 20px; }
-        .stat-card { flex: 1; background: #0f172a; padding: 15px; border-radius: 8px; text-align: center; }
-        .stat-card strong { display: block; color: white; font-size: 1.4rem; }
+        .stats-summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-card { flex: 1; min-width: 100px; background: #0f172a; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-card span { display: block; color: #94a3b8; font-size: 0.8rem; }
+        .stat-card strong { display: block; color: white; font-size: 1.2rem; margin-top: 5px; }
         .table-wrap { max-height: 300px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; }
         th { text-align: right; padding: 10px; color: #94a3b8; border-bottom: 1px solid #334155; }
@@ -619,15 +686,11 @@ export default function ContentManager() {
         .alert-toast.success { background: #22c55e; color: #0f172a; }
         .alert-toast.error { background: #ef4444; }
 
-        /* Responsive Sidebar */
         @media (max-width: 768px) {
             .mobile-toggle { display: flex; align-items: center; gap: 5px; }
-            .editor-sidebar { 
-                position: absolute; right: 0; top: 0; bottom: 0; width: 85%; z-index: 50; 
-                transform: translateX(100%); box-shadow: -5px 0 20px rgba(0,0,0,0.5); 
-            }
+            .editor-sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: 85%; z-index: 50; transform: translateX(100%); box-shadow: -5px 0 20px rgba(0,0,0,0.5); }
             .editor-sidebar.mobile-visible { transform: translateX(0); }
-            .options-container { grid-template-columns: 1fr; }
+            .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
         }
 
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -635,3 +698,16 @@ export default function ContentManager() {
     </AdminLayout>
   );
 }
+
+// Unified Modal Component
+const Modal = ({ title, children, onClose }) => (
+    <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+                <h3>{title}</h3>
+                <button onClick={onClose} className="close-btn">✕</button>
+            </div>
+            {children}
+        </div>
+    </div>
+);
