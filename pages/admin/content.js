@@ -855,7 +855,7 @@ export default function ContentManager() {
         table { width: 100%; border-collapse: collapse; }
         th { text-align: right; padding: 10px; color: #94a3b8; border-bottom: 1px solid #334155; }
         td { padding: 10px; color: white; border-bottom: 1px solid #334155; }
-        .alert-toast { position: fixed; bottom: 30px; left: 30px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; z-index: 3000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .alert-toast { position: fixed; bottom: 30px; left: 30px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; z-index: 20000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .alert-toast.success { background: #22c55e; color: #0f172a; }
         .alert-toast.error { background: #ef4444; }
         @media (max-width: 768px) {
@@ -865,26 +865,51 @@ export default function ContentManager() {
             .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
 
             /* --- إصلاح الوضع الأفقي (Landscape) للهواتف --- */
-            /* --- إصلاح الوضع الأفقي (Landscape) للهواتف --- */
+            /* --- إصلاح الوضع الأفقي (Landscape) --- */
             @media (orientation: landscape) {
+                /* 1. تحرير الشريط الجانبي للسماح بالسكرول */
                 .editor-sidebar {
-                    display: block; /* إلغاء نظام Flex للسماح بالسكرول الطبيعي */
-                    overflow-y: auto; /* تفعيل السكرول للشريط الجانبي بالكامل */
-                    height: 100%; /* ضمان ملء الشاشة */
+                    display: block; /* إلغاء Flex */
+                    overflow-y: auto; /* تفعيل السكرول */
+                    height: auto; 
+                    max-height: 100vh; 
+                    position: absolute;
+                    right: 0; top: 0; bottom: 0;
+                    z-index: 50;
                 }
                 
+                /* 2. ضبط منطقة الكتابة لمنع اختفاء النص خلف الكيبورد */
+                .editor-main {
+                    padding: 15px !important;
+                    height: 100vh; 
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
+                    padding-bottom: 100px !important; /* مساحة أمان سفلية */
+                }
+
+                /* 3. تحسينات بصرية للعناصر الصغيرة */
+                .editor-header {
+                    padding: 5px 15px;
+                }
+                .image-upload label {
+                    padding: 5px 10px;
+                    margin-bottom: 5px;
+                }
+                
+                /* 4. إلغاء السكرول الداخلي لقائمة الأسئلة لتظهر كاملة */
                 .q-list-scroll {
-                    flex: none; /* إيقاف التمدد التلقائي */
-                    height: auto; /* السماح للقائمة بالطول حسب عدد الأسئلة */
-                    max-height: none; /* ✅ إلغاء الحد الأقصى للطول (الحل الجذري) */
-                    overflow-y: visible; /* ✅ إلغاء السكرول الداخلي */
+                    flex: none;
+                    height: auto;
+                    max-height: none;
+                    overflow-y: visible;
                     border-bottom: 1px solid #334155;
                 }
-                
+
+                /* 5. ضبط زر الحفظ ليظهر في نهاية القائمة */
                 .sidebar-footer {
-                    position: static; /* جعل الزر يظهر في نهاية الصفحة بشكل طبيعي */
-                    margin-top: 30px;
-                    padding-bottom: 40px; /* مساحة إضافية في الأسفل لسهولة الضغط */
+                    position: static;
+                    margin-top: 20px;
+                    padding-bottom: 40px;
                 }
             }
         }
