@@ -828,6 +828,25 @@ export default function ContentManager() {
             .editor-sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: 85%; z-index: 50; transform: translateX(100%); box-shadow: -5px 0 20px rgba(0,0,0,0.5); }
             .editor-sidebar.mobile-visible { transform: translateX(0); }
             .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
+
+            /* --- إصلاح الوضع الأفقي (Landscape) للهواتف --- */
+            @media (orientation: landscape) {
+                .editor-sidebar {
+                    display: block; /* إلغاء الـ Flex لتفعيل السكرول الطبيعي */
+                    overflow-y: auto; /* تفعيل السكرول العمودي */
+                }
+                .q-list-scroll {
+                    flex: none; /* إيقاف التمدد التلقائي */
+                    height: auto;
+                    max-height: 200px; /* تحديد ارتفاع أقصى لقائمة الأسئلة */
+                    border-bottom: 1px solid #334155;
+                }
+                .sidebar-footer {
+                    position: static; /* جعل الفوتر يظهر في نهاية السكرول وليس مثبتاً في الأسفل */
+                    margin-top: 20px;
+                    padding-bottom: 20px;
+                }
+            }
         }
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       `}</style>
