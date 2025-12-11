@@ -28,9 +28,6 @@ export default async (req, res) => {
                       exams (
                           id, title, duration_minutes, sort_order, 
                           requires_student_name, randomize_questions, randomize_options,
-                          
-                          user_attempts (count),
-
                           questions (
                               id, question_text, image_file_id, sort_order,
                               options (id, option_text, is_correct, sort_order)
@@ -48,21 +45,7 @@ export default async (req, res) => {
               .order('sort_order', { foreignTable: 'subjects.exams.questions.options', ascending: true });
 
           if (error) throw error;
-
-          // معالجة البيانات لإضافة attempts_count
-          const processedCourses = courses.map(course => ({
-              ...course,
-              subjects: course.subjects.map(subject => ({
-                  ...subject,
-                  exams: subject.exams.map(exam => ({
-                      ...exam,
-                      // حساب عدد المحاولات (للتحقق في الواجهة الأمامية)
-                      attempts_count: exam.user_attempts ? exam.user_attempts.length : 0
-                  }))
-              }))
-          }));
-
-          return res.status(200).json(processedCourses);
+          return res.status(200).json(courses);
       } catch (err) {
           return res.status(500).json({ error: err.message });
       }
@@ -79,13 +62,13 @@ export default async (req, res) => {
         if (action === 'add_course') {
             await supabase.from('courses').insert({
                 title: payload.title,
-                price: parseInt(payload.price) || 0,
+                price: parseInt(payload.price) || 0, // حفظ السعر
                 sort_order: 999 
             });
             return res.status(200).json({ success: true });
         }
 
-        // --- 2. تعديل كورس ---
+        // --- 2. تعديل كورس (جديد) ---
         if (action === 'edit_course') {
             await supabase.from('courses').update({
                 title: payload.title,
@@ -99,13 +82,13 @@ export default async (req, res) => {
             await supabase.from('subjects').insert({
                 course_id: payload.courseId, 
                 title: payload.title,
-                price: parseInt(payload.price) || 0,
+                price: parseInt(payload.price) || 0, // حفظ السعر
                 sort_order: 999
             });
             return res.status(200).json({ success: true });
         }
 
-        // --- 4. تعديل مادة ---
+        // --- 4. تعديل مادة (جديد) ---
         if (action === 'edit_subject') {
             await supabase.from('subjects').update({
                 title: payload.title,
@@ -124,7 +107,7 @@ export default async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 6. تعديل فصل ---
+        // --- 6. تعديل فصل (جديد) ---
         if (action === 'edit_chapter') {
             await supabase.from('chapters').update({
                 title: payload.title
@@ -196,60 +179,21 @@ export default async (req, res) => {
                 };
 
                 if (questionId && !String(questionId).startsWith('temp')) {
-                    // 1. تحديث بيانات السؤال
                     await supabase.from('questions').update(questionData).eq('id', questionId);
-                    
-                    // --- [الإصلاح: تحديث الاختيارات بدلاً من الحذف الكامل] ---
-                    
-                    // جلب الاختيارات الحالية للحفاظ على الـ IDs
-                    const { data: existingOptions } = await supabase
-                        .from('options')
-                        .select('id')
-                        .eq('question_id', questionId)
-                        .order('sort_order', { ascending: true });
-
-                    const existingIds = existingOptions ? existingOptions.map(o => o.id) : [];
-                    
-                    // التكرار على الاختيارات الجديدة من الـ Payload
-                    for (let idx = 0; idx < q.options.length; idx++) {
-                        const optText = q.options[idx];
-                        const optionData = {
-                            question_id: questionId,
-                            option_text: optText,
-                            is_correct: idx === parseInt(q.correctIndex),
-                            sort_order: idx
-                        };
-
-                        if (idx < existingIds.length) {
-                            // تحديث الاختيار الموجود بنفس الترتيب
-                            await supabase.from('options').update(optionData).eq('id', existingIds[idx]);
-                        } else {
-                            // إضافة اختيار جديد
-                            await supabase.from('options').insert(optionData);
-                        }
-                    }
-
-                    // حذف الاختيارات الزائدة
-                    if (existingIds.length > q.options.length) {
-                        const idsToDelete = existingIds.slice(q.options.length);
-                        await supabase.from('options').delete().in('id', idsToDelete);
-                    }
-                    // --- [نهاية الإصلاح] ---
-
+                    await supabase.from('options').delete().eq('question_id', questionId);
                 } else {
-                    // إضافة سؤال جديد بالكامل
                     const { data: newQ, error: qErr } = await supabase.from('questions').insert(questionData).select().single();
                     if (qErr) throw qErr;
                     questionId = newQ.id;
-
-                    const optionsData = q.options.map((optText, idx) => ({
-                        question_id: questionId,
-                        option_text: optText,
-                        is_correct: idx === parseInt(q.correctIndex),
-                        sort_order: idx
-                    }));
-                    await supabase.from('options').insert(optionsData);
                 }
+
+                const optionsData = q.options.map((optText, idx) => ({
+                    question_id: questionId,
+                    option_text: optText,
+                    is_correct: idx === parseInt(q.correctIndex),
+                    sort_order: idx
+                }));
+                await supabase.from('options').insert(optionsData);
             }
 
             return res.status(200).json({ success: true });
