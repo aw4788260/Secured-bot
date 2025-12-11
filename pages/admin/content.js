@@ -440,31 +440,57 @@ export default function ContentManager() {
       )}
 
       {/* --- Unified Modal System --- */}
-      {/* 1. Add/Edit Forms (Same visual style as Confirm Modal) */}
-      {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
-          <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
-              <div className="form-group">
-                  <label>العنوان</label>
-                  <input className="input" autoFocus value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} placeholder="اكتب العنوان..." />
-              </div>
-              {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
-                  <div className="form-group">
-                      <label>السعر (جنية)</label>
-                      <input type="number" className="input" value={formData.price} onChange={e=>setFormData({...formData, price: e.target.value})} placeholder="0" />
-                  </div>
-              )}
-              {modalType === 'add_video' && (
-                  <div className="form-group">
-                      <label>رابط يوتيوب</label>
-                      <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
-                  </div>
-              )}
-              <div className="acts">
-                  <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                  <button className="btn-primary" onClick={handleSaveForm}>حفظ</button>
-              </div>
-          </Modal>
-      )}
+     {/* --- Unified Small Modal (Add/Edit) --- */}
+{['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
+    <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
+        
+        {/* حقل العنوان (مشترك للجميع) */}
+        <div className="form-group">
+            <label>العنوان</label>
+            <input 
+                className="input" 
+                autoFocus 
+                value={formData.title} 
+                onChange={e => setFormData({...formData, title: e.target.value})} 
+                placeholder="اكتب العنوان..." 
+            />
+        </div>
+
+        {/* حقل السعر (يظهر فقط للكورسات والمواد) */}
+        {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
+            <div className="form-group">
+                <label>السعر (جنية)</label>
+                <input 
+                    type="number" 
+                    className="input" 
+                    value={formData.price} 
+                    onChange={e => setFormData({...formData, price: e.target.value})} 
+                    placeholder="0" 
+                />
+            </div>
+        )}
+
+        {/* حقل الرابط (يظهر فقط للفيديو) */}
+        {modalType === 'add_video' && (
+            <div className="form-group">
+                <label>رابط يوتيوب</label>
+                <input 
+                    className="input" 
+                    value={formData.url} 
+                    onChange={e => setFormData({...formData, url: e.target.value})} 
+                    placeholder="https://..." 
+                    dir="ltr" 
+                />
+            </div>
+        )}
+
+        {/* الأزرار */}
+        <div className="acts">
+            <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+            <button className="btn-primary" onClick={handleSaveForm}>حفظ</button>
+        </div>
+    </Modal>
+)}
 
       {/* 2. PDF Modal */}
       {modalType === 'add_pdf' && (
@@ -682,38 +708,53 @@ export default function ContentManager() {
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
         /* --- Unified Modals (Popups) --- */
-        .modal-overlay { 
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-            width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.7); 
-            z-index: 10000; 
-            display: flex; justify-content: center; align-items: center; 
-            backdrop-filter: blur(5px);
-        }
-        .modal-box { 
-            background: #1e293b; 
-            width: 95%; max-width: 450px; 
-            border-radius: 16px; border: 1px solid #475569; 
-            padding: 25px; 
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); 
-            animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            position: relative;
-        }
-        .modal-header { display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 20px; align-items: center; }
-        .modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
-        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
-        
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 0.9rem; }
-        .input { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; }
-        .input:focus { border-color: #38bdf8; outline: none; }
-        .input.file { padding: 8px; }
-        
-        .acts { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
-        .btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .btn-primary.danger { background: #ef4444; color: white; }
-        .btn-cancel { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
+       /* --- Unified Modals (Centered & Blurred) --- */
+.modal-overlay { 
+    position: fixed; 
+    top: 0; left: 0; right: 0; bottom: 0; 
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.7); /* خلفية سوداء شفافة */
+    z-index: 10000; /* طبقة عالية جداً لتظهر فوق كل شيء */
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    backdrop-filter: blur(5px); /* تأثير الضبابية */
+}
 
+.modal-box { 
+    background: #1e293b; 
+    width: 95%; max-width: 450px; 
+    border-radius: 16px; 
+    border: 1px solid #475569; 
+    padding: 25px; 
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); 
+    animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+}
+
+.modal-header { 
+    display: flex; 
+    justify-content: space-between; 
+    border-bottom: 1px solid #334155; 
+    padding-bottom: 10px; 
+    margin-bottom: 20px; 
+    align-items: center; 
+}
+
+.modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
+.close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
+
+/* تنسيقات الفورم داخل النافذة */
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 0.9rem; }
+.input { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; }
+.input:focus { border-color: #38bdf8; outline: none; }
+
+.acts { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+.btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+.btn-cancel { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
+
+@keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         /* --- Exam Editor (Original Styles) --- */
         .editor-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 10000; display: flex; flex-direction: column; }
         .editor-container { display: flex; flex-direction: column; height: 100vh; }
@@ -793,7 +834,7 @@ export default function ContentManager() {
   );
 }
 
-// Unified Reusable Modal (Same style as Confirm)
+// مكون النافذة الموحد القابل لإعادة الاستخدام
 const Modal = ({ title, children, onClose }) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
