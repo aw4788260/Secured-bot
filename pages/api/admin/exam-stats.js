@@ -6,9 +6,10 @@ export default async (req, res) => {
 
     try {
         // جلب جميع المحاولات المكتملة
+        // [تعديل]: استبدال created_at بـ completed_at أو إزالتها إذا لم تكن ضرورية للعرض
         const { data: attempts, error } = await supabase
             .from('user_attempts')
-            .select('score, user_id, student_name_input, created_at')
+            .select('score, user_id, student_name_input, completed_at') 
             .eq('exam_id', examId)
             .eq('status', 'completed')
             .order('score', { ascending: false });
