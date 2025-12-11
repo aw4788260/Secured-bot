@@ -1,7 +1,7 @@
 import AdminLayout from '../../components/AdminLayout';
 import { useState, useEffect, useRef } from 'react';
 
-// --- أيقونات SVG (كما هي) ---
+// --- أيقونات SVG ---
 const Icons = {
     back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
     add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
@@ -36,15 +36,13 @@ export default function ContentManager() {
   const dragItem = useRef();
   const dragOverItem = useRef();
 
-  // Exam Editor
+  // Exam Editor (Separate System)
   const [showExamSidebar, setShowExamSidebar] = useState(false);
   const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
   const [uploadingImg, setUploadingImg] = useState(false);
-  
-  // Stats
   const [examStats, setExamStats] = useState(null);
 
   // --- Initial Fetch ---
@@ -55,6 +53,7 @@ export default function ContentManager() {
         const data = await res.json();
         setCourses(data);
         
+        // Refresh Current View (Keep user in same place)
         if (selectedCourse) {
             const updatedC = data.find(c => c.id === selectedCourse.id);
             setSelectedCourse(updatedC);
@@ -168,10 +167,11 @@ export default function ContentManager() {
       if(type === 'subjects' && selectedSubject?.id === id) setSelectedSubject(null);
   });
 
-  // --- Modal Opening ---
+  // --- Modal Opening (Unified System) ---
   const openModal = (type, data = {}) => {
-      setFormData({ title: '', url: '', price: 0 });
+      setFormData({ title: '', url: '', price: 0 }); // Reset defaults
       
+      // Populate for Editing
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
           setFormData({ 
               title: data.title || '', 
@@ -180,6 +180,7 @@ export default function ContentManager() {
           });
       }
 
+      // Special handling for Exam Editor
       if (type === 'exam_editor') {
           setShowExamSidebar(false);
           if (data.id) {
@@ -215,7 +216,15 @@ export default function ContentManager() {
       }
   };
 
-  // --- Exam Logic ---
+  const getModalTitle = () => {
+      if(modalType.includes('course')) return modalType.includes('add') ? 'إضافة كورس' : 'تعديل الكورس';
+      if(modalType.includes('subject')) return modalType.includes('add') ? 'إضافة مادة' : 'تعديل المادة';
+      if(modalType.includes('chapter')) return modalType.includes('add') ? 'إضافة فصل' : 'تعديل الفصل';
+      if(modalType === 'add_video') return 'إضافة فيديو';
+      return '';
+  };
+
+  // --- Exam Logic --- (As it was in content 3.js)
   const handleImageUpload = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -282,20 +291,12 @@ export default function ContentManager() {
       setLoading(false);
   };
 
-  const getModalTitle = () => {
-      if(modalType.includes('course')) return modalType.includes('add') ? 'إضافة كورس' : 'تعديل الكورس';
-      if(modalType.includes('subject')) return modalType.includes('add') ? 'إضافة مادة' : 'تعديل المادة';
-      if(modalType.includes('chapter')) return modalType.includes('add') ? 'إضافة فصل' : 'تعديل الفصل';
-      if(modalType === 'add_video') return 'إضافة فيديو';
-      return '';
-  };
-
   // --- Render ---
   return (
     <AdminLayout title="المحتوى">
       
       <div className="header-bar">
-          <div>
+          <div className="title-area">
               <h1>🗂️ إدارة المحتوى</h1>
               <div className="breadcrumbs">
                   <span onClick={() => {setSelectedCourse(null); setSelectedSubject(null); setSelectedChapter(null);}}>الرئيسية</span>
@@ -305,7 +306,7 @@ export default function ContentManager() {
               </div>
           </div>
           <div className="actions-area">
-              {/* Edit Buttons */}
+              {/* Edit Buttons (Conditional) */}
               {selectedChapter && <button className="btn-secondary edit" onClick={() => openModal('edit_chapter', selectedChapter)}>{Icons.edit} تعديل الفصل</button>}
               {selectedSubject && !selectedChapter && <button className="btn-secondary edit" onClick={() => openModal('edit_subject', selectedSubject)}>{Icons.edit} تعديل المادة</button>}
               {selectedCourse && !selectedSubject && <button className="btn-secondary edit" onClick={() => openModal('edit_course', selectedCourse)}>{Icons.edit} تعديل الكورس</button>}
@@ -313,7 +314,7 @@ export default function ContentManager() {
               {/* Add/Back Buttons */}
               {!selectedCourse && <button className="btn-secondary" onClick={() => openModal('add_course')}>{Icons.add} كورس جديد</button>}
               {selectedCourse && !selectedSubject && <button className="btn-secondary" onClick={() => openModal('add_subject')}>{Icons.add} مادة جديدة</button>}
-              {(selectedCourse || selectedSubject || selectedChapter) && <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع للخلف</button>}
+              {(selectedCourse || selectedSubject || selectedChapter) && <button className="btn-secondary" onClick={handleBack}>{Icons.back} تحديث ورجوع</button>}
           </div>
       </div>
 
@@ -438,7 +439,8 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* --- Unified Small Modal (Add/Edit) --- */}
+      {/* --- Unified Modal System --- */}
+      {/* 1. Add/Edit Forms (Same visual style as Confirm Modal) */}
       {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
           <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
               <div className="form-group">
@@ -464,7 +466,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* PDF Modal */}
+      {/* 2. PDF Modal */}
       {modalType === 'add_pdf' && (
           <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
               <form onSubmit={async (e) => {
@@ -497,89 +499,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* --- Exam Editor (Original Layout) --- */}
-      {modalType === 'exam_editor' && (
-          <div className="editor-overlay">
-              <div className="editor-container">
-                  <div className="editor-header">
-                      <h3>{examForm.id ? 'تعديل الامتحان' : 'إنشاء امتحان جديد'}</h3>
-                      <div className="header-actions">
-                          <button className="mobile-toggle" onClick={() => setShowExamSidebar(!showExamSidebar)}>{Icons.menu} القائمة</button>
-                          <button className="close-btn" onClick={() => setModalType(null)}>{Icons.close} إغلاق</button>
-                      </div>
-                  </div>
-                  <div className="editor-body">
-                      <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
-                          <div className="meta-section styled">
-                              <label className="field-label">عنوان الامتحان</label>
-                              <input className="input" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} placeholder="العنوان..." />
-                              <label className="field-label">المدة (بالدقائق)</label>
-                              <div className="duration-input">
-                                  <input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} />
-                                  <span>دقيقة</span>
-                              </div>
-                              <div className="toggles-group">
-                                  <div className="toggle-row">
-                                      <span>طلب اسم الطالب</span>
-                                      <label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label>
-                                  </div>
-                                  <div className="toggle-row">
-                                      <span>عشوائية الأسئلة</span>
-                                      <label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label>
-                                  </div>
-                                  <div className="toggle-row">
-                                      <span>عشوائية الاختيارات</span>
-                                      <label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label>
-                                  </div>
-                              </div>
-                          </div>
-                          <div className="q-list-scroll">
-                              <h4 className="list-title">قائمة الأسئلة ({examForm.questions.length})</h4>
-                              {examForm.questions.map((q, i) => (
-                                  <div key={i} className={`q-item ${editingQIndex === i ? 'active' : ''}`} onClick={() => editQuestion(i)}>
-                                      <span className="q-num">{i+1}</span>
-                                      <span className="q-text">{q.text.substring(0, 15)}...</span>
-                                      <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button>
-                                  </div>
-                              ))}
-                              <button className="add-q-btn" onClick={() => { resetCurrentQuestion(); setShowExamSidebar(false); }}>{Icons.add} سؤال جديد</button>
-                          </div>
-                          <div className="sidebar-footer">
-                              <button className="btn-save-exam" onClick={submitExam}>حفظ وإنهاء</button>
-                          </div>
-                      </div>
-                      {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
-                      <div className="editor-main">
-                          <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
-                          <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
-                          <div className="image-upload">
-                              <label>{Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}<input type="file" hidden accept="image/*" onChange={handleImageUpload} /></label>
-                              {uploadingImg && <span className="loading-text">جاري الرفع...</span>}
-                              {currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
-                          </div>
-                          <div className="options-section">
-                              <label className="section-label">الاختيارات:</label>
-                              <div className="options-container dynamic">
-                                  {currentQ.options.map((opt, i) => (
-                                      <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
-                                          <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>{currentQ.correctIndex === i && <div className="dot"></div>}</div>
-                                          <input className="input small" value={opt} onChange={e => handleOptionChange(i, e.target.value)} placeholder={`الخيار ${i+1}`} />
-                                          {currentQ.options.length > 2 && <button className="btn-remove-opt" onClick={() => removeOption(i)}>×</button>}
-                                      </div>
-                                  ))}
-                              </div>
-                              <button className="btn-add-opt" onClick={addOption}>+ إضافة خيار</button>
-                          </div>
-                          <div className="editor-actions">
-                              <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}</button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Stats Modal */}
+      {/* 3. Stats Modal */}
       {modalType === 'stats' && examStats && (
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
               <div className="stats-summary">
@@ -605,13 +525,91 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Alerts & Confirm */}
-      {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
+      {/* --- 4. Exam Editor (Original Layout - Separate from Modal) --- */}
+      {modalType === 'exam_editor' && (
+          <div className="editor-overlay">
+              <div className="editor-container">
+                  <div className="editor-header">
+                      <h3>{examForm.id ? 'تعديل الامتحان' : 'إنشاء امتحان جديد'}</h3>
+                      <div className="header-actions">
+                          <button className="mobile-toggle" onClick={() => setShowExamSidebar(!showExamSidebar)}>{Icons.menu} القائمة</button>
+                          <button className="close-btn" onClick={() => setModalType(null)}>{Icons.close} إغلاق</button>
+                      </div>
+                  </div>
+                  
+                  <div className="editor-body">
+                      {/* Left: Sidebar */}
+                      <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
+                          <div className="meta-section styled">
+                              <label className="field-label">عنوان الامتحان</label>
+                              <input className="input" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} placeholder="العنوان..." />
+                              <label className="field-label">المدة (بالدقائق)</label>
+                              <div className="duration-input">
+                                  <input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} />
+                                  <span>دقيقة</span>
+                              </div>
+                              <div className="toggles-group">
+                                  <div className="toggle-row"><span>طلب اسم الطالب</span><label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label></div>
+                                  <div className="toggle-row"><span>عشوائية الأسئلة</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
+                                  <div className="toggle-row"><span>عشوائية الاختيارات</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
+                              </div>
+                          </div>
+                          <div className="q-list-scroll">
+                              <h4 className="list-title">قائمة الأسئلة ({examForm.questions.length})</h4>
+                              {examForm.questions.map((q, i) => (
+                                  <div key={i} className={`q-item ${editingQIndex === i ? 'active' : ''}`} onClick={() => editQuestion(i)}>
+                                      <span className="q-num">{i+1}</span>
+                                      <span className="q-text">{q.text.substring(0, 15)}...</span>
+                                      <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button>
+                                  </div>
+                              ))}
+                              <button className="add-q-btn" onClick={() => { resetCurrentQuestion(); setShowExamSidebar(false); }}>{Icons.add} سؤال جديد</button>
+                          </div>
+                          <div className="sidebar-footer">
+                              <button className="btn-save-exam" onClick={submitExam}>حفظ وإنهاء</button>
+                          </div>
+                      </div>
+                      
+                      {/* Overlay for mobile sidebar */}
+                      {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
+
+                      {/* Right: Main Editor */}
+                      <div className="editor-main">
+                          <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
+                          <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
+                          <div className="image-upload">
+                              <label>{Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}<input type="file" hidden accept="image/*" onChange={handleImageUpload} /></label>
+                              {uploadingImg && <span className="loading-text">جاري الرفع...</span>}
+                              {currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
+                          </div>
+                          <div className="options-section">
+                              <label className="section-label">الاختيارات (حدد الإجابة الصحيحة):</label>
+                              <div className="options-container dynamic">
+                                  {currentQ.options.map((opt, i) => (
+                                      <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
+                                          <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>{currentQ.correctIndex === i && <div className="dot"></div>}</div>
+                                          <input className="input small" value={opt} onChange={e => handleOptionChange(i, e.target.value)} placeholder={`الخيار ${i+1}`} />
+                                          {currentQ.options.length > 2 && <button className="btn-remove-opt" onClick={() => removeOption(i)} title="حذف">×</button>}
+                                      </div>
+                                  ))}
+                              </div>
+                              <button className="btn-add-opt" onClick={addOption}>+ إضافة خيار</button>
+                          </div>
+                          <div className="editor-actions">
+                              <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}</button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- Confirm Modal --- */}
       {confirmData.show && (
           <div className="modal-overlay">
               <div className="modal-box">
-                  <h3>تأكيد</h3>
-                  <p style={{textAlign:'center', color:'#cbd5e1'}}>{confirmData.msg}</p>
+                  <div className="modal-header"><h3>تأكيد</h3></div>
+                  <p style={{textAlign:'center', color:'#cbd5e1', padding: '0 20px'}}>{confirmData.msg}</p>
                   <div className="acts">
                       <button className="btn-cancel" onClick={closeConfirm}>إلغاء</button>
                       <button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button>
@@ -620,8 +618,11 @@ export default function ContentManager() {
           </div>
       )}
 
+      {/* Alerts */}
+      {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
+
       <style jsx>{`
-        /* --- General Layout --- */
+        /* General Layout */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
         .breadcrumbs { color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
@@ -629,8 +630,8 @@ export default function ContentManager() {
         .btn-secondary { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; gap: 5px; align-items: center; }
         .btn-secondary.edit { color: #facc15; border-color: #facc15; background: rgba(250, 204, 21, 0.05); }
         .loader-line { height: 3px; background: #38bdf8; width: 100%; position: fixed; top: 0; left: 0; z-index: 9999; }
-        
-        /* --- Grids & Cards --- */
+
+        /* Grids & Cards */
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
         .draggable-item.dragging { opacity: 0.5; border: 2px dashed #38bdf8 !important; }
         .folder-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
@@ -638,19 +639,19 @@ export default function ContentManager() {
         .folder-card .icon { width: 50px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; }
         .folder-card .icon.blue { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .folder-card .icon.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
-        
         .card-actions-abs { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 20; }
         .drag-handle-abs { cursor: grab; color: rgba(255,255,255,0.2); padding: 5px; }
         .drag-handle-abs:hover { color: white; background: rgba(0,0,0,0.2); border-radius: 4px; }
         .btn-icon.danger { width: 25px; height: 25px; }
 
-        /* --- Panels & Lists --- */
+        /* Content Layout */
         .content-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
         .panel { background: #111827; border-radius: 12px; }
         .panel-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 15px; }
         .panel-head h3 { margin: 0; color: white; font-size: 1.2rem; }
         .btn-small { background: #38bdf8; color: #0f172a; padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 5px; }
 
+        /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; }
         .list-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; position: relative; }
         .drag-handle { cursor: grab; padding: 5px; color: #64748b; margin-left: 10px; z-index: 10; }
@@ -663,6 +664,7 @@ export default function ContentManager() {
         .btn-icon:hover { background: rgba(255,255,255,0.1); color: white; }
         .btn-icon.danger:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
 
+        /* Media & Exam Grids */
         .exam-grid, .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; }
         .exam-card-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 15px; position: relative; }
         .exam-icon { color: #facc15; background: rgba(250, 204, 21, 0.1); padding: 10px; border-radius: 8px; }
@@ -679,7 +681,7 @@ export default function ContentManager() {
         .media-body { padding: 10px; display: flex; justify-content: space-between; align-items: center; }
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
-        /* --- Unified Modals (Centered & Blurred) --- */
+        /* --- Unified Modals (Popups) --- */
         .modal-overlay { 
             position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
             width: 100vw; height: 100vh;
@@ -712,7 +714,7 @@ export default function ContentManager() {
         .btn-primary.danger { background: #ef4444; color: white; }
         .btn-cancel { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
 
-        /* --- Exam Editor (Restored Original) --- */
+        /* --- Exam Editor (Original Styles) --- */
         .editor-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 10000; display: flex; flex-direction: column; }
         .editor-container { display: flex; flex-direction: column; height: 100vh; }
         .editor-header { background: #1e293b; padding: 15px 25px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
@@ -791,7 +793,7 @@ export default function ContentManager() {
   );
 }
 
-// Unified Modal Component
+// Unified Reusable Modal (Same style as Confirm)
 const Modal = ({ title, children, onClose }) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
