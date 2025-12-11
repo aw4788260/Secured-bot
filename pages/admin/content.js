@@ -70,7 +70,12 @@ export default function ContentManager() {
       setLoading(false);
   };
 
-  useEffect(() => { fetchContent(); }, []);
+  useEffect(() => { 
+      // ✅ إجبار الصفحة على البدء من الأعلى عند الفتح أو التحديث
+      window.scrollTo(0, 0);
+      
+      fetchContent(); 
+  }, []);
 
   // --- Helpers ---
   const showAlert = (type, msg) => {
