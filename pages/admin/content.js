@@ -440,58 +440,59 @@ export default function ContentManager() {
       )}
 
       {/* --- Unified Modal System --- */}
-     {/* --- Unified Small Modal (Add/Edit) --- */}
-{['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
-    <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
-        
-        {/* حقل العنوان (مشترك للجميع) */}
-        <div className="form-group">
-            <label>العنوان</label>
-            <input 
-                className="input" 
-                autoFocus 
-                value={formData.title} 
-                onChange={e => setFormData({...formData, title: e.target.value})} 
-                placeholder="اكتب العنوان..." 
-            />
-        </div>
-
-        {/* حقل السعر (يظهر فقط للكورسات والمواد) */}
-        {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
-            <div className="form-group">
-                <label>السعر (جنية)</label>
-                <input 
-                    type="number" 
+  {/* --- استبدل كود النافذة الموحدة بهذا البلوك --- */}
+      {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
+          <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
+              <div className="form-group">
+                  <label>العنوان</label>
+                  <input 
                     className="input" 
-                    value={formData.price} 
-                    onChange={e => setFormData({...formData, price: e.target.value})} 
-                    placeholder="0" 
-                />
-            </div>
-        )}
+                    autoFocus 
+                    value={formData.title} 
+                    onChange={e=>setFormData({...formData, title: e.target.value})} 
+                    placeholder="اكتب العنوان..." 
+                  />
+              </div>
 
-        {/* حقل الرابط (يظهر فقط للفيديو) */}
-        {modalType === 'add_video' && (
-            <div className="form-group">
-                <label>رابط يوتيوب</label>
-                <input 
-                    className="input" 
-                    value={formData.url} 
-                    onChange={e => setFormData({...formData, url: e.target.value})} 
-                    placeholder="https://..." 
-                    dir="ltr" 
-                />
-            </div>
-        )}
+              {/* حقل السعر يظهر فقط للكورسات والمواد */}
+              {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
+                  <div className="form-group">
+                      <label>السعر (جنية)</label>
+                      <input 
+                        type="number" 
+                        className="input" 
+                        value={formData.price} 
+                        onChange={e=>setFormData({...formData, price: e.target.value})} 
+                        placeholder="0" 
+                      />
+                  </div>
+              )}
 
-        {/* الأزرار */}
-        <div className="acts">
-            <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-            <button className="btn-primary" onClick={handleSaveForm}>حفظ</button>
-        </div>
-    </Modal>
-)}
-
+              {modalType === 'add_video' && (
+                  <div className="form-group">
+                      <label>رابط يوتيوب</label>
+                      <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
+                  </div>
+              )}
+              
+              <div className="acts">
+                  <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+                  <button className="btn-primary" onClick={() => {
+                      // منطق الحفظ والتعديل
+                      if (modalType === 'add_course') apiCall('add_course', { title: formData.title, price: formData.price });
+                      else if (modalType === 'edit_course') apiCall('edit_course', { id: selectedCourse.id, title: formData.title, price: formData.price });
+                      
+                      else if (modalType === 'add_subject') apiCall('add_subject', { courseId: selectedCourse.id, title: formData.title, price: formData.price });
+                      else if (modalType === 'edit_subject') apiCall('edit_subject', { id: selectedSubject.id, title: formData.title, price: formData.price });
+                      
+                      else if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title });
+                      else if (modalType === 'edit_chapter') apiCall('edit_chapter', { id: selectedChapter.id, title: formData.title });
+                      
+                      else if (modalType === 'add_video') apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url });
+                  }}>حفظ</button>
+              </div>
+          </Modal>
+      )}
       {/* 2. PDF Modal */}
       {modalType === 'add_pdf' && (
           <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
@@ -835,6 +836,7 @@ export default function ContentManager() {
 }
 
 // مكون النافذة الموحد القابل لإعادة الاستخدام
+// استبدل مكون Modal في نهاية الملف بهذا الكود:
 const Modal = ({ title, children, onClose }) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -844,5 +846,40 @@ const Modal = ({ title, children, onClose }) => (
             </div>
             {children}
         </div>
+        <style jsx>{`
+            .modal-overlay {
+                position: fixed;
+                top: 0; left: 0; right: 0; bottom: 0;
+                width: 100vw; height: 100vh;
+                background: rgba(0,0,0,0.75);
+                z-index: 10000;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                backdrop-filter: blur(5px);
+            }
+            .modal-box {
+                background: #1e293b;
+                width: 95%;
+                max-width: 450px;
+                border-radius: 16px;
+                border: 1px solid #475569;
+                padding: 25px;
+                box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+                animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                position: relative;
+            }
+            .modal-header {
+                display: flex;
+                justify-content: space-between;
+                border-bottom: 1px solid #334155;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+                align-items: center;
+            }
+            .modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
+            .close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
+            @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        `}</style>
     </div>
 );
