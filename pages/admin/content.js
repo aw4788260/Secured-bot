@@ -3,18 +3,18 @@ import { useState, useEffect, useRef } from 'react';
 
 // --- أيقونات SVG ---
 const Icons = {
-    back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
-    add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
-    trash: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
-    edit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
-    video: <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.5"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>,
-    pdf: <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
-    exam: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>,
-    folder: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
-    close: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+    back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
+    add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+    trash: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+    edit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
+    video: <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>,
+    pdf: <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
+    exam: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>,
+    folder: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
+    close: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
     image: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
-    menu: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>,
-    drag: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+    menu: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>,
+    drag: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
 };
 
 export default function ContentManager() {
@@ -43,9 +43,11 @@ export default function ContentManager() {
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
   const [uploadingImg, setUploadingImg] = useState(false);
+  
+  // Stats
   const [examStats, setExamStats] = useState(null);
 
-  // --- Fetch ---
+  // --- Initial Fetch ---
   const fetchContent = async () => {
       setLoading(true);
       try {
@@ -53,7 +55,7 @@ export default function ContentManager() {
         const data = await res.json();
         setCourses(data);
         
-        // Refresh Current View
+        // Refresh Current View Data to keep user in place
         if (selectedCourse) {
             const updatedC = data.find(c => c.id === selectedCourse.id);
             setSelectedCourse(updatedC);
@@ -75,20 +77,27 @@ export default function ContentManager() {
   // --- Drag & Drop Handlers ---
   const onDragStart = (e, index) => {
       dragItem.current = index;
-      e.target.classList.add('dragging');
+      e.target.closest('.draggable-item').classList.add('dragging');
   };
 
   const onDragEnter = (e, index) => {
       dragOverItem.current = index;
   };
 
-  const onDragEnd = async (e, listType, parentId) => { // listType: 'chapters', 'videos'
-      e.target.classList.remove('dragging');
+  const onDragEnd = async (e, listType) => { 
+      e.target.closest('.draggable-item').classList.remove('dragging');
       
+      // Determine which list we are reordering
       let list = [];
-      if (listType === 'chapters') list = [...selectedSubject.chapters];
-      if (listType === 'videos') list = [...selectedChapter.videos];
+      if (listType === 'courses') list = [...courses];
+      else if (listType === 'subjects') list = [...selectedCourse.subjects];
+      else if (listType === 'chapters') list = [...selectedSubject.chapters];
+      else if (listType === 'videos') list = [...selectedChapter.videos];
+      else if (listType === 'pdfs') list = [...selectedChapter.pdfs];
 
+      if (!list.length) return;
+
+      // Reorder logic
       const draggedItemContent = list[dragItem.current];
       list.splice(dragItem.current, 1);
       list.splice(dragOverItem.current, 0, draggedItemContent);
@@ -96,14 +105,14 @@ export default function ContentManager() {
       dragItem.current = null;
       dragOverItem.current = null;
 
-      // Update Local State for smoothness
-      if (listType === 'chapters') {
-          setSelectedSubject({ ...selectedSubject, chapters: list });
-      } else if (listType === 'videos') {
-          setSelectedChapter({ ...selectedChapter, videos: list });
-      }
+      // Update UI Immediately
+      if (listType === 'courses') setCourses(list);
+      else if (listType === 'subjects') setSelectedCourse({ ...selectedCourse, subjects: list });
+      else if (listType === 'chapters') setSelectedSubject({ ...selectedSubject, chapters: list });
+      else if (listType === 'videos') setSelectedChapter({ ...selectedChapter, videos: list });
+      else if (listType === 'pdfs') setSelectedChapter({ ...selectedChapter, pdfs: list });
 
-      // Update IDs and Sort Order
+      // Prepare Data for API
       const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
       
       // Call API
@@ -139,6 +148,7 @@ export default function ContentManager() {
       else if (selectedCourse) setSelectedCourse(null);
   };
 
+  // --- API Actions ---
   const apiCall = async (action, payload) => {
       setLoading(true);
       try {
@@ -147,20 +157,22 @@ export default function ContentManager() {
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ action, payload })
           });
+          const data = await res.json();
           if (res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تمت العملية بنجاح'); }
-          else { showAlert('error', 'حدث خطأ'); }
-      } catch (e) { showAlert('error', 'خطأ اتصال'); }
+          else { showAlert('error', data.error || 'حدث خطأ'); }
+      } catch (e) { showAlert('error', 'خطأ في الاتصال'); }
       setLoading(false);
   };
 
-  const handleDelete = (type, id) => showConfirm('تأكيد الحذف؟', async () => {
+  const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
       await apiCall('delete_item', { type, id });
       closeConfirm();
   });
 
-  // --- Exam Logic (Same as before) ---
+  // --- Modal Opening ---
   const openModal = (type, data = {}) => {
       setFormData({ title: '', url: '' });
+      
       if (type === 'exam_editor') {
           setShowExamSidebar(false);
           if (data.id) {
@@ -177,98 +189,199 @@ export default function ContentManager() {
           } else {
               setExamForm({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
           }
-          setDeletedQIds([]); setEditingQIndex(-1); setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+          setDeletedQIds([]); setEditingQIndex(-1); 
+          setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
       }
       setModalType(type);
   };
 
-  const handleOptionChange = (index, value) => { const newOpts = [...currentQ.options]; newOpts[index] = value; setCurrentQ({ ...currentQ, options: newOpts }); };
-  const addOption = () => setCurrentQ({ ...currentQ, options: [...currentQ.options, ''] });
+  // --- Exam Logic ---
+  const handleImageUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      setUploadingImg(true);
+      const fd = new FormData();
+      fd.append('file', file); fd.append('type', 'exam_image');
+      try {
+          const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+          const data = await res.json();
+          if(res.ok) setCurrentQ({...currentQ, image: data.fileName});
+      } catch(e) {}
+      setUploadingImg(false);
+  };
+
+  const handleOptionChange = (index, value) => {
+      const newOpts = [...currentQ.options];
+      newOpts[index] = value;
+      setCurrentQ({ ...currentQ, options: newOpts });
+  };
+
+  const addOption = () => {
+      setCurrentQ({ ...currentQ, options: [...currentQ.options, ''] });
+  };
+
   const removeOption = (index) => {
-      if (currentQ.options.length <= 2) return showAlert('error', 'يجب أن يكون خياران على الأقل');
+      if (currentQ.options.length <= 2) return showAlert('error', 'يجب أن يكون هناك خياران على الأقل');
       const newOpts = currentQ.options.filter((_, i) => i !== index);
-      let newCorrect = currentQ.correctIndex; if (index < currentQ.correctIndex) newCorrect--; if (index === currentQ.correctIndex) newCorrect = 0;
+      let newCorrect = currentQ.correctIndex;
+      if (index < currentQ.correctIndex) newCorrect--;
+      if (index === currentQ.correctIndex) newCorrect = 0;
       setCurrentQ({ ...currentQ, options: newOpts, correctIndex: newCorrect });
   };
+
+  const resetCurrentQuestion = () => {
+      setEditingQIndex(-1);
+      setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+  };
+
   const saveQuestion = () => {
       if (!currentQ.text) return showAlert('error', 'نص السؤال مطلوب');
-      const newQs = [...examForm.questions]; if (editingQIndex >= 0) newQs[editingQIndex] = currentQ; else newQs.push(currentQ);
-      setExamForm({ ...examForm, questions: newQs }); setEditingQIndex(-1); setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+      const newQs = [...examForm.questions];
+      if (editingQIndex >= 0) newQs[editingQIndex] = currentQ;
+      else newQs.push(currentQ);
+      setExamForm({ ...examForm, questions: newQs });
+      resetCurrentQuestion();
   };
+
+  const editQuestion = (i) => {
+      setCurrentQ(examForm.questions[i]);
+      setEditingQIndex(i);
+      setShowExamSidebar(false);
+  };
+
   const deleteQuestion = (i) => {
-      const q = examForm.questions[i]; if (q.id) setDeletedQIds([...deletedQIds, q.id]);
+      const q = examForm.questions[i];
+      if (q.id) setDeletedQIds([...deletedQIds, q.id]);
       setExamForm({ ...examForm, questions: examForm.questions.filter((_, idx) => idx !== i) });
-      if (editingQIndex === i) { setEditingQIndex(-1); setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 }); }
+      if (editingQIndex === i) resetCurrentQuestion();
   };
+
   const submitExam = async () => {
       if(!examForm.title || examForm.questions.length === 0) return showAlert('error', 'البيانات ناقصة');
       await apiCall('save_exam', {
-          id: examForm.id, subjectId: selectedSubject.id, title: examForm.title, duration: examForm.duration,
+          id: examForm.id, subjectId: selectedSubject.id,
+          title: examForm.title, duration: examForm.duration,
           requiresName: examForm.requiresName, randQ: examForm.randQ, randO: examForm.randO,
           questions: examForm.questions, deletedQuestionIds: deletedQIds
       });
   };
+
   const loadStats = async (examId) => {
       setLoading(true);
       const res = await fetch(`/api/admin/exam-stats?examId=${examId}`);
       if(res.ok) { setExamStats(await res.json()); setModalType('stats'); }
       setLoading(false);
   };
-  const handleImageUpload = async (e) => {
-      const file = e.target.files[0]; if (!file) return; setUploadingImg(true);
-      const fd = new FormData(); fd.append('file', file); fd.append('type', 'exam_image');
-      try { const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd}); const data = await res.json(); if(res.ok) setCurrentQ({...currentQ, image: data.fileName}); } catch(e) {} setUploadingImg(false);
-  };
 
   // --- Render ---
   return (
     <AdminLayout title="المحتوى">
+      
       <div className="header-bar">
-          <div><h1>🗂️ إدارة المحتوى</h1><div className="breadcrumbs"><span>{selectedCourse?.title || 'الرئيسية'}</span>{selectedSubject && <span> / {selectedSubject.title}</span>}{selectedChapter && <span> / {selectedChapter.title}</span>}</div></div>
-          {(selectedCourse || selectedSubject || selectedChapter) && <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع</button>}
+          <div>
+              <h1>🗂️ إدارة المحتوى</h1>
+              <div className="breadcrumbs">
+                  <span onClick={() => {setSelectedCourse(null); setSelectedSubject(null); setSelectedChapter(null);}}>الرئيسية</span>
+                  {selectedCourse && <span> / {selectedCourse.title}</span>}
+                  {selectedSubject && <span> / {selectedSubject.title}</span>}
+                  {selectedChapter && <span> / {selectedChapter.title}</span>}
+              </div>
+          </div>
+          {(selectedCourse || selectedSubject || selectedChapter) && (
+              <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع للخلف</button>
+          )}
       </div>
+
       {loading && <div className="loader-line"></div>}
 
-      {/* 1. Courses & 2. Subjects */}
-      {(!selectedCourse || (selectedCourse && !selectedSubject)) && (
+      {/* 1. Courses List (Draggable) */}
+      {!selectedCourse && (
           <div className="grid-cards">
-              {(!selectedCourse ? courses : selectedCourse.subjects).map(item => (
-                  <div key={item.id} className="card folder-card" onClick={() => !selectedCourse ? setSelectedCourse(item) : setSelectedSubject(item)}>
-                      <div className={`icon ${!selectedCourse ? 'blue' : 'green'}`}>{Icons.folder}</div>
-                      <h3>{item.title}</h3>
-                      <p>{!selectedCourse ? `${item.subjects.length} مواد` : `${item.chapters.length} فصول`}</p>
+              {courses.map((c, index) => (
+                  <div 
+                    key={c.id} 
+                    className="card folder-card draggable-item" 
+                    onClick={() => setSelectedCourse(c)}
+                    draggable 
+                    onDragStart={(e) => onDragStart(e, index)}
+                    onDragEnter={(e) => onDragEnter(e, index)}
+                    onDragEnd={(e) => onDragEnd(e, 'courses')}
+                  >
+                      <div className="drag-handle-abs">{Icons.drag}</div>
+                      <div className="icon blue">{Icons.folder}</div>
+                      <h3>{c.title}</h3>
+                      <p>{c.subjects.length} مواد</p>
                   </div>
               ))}
           </div>
       )}
 
-      {/* 3. Subject Details */}
+      {/* 2. Subjects List (Draggable) */}
+      {selectedCourse && !selectedSubject && (
+          <div className="grid-cards">
+              {selectedCourse.subjects.map((s, index) => (
+                  <div 
+                    key={s.id} 
+                    className="card folder-card draggable-item" 
+                    onClick={() => setSelectedSubject(s)}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, index)}
+                    onDragEnter={(e) => onDragEnter(e, index)}
+                    onDragEnd={(e) => onDragEnd(e, 'subjects')}
+                  >
+                      <div className="drag-handle-abs">{Icons.drag}</div>
+                      <div className="icon green">{Icons.folder}</div>
+                      <h3>{s.title}</h3>
+                      <p>{s.chapters.length} فصول • {s.exams.length} امتحانات</p>
+                  </div>
+              ))}
+          </div>
+      )}
+
+      {/* 3. Subject Details (Chapters Draggable) */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
               <div className="panel">
-                  <div className="panel-head"><h3>📂 الفصول</h3><button className="btn-small" onClick={() => openModal('add_chapter')}>{Icons.add} إضافة</button></div>
+                  <div className="panel-head">
+                      <h3>📂 الفصول الدراسية</h3>
+                      <button className="btn-small" onClick={() => openModal('add_chapter')}>{Icons.add} إضافة</button>
+                  </div>
                   <div className="list-group">
                       {selectedSubject.chapters.length === 0 && <div className="empty">لا توجد فصول</div>}
                       {selectedSubject.chapters.map((ch, index) => (
-                          <div key={ch.id} className="list-item clickable" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'chapters', selectedSubject.id)}>
+                          <div 
+                            key={ch.id} 
+                            className="list-item clickable draggable-item" 
+                            draggable
+                            onDragStart={(e) => onDragStart(e, index)}
+                            onDragEnter={(e) => onDragEnter(e, index)}
+                            onDragEnd={(e) => onDragEnd(e, 'chapters')}
+                          >
                               <div className="drag-handle">{Icons.drag}</div>
-                              <div className="info" onClick={() => setSelectedChapter(ch)}><strong>{ch.title}</strong><small>{ch.videos.length} فيديو</small></div>
+                              <div className="info" onClick={() => setSelectedChapter(ch)}>
+                                  <strong>{ch.title}</strong>
+                                  <small>{ch.videos.length} فيديو • {ch.pdfs.length} ملف</small>
+                              </div>
                               <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
                           </div>
                       ))}
                   </div>
               </div>
+
               <div className="panel">
-                  <div className="panel-head"><h3>📝 الامتحانات</h3><button className="btn-small" onClick={() => openModal('exam_editor')}> {Icons.add} إنشاء</button></div>
+                  <div className="panel-head">
+                      <h3>📝 الامتحانات</h3>
+                      <button className="btn-small" onClick={() => openModal('exam_editor')}> {Icons.add} إنشاء</button>
+                  </div>
                   <div className="exam-grid">
                       {selectedSubject.exams.map(ex => (
                           <div key={ex.id} className="exam-card-item">
                               <div className="exam-icon">{Icons.exam}</div>
-                              <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة</span></div>
+                              <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة | {ex.questions.length} سؤال</span></div>
                               <div className="exam-actions">
-                                  <button onClick={() => loadStats(ex.id)}>📊</button>
-                                  <button onClick={() => openModal('exam_editor', ex)}>{Icons.edit}</button>
-                                  <button className="danger" onClick={() => handleDelete('exams', ex.id)}>{Icons.trash}</button>
+                                  <button title="إحصائيات" onClick={() => loadStats(ex.id)}>📊</button>
+                                  <button title="تعديل" onClick={() => openModal('exam_editor', ex)}>{Icons.edit}</button>
+                                  <button title="حذف" className="danger" onClick={() => handleDelete('exams', ex.id)}>{Icons.trash}</button>
                               </div>
                           </div>
                       ))}
@@ -277,54 +390,113 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 4. Chapter Content */}
+      {/* 4. Chapter Content (Videos & PDFs Draggable) */}
       {selectedChapter && (
           <div className="content-layout">
               <div className="panel">
-                  <div className="panel-head"><h3>🎬 الفيديوهات</h3><button className="btn-small" onClick={() => openModal('add_video')}> {Icons.add} إضافة</button></div>
+                  <div className="panel-head">
+                      <h3>🎬 الفيديوهات</h3>
+                      <button className="btn-small" onClick={() => openModal('add_video')}> {Icons.add} إضافة</button>
+                  </div>
                   <div className="media-grid">
                       {selectedChapter.videos.map((v, index) => (
-                          <div key={v.id} className="media-card" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'videos', selectedChapter.id)}>
+                          <div 
+                            key={v.id} 
+                            className="media-card draggable-item" 
+                            draggable
+                            onDragStart={(e) => onDragStart(e, index)}
+                            onDragEnter={(e) => onDragEnter(e, index)}
+                            onDragEnd={(e) => onDragEnd(e, 'videos')}
+                          >
+                              <div className="drag-handle-abs">{Icons.drag}</div>
                               <div className="thumb">{Icons.video}</div>
-                              <div className="media-body"><h4>{v.title}</h4><button className="btn-icon danger" onClick={() => handleDelete('videos', v.id)}>{Icons.trash}</button></div>
+                              <div className="media-body">
+                                  <h4>{v.title}</h4>
+                                  <button className="btn-icon danger" onClick={() => handleDelete('videos', v.id)}>{Icons.trash}</button>
+                              </div>
                           </div>
                       ))}
                   </div>
               </div>
+
               <div className="panel">
-                  <div className="panel-head"><h3>📄 الملفات</h3><button className="btn-small" onClick={() => openModal('add_pdf')}> {Icons.add} رفع</button></div>
+                  <div className="panel-head">
+                      <h3>📄 الملفات</h3>
+                      <button className="btn-small" onClick={() => openModal('add_pdf')}> {Icons.add} رفع</button>
+                  </div>
                   <div className="list-group">
-                      {selectedChapter.pdfs.map(p => (
-                          <div key={p.id} className="list-item"><div className="info"><span className="icon-text">{Icons.pdf}</span><strong>{p.title}</strong></div><button className="btn-icon danger" onClick={() => handleDelete('pdfs', p.id)}>{Icons.trash}</button></div>
+                      {selectedChapter.pdfs.map((p, index) => (
+                          <div 
+                            key={p.id} 
+                            className="list-item draggable-item"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, index)}
+                            onDragEnter={(e) => onDragEnter(e, index)}
+                            onDragEnd={(e) => onDragEnd(e, 'pdfs')}
+                          >
+                              <div className="drag-handle">{Icons.drag}</div>
+                              <div className="info"><span className="icon-text">{Icons.pdf}</span><strong>{p.title}</strong></div>
+                              <button className="btn-icon danger" onClick={() => handleDelete('pdfs', p.id)}>{Icons.trash}</button>
+                          </div>
                       ))}
                   </div>
               </div>
           </div>
       )}
 
-      {/* Modals */}
+      {/* --- Unified Modals --- */}
+
       {(modalType === 'add_chapter' || modalType === 'add_video') && (
           <Modal title={modalType === 'add_chapter' ? 'فصل جديد' : 'فيديو جديد'} onClose={() => setModalType(null)}>
-              <input className="input" autoFocus value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} placeholder="العنوان..." />
-              {modalType === 'add_video' && <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="رابط يوتيوب..." dir="ltr" />}
-              <div className="acts"><button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button><button className="btn-primary" onClick={() => { if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title }); else apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url }); }}>حفظ</button></div>
+              <div className="form-group">
+                  <label>العنوان</label>
+                  <input className="input" autoFocus value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} placeholder="اكتب العنوان..." />
+              </div>
+              {modalType === 'add_video' && (
+                  <div className="form-group">
+                      <label>رابط يوتيوب</label>
+                      <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
+                  </div>
+              )}
+              <div className="acts">
+                  <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+                  <button className="btn-primary" onClick={() => {
+                      if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title });
+                      else apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url });
+                  }}>حفظ</button>
+              </div>
           </Modal>
       )}
 
       {modalType === 'add_pdf' && (
           <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
-              <form onSubmit={async (e) => { e.preventDefault(); const file = e.target.file.files[0]; if(!file) return showAlert('error', 'اختر الملف'); setLoading(true); const fd = new FormData(); fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id); try { const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd}); if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); } } catch(e) {} setLoading(false); }}>
-                  <input className="input" name="title" required placeholder="اسم الملف" />
-                  <input className="input file" type="file" name="file" accept="application/pdf" required />
-                  <div className="acts"><button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button><button type="submit" className="btn-primary">رفع</button></div>
+              <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const file = e.target.file.files[0];
+                  if(!file) return showAlert('error', 'اختر الملف');
+                  setLoading(true);
+                  const fd = new FormData();
+                  fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
+                  try {
+                      const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+                      if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
+                      else showAlert('error', 'فشل الرفع');
+                  } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
+                  setLoading(false);
+              }}>
+                  <div className="form-group">
+                      <label>اسم الملف</label>
+                      <input className="input" name="title" required placeholder="اسم الملف..." />
+                  </div>
+                  <div className="form-group">
+                      <label>اختر الملف</label>
+                      <input className="input file" type="file" name="file" accept="application/pdf" required />
+                  </div>
+                  <div className="acts">
+                      <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+                      <button type="submit" className="btn-primary">رفع</button>
+                  </div>
               </form>
-          </Modal>
-      )}
-
-      {modalType === 'stats' && examStats && (
-          <Modal title="التقرير" onClose={() => setModalType(null)}>
-              <div className="stats-summary"><div className="stat-card"><span>الطلاب</span><strong>{examStats.totalAttempts}</strong></div><div className="stat-card"><span>متوسط %</span><strong style={{color:'#facc15'}}>{examStats.averageScore}%</strong></div></div>
-              <div className="table-wrap"><table><thead><tr><th>الطالب</th><th>%</th><th>التاريخ</th></tr></thead><tbody>{examStats.attempts.map((a, i) => (<tr key={i}><td>{a.student_name_input}</td><td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td><td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td></tr>))}</tbody></table></div>
           </Modal>
       )}
 
@@ -332,66 +504,179 @@ export default function ContentManager() {
       {modalType === 'exam_editor' && (
           <div className="editor-overlay">
               <div className="editor-container">
-                  <div className="editor-header"><h3>{examForm.id ? 'تعديل الامتحان' : 'إنشاء امتحان'}</h3><div className="header-actions"><button className="mobile-toggle" onClick={() => setShowExamSidebar(!showExamSidebar)}>{Icons.menu} القائمة</button><button className="close-btn" onClick={() => setModalType(null)}>{Icons.close} إغلاق</button></div></div>
+                  <div className="editor-header">
+                      <h3>{examForm.id ? 'تعديل الامتحان' : 'إنشاء امتحان جديد'}</h3>
+                      <div className="header-actions">
+                          <button className="mobile-toggle" onClick={() => setShowExamSidebar(!showExamSidebar)}>
+                              {Icons.menu} القائمة
+                          </button>
+                          <button className="close-btn" onClick={() => setModalType(null)}>{Icons.close} إغلاق</button>
+                      </div>
+                  </div>
+                  
                   <div className="editor-body">
                       <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
                           <div className="meta-section styled">
-                              <label className="field-label">العنوان</label><input className="input" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} />
-                              <label className="field-label">المدة (د)</label><div className="duration-input"><input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} /></div>
+                              <label className="field-label">عنوان الامتحان</label>
+                              <input className="input" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} placeholder="العنوان..." />
+                              
+                              <label className="field-label">المدة (بالدقائق)</label>
+                              <div className="duration-input">
+                                  <input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} />
+                                  <span>دقيقة</span>
+                              </div>
+
                               <div className="toggles-group">
-                                  <div className="toggle-row"><span>اسم الطالب</span><label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label></div>
-                                  <div className="toggle-row"><span>عشوائية س</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
-                                  <div className="toggle-row"><span>عشوائية ج</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
+                                  <div className="toggle-row">
+                                      <span>طلب اسم الطالب</span>
+                                      <label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label>
+                                  </div>
+                                  <div className="toggle-row">
+                                      <span>عشوائية الأسئلة</span>
+                                      <label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label>
+                                  </div>
+                                  <div className="toggle-row">
+                                      <span>عشوائية الاختيارات</span>
+                                      <label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label>
+                                  </div>
                               </div>
                           </div>
+                          
                           <div className="q-list-scroll">
-                              {examForm.questions.map((q, i) => (<div key={i} className={`q-item ${editingQIndex === i ? 'active' : ''}`} onClick={() => { setCurrentQ(examForm.questions[i]); setEditingQIndex(i); setShowExamSidebar(false); }}><span className="q-num">{i+1}</span><span className="q-text">{q.text.substring(0, 15)}...</span><button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button></div>))}
-                              <button className="add-q-btn" onClick={() => { setEditingQIndex(-1); setCurrentQ({id:null, text:'', image:null, options:['','','',''], correctIndex:0}); setShowExamSidebar(false); }}>{Icons.add} سؤال جديد</button>
-                          </div>
-                          <div className="sidebar-footer"><button className="btn-save-exam" onClick={submitExam}>حفظ وإنهاء</button></div>
-                      </div>
-                      <div className="editor-main">
-                          <h4>{editingQIndex === -1 ? 'سؤال جديد' : `تعديل س${editingQIndex + 1}`}</h4>
-                          <textarea className="input area" placeholder="نص السؤال..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
-                          <div className="image-upload"><label>{Icons.image} {currentQ.image ? 'تغيير' : 'إرفاق'} صورة<input type="file" hidden accept="image/*" onChange={handleImageUpload} /></label>{uploadingImg && <span>...</span>}{currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}</div>
-                          <div className="options-container dynamic">
-                              {currentQ.options.map((opt, i) => (
-                                  <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}><div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>{currentQ.correctIndex === i && <div className="dot"></div>}</div><input className="input small" value={opt} onChange={e => handleOptionChange(i, e.target.value)} placeholder={`خيار ${i+1}`} />{currentQ.options.length > 2 && <button className="btn-remove-opt" onClick={() => removeOption(i)}>×</button>}</div>
+                              <h4 className="list-title">قائمة الأسئلة ({examForm.questions.length})</h4>
+                              {examForm.questions.map((q, i) => (
+                                  <div key={i} className={`q-item ${editingQIndex === i ? 'active' : ''}`} onClick={() => editQuestion(i)}>
+                                      <span className="q-num">{i+1}</span>
+                                      <span className="q-text">{q.text.substring(0, 15)}...</span>
+                                      <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button>
+                                  </div>
                               ))}
+                              <button className="add-q-btn" onClick={() => { resetCurrentQuestion(); setShowExamSidebar(false); }}>{Icons.add} سؤال جديد</button>
                           </div>
-                          <button className="btn-add-opt" onClick={addOption}>+ خيار</button>
-                          <div className="editor-actions"><button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة للقائمة' : 'تحديث'}</button></div>
+                          
+                          <div className="sidebar-footer">
+                              <button className="btn-save-exam" onClick={submitExam}>حفظ وإنهاء</button>
+                          </div>
+                      </div>
+
+                      {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
+
+                      <div className="editor-main">
+                          <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
+                          <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
+                          
+                          <div className="image-upload">
+                              <label>
+                                  {Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}
+                                  <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                              </label>
+                              {uploadingImg && <span className="loading-text">جاري الرفع...</span>}
+                              {currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
+                          </div>
+
+                          <div className="options-section">
+                              <label className="section-label">الاختيارات (حدد الإجابة الصحيحة):</label>
+                              <div className="options-container dynamic">
+                                  {currentQ.options.map((opt, i) => (
+                                      <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
+                                          <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>
+                                              {currentQ.correctIndex === i && <div className="dot"></div>}
+                                          </div>
+                                          <input 
+                                              className="input small" 
+                                              value={opt} 
+                                              onChange={e => handleOptionChange(i, e.target.value)} 
+                                              placeholder={`الخيار ${i+1}`} 
+                                          />
+                                          {currentQ.options.length > 2 && (
+                                              <button className="btn-remove-opt" onClick={() => removeOption(i)} title="حذف">×</button>
+                                          )}
+                                      </div>
+                                  ))}
+                              </div>
+                              <button className="btn-add-opt" onClick={addOption}>+ إضافة خيار</button>
+                          </div>
+                          
+                          <div className="editor-actions">
+                              <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}</button>
+                          </div>
                       </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* Alerts */}
+      {/* Stats Modal */}
+      {modalType === 'stats' && examStats && (
+          <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
+              <div className="stats-summary">
+                  <div className="stat-card"><span>عدد الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
+                  <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averageScore}%</strong></div>
+                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{(examStats.averageScore).toFixed(1)} / 100</strong></div>
+              </div>
+              <div className="table-wrap">
+                  <table>
+                      <thead><tr><th>الطالب</th><th>النسبة</th><th>الدرجة</th><th>التاريخ</th></tr></thead>
+                      <tbody>
+                          {examStats.attempts.map((a, i) => (
+                              <tr key={i}>
+                                  <td>{a.student_name_input || 'غير معروف'}</td>
+                                  <td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td>
+                                  <td>{a.score}</td>
+                                  <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </Modal>
+      )}
+
+      {/* Alerts & Confirm */}
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
-      {confirmData.show && <div className="modal-overlay"><div className="modal-box"><h3>تأكيد</h3><p style={{textAlign:'center', color:'#cbd5e1'}}>{confirmData.msg}</p><div className="acts"><button className="btn-cancel" onClick={closeConfirm}>إلغاء</button><button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button></div></div></div>}
+      {confirmData.show && (
+          <div className="modal-overlay">
+              <div className="modal-box">
+                  <h3>تأكيد</h3>
+                  <p style={{textAlign:'center', color:'#cbd5e1'}}>{confirmData.msg}</p>
+                  <div className="acts">
+                      <button className="btn-cancel" onClick={closeConfirm}>إلغاء</button>
+                      <button className="btn-primary danger" onClick={confirmData.onConfirm}>نعم</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       <style jsx>{`
+        /* General Layout */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
         .breadcrumbs { color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
         .btn-secondary { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; gap: 5px; }
         .loader-line { height: 3px; background: #38bdf8; width: 100%; position: fixed; top: 0; left: 0; z-index: 9999; }
+
+        /* Draggable & Grid */
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
-        .folder-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; cursor: pointer; transition: 0.2s; }
+        .draggable-item.dragging { opacity: 0.5; border: 2px dashed #38bdf8 !important; }
+        .folder-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
         .folder-card:hover { transform: translateY(-4px); border-color: #38bdf8; }
         .folder-card .icon { width: 50px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; }
         .folder-card .icon.blue { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .folder-card .icon.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+        .drag-handle-abs { position: absolute; top: 10px; right: 10px; cursor: grab; color: rgba(255,255,255,0.2); }
+        .drag-handle-abs:hover { color: white; }
+
+        /* Content Layout */
         .content-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
         .panel { background: #111827; border-radius: 12px; }
         .panel-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 15px; }
         .panel-head h3 { margin: 0; color: white; font-size: 1.2rem; }
         .btn-small { background: #38bdf8; color: #0f172a; padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 5px; }
+
+        /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; }
-        .list-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
-        .list-item.dragging { opacity: 0.5; border: 2px dashed #38bdf8; }
-        .drag-handle { cursor: grab; padding: 5px; color: #64748b; }
+        .list-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; position: relative; }
+        .drag-handle { cursor: grab; padding: 5px; color: #64748b; margin-left: 10px; }
         .list-item.clickable { cursor: pointer; transition: 0.2s; }
         .list-item.clickable:hover { border-color: #38bdf8; }
         .list-item .info strong { display: block; color: white; }
@@ -399,6 +684,8 @@ export default function ContentManager() {
         .btn-icon { background: rgba(255,255,255,0.05); width: 32px; height: 32px; border-radius: 6px; border: none; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .btn-icon:hover { background: rgba(255,255,255,0.1); color: white; }
         .btn-icon.danger:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+        /* Media & Exam Grids */
         .exam-grid, .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; }
         .exam-card-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 15px; }
         .exam-icon { color: #facc15; background: rgba(250, 204, 21, 0.1); padding: 10px; border-radius: 8px; }
@@ -408,46 +695,59 @@ export default function ContentManager() {
         .exam-actions button { background: #334155; border: none; padding: 5px; border-radius: 4px; color: #cbd5e1; cursor: pointer; }
         .exam-actions button:hover { background: #38bdf8; color: #0f172a; }
         .exam-actions button.danger:hover { background: #ef4444; color: white; }
-        .media-card { background: #1e293b; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
+
+        .media-card { background: #1e293b; border-radius: 8px; overflow: hidden; border: 1px solid #334155; position: relative; }
         .media-card .thumb { height: 100px; background: #0f172a; display: flex; align-items: center; justify-content: center; color: #38bdf8; }
         .media-card.file .thumb { color: #f472b6; }
         .media-body { padding: 10px; display: flex; justify-content: space-between; align-items: center; }
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+
+        /* --- Unified Modals --- */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
         .modal-box { background: #1e293b; width: 95%; max-width: 450px; border-radius: 16px; border: 1px solid #475569; padding: 25px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         .modal-header { display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 20px; align-items: center; }
         .modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
         .close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
+        
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 0.9rem; }
         .input { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; }
         .input:focus { border-color: #38bdf8; outline: none; }
         .input.file { padding: 8px; }
+        
         .acts { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
         .btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-primary.danger { background: #ef4444; color: white; }
         .btn-cancel { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
+
+        /* --- Exam Editor (Fixed Sidebar) --- */
         .editor-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 10000; display: flex; flex-direction: column; }
         .editor-container { display: flex; flex-direction: column; height: 100vh; }
         .editor-header { background: #1e293b; padding: 15px 25px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         .header-actions { display: flex; gap: 15px; }
         .mobile-toggle { display: none; background: #334155; border: none; color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+
         .editor-body { flex: 1; display: flex; overflow: hidden; position: relative; }
+        
         .editor-sidebar { width: 320px; background: #111827; border-left: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; height: 100%; transition: transform 0.3s ease; z-index: 50; }
         .meta-section.styled { padding: 20px; border-bottom: 1px solid #334155; background: #162032; margin: 10px; border-radius: 8px; }
         .field-label { display: block; color: #94a3b8; font-size: 0.85rem; margin-bottom: 5px; }
+        
         .duration-input { display: flex; align-items: center; gap: 10px; background: #0f172a; padding: 5px 10px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px; }
         .duration-input input { background: transparent; border: none; color: white; width: 50px; font-weight: bold; text-align: center; font-size: 1rem; }
         .duration-input span { color: #64748b; font-size: 0.85rem; }
+
         .toggles-group { display: flex; flex-direction: column; gap: 12px; }
         .toggle-row { display: flex; justify-content: space-between; align-items: center; }
         .toggle-row span { color: #cbd5e1; font-size: 0.9rem; }
+
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #38bdf8; }
         input:checked + .slider:before { transform: translateX(20px); }
+
         .q-list-scroll { flex: 1; overflow-y: auto; padding: 10px; }
         .list-title { color: #94a3b8; font-size: 0.85rem; margin: 0 0 10px; border-bottom: 1px dashed #334155; padding-bottom: 5px; }
         .q-item { padding: 10px; background: #1f2937; border-radius: 6px; margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; color: #cbd5e1; font-size: 0.9rem; border: 1px solid transparent; }
@@ -457,13 +757,16 @@ export default function ContentManager() {
         .add-q-btn { width: 100%; padding: 10px; background: transparent; border: 1px dashed #475569; color: #38bdf8; border-radius: 6px; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 5px; }
         .sidebar-footer { padding: 15px; border-top: 1px solid #334155; }
         .btn-save-exam { width: 100%; background: #22c55e; color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
         .editor-main { flex: 1; padding: 30px; overflow-y: auto; background: #0f172a; }
         .editor-main h4 { color: #38bdf8; margin-top: 0; }
         .input.area { resize: vertical; margin-bottom: 15px; }
         .input.small { padding: 10px; width: 100%; }
+        
         .image-upload { margin-bottom: 20px; }
         .image-upload label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #1e293b; padding: 8px 15px; border-radius: 6px; border: 1px solid #334155; color: #cbd5e1; }
         .image-upload img { max-height: 150px; margin-top: 10px; border-radius: 8px; border: 1px solid #334155; display: block; }
+
         .options-section { margin-bottom: 30px; }
         .section-label { display: block; margin-bottom: 10px; color: #cbd5e1; font-size: 0.95rem; }
         .options-container.dynamic { display: flex; flex-direction: column; gap: 10px; }
@@ -474,7 +777,10 @@ export default function ContentManager() {
         .dot { width: 10px; height: 10px; background: #22c55e; border-radius: 50%; }
         .btn-remove-opt { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; }
         .btn-add-opt { background: #1e293b; color: #38bdf8; border: 1px dashed #38bdf8; padding: 8px; width: 100%; border-radius: 6px; margin-top: 10px; cursor: pointer; }
+
         .editor-actions { padding-top: 20px; border-top: 1px solid #1e293b; }
+
+        /* Stats Table */
         .stats-summary { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
         .stat-card { flex: 1; min-width: 100px; background: #0f172a; padding: 15px; border-radius: 8px; text-align: center; }
         .stat-card span { display: block; color: #94a3b8; font-size: 0.8rem; }
@@ -483,15 +789,18 @@ export default function ContentManager() {
         table { width: 100%; border-collapse: collapse; }
         th { text-align: right; padding: 10px; color: #94a3b8; border-bottom: 1px solid #334155; }
         td { padding: 10px; color: white; border-bottom: 1px solid #334155; }
+
         .alert-toast { position: fixed; bottom: 30px; left: 30px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; z-index: 3000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .alert-toast.success { background: #22c55e; color: #0f172a; }
         .alert-toast.error { background: #ef4444; }
+
         @media (max-width: 768px) {
             .mobile-toggle { display: flex; align-items: center; gap: 5px; }
             .editor-sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: 85%; z-index: 50; transform: translateX(100%); box-shadow: -5px 0 20px rgba(0,0,0,0.5); }
             .editor-sidebar.mobile-visible { transform: translateX(0); }
             .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
         }
+
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       `}</style>
     </AdminLayout>
