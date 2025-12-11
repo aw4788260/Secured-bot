@@ -92,6 +92,7 @@ export default function ContentManager() {
       if (listType === 'courses') list = [...courses];
       else if (listType === 'subjects') list = [...selectedCourse.subjects];
       else if (listType === 'chapters') list = [...selectedSubject.chapters];
+      else if (listType === 'exams') list = [...selectedSubject.exams]; // [NEW] Exams Support
       else if (listType === 'videos') list = [...selectedChapter.videos];
       else if (listType === 'pdfs') list = [...selectedChapter.pdfs];
 
@@ -105,10 +106,11 @@ export default function ContentManager() {
       dragItem.current = null;
       dragOverItem.current = null;
 
-      // Update UI Immediately
+      // Update UI Immediately [FIX: Added exams support]
       if (listType === 'courses') setCourses(list);
       else if (listType === 'subjects') setSelectedCourse({ ...selectedCourse, subjects: list });
       else if (listType === 'chapters') setSelectedSubject({ ...selectedSubject, chapters: list });
+      else if (listType === 'exams') setSelectedSubject({ ...selectedSubject, exams: list }); // [NEW]
       else if (listType === 'videos') setSelectedChapter({ ...selectedChapter, videos: list });
       else if (listType === 'pdfs') setSelectedChapter({ ...selectedChapter, pdfs: list });
 
@@ -210,6 +212,7 @@ export default function ContentManager() {
       setUploadingImg(false);
   };
 
+  // [New] Dynamic Options Handlers
   const handleOptionChange = (index, value) => {
       const newOpts = [...currentQ.options];
       newOpts[index] = value;
@@ -231,6 +234,7 @@ export default function ContentManager() {
 
   const resetCurrentQuestion = () => {
       setEditingQIndex(-1);
+      // Default 4 options for new questions
       setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   };
 
@@ -338,7 +342,7 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 3. Subject Details (Chapters Draggable) */}
+      {/* 3. Subject Details (Chapters & Exams Draggable) */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -374,10 +378,18 @@ export default function ContentManager() {
                       <button className="btn-small" onClick={() => openModal('exam_editor')}> {Icons.add} إنشاء</button>
                   </div>
                   <div className="exam-grid">
-                      {selectedSubject.exams.map(ex => (
-                          <div key={ex.id} className="exam-card-item">
+                      {selectedSubject.exams.map((ex, index) => (
+                          <div 
+                            key={ex.id} 
+                            className="exam-card-item draggable-item"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, index)}
+                            onDragEnter={(e) => onDragEnter(e, index)}
+                            onDragEnd={(e) => onDragEnd(e, 'exams')}
+                          >
+                              <div className="drag-handle-abs">{Icons.drag}</div>
                               <div className="exam-icon">{Icons.exam}</div>
-                              <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة | {ex.questions.length} سؤال</span></div>
+                              <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة</span></div>
                               <div className="exam-actions">
                                   <button title="إحصائيات" onClick={() => loadStats(ex.id)}>📊</button>
                                   <button title="تعديل" onClick={() => openModal('exam_editor', ex)}>{Icons.edit}</button>
@@ -500,7 +512,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Exam Editor */}
+      {/* Exam Editor (Enhanced & Sidebar Layout) */}
       {modalType === 'exam_editor' && (
           <div className="editor-overlay">
               <div className="editor-container">
@@ -515,6 +527,7 @@ export default function ContentManager() {
                   </div>
                   
                   <div className="editor-body">
+                      {/* Left: Enhanced Sidebar */}
                       <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
                           <div className="meta-section styled">
                               <label className="field-label">عنوان الامتحان</label>
@@ -559,8 +572,10 @@ export default function ContentManager() {
                           </div>
                       </div>
 
+                      {/* Overlay for mobile sidebar */}
                       {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
 
+                      {/* Right: Editor */}
                       <div className="editor-main">
                           <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
                           <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
@@ -598,7 +613,9 @@ export default function ContentManager() {
                           </div>
                           
                           <div className="editor-actions">
-                              <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}</button>
+                              <button className="btn-primary full" onClick={saveQuestion}>
+                                  {editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}
+                              </button>
                           </div>
                       </div>
                   </div>
@@ -606,13 +623,13 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* Stats Modal */}
+      {/* Stats Modal (Updated [FIXED]) */}
       {modalType === 'stats' && examStats && (
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
               <div className="stats-summary">
                   <div className="stat-card"><span>عدد الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
                   <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averageScore}%</strong></div>
-                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{(examStats.averageScore).toFixed(1)} / 100</strong></div>
+                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{Number(examStats.averageScore).toFixed(1)} / 100</strong></div>
               </div>
               <div className="table-wrap">
                   <table>
@@ -632,7 +649,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Alerts & Confirm */}
+      {/* Alerts */}
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
       {confirmData.show && (
           <div className="modal-overlay">
@@ -655,7 +672,7 @@ export default function ContentManager() {
         .btn-secondary { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; gap: 5px; }
         .loader-line { height: 3px; background: #38bdf8; width: 100%; position: fixed; top: 0; left: 0; z-index: 9999; }
 
-        /* Draggable & Grid */
+        /* Grids & Cards */
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
         .draggable-item.dragging { opacity: 0.5; border: 2px dashed #38bdf8 !important; }
         .folder-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
