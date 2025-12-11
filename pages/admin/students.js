@@ -5,8 +5,11 @@ export default function StudentsPage() {
   const [students, setStudents] = useState([]);
   const [allCourses, setAllCourses] = useState([]); 
   const [loading, setLoading] = useState(true);
-  const [totalStudents, setTotalStudents] = useState(0); // العدد الإجمالي من السيرفر
+  const [totalStudents, setTotalStudents] = useState(0); 
   
+  // [جديد] حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي (للتحكم في حذف المشرفين)
+  const [isMainAdmin, setIsMainAdmin] = useState(false);
+
   // البحث والفلترة
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -46,11 +49,10 @@ export default function StudentsPage() {
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  // --- 1. جلب البيانات (محدث للـ Server-Side) ---
+  // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
     try {
-        // جلب قائمة الكورسات (مرة واحدة)
         if (allCourses.length === 0) {
             const resCourses = await fetch('/api/public/get-courses');
             const coursesData = await resCourses.json();
@@ -59,7 +61,6 @@ export default function StudentsPage() {
 
         let url = `/api/admin/students?page=${currentPage}&limit=${itemsPerPage}`;
         
-        // إضافة معاملات البحث والفلترة للرابط
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
         if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
@@ -73,19 +74,19 @@ export default function StudentsPage() {
         if (res.ok) {
             setStudents(data.students || []);
             setTotalStudents(data.total || 0);
-            setSelectedUsers([]); // تصفية التحديد عند تغيير الصفحة
+            // [جديد] تحديث حالة الأدمن الرئيسي
+            setIsMainAdmin(data.isMainAdmin);
+            setSelectedUsers([]); 
         }
     } catch (err) { console.error(err); } 
     finally { setLoading(false); }
   };
 
-  // إعادة الجلب عند تغيير الصفحة أو الفلتر
   useEffect(() => { fetchData(); }, [currentPage, activeFilters]);
 
-  // البحث: ننتظر قليلاً أو نضغط Enter (هنا سنجعله عند الضغط على زر التحديث أو Enter)
   const handleSearchKey = (e) => {
       if (e.key === 'Enter') {
-          setCurrentPage(1); // العودة للأولى عند البحث الجديد
+          setCurrentPage(1);
           fetchData();
       }
   };
@@ -99,7 +100,7 @@ export default function StudentsPage() {
   };
   const applyFilters = () => {
       setActiveFilters(tempFilters);
-      setCurrentPage(1); // العودة للأولى
+      setCurrentPage(1); 
       setShowFilterModal(false);
   };
   const clearFilters = () => {
@@ -175,7 +176,12 @@ export default function StudentsPage() {
       if (!selectedUsers.length) return;
       if (actionType === 'grant') openGrantModal('bulk');
       else if (actionType === 'reset_device') showConfirm('إلغاء قفل الأجهزة للمحددين؟', () => runApiCall('reset_device', { userIds: selectedUsers }));
-      else if (actionType === 'block') showConfirm('حظر الطلاب المحددين؟', () => runApiCall('toggle_block', { userIds: selectedUsers, newData: { is_blocked: true } }));
+      
+      // [تعديل] تغيير زر الحظر الجماعي إلى حذف جماعي
+      else if (actionType === 'delete') {
+          showConfirm('⚠️ تحذير: هل أنت متأكد من حذف حسابات الطلاب المحددين نهائياً؟ (لا يمكن التراجع)', () => runApiCall('delete_user', { userIds: selectedUsers }));
+      }
+      
       else if (actionType === 'revoke_filtered') {
           if (!activeFilters.courses.length && !activeFilters.subjects.length) return showToast('يجب تفعيل فلتر أولاً لمعرفة ما سيتم سحبه', 'error');
           showConfirm('سحب الكورسات/المواد المفلترة من هؤلاء الطلاب؟', () => {
@@ -183,6 +189,12 @@ export default function StudentsPage() {
               activeFilters.subjects.forEach(sid => runApiCall('revoke_access', { userIds: selectedUsers, subjectId: sid }));
           });
       }
+  };
+
+  // [جديد] دالة مساعدة للتحقق من إمكانية الحذف
+  const canDeleteUser = (user) => {
+      if (!user.is_admin) return true; // يمكن حذف الطالب العادي دائماً
+      return isMainAdmin; // إذا كان مشرفاً، يمكن حذفه فقط إذا كنت الأدمن الرئيسي
   };
 
   const totalPages = Math.ceil(totalStudents / itemsPerPage);
@@ -215,7 +227,9 @@ export default function StudentsPage() {
                   <button onClick={() => handleBulkAction('reset_device')} className="glass-btn">🔓 فك قفل</button>
                   <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ صلاحية</button>
                   {hasActiveFilters && <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn warning">❌ سحب المفلتر</button>}
-                  <button onClick={() => handleBulkAction('block')} className="glass-btn danger">⛔ حظر</button>
+                  
+                  {/* [تعديل] زر الحذف الجماعي */}
+                  <button onClick={() => handleBulkAction('delete')} className="glass-btn danger">🗑️ حذف نهائي</button>
               </div>
           </div>
       )}
@@ -239,7 +253,11 @@ export default function StudentsPage() {
                         <tr key={std.id} onClick={() => openUserProfile(std)} className="clickable">
                             <td onClick={e => e.stopPropagation()} style={{textAlign:'center'}}><input type="checkbox" checked={selectedUsers.includes(std.id)} onChange={() => toggleSelectUser(std.id)} /></td>
                             <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{std.id}</td>
-                            <td style={{fontWeight:'600'}}>{std.first_name}</td>
+                            <td style={{fontWeight:'600'}}>
+                                {std.first_name}
+                                {/* [تعديل] إظهار تاج المشرف */}
+                                {std.is_admin && <span className="admin-tag">مشرف</span>}
+                            </td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#38bdf8'}}>{std.username}</td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace'}}>{std.phone}</td>
                             <td style={{textAlign:'center', fontSize:'0.85em', color:'#cbd5e1'}}>{formatDate(std.created_at)}</td>
@@ -304,9 +322,9 @@ export default function StudentsPage() {
           <div className="modal-overlay" onClick={() => setViewUser(null)}>
               <div className="modal-box profile-modal" onClick={e => e.stopPropagation()}>
                   <div className="modal-head">
-                      <div className="user-avatar-placeholder">{viewUser.first_name[0]}</div>
+                      <div className="user-avatar-placeholder">{viewUser.first_name?.[0]}</div>
                       <div className="head-info">
-                          <h3>{viewUser.first_name}</h3>
+                          <h3>{viewUser.first_name} {viewUser.is_admin && <span className="admin-tag-large">مشرف</span>}</h3>
                           <span className="sub-text">ID: {viewUser.id} &nbsp;|&nbsp; انضم: {formatDate(viewUser.created_at)}</span>
                       </div>
                       <button className="close-icon" onClick={() => setViewUser(null)}>✕</button>
@@ -319,7 +337,13 @@ export default function StudentsPage() {
                       <div className="actions-row">
                           <button onClick={() => showConfirm('إلغاء قفل الجهاز؟', () => runApiCall('reset_device', { userId: viewUser.id }))}>🔓 إلغاء قفل الجهاز</button>
                           <button onClick={handlePassChange}>🔑 تغيير الباسورد</button>
-                          <button className={viewUser.is_blocked ? 'btn-green' : 'btn-red'} onClick={() => showConfirm('تغيير الحالة؟', () => runApiCall('toggle_block', { userId: viewUser.id, newData: { is_blocked: !viewUser.is_blocked } }, true))}>{viewUser.is_blocked ? 'فك الحظر' : 'حظر الحساب'}</button>
+                          
+                          {/* [تعديل] زر الحذف النهائي (مشروط بصلاحية الأدمن الرئيسي) */}
+                          {canDeleteUser(viewUser) ? (
+                              <button className="btn-red" onClick={() => showConfirm('⚠️ تحذير: سيتم حذف الحساب وجميع بياناته نهائياً. هل أنت متأكد؟', () => runApiCall('delete_user', { userId: viewUser.id }, true))}>🗑️ حذف نهائي</button>
+                          ) : (
+                              <button className="btn-disabled" disabled title="لا يمكن حذف المشرفين إلا من الحساب الرئيسي">🔒 حذف (محمي)</button>
+                          )}
                       </div>
                       <div className="subs-wrapper">
                           <div className="subs-header"><h4>الاشتراكات والصلاحيات</h4><button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ إضافة</button></div>
@@ -354,7 +378,7 @@ export default function StudentsPage() {
       )}
 
       {/* --- Alerts --- */}
-      {confirmData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="alert-actions"><button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button><button className="confirm-btn" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم</button></div></div></div>}
+      {confirmData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="alert-actions"><button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button><button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، احذف</button></div></div></div>}
       {promptData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>{promptData.title}</h3><input autoFocus type="text" defaultValue={promptData.value} id="promptIn" className="prompt-input"/><div className="alert-actions"><button className="cancel-btn" onClick={()=>setPromptData({...promptData, show:false})}>إلغاء</button><button className="confirm-btn" onClick={()=>{promptData.onSubmit(document.getElementById('promptIn').value); setPromptData({...promptData,show:false})}}>حفظ</button></div></div></div>}
 
       <style jsx>{`
@@ -383,14 +407,15 @@ export default function StudentsPage() {
         .clickable:hover { background: rgba(56, 189, 248, 0.05); cursor: pointer; }
         .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
         .status-dot.green { background: #22c55e; box-shadow: 0 0 5px #22c55e; } .status-dot.red { background: #ef4444; }
-        
+        .admin-tag { background: #f59e0b; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 0.7em; margin-right: 8px; font-weight: bold; }
+        .admin-tag-large { background: #f59e0b; color: #000; padding: 3px 8px; border-radius: 6px; font-size: 0.6em; margin-right: 8px; font-weight: bold; vertical-align: middle; }
+
         .pagination { display: flex; justify-content: center; gap: 15px; margin-top: 25px; color: #94a3b8; padding-bottom: 50px; align-items: center; }
         .pagination button { padding: 8px 16px; background: #334155; color: white; border: none; border-radius: 6px; cursor: pointer; }
         .pagination button:disabled { opacity: 0.5; }
         
         .loading-state { padding: 40px; text-align: center; color: #38bdf8; font-weight: bold; }
 
-        /* Modals */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
         .modal-box { background: #1e293b; width: 90%; border-radius: 16px; border: 1px solid #475569; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 25px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .profile-modal { max-width: 650px; max-height: 90vh; }
@@ -406,7 +431,6 @@ export default function StudentsPage() {
         .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
         .modal-footer { padding: 15px 25px; background: #0f172a; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #334155; }
 
-        /* Filter & Grant Content Styles */
         .filter-group, .course-group { margin-bottom: 15px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         .checkbox-row { display: flex; align-items: center; gap: 10px; padding: 5px; cursor: pointer; }
         .checkbox-row input { width: 18px; height: 18px; accent-color: #38bdf8; }
@@ -423,6 +447,7 @@ export default function StudentsPage() {
         .actions-row button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; background: #334155; color: white; transition: 0.2s; }
         .actions-row button:hover { background: #475569; }
         .btn-red { background: #ef4444 !important; } .btn-green { background: #22c55e !important; }
+        .btn-disabled { background: #334155 !important; color: #64748b !important; cursor: not-allowed !important; opacity: 0.7; }
         
         .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px dashed #475569; padding-bottom: 10px; }
         .add-sub-btn { background: #38bdf8; color: #0f172a; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em; }
@@ -431,6 +456,7 @@ export default function StudentsPage() {
         .sub-chip button { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; }
 
         .confirm-btn { background: #22c55e; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .confirm-btn.red { background: #ef4444; }
         .cancel-btn { background: transparent; color: #cbd5e1; border: 1px solid #475569; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
         .danger-text { color: #ef4444; border-color: #ef4444; }
         .prompt-input { width: 100%; padding: 12px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; font-size: 16px; margin-bottom: 20px; }
