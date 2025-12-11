@@ -1,7 +1,7 @@
 import AdminLayout from '../../components/AdminLayout';
 import { useState, useEffect } from 'react';
 
-// --- أيقونات SVG أنيقة ---
+// --- أيقونات SVG ---
 const Icons = {
     back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
     add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
@@ -19,24 +19,30 @@ export default function ContentManager() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Navigation
+  // Navigation State
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedChapter, setSelectedChapter] = useState(null);
 
-  // Modals & UI
-  const [modalType, setModalType] = useState(null); 
+  // Modals & Forms
+  const [modalType, setModalType] = useState(null); // 'add_chapter', 'add_video', 'add_pdf', 'exam_editor', 'stats'
   const [formData, setFormData] = useState({ title: '', url: '' });
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
 
-  // Exam Builder
+  // Exam Builder State
   const [examForm, setExamForm] = useState({
-      id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: []
+      id: null,
+      title: '', 
+      duration: 30, 
+      requiresName: true, 
+      randQ: true, 
+      randO: true,
+      questions: []
   });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
-  const [deletedQIds, setDeletedQIds] = useState([]);
+  const [deletedQIds, setDeletedQIds] = useState([]); // لتعقب الأسئلة المحذوفة
   const [uploadingImg, setUploadingImg] = useState(false);
   
   // Stats
@@ -50,7 +56,7 @@ export default function ContentManager() {
         const data = await res.json();
         setCourses(data);
         
-        // Refresh local view
+        // Refresh Current View Data
         if (selectedCourse) {
             const updatedC = data.find(c => c.id === selectedCourse.id);
             setSelectedCourse(updatedC);
@@ -79,7 +85,7 @@ export default function ContentManager() {
       setConfirmData({ show: true, msg, onConfirm: action });
   };
 
-  const goBack = () => {
+  const handleBack = () => {
       if (selectedChapter) setSelectedChapter(null);
       else if (selectedSubject) setSelectedSubject(null);
       else if (selectedCourse) setSelectedCourse(null);
@@ -88,8 +94,10 @@ export default function ContentManager() {
   // --- Logic ---
   const openModal = (type, data = {}) => {
       setFormData({ title: '', url: '' });
+      
       if (type === 'exam_editor') {
           if (data.id) {
+              // ملء البيانات عند التعديل
               setExamForm({
                   id: data.id,
                   title: data.title,
@@ -106,6 +114,7 @@ export default function ContentManager() {
                   }))
               });
           } else {
+              // امتحان جديد
               setExamForm({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
           }
           setDeletedQIds([]);
@@ -122,12 +131,12 @@ export default function ContentManager() {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ action, payload })
       });
-      if (res.ok) { fetchContent(); setModalType(null); }
+      if (res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تمت العملية بنجاح'); }
       else { showAlert('error', 'حدث خطأ أثناء التنفيذ'); }
       setLoading(false);
   };
 
-  const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف؟', () => apiCall('delete_item', { type, id }));
+  const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', () => apiCall('delete_item', { type, id }));
 
   // --- Exam Logic ---
   const handleImageUpload = async (e) => {
@@ -169,7 +178,9 @@ export default function ContentManager() {
   };
 
   const submitExam = async () => {
-      if(!examForm.title || examForm.questions.length === 0) return showAlert('error', 'البيانات ناقصة');
+      if(!examForm.title) return showAlert('error', 'عنوان الامتحان مطلوب');
+      if(examForm.questions.length === 0) return showAlert('error', 'يجب إضافة سؤال واحد على الأقل');
+
       await apiCall('save_exam', {
           id: examForm.id,
           subjectId: selectedSubject.id,
@@ -198,6 +209,8 @@ export default function ContentManager() {
   // --- Render ---
   return (
     <AdminLayout title="المحتوى">
+      
+      {/* Header */}
       <div className="header-bar">
           <div>
               <h1>🗂️ إدارة المحتوى</h1>
@@ -209,7 +222,7 @@ export default function ContentManager() {
               </div>
           </div>
           {(selectedCourse || selectedSubject || selectedChapter) && (
-              <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع</button>
+              <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع للخلف</button>
           )}
       </div>
 
@@ -244,6 +257,7 @@ export default function ContentManager() {
       {/* 3. Subject Details */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
+              {/* Chapters Panel */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>📂 الفصول الدراسية</h3>
@@ -253,13 +267,14 @@ export default function ContentManager() {
                       {selectedSubject.chapters.length === 0 && <div className="empty">لا توجد فصول</div>}
                       {selectedSubject.chapters.map(ch => (
                           <div key={ch.id} className="list-item clickable" onClick={() => setSelectedChapter(ch)}>
-                              <div className="info"><strong>{ch.title}</strong><small>{ch.videos.length} فيديو</small></div>
+                              <div className="info"><strong>{ch.title}</strong><small>{ch.videos.length} فيديو • {ch.pdfs.length} ملف</small></div>
                               <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
                           </div>
                       ))}
                   </div>
               </div>
 
+              {/* Exams Panel */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>📝 الامتحانات</h3>
@@ -270,7 +285,7 @@ export default function ContentManager() {
                       {selectedSubject.exams.map(ex => (
                           <div key={ex.id} className="exam-card-item">
                               <div className="exam-icon">{Icons.exam}</div>
-                              <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة</span></div>
+                              <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة | {ex.questions.length} سؤال</span></div>
                               <div className="exam-actions">
                                   <button title="إحصائيات" onClick={() => loadStats(ex.id)}>📊</button>
                                   <button title="تعديل" onClick={() => openModal('exam_editor', ex)}>{Icons.edit}</button>
@@ -286,6 +301,7 @@ export default function ContentManager() {
       {/* 4. Chapter Content */}
       {selectedChapter && (
           <div className="content-layout">
+              {/* Videos */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>🎬 الفيديوهات</h3>
@@ -304,6 +320,7 @@ export default function ContentManager() {
                   </div>
               </div>
 
+              {/* PDFs */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>📄 الملفات</h3>
@@ -351,7 +368,7 @@ export default function ContentManager() {
                   const fd = new FormData();
                   fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
                   const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
-                  if(res.ok) { fetchContent(); setModalType(null); }
+                  if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
                   setLoading(false);
               }}>
                   <input className="input" name="title" placeholder="اسم الملف" required />
@@ -446,7 +463,7 @@ export default function ContentManager() {
                               <tr key={i}>
                                   <td>{a.student_name_input}</td>
                                   <td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td>
-                                  <td>{new Date(a.completed_at).toLocaleDateString()}</td>
+                                  <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString() : '-'}</td>
                               </tr>
                           ))}
                       </tbody>
