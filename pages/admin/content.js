@@ -12,37 +12,35 @@ const Icons = {
     exam: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>,
     folder: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
     close: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
-    image: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    image: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+    menu: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
 };
 
 export default function ContentManager() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Navigation State
+  // Navigation
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedChapter, setSelectedChapter] = useState(null);
 
-  // Modals & Forms
-  const [modalType, setModalType] = useState(null); // 'add_chapter', 'add_video', 'add_pdf', 'exam_editor', 'stats'
+  // UI States
+  const [modalType, setModalType] = useState(null); 
   const [formData, setFormData] = useState({ title: '', url: '' });
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
+  
+  // Mobile Sidebar State for Exam Editor
+  const [showExamSidebar, setShowExamSidebar] = useState(false);
 
-  // Exam Builder State
+  // Exam Builder
   const [examForm, setExamForm] = useState({
-      id: null,
-      title: '', 
-      duration: 30, 
-      requiresName: true, 
-      randQ: true, 
-      randO: true,
-      questions: []
+      id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: []
   });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
-  const [deletedQIds, setDeletedQIds] = useState([]); // لتعقب الأسئلة المحذوفة
+  const [deletedQIds, setDeletedQIds] = useState([]);
   const [uploadingImg, setUploadingImg] = useState(false);
   
   // Stats
@@ -91,13 +89,13 @@ export default function ContentManager() {
       else if (selectedCourse) setSelectedCourse(null);
   };
 
-  // --- Logic ---
+  // --- Modal Logic ---
   const openModal = (type, data = {}) => {
       setFormData({ title: '', url: '' });
       
       if (type === 'exam_editor') {
+          setShowExamSidebar(false); // Reset sidebar on open
           if (data.id) {
-              // ملء البيانات عند التعديل
               setExamForm({
                   id: data.id,
                   title: data.title,
@@ -114,7 +112,6 @@ export default function ContentManager() {
                   }))
               });
           } else {
-              // امتحان جديد
               setExamForm({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
           }
           setDeletedQIds([]);
@@ -126,13 +123,16 @@ export default function ContentManager() {
 
   const apiCall = async (action, payload) => {
       setLoading(true);
-      const res = await fetch('/api/admin/manage-content', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ action, payload })
-      });
-      if (res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تمت العملية بنجاح'); }
-      else { showAlert('error', 'حدث خطأ أثناء التنفيذ'); }
+      try {
+          const res = await fetch('/api/admin/manage-content', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ action, payload })
+          });
+          const data = await res.json();
+          if (res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تمت العملية بنجاح'); }
+          else { showAlert('error', data.error || 'حدث خطأ'); }
+      } catch (e) { showAlert('error', 'خطأ في الاتصال'); }
       setLoading(false);
   };
 
@@ -145,9 +145,11 @@ export default function ContentManager() {
       setUploadingImg(true);
       const fd = new FormData();
       fd.append('file', file); fd.append('type', 'exam_image');
-      const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
-      const data = await res.json();
-      if(res.ok) setCurrentQ({...currentQ, image: data.fileName});
+      try {
+          const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+          const data = await res.json();
+          if(res.ok) setCurrentQ({...currentQ, image: data.fileName});
+      } catch(e) { showAlert('error', 'فشل الرفع'); }
       setUploadingImg(false);
   };
 
@@ -165,6 +167,7 @@ export default function ContentManager() {
   const editQuestion = (i) => {
       setCurrentQ(examForm.questions[i]);
       setEditingQIndex(i);
+      setShowExamSidebar(false); // Close sidebar on mobile after selection
   };
 
   const deleteQuestion = (i) => {
@@ -210,7 +213,6 @@ export default function ContentManager() {
   return (
     <AdminLayout title="المحتوى">
       
-      {/* Header */}
       <div className="header-bar">
           <div>
               <h1>🗂️ إدارة المحتوى</h1>
@@ -222,7 +224,7 @@ export default function ContentManager() {
               </div>
           </div>
           {(selectedCourse || selectedSubject || selectedChapter) && (
-              <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع للخلف</button>
+              <button className="btn-secondary" onClick={handleBack}>{Icons.back} رجوع</button>
           )}
       </div>
 
@@ -257,7 +259,6 @@ export default function ContentManager() {
       {/* 3. Subject Details */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
-              {/* Chapters Panel */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>📂 الفصول الدراسية</h3>
@@ -274,7 +275,6 @@ export default function ContentManager() {
                   </div>
               </div>
 
-              {/* Exams Panel */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>📝 الامتحانات</h3>
@@ -301,7 +301,6 @@ export default function ContentManager() {
       {/* 4. Chapter Content */}
       {selectedChapter && (
           <div className="content-layout">
-              {/* Videos */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>🎬 الفيديوهات</h3>
@@ -320,7 +319,6 @@ export default function ContentManager() {
                   </div>
               </div>
 
-              {/* PDFs */}
               <div className="panel">
                   <div className="panel-head">
                       <h3>📄 الملفات</h3>
@@ -338,9 +336,9 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* --- Modals --- */}
+      {/* --- Modals (Fixed & Centered) --- */}
 
-      {/* Add Chapter */}
+      {/* Add Chapter Modal */}
       {modalType === 'add_chapter' && (
           <Modal title="فصل جديد" onClose={() => setModalType(null)}>
               <input className="input" placeholder="عنوان الفصل" value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} autoFocus />
@@ -348,7 +346,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Add Video */}
+      {/* Add Video Modal */}
       {modalType === 'add_video' && (
           <Modal title="إضافة فيديو" onClose={() => setModalType(null)}>
               <input className="input" placeholder="عنوان الفيديو" value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} />
@@ -357,7 +355,7 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Add PDF */}
+      {/* Add PDF Modal */}
       {modalType === 'add_pdf' && (
           <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
               <form onSubmit={async (e) => {
@@ -367,8 +365,11 @@ export default function ContentManager() {
                   setLoading(true);
                   const fd = new FormData();
                   fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
-                  const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
-                  if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
+                  try {
+                      const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+                      if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
+                      else showAlert('error', 'فشل الرفع');
+                  } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
                   setLoading(false);
               }}>
                   <input className="input" name="title" placeholder="اسم الملف" required />
@@ -378,17 +379,24 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* Exam Editor (Fixed Dimensions) */}
+      {/* Exam Editor (Responsive) */}
       {modalType === 'exam_editor' && (
           <div className="modal-overlay">
               <div className="modal-box large">
                   <div className="modal-header">
                       <h3>{examForm.id ? 'تعديل الامتحان' : 'إنشاء امتحان جديد'}</h3>
-                      <button onClick={() => setModalType(null)}>{Icons.close}</button>
+                      <div className="header-actions">
+                          {/* زر القائمة الجانبية يظهر فقط في الموبايل */}
+                          <button className="mobile-toggle" onClick={() => setShowExamSidebar(!showExamSidebar)}>
+                              {Icons.menu} قائمة الأسئلة
+                          </button>
+                          <button onClick={() => setModalType(null)}>{Icons.close}</button>
+                      </div>
                   </div>
+                  
                   <div className="modal-body split-view">
-                      
-                      <div className="sidebar">
+                      {/* Left: Sidebar (Toggleable on Mobile) */}
+                      <div className={`sidebar ${showExamSidebar ? 'show' : ''}`}>
                           <div className="meta-group">
                               <input className="input" placeholder="عنوان الامتحان" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} />
                               <div className="row">
@@ -409,10 +417,14 @@ export default function ContentManager() {
                                       <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button>
                                   </div>
                               ))}
-                              <button className="add-q-btn" onClick={() => { setEditingQIndex(-1); setCurrentQ({id:null, text:'', image:null, options:['','','',''], correctIndex:0}); }}>+ سؤال جديد</button>
+                              <button className="add-q-btn" onClick={() => { setEditingQIndex(-1); setCurrentQ({id:null, text:'', image:null, options:['','','',''], correctIndex:0}); setShowExamSidebar(false); }}>+ سؤال جديد</button>
                           </div>
                       </div>
 
+                      {/* Overlay for mobile sidebar */}
+                      {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
+
+                      {/* Right: Editor */}
                       <div className="editor">
                           <h4>{editingQIndex === -1 ? 'سؤال جديد' : `تعديل السؤال ${editingQIndex + 1}`}</h4>
                           <textarea className="input area" placeholder="نص السؤال" value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
@@ -463,7 +475,8 @@ export default function ContentManager() {
                               <tr key={i}>
                                   <td>{a.student_name_input}</td>
                                   <td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td>
-                                  <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString() : '-'}</td>
+                                  {/* تم إصلاح الخطأ: استخدام completed_at */}
+                                  <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
                               </tr>
                           ))}
                       </tbody>
@@ -477,7 +490,7 @@ export default function ContentManager() {
       {confirmData.show && <div className="confirm-overlay"><div className="confirm-box"><h3>تأكيد</h3><p>{confirmData.msg}</p><div className="acts"><button onClick={() => setConfirmData({ ...confirmData, show: false })}>إلغاء</button><button className="danger" onClick={confirmData.onConfirm}>نعم</button></div></div></div>}
 
       <style jsx>{`
-        /* General */
+        /* General Layout */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
         .breadcrumbs { color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
@@ -492,14 +505,14 @@ export default function ContentManager() {
         .folder-card .icon.blue { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .folder-card .icon.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
         
-        /* Layout */
+        /* Content Panel */
         .content-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
         .panel { background: #111827; border-radius: 12px; }
         .panel-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 15px; }
         .panel-head h3 { margin: 0; color: white; font-size: 1.2rem; }
         .btn-small { background: #38bdf8; color: #0f172a; padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 5px; }
 
-        /* Lists & Items */
+        /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; }
         .list-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
         .list-item.clickable { cursor: pointer; transition: 0.2s; }
@@ -529,25 +542,27 @@ export default function ContentManager() {
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
         /* --- Modals (Fixed & Centered) --- */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 2000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-        .modal-box { background: #1e293b; width: 90%; max-width: 450px; border-radius: 12px; border: 1px solid #475569; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-        .modal-box.large { max-width: 900px; height: 90vh; display: flex; flex-direction: column; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal-box { background: #1e293b; width: 95%; max-width: 450px; border-radius: 16px; border: 1px solid #475569; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .modal-box.large { max-width: 1200px; height: 95vh; display: flex; flex-direction: column; }
         
         .modal-header { background: #1e293b; padding: 15px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
         .modal-header h3 { margin: 0; color: white; }
         .modal-header button { background: none; border: none; color: #94a3b8; cursor: pointer; }
-        
-        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+        .header-actions { display: flex; gap: 15px; align-items: center; }
+        .mobile-toggle { display: none; background: #334155; border: none; color: white; padding: 5px 10px; border-radius: 6px; font-size: 0.9rem; cursor: pointer; }
+
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; position: relative; }
         .modal-body.split-view { display: flex; padding: 0; }
         
-        .input { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 10px; border-radius: 6px; margin-bottom: 15px; }
+        .input { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
         .input.small { margin-bottom: 0; }
         .input.area { resize: vertical; }
-        .btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-primary.full { width: 100%; }
 
         /* Exam Editor Layout */
-        .sidebar { width: 300px; background: #111827; border-left: 1px solid #334155; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar { width: 300px; background: #111827; border-left: 1px solid #334155; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; height: 100%; transition: transform 0.3s ease; }
         .editor { flex: 1; background: #0f172a; padding: 30px; overflow-y: auto; }
         
         .meta-group { border-bottom: 1px solid #334155; padding-bottom: 15px; margin-bottom: 15px; }
@@ -558,11 +573,11 @@ export default function ContentManager() {
         .q-item { padding: 10px; background: #1f2937; border-radius: 6px; margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; color: #cbd5e1; font-size: 0.9rem; }
         .q-item:hover, .q-item.active { background: #334155; border-color: #38bdf8; color: white; outline: 1px solid #38bdf8; }
         .del-btn { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; }
-        .add-q-btn { width: 100%; padding: 8px; background: transparent; border: 1px dashed #475569; color: #38bdf8; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+        .add-q-btn { width: 100%; padding: 10px; background: transparent; border: 1px dashed #475569; color: #38bdf8; border-radius: 6px; cursor: pointer; margin-top: 10px; }
 
         .image-upload { margin: 15px 0; }
-        .image-upload label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: #94a3b8; background: #1e293b; padding: 6px 12px; border-radius: 6px; font-size: 0.9rem; border: 1px solid #334155; }
-        .image-upload img { max-height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #334155; display: block; }
+        .image-upload label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: #94a3b8; background: #1e293b; padding: 8px 15px; border-radius: 6px; font-size: 0.9rem; border: 1px solid #334155; }
+        .image-upload img { max-height: 120px; margin-top: 10px; border-radius: 6px; border: 1px solid #334155; display: block; }
 
         .options-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; margin-bottom: 20px; }
         .option-row { display: flex; align-items: center; gap: 10px; background: #1e293b; padding: 10px; border-radius: 8px; border: 1px solid transparent; }
@@ -585,19 +600,45 @@ export default function ContentManager() {
         .alert-toast.success { background: #22c55e; color: #0f172a; }
         .alert-toast.error { background: #ef4444; }
 
-        .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2500; display: flex; align-items: center; justify-content: center; }
-        .confirm-box { background: #1e293b; padding: 30px; border-radius: 12px; width: 350px; text-align: center; border: 1px solid #475569; }
+        .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 12000; display: flex; align-items: center; justify-content: center; }
+        .confirm-box { background: #1e293b; padding: 30px; border-radius: 16px; width: 350px; text-align: center; border: 1px solid #475569; }
         .confirm-box h3 { color: #ef4444; margin-top: 0; }
         .confirm-box p { color: #cbd5e1; }
         .acts { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
         .acts button { padding: 8px 20px; border-radius: 6px; cursor: pointer; border: none; font-weight: bold; }
         .acts button.danger { background: #ef4444; color: white; }
+
+        /* --- Mobile Responsiveness --- */
+        @media (max-width: 768px) {
+            .mobile-toggle { display: block; }
+            
+            /* Sidebar becomes an off-canvas drawer */
+            .sidebar { 
+                position: absolute; right: 0; top: 0; bottom: 0; 
+                width: 80%; z-index: 50; 
+                transform: translateX(100%); /* Hidden by default */
+                box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+            }
+            .sidebar.show { transform: translateX(0); }
+            
+            .sidebar-overlay { 
+                position: absolute; inset: 0; 
+                background: rgba(0,0,0,0.6); z-index: 40; 
+                backdrop-filter: blur(2px);
+            }
+
+            .options-container { grid-template-columns: 1fr; }
+            .grid-cards { grid-template-columns: 1fr; }
+            .modal-box.large { height: 100%; width: 100%; border-radius: 0; }
+        }
+
+        @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       `}</style>
     </AdminLayout>
   );
 }
 
-// Modal Component
+// Modal Helper Component
 const Modal = ({ title, children, onClose }) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
