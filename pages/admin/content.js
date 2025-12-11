@@ -168,6 +168,7 @@ export default function ContentManager() {
   });
 
   // --- Modal Opening (Unified System) ---
+  // --- Modal Opening (Unified System) ---
   const openModal = (type, data = {}) => {
       setFormData({ title: '', url: '', price: 0 }); // Reset defaults
       
@@ -182,6 +183,13 @@ export default function ContentManager() {
 
       // Special handling for Exam Editor
       if (type === 'exam_editor') {
+          
+          // ✅ [تعديل هام] منع التعديل إذا كان الامتحان محلولاً مسبقاً
+          if (data.id && data.attempts_count > 0) {
+              showAlert('error', '⛔ لا يمكن تعديل هذا الامتحان لأنه تم حله من قبل طلاب مسبقاً. حفاظاً على صحة الدرجات، يرجى حذفه وإنشاء واحد جديد.');
+              return; // إيقاف العملية وعدم فتح النافذة
+          }
+
           setShowExamSidebar(false);
           if (data.id) {
               setExamForm({
