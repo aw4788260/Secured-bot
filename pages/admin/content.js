@@ -28,7 +28,7 @@ export default function ContentManager() {
 
   // Modals & UI
   const [modalType, setModalType] = useState(null); 
-  const [formData, setFormData] = useState({ title: '', url: '' });
+  const [formData, setFormData] = useState({ title: '', url: '', price: 0 }); // Added price
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
@@ -166,12 +166,15 @@ export default function ContentManager() {
   const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
       await apiCall('delete_item', { type, id });
       closeConfirm();
+      if(type === 'courses') setSelectedCourse(null); // إذا حذفت الكورس المفتوح
+      if(type === 'subjects') setSelectedSubject(null); // إذا حذفت المادة المفتوحة
   });
 
   // --- Modal Opening ---
   const openModal = (type, data = {}) => {
-      setFormData({ title: '', url: '' }); // Reset Form
+      setFormData({ title: '', url: '', price: 0 }); // Reset Form
       if (type === 'exam_editor') {
+          // (Exam logic remains the same)
           setShowExamSidebar(false);
           if (data.id) {
               setExamForm({
@@ -193,7 +196,7 @@ export default function ContentManager() {
       setModalType(type);
   };
 
-  // --- Exam Logic ---
+  // --- Exam Logic --- (No Changes needed here from previous turn)
   const handleImageUpload = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -207,17 +210,12 @@ export default function ContentManager() {
       } catch(e) {}
       setUploadingImg(false);
   };
-
   const handleOptionChange = (index, value) => {
       const newOpts = [...currentQ.options];
       newOpts[index] = value;
       setCurrentQ({ ...currentQ, options: newOpts });
   };
-
-  const addOption = () => {
-      setCurrentQ({ ...currentQ, options: [...currentQ.options, ''] });
-  };
-
+  const addOption = () => { setCurrentQ({ ...currentQ, options: [...currentQ.options, ''] }); };
   const removeOption = (index) => {
       if (currentQ.options.length <= 2) return showAlert('error', 'يجب أن يكون هناك خياران على الأقل');
       const newOpts = currentQ.options.filter((_, i) => i !== index);
@@ -226,12 +224,10 @@ export default function ContentManager() {
       if (index === currentQ.correctIndex) newCorrect = 0;
       setCurrentQ({ ...currentQ, options: newOpts, correctIndex: newCorrect });
   };
-
   const resetCurrentQuestion = () => {
       setEditingQIndex(-1);
       setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   };
-
   const saveQuestion = () => {
       if (!currentQ.text) return showAlert('error', 'نص السؤال مطلوب');
       const newQs = [...examForm.questions];
@@ -240,20 +236,17 @@ export default function ContentManager() {
       setExamForm({ ...examForm, questions: newQs });
       resetCurrentQuestion();
   };
-
   const editQuestion = (i) => {
       setCurrentQ(examForm.questions[i]);
       setEditingQIndex(i);
       setShowExamSidebar(false);
   };
-
   const deleteQuestion = (i) => {
       const q = examForm.questions[i];
       if (q.id) setDeletedQIds([...deletedQIds, q.id]);
       setExamForm({ ...examForm, questions: examForm.questions.filter((_, idx) => idx !== i) });
       if (editingQIndex === i) resetCurrentQuestion();
   };
-
   const submitExam = async () => {
       if(!examForm.title || examForm.questions.length === 0) return showAlert('error', 'البيانات ناقصة');
       await apiCall('save_exam', {
@@ -263,7 +256,6 @@ export default function ContentManager() {
           questions: examForm.questions, deletedQuestionIds: deletedQIds
       });
   };
-
   const loadStats = async (examId) => {
       setLoading(true);
       const res = await fetch(`/api/admin/exam-stats?examId=${examId}`);
@@ -271,7 +263,7 @@ export default function ContentManager() {
       setLoading(false);
   };
 
-  // Helper to determine modal title and inputs
+  // Helper
   const isAddModal = ['add_course', 'add_subject', 'add_chapter', 'add_video'].includes(modalType);
   const getModalTitle = () => {
     switch(modalType) {
@@ -327,10 +319,15 @@ export default function ContentManager() {
                     onDragEnter={(e) => onDragEnter(e, index)}
                     onDragEnd={(e) => onDragEnd(e, 'courses')}
                   >
-                      <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
+                      <div className="card-actions-abs">
+                          <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('courses', c.id)}}>{Icons.trash}</button>
+                          <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
+                      </div>
+                      
                       <div className="icon blue">{Icons.folder}</div>
                       <h3>{c.title}</h3>
-                      <p>{c.subjects.length} مواد</p>
+                      <p>{c.price > 0 ? `${c.price} جنية` : 'مجاني'}</p>
+                      <small style={{color: '#64748b'}}>{c.subjects.length} مواد</small>
                   </div>
               ))}
           </div>
@@ -349,16 +346,21 @@ export default function ContentManager() {
                     onDragEnter={(e) => onDragEnter(e, index)}
                     onDragEnd={(e) => onDragEnd(e, 'subjects')}
                   >
-                      <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
+                      <div className="card-actions-abs">
+                          <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('subjects', s.id)}}>{Icons.trash}</button>
+                          <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
+                      </div>
+
                       <div className="icon green">{Icons.folder}</div>
                       <h3>{s.title}</h3>
-                      <p>{s.chapters.length} فصول • {s.exams.length} امتحانات</p>
+                      <p>{s.price > 0 ? `${s.price} جنية` : 'مجاني'}</p>
+                      <small style={{color: '#64748b'}}>{s.chapters.length} فصول</small>
                   </div>
               ))}
           </div>
       )}
 
-      {/* 3. Subject Details */}
+      {/* 3. Subject Details (Chapters & Exams) */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -473,7 +475,7 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* --- Unified Modals (Handling Course, Subject, Chapter, Video) --- */}
+      {/* --- Unified Modals --- */}
 
       {isAddModal && (
           <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
@@ -487,6 +489,21 @@ export default function ContentManager() {
                     placeholder="اكتب العنوان..." 
                   />
               </div>
+
+              {/* Price Field only for Course and Subject */}
+              {(modalType === 'add_course' || modalType === 'add_subject') && (
+                  <div className="form-group">
+                      <label>السعر (جنية)</label>
+                      <input 
+                        type="number"
+                        className="input" 
+                        value={formData.price} 
+                        onChange={e=>setFormData({...formData, price: e.target.value})} 
+                        placeholder="0" 
+                      />
+                  </div>
+              )}
+
               {modalType === 'add_video' && (
                   <div className="form-group">
                       <label>رابط يوتيوب</label>
@@ -496,8 +513,8 @@ export default function ContentManager() {
               <div className="acts">
                   <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
                   <button className="btn-primary" onClick={() => {
-                      if (modalType === 'add_course') apiCall('add_course', { title: formData.title });
-                      else if (modalType === 'add_subject') apiCall('add_subject', { courseId: selectedCourse.id, title: formData.title });
+                      if (modalType === 'add_course') apiCall('add_course', { title: formData.title, price: formData.price });
+                      else if (modalType === 'add_subject') apiCall('add_subject', { courseId: selectedCourse.id, title: formData.title, price: formData.price });
                       else if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title });
                       else apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url });
                   }}>حفظ</button>
@@ -692,8 +709,11 @@ export default function ContentManager() {
         .folder-card .icon { width: 50px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; }
         .folder-card .icon.blue { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .folder-card .icon.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
-        .drag-handle-abs { position: absolute; top: 10px; right: 10px; cursor: grab; color: rgba(255,255,255,0.2); z-index: 10; padding: 5px; }
+        
+        .card-actions-abs { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 20; }
+        .drag-handle-abs { cursor: grab; color: rgba(255,255,255,0.2); padding: 5px; }
         .drag-handle-abs:hover { color: white; background: rgba(0,0,0,0.2); border-radius: 4px; }
+        .btn-icon.danger { width: 25px; height: 25px; }
 
         /* Content Layout */
         .content-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
@@ -732,9 +752,28 @@ export default function ContentManager() {
         .media-body { padding: 10px; display: flex; justify-content: space-between; align-items: center; }
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
-        /* --- Unified Modals --- */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-        .modal-box { background: #1e293b; width: 95%; max-width: 450px; border-radius: 16px; border: 1px solid #475569; padding: 25px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        /* --- Unified Modals (FIXED CSS) --- */
+        .modal-overlay { 
+            position: fixed; 
+            top: 0; left: 0; right: 0; bottom: 0; 
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.7); 
+            z-index: 10000; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            backdrop-filter: blur(5px);
+        }
+        .modal-box { 
+            background: #1e293b; 
+            width: 95%; max-width: 450px; 
+            border-radius: 16px; 
+            border: 1px solid #475569; 
+            padding: 25px; 
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); 
+            animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative; /* ensure context */
+        }
         .modal-header { display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 20px; align-items: center; }
         .modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
         .close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
