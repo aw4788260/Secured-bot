@@ -8,6 +8,9 @@ export default function StudentCourses() {
   const [myAccess, setMyAccess] = useState({ courses: [], subjects: [] });
   const [loading, setLoading] = useState(true);
 
+  // بيانات الدفع (جديد)
+  const [paymentInfo, setPaymentInfo] = useState({ vodafone: '', instapay: '', instapayLink: '' });
+
   // السلة
   const [cart, setCart] = useState([]);
   
@@ -35,14 +38,26 @@ export default function StudentCourses() {
       if (!uid) { router.replace('/login'); return; }
 
       try {
-        const [resCourses, resAccess] = await Promise.all([
+        const [resCourses, resAccess, resPayment] = await Promise.all([
             fetch('/api/public/get-courses'),
-            fetch('/api/student/my-access', { headers: { 'x-user-id': uid, 'x-device-id': did } })
+            fetch('/api/student/my-access', { headers: { 'x-user-id': uid, 'x-device-id': did } }),
+            fetch('/api/public/get-payment-info') // جلب بيانات الدفع
         ]);
+        
         const coursesData = await resCourses.json();
         const accessData = await resAccess.json();
+        const paymentData = await resPayment.json();
+
         setCourses(coursesData);
         setMyAccess(accessData);
+        
+        // تحديث بيانات الدفع
+        setPaymentInfo({
+            vodafone: paymentData.vodafone_cash_number || 'غير متوفر',
+            instapay: paymentData.instapay_number || '',
+            instapayLink: paymentData.instapay_link || ''
+        });
+
       } catch (err) { console.error(err); } 
       finally { setLoading(false); }
     };
@@ -246,7 +261,32 @@ export default function StudentCourses() {
                       ))}
                       <div className="summary-total">الإجمالي المطلوب: {cartTotal} ج.م</div>
                   </div>
-                  <p className="pay-hint">حول المبلغ على فودافون كاش: <span className="phone">010XXXXXXXX</span></p>
+                  
+                  {/* عرض وسائل الدفع الديناميكية */}
+                  <div className="payment-methods-box">
+                      {paymentInfo.vodafone && (
+                          <div className="pay-row">
+                              <span className="pay-label">فودافون كاش:</span>
+                              <span className="pay-value red">{paymentInfo.vodafone}</span>
+                          </div>
+                      )}
+                      
+                      {paymentInfo.instapay && (
+                          <div className="pay-row">
+                              <span className="pay-label">إنستا باي:</span>
+                              <span className="pay-value purple">{paymentInfo.instapay}</span>
+                          </div>
+                      )}
+
+                      {paymentInfo.instapayLink && (
+                          <div style={{textAlign: 'center', marginTop: '10px'}}>
+                              <a href={paymentInfo.instapayLink} target="_blank" rel="noopener noreferrer" className="insta-link-btn">
+                                  دفع سريع عبر InstaPay 🔗
+                              </a>
+                          </div>
+                      )}
+                  </div>
+
                   <form onSubmit={handleSubmit}>
                       <label>إرفاق صورة التحويل:</label>
                       <input type="file" accept="image/*" onChange={(e) => setReceiptFile(e.target.files[0])} required className="file-in" />
@@ -383,8 +423,16 @@ export default function StudentCourses() {
         .summary-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #334155; font-size: 0.9em; }
         .summary-total { margin-top: 10px; text-align: center; font-weight: bold; color: #4ade80; font-size: 1.2em; }
 
-        .pay-hint { font-size: 0.9em; color: #cbd5e1; margin-bottom: 15px; text-align: center; }
-        .phone { color: #fca5a5; font-weight: bold; font-family: monospace; letter-spacing: 1px; }
+        /* ستايل بيانات الدفع */
+        .payment-methods-box { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #334155; }
+        .pay-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95em; }
+        .pay-label { color: #cbd5e1; }
+        .pay-value { font-weight: bold; font-family: monospace; letter-spacing: 1px; font-size: 1.1em; }
+        .pay-value.red { color: #f87171; }
+        .pay-value.purple { color: #d8b4fe; }
+        .insta-link-btn { display: inline-block; color: #38bdf8; text-decoration: none; font-size: 0.95em; font-weight: bold; border: 1px solid #38bdf8; padding: 5px 15px; border-radius: 20px; transition: 0.2s; }
+        .insta-link-btn:hover { background: #38bdf8; color: #000; }
+
         .file-in { width: 100%; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: white; margin-bottom: 15px; }
         .note-in { width: 100%; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: white; margin-bottom: 20px; font-family: inherit; resize: vertical; min-height: 60px; }
         .note-in:focus { border-color: #38bdf8; outline: none; }
