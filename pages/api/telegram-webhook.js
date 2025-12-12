@@ -20,21 +20,10 @@ export default async (req, res) => {
     if (message && message.chat) {
         const chatId = message.chat.id;
 
-        // نص الرسالة (تم التعديل)
-        const text = `أهلاً بك 👋\n\nهذا الزر مخصص لمستخدمي الآيفون للدخول للمنصة 👇`;
-
-        // إرسال الرسالة مع زر Web App لفتح الموقع داخل تليجرام
+        // إرسال الرسالة النصية فقط (بدون أزرار)
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
             chat_id: chatId,
-            text: text,
-            reply_markup: {
-                inline_keyboard: [[
-                    { 
-                        text: "🚀 فتح المنصة (iPhone)", 
-                        web_app: { url: "https://courses.aw478260.dpdns.org" } 
-                    }
-                ]]
-            }
+            text: "أهلاً بك"
         });
     }
 
@@ -42,6 +31,6 @@ export default async (req, res) => {
     console.error('Webhook Error:', error.message);
   }
 
-  // إنهاء الطلب بنجاح دائماً لمنع تكرار المحاولة من تليجرام
+  // إنهاء الطلب بنجاح دائماً
   res.status(200).send('OK');
 };
