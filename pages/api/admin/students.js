@@ -152,9 +152,32 @@ export default async (req, res) => {
             await supabase.from('users').update({ password: hash }).eq('id', userId);
             return res.status(200).json({ success: true, message: 'تم تغيير كلمة المرور.' });
         }
+       // [تعديل] التحقق من تكرار اسم المستخدم قبل التحديث
         if (action === 'change_username') {
-            await supabase.from('users').update({ username: newData.username }).eq('id', userId);
-            return res.status(200).json({ success: true, message: 'تم تغيير اسم المستخدم.' });
+            const newUsername = newData.username.trim();
+
+            // 1. التحقق: هل يوجد طالب آخر يستخدم نفس الاسم؟
+            const { data: existingUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', newUsername)
+                .neq('id', userId) // استثناء الطالب الحالي (في حال كتب نفس اسمه)
+                .maybeSingle();
+
+            if (existingUser) {
+                // إذا وجدنا تطابقاً، نوقف العملية ونرسل رسالة خطأ
+                return res.status(400).json({ error: '⚠️ عذراً، اسم المستخدم هذا مسجل بالفعل لطالب آخر. يرجى اختيار اسم مختلف.' });
+            }
+
+            // 2. إذا كان الاسم متاحاً، نقوم بالتحديث
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({ username: newUsername })
+                .eq('id', userId);
+
+            if (updateError) throw updateError;
+
+            return res.status(200).json({ success: true, message: '✅ تم تغيير اسم المستخدم بنجاح.' });
         }
         if (action === 'change_phone') {
             await supabase.from('users').update({ phone: newData.phone }).eq('id', userId);
