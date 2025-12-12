@@ -2,7 +2,8 @@ import { supabase } from '../../../lib/supabaseClient';
 import { parse } from 'cookie';
 import bcrypt from 'bcryptjs';
 
-const MAIN_ADMIN_ID = process.env.MAIN_ADMIN_ID;
+// [تصحيح] استخدام نفس المتغير الموجود في admins.js
+const PANEL_OWNER_ID = process.env.PANEL_OWNER_ID; 
 
 export default async (req, res) => {
   const cookies = parse(req.headers.cookie || '');
@@ -12,10 +13,8 @@ export default async (req, res) => {
   const { data: adminUser } = await supabase.from('users').select('id, is_admin').eq('session_token', sessionToken).single();
   if (!adminUser || !adminUser.is_admin) return res.status(403).json({ error: 'Access Denied' });
 
-  // [تصحيح] مقارنة آمنة للـ ID (تحويل لنص وإزالة المسافات)
-  const currentAdminId = String(adminUser.id).trim();
-  const mainAdminId = String(MAIN_ADMIN_ID || '').trim();
-  const isMainAdmin = currentAdminId === mainAdminId;
+  // [تصحيح] منطق التحقق من الأدمن الرئيسي
+  const isMainAdmin = String(adminUser.id) === String(PANEL_OWNER_ID);
 
   // ---------------------------------------------------------
   // GET (Server-Side Pagination & Filtering)
@@ -81,6 +80,7 @@ export default async (req, res) => {
             if (targetUserIds.size > 0) {
                 query = query.in('id', Array.from(targetUserIds));
             } else {
+                // [تصحيح] إرجاع isMainAdmin هنا أيضاً للحالات الفارغة
                 return res.status(200).json({ students: [], total: 0, isMainAdmin }); 
             }
         }
@@ -96,6 +96,7 @@ export default async (req, res) => {
 
         const formattedData = data.map(user => ({ ...user, device_linked: user.devices && user.devices.length > 0 }));
         
+        // [تصحيح] إرسال isMainAdmin للواجهة
         return res.status(200).json({ students: formattedData, total: count, isMainAdmin });
 
     } catch (err) { return res.status(500).json({ error: err.message }); }
@@ -109,19 +110,16 @@ export default async (req, res) => {
     const targets = userIds || [userId];
 
     try {
-        // [تعديل] استبدال الحظر بالحذف النهائي مع الحماية
         if (action === 'delete_user') {
             for (const targetId of targets) {
                 // أ) التحقق: هل الهدف أدمن؟
                 const { data: targetUser } = await supabase.from('users').select('is_admin').eq('id', targetId).single();
                 
                 if (targetUser && targetUser.is_admin) {
-                    // إذا لم تكن الأدمن الرئيسي، ممنوع حذف أي أدمن آخر
                     if (!isMainAdmin) {
                         return res.status(403).json({ error: `⛔ لا تملك صلاحية حذف المشرفين.` });
                     }
-                    // لا يمكن حذف الأدمن الرئيسي نفسه
-                    if (String(targetId) === mainAdminId) {
+                    if (String(targetId) === String(PANEL_OWNER_ID)) {
                         return res.status(403).json({ error: '⛔ لا يمكن حذف الحساب الرئيسي.' });
                     }
                 }
