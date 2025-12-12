@@ -12,9 +12,10 @@ export default async (req, res) => {
 
   try {
     // 2. البحث عن المستخدم صاحب هذا التوكن
+    // [تصحيح] إضافة first_name للاستعلام
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, session_token, is_admin')
+      .select('id, session_token, is_admin, first_name')
       .eq('session_token', sessionToken)
       .single();
 
@@ -23,7 +24,12 @@ export default async (req, res) => {
       return res.status(401).json({ valid: false });
     }
 
-    return res.status(200).json({ valid: true, userId: user.id });
+    // [تصحيح] إرجاع الاسم في الرد
+    return res.status(200).json({ 
+        valid: true, 
+        userId: user.id,
+        name: user.first_name // هذا ما ينتظره AdminLayout
+    });
 
   } catch (err) {
     return res.status(500).json({ valid: false });
