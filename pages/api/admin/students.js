@@ -12,7 +12,10 @@ export default async (req, res) => {
   const { data: adminUser } = await supabase.from('users').select('id, is_admin').eq('session_token', sessionToken).single();
   if (!adminUser || !adminUser.is_admin) return res.status(403).json({ error: 'Access Denied' });
 
-  const isMainAdmin = String(adminUser.id) === String(MAIN_ADMIN_ID);
+  // [تصحيح] مقارنة آمنة للـ ID (تحويل لنص وإزالة المسافات)
+  const currentAdminId = String(adminUser.id).trim();
+  const mainAdminId = String(MAIN_ADMIN_ID || '').trim();
+  const isMainAdmin = currentAdminId === mainAdminId;
 
   // ---------------------------------------------------------
   // GET (Server-Side Pagination & Filtering)
@@ -34,7 +37,6 @@ export default async (req, res) => {
             return res.status(200).json({ courses: userCourses || [], subjects: userSubjects || [] });
         }
 
-        // [تعديل 1] إزالة فلتر .eq('is_admin', false) ليظهر الجميع (طلاب ومشرفين)
         let query = supabase
             .from('users')
             .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' });
@@ -87,7 +89,6 @@ export default async (req, res) => {
         const from = (page - 1) * limit;
         const to = from + limit - 1;
         
-        // ترتيب النتائج: المشرفين أولاً ثم الأحدث
         query = query.order('is_admin', { ascending: false }).order('created_at', { ascending: false }).range(from, to);
 
         const { data, error, count } = await query;
@@ -95,7 +96,6 @@ export default async (req, res) => {
 
         const formattedData = data.map(user => ({ ...user, device_linked: user.devices && user.devices.length > 0 }));
         
-        // [تعديل] نرسل حالة isMainAdmin للواجهة للتحكم في الأزرار
         return res.status(200).json({ students: formattedData, total: count, isMainAdmin });
 
     } catch (err) { return res.status(500).json({ error: err.message }); }
@@ -109,31 +109,29 @@ export default async (req, res) => {
     const targets = userIds || [userId];
 
     try {
-        // [تعديل 2] استبدال 'toggle_block' بـ 'delete_user' مع الحذف المتسلسل
+        // [تعديل] استبدال الحظر بالحذف النهائي مع الحماية
         if (action === 'delete_user') {
             for (const targetId of targets) {
                 // أ) التحقق: هل الهدف أدمن؟
                 const { data: targetUser } = await supabase.from('users').select('is_admin').eq('id', targetId).single();
                 
                 if (targetUser && targetUser.is_admin) {
-                    // إذا كان أدمن، يجب أن يكون الطالب هو الأدمن الرئيسي
+                    // إذا لم تكن الأدمن الرئيسي، ممنوع حذف أي أدمن آخر
                     if (!isMainAdmin) {
-                        return res.status(403).json({ error: `لا يمكنك حذف المشرف (ID: ${targetId}) إلا إذا كنت الأدمن الرئيسي.` });
+                        return res.status(403).json({ error: `⛔ لا تملك صلاحية حذف المشرفين.` });
                     }
                     // لا يمكن حذف الأدمن الرئيسي نفسه
-                    if (String(targetId) === String(MAIN_ADMIN_ID)) {
-                        return res.status(403).json({ error: 'لا يمكن حذف الحساب الرئيسي.' });
+                    if (String(targetId) === mainAdminId) {
+                        return res.status(403).json({ error: '⛔ لا يمكن حذف الحساب الرئيسي.' });
                     }
                 }
 
-                // ب) الحذف المتسلسل (تنظيف الجداول المرتبطة أولاً)
+                // ب) الحذف المتسلسل
                 await supabase.from('user_course_access').delete().eq('user_id', targetId);
                 await supabase.from('user_subject_access').delete().eq('user_id', targetId);
                 await supabase.from('devices').delete().eq('user_id', targetId);
                 await supabase.from('subscription_requests').delete().eq('user_id', targetId);
                 
-                // (حذف المحاولات سيحذف الإجابات تلقائياً إذا كان هناك Cascade في الداتابيز، وإلا أضف حذف الإجابات هنا)
-                // يفضل حذف الإجابات أولاً للأمان:
                 const { data: attempts } = await supabase.from('user_attempts').select('id').eq('user_id', targetId);
                 if (attempts && attempts.length > 0) {
                     const attemptIds = attempts.map(a => a.id);
