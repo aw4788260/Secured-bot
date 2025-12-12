@@ -6,6 +6,7 @@ export default function StudentsPage() {
   const [allCourses, setAllCourses] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [totalStudents, setTotalStudents] = useState(0); 
+  const [currentUserId, setCurrentUserId] = useState(null); // [جديد]
   
   // [جديد] حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي (للتحكم في حذف المشرفين)
   const [isMainAdmin, setIsMainAdmin] = useState(false);
@@ -82,8 +83,11 @@ export default function StudentsPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, [currentPage, activeFilters]);
-
+  useEffect(() => { 
+      setCurrentUserId(localStorage.getItem('admin_user_id')); // [جديد] حفظ الـ ID الحالي
+      window.scrollTo(0, 0);
+      fetchData(); 
+  }, [currentPage, activeFilters]);
   const handleSearchKey = (e) => {
       if (e.key === 'Enter') {
           setCurrentPage(1);
@@ -178,8 +182,13 @@ export default function StudentsPage() {
       else if (actionType === 'reset_device') showConfirm('إلغاء قفل الأجهزة للمحددين؟', () => runApiCall('reset_device', { userIds: selectedUsers }));
       
       // [تعديل] تغيير زر الحظر الجماعي إلى حذف جماعي
-      else if (actionType === 'delete') {
-          showConfirm('⚠️ تحذير: هل أنت متأكد من حذف حسابات الطلاب المحددين نهائياً؟ (لا يمكن التراجع)', () => runApiCall('delete_user', { userIds: selectedUsers }));
+     else if (actionType === 'delete') {
+          // استبعاد الحساب الحالي من القائمة المختارة
+          const safeUsers = selectedUsers.filter(id => String(id) !== String(currentUserId));
+          
+          if (safeUsers.length === 0) return showToast('لا يمكنك حذف حسابك الخاص!', 'error');
+
+          showConfirm(`⚠️ تحذير: هل أنت متأكد من حذف ${safeUsers.length} حساب نهائياً؟`, () => runApiCall('delete_user', { userIds: safeUsers }));
       }
       
       else if (actionType === 'revoke_filtered') {
@@ -192,11 +201,14 @@ export default function StudentsPage() {
   };
 
   // [جديد] دالة مساعدة للتحقق من إمكانية الحذف
+ // دالة مساعدة للتحقق من إمكانية الحذف
   const canDeleteUser = (user) => {
-      if (!user.is_admin) return true; // يمكن حذف الطالب العادي دائماً
-      return isMainAdmin; // إذا كان مشرفاً، يمكن حذفه فقط إذا كنت الأدمن الرئيسي
-  };
+      // 1. لا يمكن للمستخدم حذف نفسه نهائياً (سواء كان الرئيسي أو لا)
+      if (String(user.id) === String(currentUserId)) return false;
 
+      if (!user.is_admin) return true; // يمكن حذف الطالب العادي
+      return isMainAdmin; // المشرف لا يحذفه إلا الأدمن الرئيسي
+  };
   const totalPages = Math.ceil(totalStudents / itemsPerPage);
   const hasActiveFilters = activeFilters.courses.length > 0 || activeFilters.subjects.length > 0;
 
