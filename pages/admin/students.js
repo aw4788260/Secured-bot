@@ -7,22 +7,24 @@ export default function StudentsPage() {
   const [loading, setLoading] = useState(true);
   const [totalStudents, setTotalStudents] = useState(0); 
   
-  // حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي
+  // [جديد] حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي (للتحكم في حذف المشرفين)
   const [isMainAdmin, setIsMainAdmin] = useState(false);
 
+  // البحث والفلترة
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modals
+  // --- نظام الفلترة (Modal) ---
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeFilters, setActiveFilters] = useState({ courses: [], subjects: [] });
   const [tempFilters, setTempFilters] = useState({ courses: [], subjects: [] });
 
+  // التصفح (Pagination)
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
   const [selectedUsers, setSelectedUsers] = useState([]);
 
-  // States
+  // حالات النوافذ
   const [viewUser, setViewUser] = useState(null);
   const [userSubs, setUserSubs] = useState({ courses: [], subjects: [] });
   const [loadingSubs, setLoadingSubs] = useState(false);
@@ -35,6 +37,7 @@ export default function StudentsPage() {
   const [promptData, setPromptData] = useState({ show: false, title: '', value: '', onSubmit: null });
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
 
+  // --- دوال المساعدة ---
   const showToast = (msg, type = 'success') => {
       setToast({ show: true, message: msg, type });
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
@@ -46,6 +49,7 @@ export default function StudentsPage() {
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
+  // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -56,10 +60,12 @@ export default function StudentsPage() {
         }
 
         let url = `/api/admin/students?page=${currentPage}&limit=${itemsPerPage}`;
+        
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
         if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
         if (activeFilters.subjects.length > 0) params.append('subjects_filter', activeFilters.subjects.join(','));
+        
         if (params.toString()) url += `&${params.toString()}`;
         
         const res = await fetch(url);
@@ -68,27 +74,24 @@ export default function StudentsPage() {
         if (res.ok) {
             setStudents(data.students || []);
             setTotalStudents(data.total || 0);
-            setIsMainAdmin(!!data.isMainAdmin); // استقبال وتأكيد القيمة كـ boolean
+            // [جديد] تحديث حالة الأدمن الرئيسي
+            setIsMainAdmin(data.isMainAdmin);
             setSelectedUsers([]); 
         }
     } catch (err) { console.error(err); } 
     finally { setLoading(false); }
   };
 
-  useEffect(() => { 
-      // حل مشكلة السكرول عند التحديث
-      window.scrollTo(0, 0);
-      fetchData(); 
-  }, [currentPage, activeFilters]);
+  useEffect(() => { fetchData(); }, [currentPage, activeFilters]);
 
   const handleSearchKey = (e) => {
       if (e.key === 'Enter') {
-          setCurrentPage(1); 
+          setCurrentPage(1);
           fetchData();
       }
   };
 
-  // Filter Logic
+  // --- منطق الفلتر ---
   const openFilterModal = () => { setTempFilters(activeFilters); setShowFilterModal(true); };
   const toggleTempFilter = (type, id) => {
       const current = tempFilters[type];
@@ -107,6 +110,7 @@ export default function StudentsPage() {
       setShowFilterModal(false);
   };
 
+  // --- 2. ملف الطالب ---
   const openUserProfile = async (user) => {
       setViewUser(user);
       setLoadingSubs(true);
@@ -118,6 +122,7 @@ export default function StudentsPage() {
       setLoadingSubs(false);
   };
 
+  // --- 3. تنفيذ الإجراءات ---
   const runApiCall = async (action, payload, autoCloseProfile = false) => {
       try {
           const res = await fetch('/api/admin/students', {
@@ -145,6 +150,7 @@ export default function StudentsPage() {
   const handleUserChange = () => showPrompt('تغيير اسم المستخدم:', viewUser.username, (val) => val && runApiCall('change_username', { userId: viewUser.id, newData: { username: val } }));
   const handlePhoneChange = () => showPrompt('تغيير رقم الهاتف:', viewUser.phone, (val) => val && runApiCall('change_phone', { userId: viewUser.id, newData: { phone: val } }));
 
+  // مودال المنح
   const openGrantModal = (target) => {
       setGrantTarget(target);
       setSelectedGrantItems({ courses: [], subjects: [] });
@@ -162,6 +168,7 @@ export default function StudentsPage() {
       setShowGrantModal(false);
   };
 
+  // العمليات الجماعية
   const toggleSelectAll = (e) => setSelectedUsers(e.target.checked ? students.map(u => u.id) : []);
   const toggleSelectUser = (id) => setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   
@@ -170,7 +177,7 @@ export default function StudentsPage() {
       if (actionType === 'grant') openGrantModal('bulk');
       else if (actionType === 'reset_device') showConfirm('إلغاء قفل الأجهزة للمحددين؟', () => runApiCall('reset_device', { userIds: selectedUsers }));
       
-      // [تعديل] زر الحذف الجماعي
+      // [تعديل] تغيير زر الحظر الجماعي إلى حذف جماعي
       else if (actionType === 'delete') {
           showConfirm('⚠️ تحذير: هل أنت متأكد من حذف حسابات الطلاب المحددين نهائياً؟ (لا يمكن التراجع)', () => runApiCall('delete_user', { userIds: selectedUsers }));
       }
@@ -184,7 +191,7 @@ export default function StudentsPage() {
       }
   };
 
-  // دالة مساعدة للتحقق من إمكانية الحذف
+  // [جديد] دالة مساعدة للتحقق من إمكانية الحذف
   const canDeleteUser = (user) => {
       if (!user.is_admin) return true; // يمكن حذف الطالب العادي دائماً
       return isMainAdmin; // إذا كان مشرفاً، يمكن حذفه فقط إذا كنت الأدمن الرئيسي
@@ -221,7 +228,7 @@ export default function StudentsPage() {
                   <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ صلاحية</button>
                   {hasActiveFilters && <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn warning">❌ سحب المفلتر</button>}
                   
-                  {/* زر الحذف الجماعي */}
+                  {/* [تعديل] زر الحذف الجماعي */}
                   <button onClick={() => handleBulkAction('delete')} className="glass-btn danger">🗑️ حذف نهائي</button>
               </div>
           </div>
@@ -248,7 +255,7 @@ export default function StudentsPage() {
                             <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{std.id}</td>
                             <td style={{fontWeight:'600'}}>
                                 {std.first_name}
-                                {/* إظهار تاج المشرف */}
+                                {/* [تعديل] إظهار تاج المشرف */}
                                 {std.is_admin && <span className="admin-tag">مشرف</span>}
                             </td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#38bdf8'}}>{std.username}</td>
@@ -331,7 +338,7 @@ export default function StudentsPage() {
                           <button onClick={() => showConfirm('إلغاء قفل الجهاز؟', () => runApiCall('reset_device', { userId: viewUser.id }))}>🔓 إلغاء قفل الجهاز</button>
                           <button onClick={handlePassChange}>🔑 تغيير الباسورد</button>
                           
-                          {/* زر الحذف النهائي (مشروط) */}
+                          {/* [تعديل] زر الحذف النهائي (مشروط بصلاحية الأدمن الرئيسي) */}
                           {canDeleteUser(viewUser) ? (
                               <button className="btn-red" onClick={() => showConfirm('⚠️ تحذير: سيتم حذف الحساب وجميع بياناته نهائياً. هل أنت متأكد؟', () => runApiCall('delete_user', { userId: viewUser.id }, true))}>🗑️ حذف نهائي</button>
                           ) : (
