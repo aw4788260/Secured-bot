@@ -1,3 +1,4 @@
+
 import AdminLayout from '../../components/AdminLayout';
 import { useState, useEffect } from 'react';
 
@@ -13,7 +14,7 @@ export default function AdminHome() {
 
   // 3. (جديد) حالات نافذة تفاصيل الاشتراكات
   const [showSubModal, setShowSubModal] = useState(false);
-  const [subStats, setSubStats] = useState({ courses: [], subjects: [] });
+  const [subStats, setSubStats] = useState([]); // مصفوفة فارغة لأن الـ API يرجع قائمة
   const [loadingSubs, setLoadingSubs] = useState(false);
 
   // دالة عرض الإشعارات
@@ -89,7 +90,7 @@ export default function AdminHome() {
       {/* --- القسم الأول: الإحصائيات --- */}
       <div className="stats-grid">
         {/* بطاقة الطلبات */}
-        <div className="stat-card" onClick={() => window.location.href='/admin/requests'} style={{cursor: 'pointer'}}>
+        <div className="stat-card clickable-card" onClick={() => window.location.href='/admin/requests'}>
             <h3>الطلبات المعلقة</h3>
             <div className="num yellow">
                 {loading ? '...' : stats.requests}
@@ -170,7 +171,7 @@ export default function AdminHome() {
           </button>
       </div>
 
-      {/* (جديد) نافذة تفاصيل الاشتراكات */}
+      {/* (جديد) نافذة تفاصيل الاشتراكات الهرمية */}
       {showSubModal && (
         <div className="modal-overlay" onClick={() => setShowSubModal(false)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -183,39 +184,34 @@ export default function AdminHome() {
                     <div style={{padding:'40px', textAlign:'center', color:'#38bdf8'}}>جاري تحميل البيانات...</div>
                 ) : (
                     <div className="modal-body scrollable">
-                        
-                        {/* قسم الكورسات الكاملة */}
-                        <div className="section">
-                            <h4 className="section-title">📦 كورسات كاملة</h4>
-                            {subStats.courses.length > 0 ? (
-                                <ul className="stats-list">
-                                    {subStats.courses.map((c, i) => (
-                                        <li key={i}>
-                                            <span className="name">{c.title}</span>
-                                            <span className="count badge-green">{c.count} طالب</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : <p className="empty-text">لا توجد اشتراكات كورسات</p>}
-                        </div>
+                        {Array.isArray(subStats) && subStats.length > 0 ? (
+                            <div className="hierarchy-list">
+                                {subStats.map((course, idx) => (
+                                    <div key={idx} className="course-block">
+                                        {/* رأس الكورس */}
+                                        <div className="course-header-row">
+                                            <span className="course-title">📦 {course.title} (اشتراك كامل)</span>
+                                            <span className="badge-green">{course.fullCount} طالب</span>
+                                        </div>
 
-                        <hr className="divider" />
-
-                        {/* قسم المواد المنفصلة */}
-                        <div className="section">
-                            <h4 className="section-title">📄 مواد منفصلة (بدون الكورس الكامل)</h4>
-                            {subStats.subjects.length > 0 ? (
-                                <ul className="stats-list">
-                                    {subStats.subjects.map((s, i) => (
-                                        <li key={i}>
-                                            <span className="name">{s.title}</span>
-                                            <span className="count badge-blue">{s.count} طالب</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : <p className="empty-text">لا توجد اشتراكات مواد منفصلة</p>}
-                        </div>
-
+                                        {/* قائمة المواد التابعة (إن وجدت) */}
+                                        {course.subjects.length > 0 && (
+                                            <div className="subjects-container">
+                                                <p className="sub-hint">🔻 اشتراكات المواد المنفصلة داخل هذا الكورس:</p>
+                                                {course.subjects.map((sub, sIdx) => (
+                                                    <div key={sIdx} className="subject-row">
+                                                        <span className="subject-title">📄 {sub.title}</span>
+                                                        <span className="badge-blue">{sub.count} طالب</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="empty-text">لا توجد بيانات اشتراكات حالياً.</p>
+                        )}
                     </div>
                 )}
             </div>
@@ -229,7 +225,7 @@ export default function AdminHome() {
         .stat-card h3 { color: #94a3b8; margin-bottom: 10px; font-size: 0.9em; margin-top: 0; }
         .stat-card p { font-size: 12px; color: #64748b; margin: 0; }
         
-        /* تأثير الضغط للبطاقة الجديدة */
+        /* تأثير الضغط للبطاقات */
         .clickable-card { cursor: pointer; position: relative; }
         .clickable-card:hover { transform: translateY(-5px); border-color: #38bdf8; background: #252f45; }
         
@@ -257,7 +253,7 @@ export default function AdminHome() {
         .alert-toast.success { background: #22c55e; color: #0f172a; }
         .alert-toast.error { background: #ef4444; }
 
-        /* (جديد) تنسيقات النافذة المنبثقة */
+        /* تنسيقات النافذة المنبثقة (Modal) */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-content { background: #1e293b; width: 90%; max-width: 500px; max-height: 85vh; border-radius: 16px; border: 1px solid #475569; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .modal-header { padding: 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; background: #0f172a; border-radius: 16px 16px 0 0; }
@@ -265,15 +261,46 @@ export default function AdminHome() {
         .close-btn { background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; }
         
         .modal-body { padding: 20px; overflow-y: auto; }
-        .section-title { color: #94a3b8; margin: 0 0 15px 0; font-size: 0.95rem; border-right: 3px solid #38bdf8; padding-right: 10px; }
-        .divider { border: 0; border-top: 1px dashed #334155; margin: 20px 0; }
         .empty-text { text-align: center; color: #64748b; font-size: 0.9em; padding: 10px; }
 
-        .stats-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
-        .stats-list li { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-        .stats-list li .name { color: #e2e8f0; font-weight: 500; }
-        .badge-green { background: rgba(34, 197, 94, 0.1); color: #4ade80; padding: 4px 10px; border-radius: 20px; font-size: 0.85em; font-weight: bold; }
-        .badge-blue { background: rgba(56, 189, 248, 0.1); color: #38bdf8; padding: 4px 10px; border-radius: 20px; font-size: 0.85em; font-weight: bold; }
+        /* ستايلات القائمة الهرمية */
+        .course-block {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        
+        .course-header-row {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(56, 189, 248, 0.05);
+        }
+        .course-title { font-weight: bold; color: white; font-size: 1rem; }
+
+        .subjects-container {
+            padding: 10px 15px 15px;
+            border-top: 1px solid #334155;
+            background: #162032;
+        }
+        .sub-hint { margin: 0 0 10px; font-size: 0.8em; color: #94a3b8; }
+
+        .subject-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px dashed #334155;
+            font-size: 0.9em;
+        }
+        .subject-row:last-child { border-bottom: none; }
+        .subject-title { color: #cbd5e1; padding-right: 15px; border-right: 2px solid #334155; }
+
+        .badge-green { background: rgba(34, 197, 94, 0.15); color: #4ade80; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 0.9em; }
+        .badge-blue { background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 2px 8px; border-radius: 6px; font-weight: bold; font-size: 0.85em; }
 
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
@@ -285,4 +312,4 @@ export default function AdminHome() {
       `}</style>
     </AdminLayout>
   );
-}
+      }
