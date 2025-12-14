@@ -6,12 +6,13 @@ export default async (req, res) => {
 
   const { firstName, username, password, phone } = req.body;
 
-  // 1. التحقق من صحة البيانات
+  // 1. التحقق من صحة البيانات (وجودها)
   if (!firstName || !username || !password || !phone) {
     return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة' });
+  } // ✅ تم إغلاق القوس هنا
 
-    const usernameRegex = /^[a-zA-Z0-9]+$/;
-  
+  // 2. التحقق من صيغة اسم المستخدم (حروف إنجليزية وأرقام فقط)
+  const usernameRegex = /^[a-zA-Z0-9]+$/;
   if (!usernameRegex.test(username)) {
     return res.status(400).json({ 
         success: false, 
@@ -19,12 +20,13 @@ export default async (req, res) => {
     });
   }
 
+  // 3. التحقق من طول كلمة المرور
   if (password.length < 6) {
     return res.status(400).json({ success: false, message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
   }
 
   try {
-    // 2. التحقق من عدم تكرار اسم المستخدم
+    // 4. التحقق من عدم تكرار اسم المستخدم
     const { data: existingUser } = await supabase
       .from('users')
       .select('id')
@@ -35,10 +37,10 @@ export default async (req, res) => {
       return res.status(400).json({ success: false, message: 'اسم المستخدم مسجل بالفعل، اختر اسماً آخر.' });
     }
 
-    // 3. تشفير كلمة المرور
+    // 5. تشفير كلمة المرور
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. إنشاء الحساب مباشرة في جدول users
+    // 6. إنشاء الحساب مباشرة في جدول users
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({
@@ -48,7 +50,6 @@ export default async (req, res) => {
         phone: phone,
         is_admin: false,
         is_blocked: false
-        // session_token يظل فارغاً حتى يسجل الدخول
       })
       .select('id')
       .single();
