@@ -35,6 +35,11 @@ export default function Register() {
         return showToast("⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل", "error");
     }
 
+    const usernameRegex = /^[a-zA-Z0-9]+$/;
+    if (!usernameRegex.test(formData.username)) {
+        return showToast("⚠️ اسم المستخدم يجب أن يكون حروف إنجليزية وأرقام فقط بدون مسافات او رموز", "error");
+    }
+
     setLoading(true);
 
     try {
