@@ -12,8 +12,8 @@ jobs:
     steps:
       - name: Ping Supabase and Verify Status
         env:
-          # رابط مشروعك كما أرسلته
-          SUPABASE_URL: 'https://guoobhdvfiqlvdomrbvo.supabase.co/rest/v1/users?select=id&limit=1'
+          # تم تعديل الرابط لاستخدام select=* لتجنب خطأ عدم وجود عمود id
+          SUPABASE_URL: 'https://guoobhdvfiqlvdomrbvo.supabase.co/rest/v1/app_settings?select=*&limit=1'
           SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           MAX_RETRIES=5
@@ -22,7 +22,7 @@ jobs:
           echo "📡 Connecting to Supabase..."
           
           for ((i=1; i<=MAX_RETRIES; i++)); do
-            # نرسل الطلب ونخزن كود الحالة فقط (مثل 200 أو 500)
+            # نرسل الطلب ونخزن كود الحالة فقط
             HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -X GET "$SUPABASE_URL" \
               -H "apikey: $SUPABASE_KEY" \
               -H "Authorization: Bearer $SUPABASE_KEY")
@@ -33,6 +33,11 @@ jobs:
             else
               echo "⚠️ Attempt $i/$MAX_RETRIES failed (Status: $HTTP_STATUS). Database might be sleeping..."
               
+              # طباعة رد السيرفر للمساعدة في التشخيص إذا فشل مرة أخرى (اختياري)
+              if [ "$HTTP_STATUS" -eq 400 ]; then
+                 echo "❌ Error 400: Check if Table or Column exists."
+              fi
+
               if [ $i -lt $MAX_RETRIES ]; then
                 echo "⏳ Waiting ${RETRY_DELAY} seconds for wake-up..."
                 sleep $RETRY_DELAY
