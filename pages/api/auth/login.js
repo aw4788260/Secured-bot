@@ -4,15 +4,16 @@ import bcrypt from 'bcryptjs';
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  const { username, password, deviceId } = req.body;
+  // ✅ نستقبل identifier بدلاً من username ليشمل الاثنين
+  const { identifier, password, deviceId } = req.body;
 
   try {
-    // 1. البحث عن المستخدم
+    // 1. البحث عن المستخدم (باليوزر نيم أو رقم الهاتف)
     const { data: user } = await supabase
       .from('users')
       .select('id, password, first_name, username, is_admin, is_blocked')
-      .eq('username', username)
-      .single();
+      .or(`username.eq.${identifier},phone.eq.${identifier}`) // ✅ شرط البحث المزدوج
+      .maybeSingle(); // نستخدم maybeSingle لتجنب الأخطاء إذا لم يتم العثور عليه
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
@@ -38,7 +39,6 @@ export default async (req, res) => {
         .maybeSingle();
 
       if (deviceData) {
-        // إذا كان المستخدم مسجلاً بجهاز سابق، يجب أن يتطابق
         if (deviceData.fingerprint !== deviceId) {
           return res.status(403).json({ 
             success: false, 
@@ -46,7 +46,6 @@ export default async (req, res) => {
           });
         }
       } else {
-        // تسجيل الجهاز لأول مرة
         await supabase.from('devices').insert({ 
           user_id: user.id, 
           fingerprint: deviceId 
