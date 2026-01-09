@@ -1,69 +1,69 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { checkUserAccess } from '../../../lib/authHelper';
-import fs from 'fs';
-import path from 'path';
-
-export const config = {
-  api: { responseLimit: false },
-};
 
 export default async (req, res) => {
-  const apiName = '[API: get-pdf]';
-  console.log(`${apiName} 🚀 Request started.`);
+  // 1. التحقق من الطلب
+  if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
 
   const { pdfId } = req.query;
   const userId = req.headers['x-user-id'];
+  const deviceId = req.headers['x-device-id'];
 
-  if (!pdfId) {
-      console.warn(`${apiName} ❌ Missing pdfId.`);
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(400).json({ message: "Missing pdfId" });
+  if (!pdfId || !userId || !deviceId) {
+    return res.status(400).json({ error: 'Missing parameters' });
   }
 
-  console.log(`${apiName} 👤 User: ${userId} requesting PDF: ${pdfId}`);
-
   try {
-    // 1. التحقق الأمني
-    console.log(`${apiName} 🔒 Checking permissions...`);
-    const hasAccess = await checkUserAccess(req, pdfId, 'pdf');
+    // 2. التحقق الأمني (الجهاز)
+    const { data: device } = await supabase.from('devices').select('fingerprint').eq('user_id', userId).maybeSingle();
+    if (!device || device.fingerprint !== deviceId) return res.status(403).json({ error: 'Unauthorized Device' });
+
+    // 3. جلب بيانات الملف
+    const { data: pdfDoc } = await supabase
+      .from('pdfs')
+      .select('id, title, file_path, chapter_id')
+      .eq('id', pdfId)
+      .single();
+
+    if (!pdfDoc) return res.status(404).json({ error: 'File not found' });
+
+    // 4. التحقق من الاشتراك (عبر الشابتر -> المادة)
+    // نجلب المادة التابع لها هذا الملف
+    const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', pdfDoc.chapter_id).single();
     
-    if (!hasAccess) {
-        console.warn(`${apiName} ⛔ Access Denied.`);
-        res.setHeader('Cache-Control', 'no-store');
-        return res.status(403).json({ message: "Access Denied" });
-    }
-    console.log(`${apiName} ✅ Access Granted.`);
+    // هل يملك الطالب هذه المادة؟
+    const { data: access } = await supabase
+      .from('user_subject_access')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('subject_id', chapter.subject_id)
+      .maybeSingle();
 
-    // 2. جلب المسار
-    const { data } = await supabase.from('pdfs').select('file_path, title').eq('id', pdfId).single();
-    if (!data) {
-        console.error(`${apiName} ❌ PDF record not found in DB.`);
-        return res.status(404).json({ message: "Not found" });
-    }
-
-    const fullPath = path.join(process.cwd(), 'storage', 'pdfs', data.file_path);
-    if (!fs.existsSync(fullPath)) {
-        console.error(`${apiName} ❌ File missing on disk: ${fullPath}`);
-        return res.status(404).json({ message: "File missing on server" });
+    // فحص بديل: هل يملك الكورس بالكامل؟ (يمكنك إضافته هنا مثلما فعلنا سابقاً)
+    
+    if (!access) {
+      // تحقق إضافي للكورس الكامل (اختياري للأمان القصوى)
+       const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', chapter.subject_id).single();
+       const { data: courseAccess } = await supabase.from('user_course_access').eq('user_id', userId).eq('course_id', subject.course_id).maybeSingle();
+       
+       if (!courseAccess) return res.status(403).json({ error: 'Access Denied' });
     }
 
-    console.log(`${apiName} 📄 Streaming file: ${data.title}`);
+    // 5. جلب الملف من Supabase Storage (أو أي مكان تخزين) وتمريره
+    // ملاحظة: نفترض أن الملف مخزن في bucket اسمه 'course_pdfs'
+    const { data, error } = await supabase.storage
+      .from('course_pdfs') // اسم الـ Bucket
+      .download(pdfDoc.file_path);
 
-    // 3. إرسال الملف
-    const stat = fs.statSync(fullPath);
-    res.setHeader('Cache-Control', 'private, max-age=3600'); 
+    if (error) throw error;
+
+    // 6. إرسال الملف كـ Stream
+    const buffer = Buffer.from(await data.arrayBuffer());
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(data.title)}.pdf"`);
-
-    const readStream = fs.createReadStream(fullPath);
-    readStream.pipe(res);
-    
-    readStream.on('end', () => console.log(`${apiName} ✅ Stream finished.`));
-    readStream.on('error', (e) => console.error(`${apiName} 🔥 Stream error:`, e));
+    res.setHeader('Content-Disposition', `inline; filename="${pdfDoc.title}.pdf"`);
+    res.send(buffer);
 
   } catch (err) {
-    console.error(`${apiName} 🔥 ERROR:`, err.message);
-    if (!res.headersSent) res.status(500).json({ message: err.message });
+    console.error("PDF Error:", err);
+    return res.status(500).json({ error: 'Server Error fetching PDF' });
   }
 };
