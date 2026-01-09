@@ -11,16 +11,12 @@ export default async (req, res) => {
     return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة' });
   }
 
-  // 2. التحقق من صيغة اسم المستخدم (حروف إنجليزية وأرقام فقط)
+  // 2. التحقق من الصيغ
   const usernameRegex = /^[a-zA-Z0-9]+$/;
   if (!usernameRegex.test(username)) {
-    return res.status(400).json({ 
-        success: false, 
-        message: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط.' 
-    });
+    return res.status(400).json({ success: false, message: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط.' });
   }
 
-  // 3. التحقق من طول كلمة المرور
   if (password.length < 6) {
     return res.status(400).json({ success: false, message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
   }
@@ -37,10 +33,20 @@ export default async (req, res) => {
       return res.status(400).json({ success: false, message: 'اسم المستخدم مسجل بالفعل، اختر اسماً آخر.' });
     }
 
-    // 5. تشفير كلمة المرور
+    // ✅ 5. التحقق من عدم تكرار رقم الهاتف (التحسين الجديد)
+    const { data: existingPhone } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (existingPhone) {
+      return res.status(400).json({ success: false, message: 'رقم الهاتف مسجل مسبقاً. حاول تسجيل الدخول.' });
+    }
+
+    // 6. تشفير كلمة المرور وإنشاء الحساب
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 6. إنشاء الحساب
     const { error: insertError } = await supabase
       .from('users')
       .insert({
