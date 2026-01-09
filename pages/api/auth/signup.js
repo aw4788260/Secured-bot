@@ -6,17 +6,17 @@ export default async (req, res) => {
 
   const { firstName, username, password, phone } = req.body;
 
-  // 1. التحقق من صحة البيانات (وجودها)
+  // 1. التحقق من وجود البيانات
   if (!firstName || !username || !password || !phone) {
     return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة' });
-  } // ✅ تم إغلاق القوس هنا
+  }
 
   // 2. التحقق من صيغة اسم المستخدم (حروف إنجليزية وأرقام فقط)
   const usernameRegex = /^[a-zA-Z0-9]+$/;
   if (!usernameRegex.test(username)) {
     return res.status(400).json({ 
         success: false, 
-        message: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط (بدون مسافات أو رموز).' 
+        message: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط.' 
     });
   }
 
@@ -40,8 +40,8 @@ export default async (req, res) => {
     // 5. تشفير كلمة المرور
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 6. إنشاء الحساب مباشرة في جدول users
-    const { data: newUser, error: insertError } = await supabase
+    // 6. إنشاء الحساب
+    const { error: insertError } = await supabase
       .from('users')
       .insert({
         first_name: firstName,
@@ -50,16 +50,14 @@ export default async (req, res) => {
         phone: phone,
         is_admin: false,
         is_blocked: false
-      })
-      .select('id')
-      .single();
+      });
 
     if (insertError) throw insertError;
 
-    return res.status(200).json({ success: true, message: 'تم إنشاء الحساب بنجاح! يمكنك تسجيل الدخول الآن.' });
+    return res.status(200).json({ success: true, message: 'تم إنشاء الحساب بنجاح!' });
 
   } catch (error) {
     console.error('Signup Error:', error);
-    return res.status(500).json({ success: false, message: 'حدث خطأ في الخادم: ' + error.message });
+    return res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
   }
 };
