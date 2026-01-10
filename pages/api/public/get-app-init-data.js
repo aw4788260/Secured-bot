@@ -15,7 +15,7 @@ export default async (req, res) => {
 
   try {
     if (userId && deviceId) {
-      // 1. التحقق من الجهاز
+      // التحقق من الجهاز
       const { data: deviceCheck } = await supabase
         .from('devices')
         .select('fingerprint')
@@ -33,17 +33,16 @@ export default async (req, res) => {
           userData = user;
           isLoggedIn = true;
 
-          // -----------------------------------------------------------
-          // ✅ تصحيح الاستعلامات لجلب اسم المدرس من جدول teachers
-          // -----------------------------------------------------------
-
+          // --- منطق المكتبة الخاصة (Library) ---
+          // هنا نستخدم الاستعلام المباشر لأنه يعتمد على user_id ولا يمكن وضعه في View عام
+          
           // أ) الكورسات الكاملة
           const { data: fullCourses } = await supabase
             .from('user_course_access')
             .select(`
               course_id,
               courses ( 
-                id, title, code, 
+                id, title, code, teacher_id,
                 teachers ( name ) 
               )
             `)
@@ -57,23 +56,21 @@ export default async (req, res) => {
               subjects (
                 id, title,
                 courses ( 
-                  id, title, code, 
+                  id, title, code, teacher_id,
                   teachers ( name ) 
                 )
               )
             `)
             .eq('user_id', userId);
 
-          // ج) مصفوفات الوصول السريع
+          // هيكلة بيانات المكتبة
           userAccess = {
             courses: fullCourses ? fullCourses.map(c => c.course_id.toString()) : [],
             subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : []
           };
 
-          // د) بناء هيكل المكتبة
           const libraryMap = new Map();
 
-          // إضافة الكورسات الكاملة
           fullCourses?.forEach(item => {
             if (item.courses) {
               libraryMap.set(item.courses.id, {
@@ -81,14 +78,14 @@ export default async (req, res) => {
                 id: item.courses.id,
                 title: item.courses.title,
                 code: item.courses.code,
-                // ✅ قراءة اسم المدرس من العلاقة
+                // هنا نقرأ الاسم والـ ID بشكل صحيح من العلاقة
                 instructor: item.courses.teachers?.name || 'Instructor',
+                teacherId: item.courses.teacher_id, 
                 owned_subjects: 'all'
               });
             }
           });
 
-          // إضافة المواد المنفصلة
           singleSubjects?.forEach(item => {
             const subject = item.subjects;
             const parentCourse = subject?.courses;
@@ -97,10 +94,7 @@ export default async (req, res) => {
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
                 if (existingEntry.owned_subjects !== 'all') {
-                  existingEntry.owned_subjects.push({
-                    id: subject.id,
-                    title: subject.title
-                  });
+                  existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
                 }
               } else {
                 libraryMap.set(parentCourse.id, {
@@ -108,12 +102,9 @@ export default async (req, res) => {
                   id: parentCourse.id,
                   title: parentCourse.title,
                   code: parentCourse.code,
-                  // ✅ قراءة اسم المدرس من العلاقة
                   instructor: parentCourse.teachers?.name || 'Instructor',
-                  owned_subjects: [{
-                    id: subject.id,
-                    title: subject.title
-                  }]
+                  teacherId: parentCourse.teacher_id,
+                  owned_subjects: [{ id: subject.id, title: subject.title }]
                 });
               }
             }
@@ -124,10 +115,13 @@ export default async (req, res) => {
       }
     }
 
-    // جلب بيانات المتجر (كما هي)
+    // -----------------------------------------------------------
+    // ✅ جلب بيانات المتجر باستخدام الـ View (سريع ومحسن)
+    // -----------------------------------------------------------
+    // الآن بعد تحديث الـ View في قاعدة البيانات، سيحتوي على instructor_name و teacher_id تلقائياً
     const { data: courses } = await supabase
       .from('view_course_details') 
-      .select('*')
+      .select('*') 
       .order('sort_order', { ascending: true });
 
     return res.status(200).json({
@@ -136,7 +130,7 @@ export default async (req, res) => {
       user: userData,       
       myAccess: userAccess, 
       library: libraryData, 
-      courses: courses || []
+      courses: courses || [] 
     });
 
   } catch (err) {
