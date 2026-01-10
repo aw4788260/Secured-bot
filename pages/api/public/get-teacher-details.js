@@ -14,10 +14,10 @@ export default async (req, res) => {
 
     if (!teacher) return res.status(404).json({ error: 'Not found' });
 
-    // جلب كورساته
+    // ✅ التعديل هنا: طلب الأعمدة الأساسية فقط لتجنب الأخطاء
     const { data: courses } = await supabase
       .from('courses')
-      .select('id, title, price, code, rating, reviews') // تأكد من وجود rating/reviews في الجدول أو احذفها
+      .select('id, title, price, code') 
       .eq('teacher_id', teacherId);
 
     return res.status(200).json({
