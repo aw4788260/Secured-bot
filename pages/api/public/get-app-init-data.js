@@ -35,20 +35,43 @@ export default async (req, res) => {
 
           // --- منطق المكتبة الخاصة (Library) ---
           
-          // أ) الكورسات الكاملة (تعديل الاستعلام لجلب المواد)
-          const { data: fullCourses } = await supabase
+          // 1. جلب الكورسات الكاملة (بدون المواد المتداخلة لتجنب الخطأ)
+          const { data: fullCourses, error: fcError } = await supabase
             .from('user_course_access')
             .select(`
               course_id,
               courses ( 
                 id, title, code, teacher_id,
-                teachers ( name ),
-                subjects ( id, title )  // ✅ 1. تمت إضافة جلب المواد هنا
+                teachers ( name )
               )
             `)
             .eq('user_id', userId);
 
-          // ب) المواد المنفصلة
+          if (fcError) console.error("Full Courses Error:", fcError);
+
+          // 2. جلب المواد (Subjects) لهذه الكورسات في استعلام منفصل آمن
+          let courseSubjectsMap = {};
+          if (fullCourses && fullCourses.length > 0) {
+              const courseIds = fullCourses.map(c => c.course_id);
+              
+              const { data: allSubjects } = await supabase
+                  .from('subjects')
+                  .select('id, title, course_id')
+                  .in('course_id', courseIds)
+                  .order('sort_order', { ascending: true }); // ترتيب المواد
+
+              // تجميع المواد حسب الكورس
+              if (allSubjects) {
+                  allSubjects.forEach(sub => {
+                      if (!courseSubjectsMap[sub.course_id]) {
+                          courseSubjectsMap[sub.course_id] = [];
+                      }
+                      courseSubjectsMap[sub.course_id].push({ id: sub.id, title: sub.title });
+                  });
+              }
+          }
+
+          // 3. جلب المواد المنفصلة (التي اشتراها الطالب بشكل فردي)
           const { data: singleSubjects } = await supabase
             .from('user_subject_access')
             .select(`
@@ -71,26 +94,26 @@ export default async (req, res) => {
 
           const libraryMap = new Map();
 
+          // إضافة الكورسات الكاملة للمكتبة
           fullCourses?.forEach(item => {
             if (item.courses) {
-              // ✅ 2. تحويل المواد القادمة من قاعدة البيانات إلى القائمة المطلوبة
-              const courseSubjects = item.courses.subjects?.map(sub => ({
-                id: sub.id, 
-                title: sub.title
-              })) || [];
+              const cId = item.courses.id;
+              // نأخذ المواد من الـ Map التي جهزناها في الخطوة 2
+              const subjectsList = courseSubjectsMap[cId] || [];
 
-              libraryMap.set(item.courses.id, {
+              libraryMap.set(cId, {
                 type: 'course',
-                id: item.courses.id,
+                id: cId,
                 title: item.courses.title,
                 code: item.courses.code,
                 instructor: item.courses.teachers?.name || 'Instructor',
                 teacherId: item.courses.teacher_id, 
-                owned_subjects: courseSubjects // ✅ الآن نرسل القائمة الفعلية بدلاً من 'all'
+                owned_subjects: subjectsList // ✅ إرسال القائمة الصحيحة
               });
             }
           });
 
+          // إضافة المواد المنفصلة للمكتبة
           singleSubjects?.forEach(item => {
             const subject = item.subjects;
             const parentCourse = subject?.courses;
@@ -98,8 +121,9 @@ export default async (req, res) => {
             if (parentCourse) {
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
-                // إذا كان الكورس موجوداً مسبقاً كاشتراك كامل، لا نضيف المواد الفردية
-                // لأن القائمة الكاملة موجودة بالفعل في الخطوة السابقة
+                // إذا كان الكورس موجوداً كاشتراك كامل (type='course')، لا نفعل شيئاً
+                // لأننا جلبنا كل مواده بالفعل في الخطوة السابقة.
+                // أما إذا كان تجميعة مواد (type='subject_group')، نضيف المادة.
                 if (existingEntry.type === 'subject_group') { 
                    existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
                 }
@@ -122,11 +146,22 @@ export default async (req, res) => {
       }
     }
 
-    // جلب بيانات المتجر (كما هي)
+    // جلب بيانات المتجر
+    // ملاحظة: إذا كنت حذفت الـ View، يفضل استخدام الجدول مباشرة هنا أيضاً لتجنب الأخطاء
     const { data: courses } = await supabase
-      .from('view_course_details') 
-      .select('*') 
+      .from('courses') // استخدام الجدول مباشرة بدلاً من view_course_details
+      .select(`
+        id, title, price, code, sort_order, description,
+        teacher_id,
+        teachers ( name )
+      `)
       .order('sort_order', { ascending: true });
+
+    // تنسيق بيانات المتجر
+    const formattedStoreCourses = courses?.map(c => ({
+        ...c,
+        instructor_name: c.teachers?.name || 'Instructor'
+    })) || [];
 
     return res.status(200).json({
       success: true,
@@ -134,7 +169,7 @@ export default async (req, res) => {
       user: userData,       
       myAccess: userAccess, 
       library: libraryData, 
-      courses: courses || [] 
+      courses: formattedStoreCourses 
     });
 
   } catch (err) {
