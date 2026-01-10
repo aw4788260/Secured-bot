@@ -15,7 +15,7 @@ export default async (req, res) => {
 
   try {
     if (userId && deviceId) {
-      // التحقق من الجهاز
+      // 1. التحقق من الجهاز
       const { data: deviceCheck } = await supabase
         .from('devices')
         .select('fingerprint')
@@ -23,6 +23,7 @@ export default async (req, res) => {
         .maybeSingle();
 
       if (deviceCheck && deviceCheck.fingerprint === deviceId) {
+        // 2. التحقق من المستخدم
         const { data: user } = await supabase
           .from('users')
           .select('id, first_name, username, phone, is_blocked')
@@ -33,10 +34,12 @@ export default async (req, res) => {
           userData = user;
           isLoggedIn = true;
 
-          // --- منطق المكتبة الخاصة (Library) ---
-          
-          // 1. جلب الكورسات الكاملة (بدون المواد المتداخلة لتجنب الخطأ)
-          const { data: fullCourses, error: fcError } = await supabase
+          // ==========================================
+          // منطق المكتبة (Library Logic)
+          // ==========================================
+
+          // أ) جلب الكورسات الكاملة (بدون المواد المتداخلة لتجنب الأخطاء)
+          const { data: fullCourses } = await supabase
             .from('user_course_access')
             .select(`
               course_id,
@@ -47,31 +50,32 @@ export default async (req, res) => {
             `)
             .eq('user_id', userId);
 
-          if (fcError) console.error("Full Courses Error:", fcError);
-
-          // 2. جلب المواد (Subjects) لهذه الكورسات في استعلام منفصل آمن
+          // ب) ✅ جلب مواد هذه الكورسات بشكل منفصل (أضمن طريقة لظهور البيانات)
           let courseSubjectsMap = {};
+          
           if (fullCourses && fullCourses.length > 0) {
-              const courseIds = fullCourses.map(c => c.course_id);
-              
-              const { data: allSubjects } = await supabase
-                  .from('subjects')
-                  .select('id, title, course_id')
-                  .in('course_id', courseIds)
-                  .order('sort_order', { ascending: true }); // ترتيب المواد
+            // استخراج معرفات الكورسات
+            const courseIds = fullCourses.map(item => item.course_id);
 
-              // تجميع المواد حسب الكورس
-              if (allSubjects) {
-                  allSubjects.forEach(sub => {
-                      if (!courseSubjectsMap[sub.course_id]) {
-                          courseSubjectsMap[sub.course_id] = [];
-                      }
-                      courseSubjectsMap[sub.course_id].push({ id: sub.id, title: sub.title });
-                  });
-              }
+            // استعلام مباشر لجلب المواد الخاصة بهذه الكورسات فقط
+            const { data: allSubjects } = await supabase
+                .from('subjects')
+                .select('id, title, course_id, sort_order')
+                .in('course_id', courseIds)
+                .order('sort_order', { ascending: true }); 
+
+            // تجميع المواد داخل Map
+            if (allSubjects) {
+                allSubjects.forEach(sub => {
+                    if (!courseSubjectsMap[sub.course_id]) {
+                        courseSubjectsMap[sub.course_id] = [];
+                    }
+                    courseSubjectsMap[sub.course_id].push({ id: sub.id, title: sub.title });
+                });
+            }
           }
 
-          // 3. جلب المواد المنفصلة (التي اشتراها الطالب بشكل فردي)
+          // ج) جلب المواد المنفصلة
           const { data: singleSubjects } = await supabase
             .from('user_subject_access')
             .select(`
@@ -86,7 +90,7 @@ export default async (req, res) => {
             `)
             .eq('user_id', userId);
 
-          // هيكلة بيانات المكتبة
+          // هيكلة بيانات الصلاحيات
           userAccess = {
             courses: fullCourses ? fullCourses.map(c => c.course_id.toString()) : [],
             subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : []
@@ -94,11 +98,11 @@ export default async (req, res) => {
 
           const libraryMap = new Map();
 
-          // إضافة الكورسات الكاملة للمكتبة
+          // 1. إضافة الكورسات الكاملة للمكتبة
           fullCourses?.forEach(item => {
             if (item.courses) {
               const cId = item.courses.id;
-              // نأخذ المواد من الـ Map التي جهزناها في الخطوة 2
+              // ✅ هنا نضع قائمة المواد التي جلبناها في الخطوة (ب)
               const subjectsList = courseSubjectsMap[cId] || [];
 
               libraryMap.set(cId, {
@@ -108,12 +112,12 @@ export default async (req, res) => {
                 code: item.courses.code,
                 instructor: item.courses.teachers?.name || 'Instructor',
                 teacherId: item.courses.teacher_id, 
-                owned_subjects: subjectsList // ✅ إرسال القائمة الصحيحة
+                owned_subjects: subjectsList // ✅ إرسال القائمة الحقيقية للمواد
               });
             }
           });
 
-          // إضافة المواد المنفصلة للمكتبة
+          // 2. إضافة المواد المنفصلة للمكتبة
           singleSubjects?.forEach(item => {
             const subject = item.subjects;
             const parentCourse = subject?.courses;
@@ -121,9 +125,7 @@ export default async (req, res) => {
             if (parentCourse) {
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
-                // إذا كان الكورس موجوداً كاشتراك كامل (type='course')، لا نفعل شيئاً
-                // لأننا جلبنا كل مواده بالفعل في الخطوة السابقة.
-                // أما إذا كان تجميعة مواد (type='subject_group')، نضيف المادة.
+                // لو الكورس كامل، خلاص المواد جت في الخطوة اللي فاتت
                 if (existingEntry.type === 'subject_group') { 
                    existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
                 }
@@ -146,22 +148,13 @@ export default async (req, res) => {
       }
     }
 
-    // جلب بيانات المتجر
-    // ملاحظة: إذا كنت حذفت الـ View، يفضل استخدام الجدول مباشرة هنا أيضاً لتجنب الأخطاء
+    // -----------------------------------------------------------
+    // ✅ جلب بيانات المتجر باستخدام الـ View كما طلبت
+    // -----------------------------------------------------------
     const { data: courses } = await supabase
-      .from('courses') // استخدام الجدول مباشرة بدلاً من view_course_details
-      .select(`
-        id, title, price, code, sort_order, description,
-        teacher_id,
-        teachers ( name )
-      `)
+      .from('view_course_details') // ✅ تم الابقاء على الـ View
+      .select('*')
       .order('sort_order', { ascending: true });
-
-    // تنسيق بيانات المتجر
-    const formattedStoreCourses = courses?.map(c => ({
-        ...c,
-        instructor_name: c.teachers?.name || 'Instructor'
-    })) || [];
 
     return res.status(200).json({
       success: true,
@@ -169,7 +162,7 @@ export default async (req, res) => {
       user: userData,       
       myAccess: userAccess, 
       library: libraryData, 
-      courses: formattedStoreCourses 
+      courses: courses || [] 
     });
 
   } catch (err) {
