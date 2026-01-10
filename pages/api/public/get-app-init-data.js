@@ -14,8 +14,8 @@ export default async (req, res) => {
   let isLoggedIn = false;
 
   try {
-    // 1. التحقق من هوية المستخدم (Authentication)
     if (userId && deviceId) {
+      // 1. التحقق من الجهاز
       const { data: deviceCheck } = await supabase
         .from('devices')
         .select('fingerprint')
@@ -34,8 +34,7 @@ export default async (req, res) => {
           isLoggedIn = true;
 
           // -----------------------------------------------------------
-          // ✅ جلب بيانات المكتبة الخاصة بالطالب
-          // (نعتمد هنا على الجداول المربوطة بـ Foreign Keys لضمان دقة العلاقات)
+          // ✅ تصحيح الاستعلامات لجلب اسم المدرس من جدول teachers
           // -----------------------------------------------------------
 
           // أ) الكورسات الكاملة
@@ -43,7 +42,10 @@ export default async (req, res) => {
             .from('user_course_access')
             .select(`
               course_id,
-              courses ( id, title, code, instructor_name )
+              courses ( 
+                id, title, code, 
+                teachers ( name ) 
+              )
             `)
             .eq('user_id', userId);
 
@@ -54,18 +56,21 @@ export default async (req, res) => {
               subject_id,
               subjects (
                 id, title,
-                courses ( id, title, code, instructor_name )
+                courses ( 
+                  id, title, code, 
+                  teachers ( name ) 
+                )
               )
             `)
             .eq('user_id', userId);
 
-          // ج) مصفوفات الوصول السريع (IDs)
+          // ج) مصفوفات الوصول السريع
           userAccess = {
             courses: fullCourses ? fullCourses.map(c => c.course_id.toString()) : [],
             subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : []
           };
 
-          // د) بناء هيكل المكتبة الموحد (Library Structure)
+          // د) بناء هيكل المكتبة
           const libraryMap = new Map();
 
           // إضافة الكورسات الكاملة
@@ -76,7 +81,8 @@ export default async (req, res) => {
                 id: item.courses.id,
                 title: item.courses.title,
                 code: item.courses.code,
-                instructor: item.courses.instructor_name || 'Instructor',
+                // ✅ قراءة اسم المدرس من العلاقة
+                instructor: item.courses.teachers?.name || 'Instructor',
                 owned_subjects: 'all'
               });
             }
@@ -102,7 +108,8 @@ export default async (req, res) => {
                   id: parentCourse.id,
                   title: parentCourse.title,
                   code: parentCourse.code,
-                  instructor: parentCourse.instructor_name || 'Instructor',
+                  // ✅ قراءة اسم المدرس من العلاقة
+                  instructor: parentCourse.teachers?.name || 'Instructor',
                   owned_subjects: [{
                     id: subject.id,
                     title: subject.title
@@ -117,14 +124,10 @@ export default async (req, res) => {
       }
     }
 
-    // -----------------------------------------------------------
-    // ✅ 2. جلب الكورسات العامة (المتجر) باستخدام View لتحسين السرعة
-    // -----------------------------------------------------------
-    // استخدام view_course_details بدلاً من الجدول المباشر courses
-    // هذا يسمح بجلب البيانات المجهزة مسبقاً من قاعدة البيانات
+    // جلب بيانات المتجر (كما هي)
     const { data: courses } = await supabase
       .from('view_course_details') 
-      .select('*') // نجلب كل الأعمدة المجهزة في الـ View
+      .select('*')
       .order('sort_order', { ascending: true });
 
     return res.status(200).json({
@@ -133,7 +136,7 @@ export default async (req, res) => {
       user: userData,       
       myAccess: userAccess, 
       library: libraryData, 
-      courses: courses || [] // هذه القائمة ستغذي المتجر والصفحة الرئيسية
+      courses: courses || []
     });
 
   } catch (err) {
