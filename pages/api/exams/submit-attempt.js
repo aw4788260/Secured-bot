@@ -1,18 +1,12 @@
 import { supabase } from '../../../lib/supabaseClient';
 
 export default async (req, res) => {
-  const apiName = '[API: submit-attempt]'; // لوج للتمييز
-  
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   const { attemptId, answers } = req.body; // answers format: { "questionId": optionId }
   const userId = req.headers['x-user-id'];
 
-  console.log(`${apiName} 🚀 Submission started. Attempt: ${attemptId}, User: ${userId}`);
-  console.log(`${apiName} 📥 Received Answers count: ${Object.keys(answers || {}).length}`);
-
   if (!attemptId || !answers) {
-      console.error(`${apiName} ❌ Missing Data`);
       return res.status(400).json({ error: 'Missing Data' });
   }
 
@@ -61,19 +55,15 @@ export default async (req, res) => {
       }
     });
 
-    console.log(`${apiName} 📝 Calculated Score: ${score}/${total}`);
-
-    // 3. حفظ الإجابات التفصيلية (Bulk Insert) - هذا هو الجزء المفقود سابقاً
+    // 3. حفظ الإجابات التفصيلية (Bulk Insert)
     if (answersToInsert.length > 0) {
         const { error: ansError } = await supabase
             .from('user_answers')
             .insert(answersToInsert);
         
         if (ansError) {
-            console.error(`${apiName} 🔥 Error saving answers:`, ansError.message);
             throw ansError;
         }
-        console.log(`${apiName} ✅ Detailed answers saved successfully.`);
     }
 
     // 4. تحديث المحاولة بالدرجة النهائية وإنهاء الحالة
@@ -88,8 +78,6 @@ export default async (req, res) => {
 
     if (updateError) throw updateError;
 
-    console.log(`${apiName} 🎉 Submission Completed Successfully.`);
-
     return res.status(200).json({
       success: true,
       score: score,
@@ -98,7 +86,6 @@ export default async (req, res) => {
     });
 
   } catch (err) {
-    console.error(`${apiName} 🔥 FATAL ERROR:`, err.message);
     return res.status(500).json({ error: err.message });
   }
 };
