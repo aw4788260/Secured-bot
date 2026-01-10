@@ -10,11 +10,11 @@ export default async (req, res) => {
 
   let userData = null;
   let userAccess = { courses: [], subjects: [] };
-  let libraryData = []; // هذه المصفوفة ستحتوي على البيانات النصية الكاملة
+  let libraryData = []; 
   let isLoggedIn = false;
 
   try {
-    // 1. التحقق من المستخدم والجهاز
+    // 1. التحقق من هوية المستخدم (Authentication)
     if (userId && deviceId) {
       const { data: deviceCheck } = await supabase
         .from('devices')
@@ -33,92 +33,79 @@ export default async (req, res) => {
           userData = user;
           isLoggedIn = true;
 
-          // -------------------------------------------------------
-          // ✅ التعديل: جلب النصوص (اسم الكورس، المدرس، الكود)
-          // -------------------------------------------------------
+          // -----------------------------------------------------------
+          // ✅ جلب بيانات المكتبة الخاصة بالطالب
+          // (نعتمد هنا على الجداول المربوطة بـ Foreign Keys لضمان دقة العلاقات)
+          // -----------------------------------------------------------
 
-          // أ) جلب الكورسات الكاملة مع تفاصيلها النصية
+          // أ) الكورسات الكاملة
           const { data: fullCourses } = await supabase
             .from('user_course_access')
             .select(`
               course_id,
-              courses (
-                id,
-                title,
-                code,
-                instructor_name
-              )
+              courses ( id, title, code, instructor_name )
             `)
             .eq('user_id', userId);
 
-          // ب) جلب المواد المنفصلة مع تفاصيلها وتفاصيل الكورس الأب
+          // ب) المواد المنفصلة
           const { data: singleSubjects } = await supabase
             .from('user_subject_access')
             .select(`
               subject_id,
               subjects (
-                id,
-                title,
-                courses (
-                  id,
-                  title,
-                  code,
-                  instructor_name
-                )
+                id, title,
+                courses ( id, title, code, instructor_name )
               )
             `)
             .eq('user_id', userId);
 
-          // ج) تجميع الـ IDs للوصول السريع (للحماية)
+          // ج) مصفوفات الوصول السريع (IDs)
           userAccess = {
             courses: fullCourses ? fullCourses.map(c => c.course_id.toString()) : [],
             subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : []
           };
 
-          // د) بناء هيكل "المكتبة" (Library) للعرض في التطبيق
+          // د) بناء هيكل المكتبة الموحد (Library Structure)
           const libraryMap = new Map();
 
-          // 1. إضافة الكورسات الكاملة للمكتبة
+          // إضافة الكورسات الكاملة
           fullCourses?.forEach(item => {
             if (item.courses) {
               libraryMap.set(item.courses.id, {
                 type: 'course',
                 id: item.courses.id,
-                title: item.courses.title,             // ✅ اسم الكورس
-                code: item.courses.code,               // ✅ كود الكورس
-                instructor: item.courses.instructor_name || 'Instructor', // ✅ اسم المدرس
-                owned_subjects: 'all' // يملك الكورس بالكامل
+                title: item.courses.title,
+                code: item.courses.code,
+                instructor: item.courses.instructor_name || 'Instructor',
+                owned_subjects: 'all'
               });
             }
           });
 
-          // 2. إضافة المواد المنفصلة ودمجها تحت الكورس الخاص بها
+          // إضافة المواد المنفصلة
           singleSubjects?.forEach(item => {
             const subject = item.subjects;
             const parentCourse = subject?.courses;
 
             if (parentCourse) {
-              // إذا كان الكورس موجوداً بالفعل في القائمة
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
-                // نضيف المادة فقط إذا لم يكن يملك الكورس بالكامل
                 if (existingEntry.owned_subjects !== 'all') {
                   existingEntry.owned_subjects.push({
                     id: subject.id,
-                    title: subject.title // ✅ اسم المادة
+                    title: subject.title
                   });
                 }
               } else {
-                // إذا لم يكن موجوداً، ننشئ مدخلاً جديداً للكورس (Container)
                 libraryMap.set(parentCourse.id, {
                   type: 'subject_group',
                   id: parentCourse.id,
-                  title: parentCourse.title,             // ✅ اسم الكورس
-                  code: parentCourse.code,               // ✅ كود الكورس
-                  instructor: parentCourse.instructor_name || 'Instructor', // ✅ اسم المدرس
+                  title: parentCourse.title,
+                  code: parentCourse.code,
+                  instructor: parentCourse.instructor_name || 'Instructor',
                   owned_subjects: [{
                     id: subject.id,
-                    title: subject.title // ✅ اسم المادة
+                    title: subject.title
                   }]
                 });
               }
@@ -130,19 +117,23 @@ export default async (req, res) => {
       }
     }
 
-    // 2. جلب قائمة الكورسات العامة للمتجر (مع التفاصيل أيضاً)
+    // -----------------------------------------------------------
+    // ✅ 2. جلب الكورسات العامة (المتجر) باستخدام View لتحسين السرعة
+    // -----------------------------------------------------------
+    // استخدام view_course_details بدلاً من الجدول المباشر courses
+    // هذا يسمح بجلب البيانات المجهزة مسبقاً من قاعدة البيانات
     const { data: courses } = await supabase
-      .from('courses') // أو view_course_details
-      .select('id, title, code, instructor_name, price, sort_order')
+      .from('view_course_details') 
+      .select('*') // نجلب كل الأعمدة المجهزة في الـ View
       .order('sort_order', { ascending: true });
 
     return res.status(200).json({
       success: true,
       isLoggedIn: isLoggedIn,
-      user: userData,
-      myAccess: userAccess, // للتحقق من الصلاحيات (IDs)
-      library: libraryData, // ✅ للعرض في التطبيق (نصوص كاملة)
-      courses: courses || [] 
+      user: userData,       
+      myAccess: userAccess, 
+      library: libraryData, 
+      courses: courses || [] // هذه القائمة ستغذي المتجر والصفحة الرئيسية
     });
 
   } catch (err) {
