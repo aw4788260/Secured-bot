@@ -34,16 +34,16 @@ export default async (req, res) => {
           isLoggedIn = true;
 
           // --- منطق المكتبة الخاصة (Library) ---
-          // هنا نستخدم الاستعلام المباشر لأنه يعتمد على user_id ولا يمكن وضعه في View عام
           
-          // أ) الكورسات الكاملة
+          // أ) الكورسات الكاملة (تعديل الاستعلام لجلب المواد)
           const { data: fullCourses } = await supabase
             .from('user_course_access')
             .select(`
               course_id,
               courses ( 
                 id, title, code, teacher_id,
-                teachers ( name ) 
+                teachers ( name ),
+                subjects ( id, title )  // ✅ 1. تمت إضافة جلب المواد هنا
               )
             `)
             .eq('user_id', userId);
@@ -73,15 +73,20 @@ export default async (req, res) => {
 
           fullCourses?.forEach(item => {
             if (item.courses) {
+              // ✅ 2. تحويل المواد القادمة من قاعدة البيانات إلى القائمة المطلوبة
+              const courseSubjects = item.courses.subjects?.map(sub => ({
+                id: sub.id, 
+                title: sub.title
+              })) || [];
+
               libraryMap.set(item.courses.id, {
                 type: 'course',
                 id: item.courses.id,
                 title: item.courses.title,
                 code: item.courses.code,
-                // هنا نقرأ الاسم والـ ID بشكل صحيح من العلاقة
                 instructor: item.courses.teachers?.name || 'Instructor',
                 teacherId: item.courses.teacher_id, 
-                owned_subjects: 'all'
+                owned_subjects: courseSubjects // ✅ الآن نرسل القائمة الفعلية بدلاً من 'all'
               });
             }
           });
@@ -93,8 +98,10 @@ export default async (req, res) => {
             if (parentCourse) {
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
-                if (existingEntry.owned_subjects !== 'all') {
-                  existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
+                // إذا كان الكورس موجوداً مسبقاً كاشتراك كامل، لا نضيف المواد الفردية
+                // لأن القائمة الكاملة موجودة بالفعل في الخطوة السابقة
+                if (existingEntry.type === 'subject_group') { 
+                   existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
                 }
               } else {
                 libraryMap.set(parentCourse.id, {
@@ -115,10 +122,7 @@ export default async (req, res) => {
       }
     }
 
-    // -----------------------------------------------------------
-    // ✅ جلب بيانات المتجر باستخدام الـ View (سريع ومحسن)
-    // -----------------------------------------------------------
-    // الآن بعد تحديث الـ View في قاعدة البيانات، سيحتوي على instructor_name و teacher_id تلقائياً
+    // جلب بيانات المتجر (كما هي)
     const { data: courses } = await supabase
       .from('view_course_details') 
       .select('*') 
