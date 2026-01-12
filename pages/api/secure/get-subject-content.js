@@ -53,10 +53,12 @@ export default async (req, res) => {
     }
 
     // 3. جلب "الداتا الضخمة" (Big Data Fetch)
+    // ✅ التعديل هنا: إضافة (course_id) وجلب جدول (courses) للحصول على العنوان
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
-        id, title,
+        id, title, course_id,
+        courses ( id, title ),
         chapters (
           id, title, sort_order,
           videos (id, title, sort_order, type, youtube_video_id), 
@@ -69,22 +71,19 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 4. (تعديل) التحقق من حالة الامتحانات وجلب attempt_id
+    // 4. التحقق من حالة الامتحانات وجلب attempt_id
     const examIds = subjectData.exams.map(e => e.id);
     
-    // سنستخدم كائن (Object) لربط رقم الامتحان برقم المحاولة
-    // Key = exam_id, Value = attempt_id
     let attemptsMap = {}; 
 
     if (examIds.length > 0) {
       const { data: attempts } = await supabase
         .from('user_attempts')
-        .select('id, exam_id') // ✅ هنا التغيير: جلبنا id المحاولة أيضاً
+        .select('id, exam_id') 
         .eq('user_id', userId)
         .in('exam_id', examIds)
-        .eq('status', 'completed'); // نجلب فقط المحاولات المكتملة
+        .eq('status', 'completed'); 
       
-      // ملء الـ Map
       attempts?.forEach(attempt => {
         attemptsMap[attempt.exam_id] = attempt.id;
       });
@@ -94,6 +93,10 @@ export default async (req, res) => {
     const formattedData = {
       id: subjectData.id,
       title: subjectData.title,
+      // ✅ التعديل هنا: إضافة عنوان الكورس للأوبجكت النهائي
+      course_id: subjectData.course_id,
+      course_title: subjectData.courses?.title || "Unknown Course",
+      
       chapters: subjectData.chapters
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ch => ({
@@ -106,13 +109,12 @@ export default async (req, res) => {
       exams: subjectData.exams
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => {
-          // البحث عن محاولة لهذا الامتحان
           const attemptId = attemptsMap[ex.id] || null;
           
           return {
             ...ex,
-            isCompleted: !!attemptId, // يكون مكتملاً (true) إذا وجدنا رقم محاولة
-            attempt_id: attemptId     // ✅ إضافة رقم المحاولة (أو null)
+            isCompleted: !!attemptId, 
+            attempt_id: attemptId      
           };
         })
     };
