@@ -74,23 +74,17 @@ export default async (req, res) => {
     // 4. التحقق من حالة الامتحانات (Solved vs Not Solved)
     // نجلب محاولات الطالب المكتملة لهذا الكورس
     const examIds = subjectData.exams.map(e => e.id);
-    let solvedExamsMap = new Map(); // ✅ التعديل الأول: استخدام Map بدلاً من Set
+    let solvedExamsSet = new Set();
 
     if (examIds.length > 0) {
       const { data: attempts } = await supabase
         .from('user_attempts')
-        .select('id, exam_id, created_at') // ✅ التعديل الثاني: جلب الـ ID والتاريخ
+        .select('exam_id')
         .eq('user_id', userId)
         .in('exam_id', examIds)
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false }); // ✅ التعديل الثالث: ترتيب النتائج لجلب الأحدث
+        .eq('status', 'completed');
       
-      attempts?.forEach(a => {
-        // نخزن فقط أحدث محاولة لكل امتحان
-        if (!solvedExamsMap.has(a.exam_id)) {
-            solvedExamsMap.set(a.exam_id, a.id);
-        }
-      });
+      attempts?.forEach(a => solvedExamsSet.add(a.exam_id));
     }
 
     // 5. تنسيق البيانات وترتيبها
@@ -110,9 +104,7 @@ export default async (req, res) => {
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => ({
           ...ex,
-          isCompleted: solvedExamsMap.has(ex.id),
-          // ✅ التعديل الرابع: إرجاع رقم المحاولة ليستخدمه التطبيق
-          last_attempt_id: solvedExamsMap.get(ex.id) || null 
+          isCompleted: solvedExamsSet.has(ex.id)
         }))
     };
 
