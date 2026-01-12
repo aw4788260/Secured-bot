@@ -24,7 +24,6 @@ export default async (req, res) => {
     }
 
     // 2. التحقق من الاشتراك (Subscription Check)
-    // هل يملك الطالب اشتراكاً في المادة مباشرة؟
     const { data: subAccess } = await supabase
       .from('user_subject_access')
       .select('id')
@@ -54,7 +53,6 @@ export default async (req, res) => {
     }
 
     // 3. جلب "الداتا الضخمة" (Big Data Fetch)
-    // نجلب المادة -> الفصول -> (الفيديوهات + ملفات PDF)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -71,20 +69,25 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 4. التحقق من حالة الامتحانات (Solved vs Not Solved)
-    // نجلب محاولات الطالب المكتملة لهذا الكورس
+    // 4. (تعديل) التحقق من حالة الامتحانات وجلب attempt_id
     const examIds = subjectData.exams.map(e => e.id);
-    let solvedExamsSet = new Set();
+    
+    // سنستخدم كائن (Object) لربط رقم الامتحان برقم المحاولة
+    // Key = exam_id, Value = attempt_id
+    let attemptsMap = {}; 
 
     if (examIds.length > 0) {
       const { data: attempts } = await supabase
         .from('user_attempts')
-        .select('exam_id')
+        .select('id, exam_id') // ✅ هنا التغيير: جلبنا id المحاولة أيضاً
         .eq('user_id', userId)
         .in('exam_id', examIds)
-        .eq('status', 'completed');
+        .eq('status', 'completed'); // نجلب فقط المحاولات المكتملة
       
-      attempts?.forEach(a => solvedExamsSet.add(a.exam_id));
+      // ملء الـ Map
+      attempts?.forEach(attempt => {
+        attemptsMap[attempt.exam_id] = attempt.id;
+      });
     }
 
     // 5. تنسيق البيانات وترتيبها
@@ -102,10 +105,16 @@ export default async (req, res) => {
         })),
       exams: subjectData.exams
         .sort((a, b) => a.sort_order - b.sort_order)
-        .map(ex => ({
-          ...ex,
-          isCompleted: solvedExamsSet.has(ex.id)
-        }))
+        .map(ex => {
+          // البحث عن محاولة لهذا الامتحان
+          const attemptId = attemptsMap[ex.id] || null;
+          
+          return {
+            ...ex,
+            isCompleted: !!attemptId, // يكون مكتملاً (true) إذا وجدنا رقم محاولة
+            attempt_id: attemptId     // ✅ إضافة رقم المحاولة (أو null)
+          };
+        })
     };
 
     return res.status(200).json(formattedData);
