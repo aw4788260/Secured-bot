@@ -12,9 +12,12 @@ export default async (req, res) => {
 
     log("🚀 Start Request: get-video-id");
 
-    const { lessonId } = req.query;
-    
-    // طباعة الهيدرز التي وصلت للسيرفر (للتأكد أن الواجهة ترسلها)
+    // ✅ التعديل 1: استقبال mode من التطبيق (stream أو download)
+    // الافتراضي هو stream لضمان عمل المشغل القديم
+    const { lessonId, mode } = req.query; 
+    const requestedMode = mode === 'download' ? 'download' : 'stream';
+
+    // طباعة الهيدرز التي وصلت للسيرفر
     const userId = req.headers['x-user-id'];
     const deviceId = req.headers['x-device-id'];
     
@@ -22,6 +25,7 @@ export default async (req, res) => {
     log(`   👉 User ID: ${userId || 'MISSING'}`);
     log(`   👉 Device ID: ${deviceId || 'MISSING'}`);
     log(`   👉 Lesson ID: ${lessonId || 'MISSING'}`);
+    log(`   👉 Requested Mode: ${requestedMode}`); // طباعة الوضع المطلوب
 
     if (!lessonId || !userId || !deviceId) {
         errLog("Stopping: Missing required data.");
@@ -35,8 +39,7 @@ export default async (req, res) => {
         }
 
         // =========================================================
-        // 1. الفحص اليدوي للتشخيص (قبل checkUserAccess)
-        // هذا الجزء سيكشف لك سبب الرفض بالضبط في اللوج
+        // 1. الفحص اليدوي للتشخيص
         // =========================================================
         log("🕵️‍♂️ Diagnostic Check (Manual Database Lookup)...");
         const { data: dbDevice, error: dbErr } = await supabase
@@ -48,9 +51,6 @@ export default async (req, res) => {
         if (dbErr || !dbDevice) {
             errLog(`⚠️ User ${userId} has NO registered device in DB!`);
         } else {
-            log(`   💾 DB Registered Fingerprint: ${dbDevice.fingerprint}`);
-            log(`   📱 Browser Sent Fingerprint:  ${deviceId}`);
-            
             if (dbDevice.fingerprint === deviceId) {
                 log("   ✅ Fingerprints MATCH.");
             } else {
@@ -59,7 +59,7 @@ export default async (req, res) => {
         }
 
         // =========================================================
-        // 2. التحقق الرسمي
+        // 2. التحقق الرسمي للصلاحيات
         // =========================================================
         log("🔒 Calling checkUserAccess()...");
         const hasAccess = await checkUserAccess(req, lessonId, 'video');
@@ -71,7 +71,7 @@ export default async (req, res) => {
         }
 
         // =========================================================
-        // 3. جلب الفيديو
+        // 3. جلب بيانات الفيديو من قاعدة البيانات
         // =========================================================
         log("🔎 Fetching video metadata...");
         const { data: videoData, error: vidErr } = await supabase
@@ -87,16 +87,19 @@ export default async (req, res) => {
         log(`🎥 Found Video: ${videoData.title} (ID: ${videoData.youtube_video_id})`);
 
         // =========================================================
-        // 4. الاتصال بالبروكسي
+        // 4. الاتصال بالبروكسي (مع تمرير Mode)
         // =========================================================
         const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
-        log(`📡 Connecting to Proxy: ${hls_endpoint}`);
+        log(`📡 Connecting to Proxy: ${hls_endpoint} [Mode: ${requestedMode}]`);
         
         const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
 
         const [proxyResponse, settingResult] = await Promise.all([
             axios.get(hls_endpoint, { 
-                params: { youtubeId: videoData.youtube_video_id },
+                params: { 
+                    youtubeId: videoData.youtube_video_id,
+                    mode: requestedMode // ✅ التعديل 2: تمرير الوضع للبروكسي
+                },
                 headers: proxyHeaders,
                 timeout: 25000 
             }),
@@ -107,21 +110,31 @@ export default async (req, res) => {
 
         const isOfflineMode = settingResult.data ? settingResult.data.value === 'true' : true;
         
-        let directUrl = proxyResponse.data.url;
-        if (!directUrl && proxyResponse.data.availableQualities?.length > 0) {
-            directUrl = proxyResponse.data.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
+        // استخراج البيانات من رد البروكسي
+        const proxyData = proxyResponse.data;
+        
+        // منطق التعامل مع الرابط المباشر
+        let directUrl = proxyData.url;
+
+        // منطق احتياطي قديم (للتوافق فقط، البروكسي الجديد يعالج هذا بالفعل)
+        if (!directUrl && proxyData.availableQualities?.length > 0 && requestedMode === 'stream') {
+             // في حالة المشاهدة، إذا جاءت قائمة نأخذ الأول، ولكن البروكسي الجديد سيرسل رابطاً واحداً عادة
+             directUrl = proxyData.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
         }
 
         log("📤 Sending 200 OK Response to client.");
+        
+        // إرسال الرد النهائي
         res.status(200).json({ 
-            ...proxyResponse.data, 
-            url: directUrl, 
-            duration: "0", // يمكنك تحسين استخراج المدة هنا
+            ...proxyData, // يرسل url (للمشاهدة) أو availableQualities (للتحميل)
+            url: directUrl, // للتوافق مع الأكواد القديمة التي تنتظر هذا الحقل
+            duration: "0", 
             youtube_video_id: videoData.youtube_video_id,
             db_video_title: videoData.title,
             subject_name: videoData.chapters?.subjects?.title,
             chapter_name: videoData.chapters?.title,
-            offline_mode: isOfflineMode 
+            offline_mode: isOfflineMode,
+            request_mode: requestedMode // معلومة إضافية للفرونت إند للتأكد
         });
 
     } catch (err) {
