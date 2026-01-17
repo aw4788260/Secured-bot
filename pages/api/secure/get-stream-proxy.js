@@ -9,7 +9,7 @@ export default async (req, res) => {
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
     // 1. قراءة رابط البروكسي
-    const PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
+    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL;
 
     if (!PROXY_BASE_URL) {
         errLog("CRITICAL: PYTHON_PROXY_BASE_URL is not defined in .env file");
