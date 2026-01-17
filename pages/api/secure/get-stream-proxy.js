@@ -3,17 +3,16 @@ import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
 
 export default async (req, res) => {
-    // إعداد اللوج لتتبع الأخطاء
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    // 1. قراءة رابط البروكسي
-    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL;
+    // 1. قراءة الرابط
+    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; // تأكد أن الاسم يطابق .env
 
     if (!PROXY_BASE_URL) {
-        errLog("CRITICAL: PYTHON_PROXY_BASE_URL is not defined in .env file");
-        return res.status(500).json({ message: "Server Configuration Error" });
+        errLog("CRITICAL: PYTHON_PROXY_URL is not defined in .env file");
+        return res.status(500).json({ message: "Server Config Error" });
     }
 
     const { lessonId } = req.query;
@@ -25,21 +24,15 @@ export default async (req, res) => {
     }
 
     try {
-        // =========================================================
         // 2. التحقق الأمني
-        // =========================================================
         log(`Checking User: ${userId} for Video Access...`);
-        
         const hasAccess = await checkUserAccess(req, lessonId, 'video');
-        
         if (!hasAccess) {
-            errLog("⛔ Access Denied: Unauthorized Device or Subscription.");
+            errLog("⛔ Access Denied.");
             return res.status(403).json({ message: "Access Denied" });
         }
 
-        // =========================================================
-        // 3. جلب بيانات الفيديو
-        // =========================================================
+        // 3. جلب البيانات من قاعدة البيانات
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
@@ -53,30 +46,21 @@ export default async (req, res) => {
         const youtubeId = videoData.youtube_video_id;
         log(`🎥 Requesting Proxy for: ${videoData.title}`);
 
-        // =========================================================
-        // 4. الاتصال بالسيرفر المحلي (Python Proxy)
-        // =========================================================
+        // 4. الاتصال بالبروكسي المحلي
         try {
             const proxyResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId },
-                
-                // 🔴 تعديل المهلة هنا:
-                // 10000 = 10 ثواني (قد تكون قصيرة جداً لـ yt-dlp)
-                // 60000 = 60 ثانية (الأفضل لضمان عدم حدوث Timeout)
                 timeout: 60000 
             });
 
             const result = proxyResponse.data;
 
             if (!result.availableQualities || result.availableQualities.length === 0) {
-                throw new Error("No streams found or extraction failed");
+                throw new Error("No streams found");
             }
 
-            // =========================================================
             // 5. تجهيز الرد
-            // =========================================================
             const qualities = result.availableQualities;
-            const defaultUrl = qualities[0].url;
             const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
 
             const { data: settingResult } = await supabase
@@ -86,9 +70,10 @@ export default async (req, res) => {
                 .single();
             const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
+            // ✅ تم إزالة حقل url المنفصل هنا
             return res.status(200).json({
-                url: defaultUrl,
-                availableQualities: qualities,
+                availableQualities: qualities, // القائمة الكاملة
+                
                 title: videoData.title,
                 thumbnail: thumbnail,
                 duration: "0",
@@ -101,16 +86,13 @@ export default async (req, res) => {
             });
 
         } catch (proxyErr) {
-            // تفاصيل الخطأ في اللوج
             if (proxyErr.code === 'ECONNABORTED') {
-                 errLog(`VPS Proxy Timeout: Request took longer than 60s`);
-                 return res.status(504).json({ message: "Proxy Timeout: Server took too long to respond" });
+                 return res.status(504).json({ message: "Proxy Timeout" });
             }
-
             errLog(`VPS Proxy Error: ${proxyErr.message}`);
             
             if (proxyErr.code === 'ECONNREFUSED') {
-                return res.status(502).json({ message: "Proxy Service Unreachable (Check Python Script)" });
+                return res.status(502).json({ message: "Proxy Service Unreachable" });
             }
             if (proxyErr.response) {
                 return res.status(502).json({ message: "VPS Extraction Failed", details: proxyErr.response.data });
