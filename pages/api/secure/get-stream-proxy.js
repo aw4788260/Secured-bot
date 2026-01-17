@@ -8,8 +8,8 @@ export default async (req, res) => {
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    // 1. قراءة رابط البروكسي من المتغيرات
-    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL;
+    // 1. قراءة رابط البروكسي
+    const PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 
     if (!PROXY_BASE_URL) {
         errLog("CRITICAL: PYTHON_PROXY_BASE_URL is not defined in .env file");
@@ -26,7 +26,7 @@ export default async (req, res) => {
 
     try {
         // =========================================================
-        // 2. التحقق الأمني (نفس كود get-video-id)
+        // 2. التحقق الأمني
         // =========================================================
         log(`Checking User: ${userId} for Video Access...`);
         
@@ -38,9 +38,8 @@ export default async (req, res) => {
         }
 
         // =========================================================
-        // 3. جلب بيانات الفيديو من قاعدة البيانات
+        // 3. جلب بيانات الفيديو
         // =========================================================
-        // نحتاج العنوان واسم المادة لتعويض ما لا يرسله البروكسي
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
@@ -60,7 +59,11 @@ export default async (req, res) => {
         try {
             const proxyResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId },
-                timeout: 45000 
+                
+                // 🔴 تعديل المهلة هنا:
+                // 10000 = 10 ثواني (قد تكون قصيرة جداً لـ yt-dlp)
+                // 60000 = 60 ثانية (الأفضل لضمان عدم حدوث Timeout)
+                timeout: 60000 
             });
 
             const result = proxyResponse.data;
@@ -70,17 +73,12 @@ export default async (req, res) => {
             }
 
             // =========================================================
-            // 5. تجهيز الرد النهائي (دمج البيانات)
+            // 5. تجهيز الرد
             // =========================================================
-            
-            // أ) الرابط الافتراضي: نأخذ أول رابط في القائمة (لأنه الأعلى جودة حسب ترتيب البروكسي)
             const qualities = result.availableQualities;
             const defaultUrl = qualities[0].url;
-
-            // ب) الصورة المصغرة: ننشئ الرابط يدوياً لأن البروكسي لم يعد يرسله
             const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
 
-            // ج) إعدادات الأوفلاين
             const { data: settingResult } = await supabase
                 .from('app_settings')
                 .select('value')
@@ -88,29 +86,27 @@ export default async (req, res) => {
                 .single();
             const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
-            // د) الإرسال
             return res.status(200).json({
-                // 1. البيانات الأساسية للتشغيل
                 url: defaultUrl,
-                availableQualities: qualities, // القائمة الكاملة (فيديو + صوت)
-                
-                // 2. البيانات الوصفية (من قاعدة البيانات)
+                availableQualities: qualities,
                 title: videoData.title,
                 thumbnail: thumbnail,
-                duration: "0", // يمكن تعديله لاحقاً
-                
-                // 3. بيانات إضافية للتطبيق (Android App Context)
+                duration: "0",
                 youtube_video_id: youtubeId,
                 db_video_title: videoData.title,
                 subject_name: videoData.chapters?.subjects?.title || "Unknown Subject",
                 chapter_name: videoData.chapters?.title || "Unknown Chapter",
-                
-                // 4. إعدادات النظام
                 offline_mode: isOfflineMode,
                 proxy_method: "local_vps_filtered"
             });
 
         } catch (proxyErr) {
+            // تفاصيل الخطأ في اللوج
+            if (proxyErr.code === 'ECONNABORTED') {
+                 errLog(`VPS Proxy Timeout: Request took longer than 60s`);
+                 return res.status(504).json({ message: "Proxy Timeout: Server took too long to respond" });
+            }
+
             errLog(`VPS Proxy Error: ${proxyErr.message}`);
             
             if (proxyErr.code === 'ECONNREFUSED') {
