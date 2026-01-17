@@ -8,10 +8,9 @@ export default async (req, res) => {
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    // 1. قراءة الرابط من ملف .env حصراً
+    // 1. قراءة رابط البروكسي من المتغيرات
     const PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 
-    // التحقق من وجود المتغير في السيرفر لتجنب الأخطاء الغامضة
     if (!PROXY_BASE_URL) {
         errLog("CRITICAL: PYTHON_PROXY_BASE_URL is not defined in .env file");
         return res.status(500).json({ message: "Server Configuration Error" });
@@ -27,7 +26,7 @@ export default async (req, res) => {
 
     try {
         // =========================================================
-        // 2. التحقق الأمني (User + Device + Subscription)
+        // 2. التحقق الأمني (نفس كود get-video-id)
         // =========================================================
         log(`Checking User: ${userId} for Video Access...`);
         
@@ -39,8 +38,9 @@ export default async (req, res) => {
         }
 
         // =========================================================
-        // 3. جلب ID اليوتيوب من قاعدة البيانات
+        // 3. جلب بيانات الفيديو من قاعدة البيانات
         // =========================================================
+        // نحتاج العنوان واسم المادة لتعويض ما لا يرسله البروكسي
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
@@ -55,25 +55,32 @@ export default async (req, res) => {
         log(`🎥 Requesting Proxy for: ${videoData.title}`);
 
         // =========================================================
-        // 4. الاتصال بالسيرفر المحلي (عبر المتغير البيئي)
+        // 4. الاتصال بالسيرفر المحلي (Python Proxy)
         // =========================================================
         try {
             const proxyResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId },
-                timeout: 45000 // مهلة كافية للاستخراج
+                timeout: 45000 
             });
 
             const result = proxyResponse.data;
 
-            if (!result.success) {
-                throw new Error(result.error || "Failed to extract video");
+            if (!result.availableQualities || result.availableQualities.length === 0) {
+                throw new Error("No streams found or extraction failed");
             }
 
             // =========================================================
-            // 5. إرجاع البيانات للتطبيق
+            // 5. تجهيز الرد النهائي (دمج البيانات)
             // =========================================================
             
-            // جلب إعدادات الأوفلاين
+            // أ) الرابط الافتراضي: نأخذ أول رابط في القائمة (لأنه الأعلى جودة حسب ترتيب البروكسي)
+            const qualities = result.availableQualities;
+            const defaultUrl = qualities[0].url;
+
+            // ب) الصورة المصغرة: ننشئ الرابط يدوياً لأن البروكسي لم يعد يرسله
+            const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+
+            // ج) إعدادات الأوفلاين
             const { data: settingResult } = await supabase
                 .from('app_settings')
                 .select('value')
@@ -81,23 +88,31 @@ export default async (req, res) => {
                 .single();
             const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
+            // د) الإرسال
             return res.status(200).json({
-                url: result.url,
-                availableQualities: result.availableQualities,
-                title: result.title,
-                thumbnail: result.thumbnail,
+                // 1. البيانات الأساسية للتشغيل
+                url: defaultUrl,
+                availableQualities: qualities, // القائمة الكاملة (فيديو + صوت)
                 
+                // 2. البيانات الوصفية (من قاعدة البيانات)
+                title: videoData.title,
+                thumbnail: thumbnail,
+                duration: "0", // يمكن تعديله لاحقاً
+                
+                // 3. بيانات إضافية للتطبيق (Android App Context)
                 youtube_video_id: youtubeId,
                 db_video_title: videoData.title,
-                subject_name: videoData.chapters?.subjects?.title,
-                chapter_name: videoData.chapters?.title,
+                subject_name: videoData.chapters?.subjects?.title || "Unknown Subject",
+                chapter_name: videoData.chapters?.title || "Unknown Chapter",
+                
+                // 4. إعدادات النظام
                 offline_mode: isOfflineMode,
-                proxy_method: "local_vps_env"
+                proxy_method: "local_vps_filtered"
             });
 
         } catch (proxyErr) {
             errLog(`VPS Proxy Error: ${proxyErr.message}`);
-            // في حال فشل الاتصال بالبروكسي المحلي
+            
             if (proxyErr.code === 'ECONNREFUSED') {
                 return res.status(502).json({ message: "Proxy Service Unreachable (Check Python Script)" });
             }
