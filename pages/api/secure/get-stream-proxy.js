@@ -8,7 +8,7 @@ export default async (req, res) => {
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
     // 1. قراءة الرابط
-    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; // تأكد أن الاسم يطابق .env
+    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; 
 
     if (!PROXY_BASE_URL) {
         errLog("CRITICAL: PYTHON_PROXY_URL is not defined in .env file");
@@ -50,7 +50,7 @@ export default async (req, res) => {
         try {
             const proxyResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId },
-                timeout: 60000 
+                timeout: 90000 // زيادة المهلة لتجنب الانقطاع
             });
 
             const result = proxyResponse.data;
@@ -59,8 +59,45 @@ export default async (req, res) => {
                 throw new Error("No streams found");
             }
 
-            // 5. تجهيز الرد
-            const qualities = result.availableQualities;
+            // 5. فلترة وتنقية الروابط (رابط واحد لكل جودة + تفضيل AVC1)
+            let rawQualities = result.availableQualities;
+            
+            // تصفية للحصول على فيديو واحد لكل جودة
+            const uniqueQualitiesMap = new Map();
+            const audioStreams = [];
+
+            for (const stream of rawQualities) {
+                if (stream.type === 'audio_only') {
+                    audioStreams.push(stream);
+                    continue;
+                }
+
+                const quality = stream.quality;
+                const codec = (stream.vcodec || "").toLowerCase();
+                
+                // نفضل avc1 (H.264) لأنه الأكثر توافقاً
+                // إذا لم تكن الجودة موجودة، نضيفها
+                // إذا كانت موجودة، نستبدلها فقط إذا كان الجديد avc1 والقديم ليس كذلك
+                if (!uniqueQualitiesMap.has(quality)) {
+                    uniqueQualitiesMap.set(quality, stream);
+                } else {
+                    const existingStream = uniqueQualitiesMap.get(quality);
+                    const existingCodec = (existingStream.vcodec || "").toLowerCase();
+                    
+                    // إذا كان الرابط الحالي avc1 والقديم ليس كذلك، نستبدله (لأنه أفضل للأجهزة القديمة)
+                    if (codec.includes('avc1') && !existingCodec.includes('avc1')) {
+                        uniqueQualitiesMap.set(quality, stream);
+                    }
+                }
+            }
+
+            // إعادة تجميع القائمة (فيديو + صوت)
+            const filteredQualities = [
+                ...Array.from(uniqueQualitiesMap.values()),
+                ...audioStreams
+            ];
+
+            // 6. تجهيز الرد
             const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
 
             const { data: settingResult } = await supabase
@@ -70,9 +107,8 @@ export default async (req, res) => {
                 .single();
             const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
-            // ✅ تم إزالة حقل url المنفصل هنا
             return res.status(200).json({
-                availableQualities: qualities, // القائمة الكاملة
+                availableQualities: filteredQualities, // القائمة المنقحة
                 
                 title: videoData.title,
                 thumbnail: thumbnail,
