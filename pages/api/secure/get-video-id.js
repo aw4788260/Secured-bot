@@ -5,7 +5,6 @@ import { checkUserAccess } from '../../../lib/authHelper';
 const PYTHON_PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 
 export default async (req, res) => {
-    // إنشاء معرف عشوائي للطلب لتمييزه في اللوج
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
     const log = (msg) => console.log(`🔍 [DEBUG-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
@@ -14,19 +13,29 @@ export default async (req, res) => {
 
     const { lessonId } = req.query;
     
-    // طباعة الهيدرز التي وصلت للسيرفر (للتأكد أن الواجهة ترسلها)
-    const userId = req.headers['x-user-id'];
-    const deviceId = req.headers['x-device-id'];
-    
-    log(`📥 Incoming Headers:`);
-    log(`   👉 User ID: ${userId || 'MISSING'}`);
-    log(`   👉 Device ID: ${deviceId || 'MISSING'}`);
-    log(`   👉 Lesson ID: ${lessonId || 'MISSING'}`);
-
-    if (!lessonId || !userId || !deviceId) {
-        errLog("Stopping: Missing required data.");
-        return res.status(400).json({ message: "Missing data (Check Headers)" });
+    if (!lessonId) {
+        return res.status(400).json({ message: "Missing Lesson ID" });
     }
+
+    // 1. التحقق الأمني الشامل (Gatekeeper)
+    // نمرر الـ lessonId ونوعه 'video' ليتحقق الحارس من:
+    // أ. صحة التوكن
+    // ب. تطابق الجهاز
+    // ج. صلاحية الجلسة في الداتابيز
+    // د. امتلاك المستخدم لهذا الفيديو (اشتراك)
+    log("🔒 Calling checkUserAccess()...");
+    
+    const hasAccess = await checkUserAccess(req, lessonId, 'video');
+    
+    if (!hasAccess) {
+        errLog("⛔ Access Denied by System (Check Logs for Reason).");
+        return res.status(403).json({ message: "Access Denied" });
+    }
+
+    // 2. استخدام البيانات الآمنة
+    // الآن يمكننا الوثوق بـ x-user-id لأنه تم حقنه بواسطة authHelper
+    const userId = req.headers['x-user-id'];
+    log(`✅ User Authorized: ${userId}`);
 
     try {
         if (!PYTHON_PROXY_BASE_URL) {
@@ -34,45 +43,7 @@ export default async (req, res) => {
             return res.status(500).json({ message: "Proxy Config Error" });
         }
 
-        // =========================================================
-        // 1. الفحص اليدوي للتشخيص (قبل checkUserAccess)
-        // هذا الجزء سيكشف لك سبب الرفض بالضبط في اللوج
-        // =========================================================
-        log("🕵️‍♂️ Diagnostic Check (Manual Database Lookup)...");
-        const { data: dbDevice, error: dbErr } = await supabase
-            .from('devices')
-            .select('fingerprint')
-            .eq('user_id', userId)
-            .single();
-
-        if (dbErr || !dbDevice) {
-            errLog(`⚠️ User ${userId} has NO registered device in DB!`);
-        } else {
-            log(`   💾 DB Registered Fingerprint: ${dbDevice.fingerprint}`);
-            log(`   📱 Browser Sent Fingerprint:  ${deviceId}`);
-            
-            if (dbDevice.fingerprint === deviceId) {
-                log("   ✅ Fingerprints MATCH.");
-            } else {
-                errLog("   ⛔ Fingerprints DO NOT MATCH! (This is the cause)");
-            }
-        }
-
-        // =========================================================
-        // 2. التحقق الرسمي
-        // =========================================================
-        log("🔒 Calling checkUserAccess()...");
-        const hasAccess = await checkUserAccess(req, lessonId, 'video');
-        log(`🔒 checkUserAccess returned: ${hasAccess}`);
-
-        if (!hasAccess) {
-            errLog("Access Denied by System.");
-            return res.status(403).json({ message: "Access Denied" });
-        }
-
-        // =========================================================
-        // 3. جلب الفيديو
-        // =========================================================
+        // 3. جلب بيانات الفيديو
         log("🔎 Fetching video metadata...");
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
@@ -86,9 +57,7 @@ export default async (req, res) => {
         }
         log(`🎥 Found Video: ${videoData.title} (ID: ${videoData.youtube_video_id})`);
 
-        // =========================================================
         // 4. الاتصال بالبروكسي
-        // =========================================================
         const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
         log(`📡 Connecting to Proxy: ${hls_endpoint}`);
         
@@ -108,6 +77,7 @@ export default async (req, res) => {
         const isOfflineMode = settingResult.data ? settingResult.data.value === 'true' : true;
         
         let directUrl = proxyResponse.data.url;
+        // منطق احتياطي لاختيار أفضل جودة إذا لم يرجع رابط مباشر
         if (!directUrl && proxyResponse.data.availableQualities?.length > 0) {
             directUrl = proxyResponse.data.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
         }
@@ -116,7 +86,7 @@ export default async (req, res) => {
         res.status(200).json({ 
             ...proxyResponse.data, 
             url: directUrl, 
-            duration: "0", // يمكنك تحسين استخراج المدة هنا
+            duration: "0",
             youtube_video_id: videoData.youtube_video_id,
             db_video_title: videoData.title,
             subject_name: videoData.chapters?.subjects?.title,
@@ -128,7 +98,6 @@ export default async (req, res) => {
         errLog(`Critical Error: ${err.message}`);
         if (err.response) {
             errLog(`Proxy/Upstream Status: ${err.response.status}`);
-            errLog(`Response Data: ${JSON.stringify(err.response.data)}`);
             return res.status(err.response.status).json({ message: "Proxy Error", details: err.response.data });
         }
         res.status(500).json({ message: err.message });
