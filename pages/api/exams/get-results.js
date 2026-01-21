@@ -4,39 +4,46 @@ import { checkUserAccess } from '../../../lib/authHelper'; // ✅ إضافة ا�
 export default async (req, res) => {
   const apiName = '[API: get-results]';
   const { attemptId } = req.query;
-  const userId = req.headers['x-user-id'];
 
-  if (!attemptId || !userId) return res.status(400).json({ error: 'Missing Data' });
+  if (!attemptId) return res.status(400).json({ error: 'Missing Data' });
 
   try {
-    // 1. جلب المحاولة لمعرفة تفاصيل الامتحان
-    const { data: attempt } = await supabase
+    // 1. جلب المحاولة أولاً لمعرفة معرف الامتحان (للتحقق من الصلاحية)
+    const { data: attempt, error: attError } = await supabase
       .from('user_attempts')
-      .select('id, score, question_order, user_id, exams ( id, title )')
+      .select('id, score, question_order, user_id, exam_id, exams ( id, title )')
       .eq('id', attemptId)
       .single();
 
-    if (!attempt) {
+    if (attError || !attempt) {
         return res.status(404).json({ error: 'Results not found' });
     }
 
-    // 2. التحقق من ملكية النتيجة (هل هذا الطالب هو صاحب المحاولة؟)
+    // 2. التحقق الأمني الشامل (الحارس)
+    // نمرر معرف الامتحان ونوعه ليقوم الحارس بالتحقق من:
+    // أ. صحة التوكن
+    // ب. مطابقة الجهاز
+    // ج. اشتراك الطالب في المادة التابع لها هذا الامتحان
+    const isAuthorized = await checkUserAccess(req, attempt.exam_id, 'exam');
+    
+    if (!isAuthorized) {
+        console.warn(`${apiName} ⛔ Access Denied (Token/Device/Subscription mismatch).`);
+        return res.status(403).json({ error: 'Unauthorized Device or Expired Subscription' });
+    }
+
+    // 3. استخدام المعرف الآمن (الذي حقنه authHelper بعد نجاح التحقق)
+    const userId = req.headers['x-user-id'];
+
+    // 4. التحقق من ملكية النتيجة (هل هذا الطالب هو صاحب المحاولة؟)
     if (String(attempt.user_id) !== String(userId)) {
-        console.warn(`${apiName} ⛔ Access Denied. User mismatch.`);
+        console.warn(`${apiName} ⛔ Access Denied. User mismatch. AuthUser:${userId} vs AttemptUser:${attempt.user_id}`);
         return res.status(403).json({ error: 'Access Denied: Not your result' });
     }
 
-    // 3. التحقق الأمني للجهاز (Device Fingerprint)
-    // نتأكد أن الطالب يستخدم جهازه المسجل لرؤية النتيجة
-    const isDeviceAllowed = await checkUserAccess(req, attempt.exams.id, 'exam');
-    if (!isDeviceAllowed) {
-        return res.status(403).json({ error: 'Unauthorized Device' });
-    }
-
-    // 4. جلب الأسئلة والإجابات
+    // 5. جلب الأسئلة والإجابات
     const { data: questions } = await supabase.from('questions')
       .select(`id, question_text, image_file_id, options ( id, option_text, is_correct )`)
-      .eq('exam_id', attempt.exams.id);
+      .eq('exam_id', attempt.exam_id);
 
     const { data: userAnswers } = await supabase.from('user_answers')
       .select('question_id, selected_option_id, is_correct')
@@ -45,7 +52,7 @@ export default async (req, res) => {
     const userAnsMap = new Map();
     userAnswers?.forEach(ans => userAnsMap.set(ans.question_id, ans));
 
-    // 5. إعادة ترتيب الأسئلة حسب الترتيب العشوائي الذي ظهر للطالب (إن وجد)
+    // 6. إعادة ترتيب الأسئلة حسب الترتيب العشوائي الذي ظهر للطالب
     const orderedQuestions = [];
     if (attempt.question_order && Array.isArray(attempt.question_order)) {
         const qMap = new Map(questions.map(q => [q.id, q]));
@@ -54,7 +61,7 @@ export default async (req, res) => {
         orderedQuestions.push(...questions);
     }
 
-    // 6. تجهيز البيانات النهائية للتطبيق
+    // 7. تجهيز البيانات النهائية
     let correctCount = 0;
     const finalQuestions = orderedQuestions.map(q => {
         const ans = userAnsMap.get(q.id);
@@ -74,7 +81,7 @@ export default async (req, res) => {
     return res.status(200).json({
         exam_title: attempt.exams.title,
         score_details: { 
-            percentage: Math.round((correctCount / questions.length) * 100), // النسبة المئوية
+            percentage: questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0,
             correct: correctCount, 
             total: questions.length,
             score: attempt.score // الدرجة المسجلة
