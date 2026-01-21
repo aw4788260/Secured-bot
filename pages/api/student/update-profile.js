@@ -1,20 +1,23 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
 
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  const { firstName, phone, username } = req.body;
-  const userId = req.headers['x-user-id'];
-  const deviceId = req.headers['x-device-id'];
+  // 2. تفعيل الحماية والتحقق من التوكن
+  // هذا السطر يتحقق من التوكن، البصمة، وقاعدة البيانات
+  const isAuthorized = await checkUserAccess(req); 
+  
+  if (!isAuthorized) {
+      return res.status(401).json({ error: 'Unauthorized Access' });
+  }
 
-  if (!userId || !deviceId) return res.status(400).json({ error: 'Missing headers' });
+  // 3. استخراج المعرف الآمن (الذي حقنه authHelper بعد فك التوكن)
+  const userId = req.headers['x-user-id'];
+  const { firstName, phone, username } = req.body;
 
   try {
-    // 1. التحقق الأمني (الجهاز)
-    const { data: device } = await supabase.from('devices').select('fingerprint').eq('user_id', userId).maybeSingle();
-    if (!device || device.fingerprint !== deviceId) return res.status(403).json({ error: 'Unauthorized Device' });
-
-    // 2. التحقق من تكرار اسم المستخدم (إذا تم تغييره)
+    // 4. التحقق من تكرار اسم المستخدم (إذا تم تغييره)
     if (username) {
       const { data: existingUser } = await supabase
         .from('users')
@@ -28,7 +31,7 @@ export default async (req, res) => {
       }
     }
 
-    // 3. تحديث البيانات
+    // 5. تحديث البيانات
     const updates = {};
     if (firstName) updates.first_name = firstName;
     if (phone) updates.phone = phone;
