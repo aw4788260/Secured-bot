@@ -1,44 +1,62 @@
 import { supabase } from '../../../lib/supabaseClient';
+import jwt from 'jsonwebtoken';
 
 export default async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const userId = req.headers['x-user-id'];
-  const deviceId = req.headers['x-device-id'];
-
   let userData = null;
   let userAccess = { courses: [], subjects: [] };
   let libraryData = []; 
   let isLoggedIn = false;
+  let userId = null;
+
+  // 1. محاولة التعرف على المستخدم من التوكن (Soft Check)
+  const authHeader = req.headers['authorization'];
+  const deviceIdHeader = req.headers['x-device-id'];
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          
+          // تحقق أمني بسيط: يجب أن يطابق الجهاز المسجل في التوكن الجهاز المرسل في الهيدر
+          if (decoded.deviceId === deviceIdHeader) {
+              userId = decoded.userId;
+          }
+      } catch (e) {
+          // توكن غير صالح أو منتهي -> نعتبره زائر ونكمل
+          console.log("Init Data: Invalid/Expired Token or Guest Access");
+      }
+  }
 
   try {
-    if (userId && deviceId) {
-      // 1. التحقق من الجهاز
-      const { data: deviceCheck } = await supabase
-        .from('devices')
-        .select('fingerprint')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (deviceCheck && deviceCheck.fingerprint === deviceId) {
-        // 2. التحقق من المستخدم
-        const { data: user } = await supabase
+    // 2. إذا تم التعرف على المستخدم، نجلب بياناته الخاصة
+    if (userId) {
+       // التحقق من أن المستخدم غير محظور وأن التوكن ما زال سارياً في القاعدة
+       const { data: user } = await supabase
           .from('users')
-          .select('id, first_name, username, phone, is_blocked')
+          .select('id, first_name, username, phone, is_blocked, jwt_token')
           .eq('id', userId)
           .single();
 
-        if (user && !user.is_blocked) {
-          userData = user;
+       // يجب أن يكون المستخدم موجوداً، غير محظور، والتوكن مطابق (لضمان عدم تسجيل الخروج)
+       const incomingToken = authHeader.split(' ')[1];
+       if (user && !user.is_blocked && user.jwt_token === incomingToken) {
+          userData = {
+              id: user.id,
+              first_name: user.first_name,
+              username: user.username,
+              phone: user.phone
+          };
           isLoggedIn = true;
 
           // ==========================================
           // منطق المكتبة (Library Logic)
           // ==========================================
 
-          // أ) جلب الكورسات الكاملة (بدون المواد المتداخلة لتجنب الأخطاء)
+          // أ) جلب الكورسات الكاملة
           const { data: fullCourses } = await supabase
             .from('user_course_access')
             .select(`
@@ -50,21 +68,16 @@ export default async (req, res) => {
             `)
             .eq('user_id', userId);
 
-          // ب) ✅ جلب مواد هذه الكورسات بشكل منفصل (أضمن طريقة لظهور البيانات)
+          // ب) جلب مواد هذه الكورسات
           let courseSubjectsMap = {};
-          
           if (fullCourses && fullCourses.length > 0) {
-            // استخراج معرفات الكورسات
             const courseIds = fullCourses.map(item => item.course_id);
-
-            // استعلام مباشر لجلب المواد الخاصة بهذه الكورسات فقط
             const { data: allSubjects } = await supabase
                 .from('subjects')
                 .select('id, title, course_id, sort_order')
                 .in('course_id', courseIds)
                 .order('sort_order', { ascending: true }); 
 
-            // تجميع المواد داخل Map
             if (allSubjects) {
                 allSubjects.forEach(sub => {
                     if (!courseSubjectsMap[sub.course_id]) {
@@ -90,7 +103,7 @@ export default async (req, res) => {
             `)
             .eq('user_id', userId);
 
-          // هيكلة بيانات الصلاحيات
+          // هيكلة الصلاحيات
           userAccess = {
             courses: fullCourses ? fullCourses.map(c => c.course_id.toString()) : [],
             subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : []
@@ -98,13 +111,11 @@ export default async (req, res) => {
 
           const libraryMap = new Map();
 
-          // 1. إضافة الكورسات الكاملة للمكتبة
+          // إضافة الكورسات للمكتبة
           fullCourses?.forEach(item => {
             if (item.courses) {
               const cId = item.courses.id;
-              // ✅ هنا نضع قائمة المواد التي جلبناها في الخطوة (ب)
               const subjectsList = courseSubjectsMap[cId] || [];
-
               libraryMap.set(cId, {
                 type: 'course',
                 id: cId,
@@ -112,20 +123,18 @@ export default async (req, res) => {
                 code: item.courses.code,
                 instructor: item.courses.teachers?.name || 'Instructor',
                 teacherId: item.courses.teacher_id, 
-                owned_subjects: subjectsList // ✅ إرسال القائمة الحقيقية للمواد
+                owned_subjects: subjectsList
               });
             }
           });
 
-          // 2. إضافة المواد المنفصلة للمكتبة
+          // إضافة المواد المنفصلة
           singleSubjects?.forEach(item => {
             const subject = item.subjects;
             const parentCourse = subject?.courses;
-
             if (parentCourse) {
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
-                // لو الكورس كامل، خلاص المواد جت في الخطوة اللي فاتت
                 if (existingEntry.type === 'subject_group') { 
                    existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
                 }
@@ -144,22 +153,19 @@ export default async (req, res) => {
           });
 
           libraryData = Array.from(libraryMap.values());
-        }
-      }
+       }
     }
 
-    // -----------------------------------------------------------
-    // ✅ جلب بيانات المتجر باستخدام الـ View كما طلبت
-    // -----------------------------------------------------------
+    // 3. جلب بيانات المتجر (عام للجميع)
     const { data: courses } = await supabase
-      .from('view_course_details') // ✅ تم الابقاء على الـ View
+      .from('view_course_details')
       .select('*')
       .order('sort_order', { ascending: true });
 
     return res.status(200).json({
       success: true,
       isLoggedIn: isLoggedIn,
-      user: userData,       
+      user: userData,        
       myAccess: userAccess, 
       library: libraryData, 
       courses: courses || [] 
