@@ -1,12 +1,15 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
 
 export default async (req, res) => {
-  // التحقق من الهوية عبر الهيدر فقط
-  const userId = req.headers['x-user-id'];
-
-  if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+  // 2. التحقق الأمني الشامل
+  const isAuthorized = await checkUserAccess(req);
+  if (!isAuthorized) {
+      return res.status(401).json({ error: 'Unauthorized Access' });
   }
+
+  // 3. استخدام المعرف الآمن (المحقون بعد فك التوكن)
+  const userId = req.headers['x-user-id'];
 
   try {
       // جلب الطلبات الخاصة بهذا المستخدم
