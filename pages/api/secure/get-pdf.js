@@ -16,24 +16,23 @@ export default async (req, res) => {
   }
 
   const { pdfId } = req.query;
-  // تسجيل الهيدرز للتتبع (اختياري)
-  // console.log(`${apiName} 📥 Incoming Headers:`, JSON.stringify(req.headers));
 
   if (!pdfId) {
       return res.status(400).json({ message: "Missing pdfId" });
   }
 
   try {
-    // 2. التحقق الأمني
+    // 1. التحقق الأمني (Haras)
+    // نمرر الـ Request والـ ID والنوع ليقوم الحارس بالتحقق من التوكن والاشتراك
     const hasAccess = await checkUserAccess(req, pdfId, 'pdf');
     
     if (!hasAccess) {
-        console.warn(`${apiName} ⛔ Access Denied.`);
+        console.warn(`${apiName} ⛔ Access Denied for PDF: ${pdfId}`);
         res.setHeader('Cache-Control', 'no-store'); 
         return res.status(403).json({ message: "Access Denied" });
     }
 
-    // 3. جلب مسار الملف من الداتا بيز
+    // 2. جلب مسار الملف من الداتا بيز
     const { data: pdfDoc, error } = await supabase
       .from('pdfs')
       .select('file_path, title')
@@ -44,7 +43,7 @@ export default async (req, res) => {
       return res.status(404).json({ message: "File info not found" });
     }
 
-    // 4. تحديد المسار الفعلي
+    // 3. تحديد المسار الفعلي على السيرفر
     const filePath = path.join(process.cwd(), 'storage', 'pdfs', pdfDoc.file_path);
 
     if (!fs.existsSync(filePath)) {
@@ -53,7 +52,7 @@ export default async (req, res) => {
     }
 
     // =================================================================
-    // 5. ✅ منطق الـ Streaming الذكي (يدعم النفق X-Alt-Range)
+    // 4. ✅ منطق الـ Streaming الذكي (يدعم النفق X-Alt-Range)
     // =================================================================
     
     const stat = fs.statSync(filePath);
@@ -67,11 +66,11 @@ export default async (req, res) => {
     // إعدادات إجبارية لمنع الضغط ودعم التجزئة
     res.setHeader('Content-Encoding', 'identity'); 
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'no-cache'); // منع الكاش أثناء الاختبار
+    res.setHeader('Cache-Control', 'no-cache'); 
 
     if (range) {
       // ✅ حالة الـ Streaming (206 Partial Content)
-      console.log(`${apiName} ✂️ Serving PARTIAL content via header: ${req.headers['x-alt-range'] ? 'X-Alt-Range' : 'Range'}`);
+      // console.log(`${apiName} ✂️ Serving PARTIAL content`);
       
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
@@ -84,15 +83,15 @@ export default async (req, res) => {
         'Content-Length': chunksize,
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${filename}.pdf"`,
-        'Content-Encoding': 'identity', // تكرار للتأكيد
+        'Content-Encoding': 'identity',
       });
 
       const file = fs.createReadStream(filePath, { start, end });
       file.pipe(res);
 
     } else {
-      // ❌ حالة التحميل الكامل (200 OK) - فقط إذا لم يصل أي هيدر
-      console.log(`${apiName} ⚠️ Serving FULL content (No Range headers found)`);
+      // ❌ حالة التحميل الكامل (200 OK)
+      // console.log(`${apiName} ⚠️ Serving FULL content`);
       
       res.writeHead(200, {
         'Content-Length': fileSize,
