@@ -52,8 +52,8 @@ export default async (req, res) => {
         user_id: userId,
         exam_id: examId,
         student_name_input: studentName || null,
-        status: 'started',
-        start_time: new Date().toISOString()
+        status: 'started'
+        // start_time: new Date().toISOString() // ❌ تم إزالة هذا السطر لمنع الخطأ
       }).select().single();
 
     if (attError) throw attError;
