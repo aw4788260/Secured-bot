@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
@@ -10,20 +11,27 @@ export const config = {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  // 1. التحقق من الهوية
-  let user = null;
-  const headerUserId = req.headers['x-user-id'];
-
-  if (headerUserId) {
-      const { data } = await supabase.from('users').select('id, username, first_name, phone').eq('id', headerUserId).single();
-      user = data;
+  // 2. التحقق الأمني قبل معالجة أي شيء
+  const isAuthorized = await checkUserAccess(req);
+  if (!isAuthorized) {
+      return res.status(401).json({ error: 'Unauthorized Access' });
   }
+
+  // 3. استخدام المعرف الآمن
+  const userId = req.headers['x-user-id'];
+
+  // جلب بيانات المستخدم لتسجيلها في الطلب
+  const { data: user } = await supabase
+      .from('users')
+      .select('id, username, first_name, phone')
+      .eq('id', userId)
+      .single();
 
   if (!user) {
-      return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً' });
+      return res.status(404).json({ error: 'User data not found' });
   }
 
-  // 2. إعداد مجلد الحفظ
+  // 4. إعداد مجلد الحفظ
   const uploadDir = path.join(process.cwd(), 'storage', 'receipts');
   try {
     if (!fs.existsSync(uploadDir)) {
@@ -60,9 +68,9 @@ export default async (req, res) => {
           return Array.isArray(file) ? file[0] : file;
       };
 
-      // [✅] استقبال قائمة العناصر المختارة
+      // استقبال البيانات
       const selectedItemsStr = getValue('selectedItems');
-      const userNote = getValue('user_note'); // استقبال الملاحظة
+      const userNote = getValue('user_note');
       const receiptFile = getFile('receiptFile');
       
       if (!selectedItemsStr) return res.status(400).json({ error: 'لا توجد عناصر مختارة' });
@@ -73,7 +81,7 @@ export default async (req, res) => {
 
       const fileName = path.basename(receiptFile.filepath);
 
-      // [✅] حساب الإجمالي وتجهيز العنوان
+      // حساب الإجمالي وتجهيز العنوان
       let totalPrice = 0;
       let titleList = [];
       const requestedData = [];
@@ -93,22 +101,21 @@ export default async (req, res) => {
           });
       });
 
-      // [✅] تنسيق العنوان النهائي
+      // تنسيق العنوان النهائي
       let finalTitle = titleList.join('\n');
       
-      // [✅] إضافة الملاحظة في سطر منفصل ومميز
       if (userNote && userNote.trim() !== '') {
           finalTitle += `\n\n📝 ملاحظة الطالب:\n${userNote}`;
       }
 
-      // الحفظ في القاعدة
+      // الحفظ في القاعدة باستخدام بيانات المستخدم التي جلبناها بالأعلى
       const { error: dbError } = await supabase.from('subscription_requests').insert({
         user_id: user.id,
         user_name: user.first_name,
         user_username: user.username,
         phone: user.phone,
         
-        course_title: finalTitle, // العنوان المجمع
+        course_title: finalTitle,
         total_price: totalPrice,
         
         payment_file_path: fileName,
