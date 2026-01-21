@@ -7,7 +7,7 @@ export default async (req, res) => {
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    // 1. قراءة الرابط
+    // 1. قراءة إعدادات البروكسي
     const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; 
 
     if (!PROXY_BASE_URL) {
@@ -16,22 +16,24 @@ export default async (req, res) => {
     }
 
     const { lessonId } = req.query;
-    const userId = req.headers['x-user-id'];
-    const deviceId = req.headers['x-device-id'];
 
-    if (!lessonId || !userId || !deviceId) {
-        return res.status(400).json({ message: "Missing required data" });
+    if (!lessonId) {
+        return res.status(400).json({ message: "Missing lessonId" });
     }
 
     try {
-        // 2. التحقق الأمني
-        log(`Checking User: ${userId} for Video Access...`);
+        // 2. التحقق الأمني (بوابة المرور)
+        // هذا السطر يفك التوكن، يتحقق من البصمة، ويحقن x-user-id الصحيح
         const hasAccess = await checkUserAccess(req, lessonId, 'video');
+        
         if (!hasAccess) {
-            errLog("⛔ Access Denied.");
+            errLog("⛔ Access Denied or Token Invalid.");
             return res.status(403).json({ message: "Access Denied" });
         }
 
+        // ✅ الآن فقط يمكننا قراءة User ID بأمان (لأنه تم حقنه من قبل checkUserAccess)
+        const userId = req.headers['x-user-id']; 
+        
         // 3. جلب البيانات من قاعدة البيانات
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
@@ -44,13 +46,13 @@ export default async (req, res) => {
         }
 
         const youtubeId = videoData.youtube_video_id;
-        log(`🎥 Requesting Proxy for: ${videoData.title}`);
+        log(`🎥 Requesting Proxy for: ${videoData.title} (User: ${userId})`);
 
-        // 4. الاتصال بالبروكسي المحلي
+        // 4. الاتصال بالبروكسي المحلي (Python Microservice)
         try {
             const proxyResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId },
-                timeout: 90000 // زيادة المهلة لتجنب الانقطاع
+                timeout: 90000 // مهلة 90 ثانية
             });
 
             const result = proxyResponse.data;
@@ -59,10 +61,9 @@ export default async (req, res) => {
                 throw new Error("No streams found");
             }
 
-            // 5. فلترة وتنقية الروابط (رابط واحد لكل جودة + تفضيل AVC1)
+            // 5. فلترة وتنقية الروابط
             let rawQualities = result.availableQualities;
             
-            // تصفية للحصول على فيديو واحد لكل جودة
             const uniqueQualitiesMap = new Map();
             const audioStreams = [];
 
@@ -75,23 +76,20 @@ export default async (req, res) => {
                 const quality = stream.quality;
                 const codec = (stream.vcodec || "").toLowerCase();
                 
-                // نفضل avc1 (H.264) لأنه الأكثر توافقاً
-                // إذا لم تكن الجودة موجودة، نضيفها
-                // إذا كانت موجودة، نستبدلها فقط إذا كان الجديد avc1 والقديم ليس كذلك
+                // نفضل avc1 (H.264) لتوافقية أعلى
                 if (!uniqueQualitiesMap.has(quality)) {
                     uniqueQualitiesMap.set(quality, stream);
                 } else {
                     const existingStream = uniqueQualitiesMap.get(quality);
                     const existingCodec = (existingStream.vcodec || "").toLowerCase();
                     
-                    // إذا كان الرابط الحالي avc1 والقديم ليس كذلك، نستبدله (لأنه أفضل للأجهزة القديمة)
                     if (codec.includes('avc1') && !existingCodec.includes('avc1')) {
                         uniqueQualitiesMap.set(quality, stream);
                     }
                 }
             }
 
-            // إعادة تجميع القائمة (فيديو + صوت)
+            // تجميع القائمة النهائية
             const filteredQualities = [
                 ...Array.from(uniqueQualitiesMap.values()),
                 ...audioStreams
@@ -108,8 +106,7 @@ export default async (req, res) => {
             const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
             return res.status(200).json({
-                availableQualities: filteredQualities, // القائمة المنقحة
-                
+                availableQualities: filteredQualities,
                 title: videoData.title,
                 thumbnail: thumbnail,
                 duration: "0",
@@ -138,6 +135,6 @@ export default async (req, res) => {
 
     } catch (err) {
         errLog(`Critical Error: ${err.message}`);
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: "Internal Server Error" });
     }
 };
