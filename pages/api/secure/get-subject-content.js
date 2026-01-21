@@ -1,29 +1,29 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
 
   const { subjectId } = req.query;
-  const userId = req.headers['x-user-id'];
-  const deviceId = req.headers['x-device-id'];
 
-  if (!subjectId || !userId || !deviceId) {
+  // 2. التحقق الأمني من الهوية والجهاز (بدون مورد محدد)
+  // هذا يضمن أن التوكن سليم، الجهاز مطابق، والمستخدم غير محظور
+  const isAuthorized = await checkUserAccess(req);
+  
+  if (!isAuthorized) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid Token or Device' });
+  }
+
+  // 3. استخدام المعرف الآمن (الذي حقنه authHelper)
+  const userId = req.headers['x-user-id'];
+
+  if (!subjectId || !userId) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
 
   try {
-    // 1. التحقق من بصمة الجهاز (Security First)
-    const { data: device } = await supabase
-      .from('devices')
-      .select('fingerprint')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!device || device.fingerprint !== deviceId) {
-      return res.status(403).json({ error: 'Unauthorized Device' });
-    }
-
-    // 2. التحقق من الاشتراك (Subscription Check)
+    // 4. التحقق من الاشتراك (Subscription Check)
+    // نبقي هذا المنطق هنا لأنه خاص بجلب محتوى المادة
     const { data: subAccess } = await supabase
       .from('user_subject_access')
       .select('id')
@@ -52,8 +52,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 3. جلب "الداتا الضخمة" (Big Data Fetch)
-    // ✅ التعديل هنا: إضافة (course_id) وجلب جدول (courses) للحصول على العنوان
+    // 5. جلب "الداتا الضخمة" (Big Data Fetch)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -71,9 +70,8 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 4. التحقق من حالة الامتحانات وجلب attempt_id
+    // 6. التحقق من حالة الامتحانات وجلب attempt_id
     const examIds = subjectData.exams.map(e => e.id);
-    
     let attemptsMap = {}; 
 
     if (examIds.length > 0) {
@@ -89,11 +87,10 @@ export default async (req, res) => {
       });
     }
 
-    // 5. تنسيق البيانات وترتيبها
+    // 7. تنسيق البيانات وترتيبها
     const formattedData = {
       id: subjectData.id,
       title: subjectData.title,
-      // ✅ التعديل هنا: إضافة عنوان الكورس للأوبجكت النهائي
       course_id: subjectData.course_id,
       course_title: subjectData.courses?.title || "Unknown Course",
       
@@ -110,7 +107,6 @@ export default async (req, res) => {
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => {
           const attemptId = attemptsMap[ex.id] || null;
-          
           return {
             ...ex,
             isCompleted: !!attemptId, 
