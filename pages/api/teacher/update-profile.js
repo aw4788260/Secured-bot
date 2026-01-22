@@ -4,26 +4,34 @@ import { verifyTeacher } from '../../../lib/teacherAuth';
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
+  // 1. التحقق من صحة المدرس
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
-  // المدرس الرئيسي فقط هو من يعدل بيانات البروفايل (ليس المشرف)
+  // التحقق من الصلاحية (مدرس فقط)
   if (auth.role !== 'teacher') {
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
-  const { name, bio, specialty, vodafoneCash, instapay } = req.body;
+  // 2. استقبال البيانات (بما في ذلك القوائم الثلاث)
+  const { name, bio, specialty, cashNumbersList, instapayNumbersList, instapayLinksList } = req.body;
 
   try {
+    // 3. تجهيز هيكل بيانات الدفع
+    const paymentData = {
+      cash_numbers: cashNumbersList || [],       // قائمة أرقام الكاش
+      instapay_numbers: instapayNumbersList || [], // قائمة أرقام إنستا باي
+      instapay_links: instapayLinksList || []      // قائمة لينكات/يوزرات إنستا باي
+    };
+
+    // 4. التحديث في قاعدة البيانات
     const { error } = await supabase
       .from('teachers')
       .update({
         name: name,
         bio: bio,
         specialty: specialty,
-        vodafone_cash_number: vodafoneCash,
-        instapay_number: instapay,
-        // يمكن إضافة instapay_link إذا كنت تستخدمه
+        payment_details: paymentData // ✅ الحفظ في العمود الجديد
       })
       .eq('id', auth.teacherId);
 
@@ -32,6 +40,7 @@ export default async (req, res) => {
     return res.status(200).json({ success: true, message: 'Profile updated successfully' });
 
   } catch (err) {
+    console.error("Update Profile Error:", err);
     return res.status(500).json({ error: err.message });
   }
 };
