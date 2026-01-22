@@ -1,39 +1,119 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
-import bcrypt from 'bcryptjs';
 
 export default async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
-
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
-  // فقط المعلم الرئيسي يمكنه إضافة مشرفين (المشرف لا يضيف مشرفاً)
-  if (auth.role !== 'teacher') {
-      return res.status(403).json({ error: 'Only main teachers can add moderators' });
-  }
+  const teacherId = auth.teacherId;
 
-  const { name, username, password, phone } = req.body;
+  // =================================================================
+  // GET: البحث عن طلاب أو عرض الفريق الحالي
+  // =================================================================
+  if (req.method === 'GET') {
+    const { mode, query } = req.query;
 
-  try {
-      // التحقق من التكرار
-      const { data: existing } = await supabase.from('users').select('id').eq('username', username).maybeSingle();
-      if (existing) return res.status(400).json({ error: 'Username taken' });
+    try {
+      // 1. عرض المشرفين الحاليين التابعين لهذا المعلم
+      if (mode === 'list') {
+        const { data: team, error } = await supabase
+          .from('users')
+          .select('id, first_name, username, phone, created_at')
+          .eq('role', 'moderator')
+          .eq('teacher_profile_id', teacherId); // المشرفون التابعون لهذا المعلم فقط
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+        if (error) throw error;
+        return res.status(200).json(team);
+      }
 
-      await supabase.from('users').insert({
-          first_name: name,
-          username: username,
-          password: hashedPassword,
-          phone: phone,
-          role: 'moderator', // الصلاحية
-          teacher_profile_id: auth.teacherId // الربط بنفس المدرس
-      });
+      // 2. البحث عن طلاب لترقيتهم (بحث عام في كل الطلاب)
+      if (mode === 'search') {
+        if (!query || query.length < 3) return res.status(200).json([]);
 
-      return res.status(200).json({ success: true, message: 'Moderator added' });
+        const { data: students, error } = await supabase
+          .from('users')
+          .select('id, first_name, username, phone')
+          .eq('role', 'student') // نبحث في الطلاب فقط
+          .or(`username.ilike.%${query}%,first_name.ilike.%${query}%,phone.ilike.%${query}%`)
+          .limit(10);
 
-  } catch (err) {
+        if (error) throw error;
+        return res.status(200).json(students);
+      }
+    } catch (err) {
       return res.status(500).json({ error: err.message });
+    }
   }
+
+  // =================================================================
+  // POST: ترقية طالب أو حذف مشرف
+  // =================================================================
+  if (req.method === 'POST') {
+    const { action, userId } = req.body;
+
+    try {
+      // 🅰️ ترقية طالب إلى مشرف + منح صلاحيات الكورسات
+      if (action === 'promote') {
+        // 1. تحديث دور المستخدم وربطه بالمعلم
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ 
+            role: 'moderator', 
+            teacher_profile_id: teacherId 
+          })
+          .eq('id', userId);
+
+        if (updateError) throw updateError;
+
+        // 2. جلب جميع كورسات المعلم
+        const { data: myCourses } = await supabase
+          .from('courses')
+          .select('id')
+          .eq('teacher_id', teacherId);
+
+        // 3. منح الصلاحيات تلقائياً لكل الكورسات
+        if (myCourses && myCourses.length > 0) {
+          const accessRows = myCourses.map(c => ({
+            user_id: userId,
+            course_id: c.id
+          }));
+
+          // استخدام upsert لتجنب الأخطاء إذا كان لديه صلاحية مسبقة
+          await supabase.from('user_course_access').upsert(accessRows, { onConflict: 'user_id, course_id' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Student promoted and access granted' });
+      }
+
+      // 🅱️ سحب الإشراف (إعادته كطالب)
+      if (action === 'demote') {
+        // التحقق أولاً أن هذا المشرف يتبع هذا المعلم (لمنع حذف مشرفي معلمين آخرين)
+        const { data: userCheck } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', userId)
+            .eq('teacher_profile_id', teacherId)
+            .single();
+        
+        if (!userCheck) return res.status(403).json({ error: 'Unauthorized to modify this user' });
+
+        // إعادة الدور لطالب وفك الارتباط
+        await supabase
+          .from('users')
+          .update({ 
+            role: 'student', 
+            teacher_profile_id: null 
+          })
+          .eq('id', userId);
+
+        return res.status(200).json({ success: true, message: 'Moderator removed' });
+      }
+
+    } catch (err) {
+      console.error("Team API Error:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  return res.status(405).json({ message: 'Method Not Allowed' });
 };
