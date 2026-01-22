@@ -34,21 +34,25 @@ export default async (req, res) => {
   try {
     // 2. إذا تم التعرف على المستخدم، نجلب بياناته الخاصة
     if (userId) {
-       // التحقق من أن المستخدم غير محظور وأن التوكن ما زال سارياً في القاعدة
+       // ✅ التحديث هنا: جلب الصلاحية ورقم بروفايل المعلم
        const { data: user } = await supabase
           .from('users')
-          .select('id, first_name, username, phone, is_blocked, jwt_token')
+          .select('id, first_name, username, phone, is_blocked, jwt_token, role, teacher_profile_id')
           .eq('id', userId)
           .single();
 
        // يجب أن يكون المستخدم موجوداً، غير محظور، والتوكن مطابق (لضمان عدم تسجيل الخروج)
        const incomingToken = authHeader.split(' ')[1];
+       
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
+          // ✅ التحديث هنا: إضافة البيانات الجديدة للكائن المرسل للتطبيق
           userData = {
               id: user.id,
               first_name: user.first_name,
               username: user.username,
-              phone: user.phone
+              phone: user.phone,
+              role: user.role || 'student', // الافتراضي طالب
+              teacher_profile_id: user.teacher_profile_id
           };
           isLoggedIn = true;
 
@@ -157,6 +161,7 @@ export default async (req, res) => {
     }
 
     // 3. جلب بيانات المتجر (عام للجميع)
+    // ملاحظة: يمكنك هنا لاحقاً استثناء كورسات المدرس نفسه من الظهور في المتجر له إذا أردت
     const { data: courses } = await supabase
       .from('view_course_details')
       .select('*')
