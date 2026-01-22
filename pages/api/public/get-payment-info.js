@@ -4,50 +4,53 @@ export default async (req, res) => {
   const { teacherId, courseId } = req.query;
 
   try {
-    let paymentSettings = {
-        vodafone_cash_number: '',
-        instapay_number: '',
-        instapay_link: ''
+    // القيمة الافتراضية
+    let paymentData = {
+        cash_numbers: [],
+        instapay_numbers: [],
+        instapay_links: []
     };
 
-    // أ) إذا تم تحديد كورس، نجلب مدرس الكورس
+    let rawDetails = null;
+
+    // أ) إذا تم تحديد كورس
     if (courseId) {
         const { data: course } = await supabase
             .from('courses')
-            .select('teachers(vodafone_cash_number, instapay_number, instapay_link)')
+            .select('teachers(payment_details)')
             .eq('id', courseId)
             .single();
         
-        if (course?.teachers) {
-            paymentSettings = course.teachers;
+        if (course?.teachers?.payment_details) {
+            rawDetails = course.teachers.payment_details;
         }
     } 
-    // ب) إذا تم تحديد مدرس مباشرة
+    // ب) إذا تم تحديد مدرس
     else if (teacherId) {
         const { data: teacher } = await supabase
             .from('teachers')
-            .select('vodafone_cash_number, instapay_number, instapay_link')
+            .select('payment_details')
             .eq('id', teacherId)
             .single();
             
-        if (teacher) {
-            paymentSettings = teacher;
+        if (teacher?.payment_details) {
+            rawDetails = teacher.payment_details;
         }
     }
-    // ج) إذا لم يتم التحديد (عام)، يمكن جلب الإعدادات العامة كاحتياطي (اختياري)
-    else {
-        const { data } = await supabase
-          .from('app_settings')
-          .select('*')
-          .in('key', ['vodafone_cash_number', 'instapay_number', 'instapay_link']);
-          
-        data?.forEach(item => {
-            paymentSettings[item.key] = item.value;
-        });
+
+    // تنسيق البيانات للتأكد من أنها مصفوفات دائمًا
+    if (rawDetails) {
+        paymentData = {
+            cash_numbers: Array.isArray(rawDetails.cash_numbers) ? rawDetails.cash_numbers : [],
+            instapay_numbers: Array.isArray(rawDetails.instapay_numbers) ? rawDetails.instapay_numbers : [],
+            instapay_links: Array.isArray(rawDetails.instapay_links) ? rawDetails.instapay_links : []
+        };
     }
 
-    return res.status(200).json(paymentSettings);
+    return res.status(200).json(paymentData);
+
   } catch (err) {
+    console.error("Payment Info Error:", err);
     return res.status(500).json({ error: err.message });
   }
 };
