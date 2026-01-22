@@ -1,20 +1,18 @@
-import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 import multer from 'multer';
-import { decode } from 'base64-arraybuffer'; // قد تحتاجها إذا كنت ترفع base64 مباشرة من فلاتر
+import fs from 'fs';
+import path from 'path';
 
-// إعداد Multer لاستقبال الملفات في الذاكرة
+// إعداد Multer لاستقبال الملفات في الذاكرة مؤقتاً
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// إعداد Next.js لعدم معالجة الـ Body تلقائياً (لأن Multer سيتولى ذلك)
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
-// دالة مساعدة لتشغيل الـ Middleware
 function runMiddleware(req, res, fn) {
   return new Promise((resolve, reject) => {
     fn(req, res, (result) => {
@@ -27,14 +25,13 @@ function runMiddleware(req, res, fn) {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  // 1. معالجة الملف المرفوع
-  await runMiddleware(req, res, upload.single('file'));
-
-  // 2. التحقق من الصلاحية (بعد معالجة الـ Multipart)
-  // ملاحظة: verifyTeacher يتوقع req عادي، لكن مع multer قد نحتاج استخراج الهيدر يدوياً
-  // أو الاعتماد على التوكن في الهيدر مباشرة
+  // 1. التحقق من الصلاحية أولاً (قبل معالجة الملف لتوفير الموارد)
+  // ملاحظة: الهيدرز متاحة دائماً حتى قبل معالجة الـ Body
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
+
+  // 2. معالجة الملف
+  await runMiddleware(req, res, upload.single('file'));
 
   if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -42,32 +39,36 @@ export default async (req, res) => {
 
   try {
     const file = req.file;
-    const fileExt = file.originalname.split('.').pop();
-    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-    // مسار التخزين: teachers/{teacherId}/{fileName}
-    const filePath = `teachers/${auth.teacherId}/${fileName}`;
+    // تحديد الامتداد والمجلد المناسب بناءً على النوع
+    const ext = path.extname(file.originalname).toLowerCase();
+    let folder = 'others';
+    
+    if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+        folder = 'exam_images'; // لتطابق file-proxy type=exam_images
+    } else if (ext === '.pdf') {
+        folder = 'pdfs';        // لتطابق file-proxy type=pdfs
+    }
 
-    // رفع الملف إلى Supabase Storage (Bucket: 'public-assets' أو حسب إعداداتك)
-    const { data, error } = await supabase
-      .storage
-      .from('public-assets') // تأكد أن هذا الـ Bucket موجود وعام
-      .upload(filePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false
-      });
+    // التأكد من وجود المجلد
+    const uploadDir = path.join(process.cwd(), 'storage', folder);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
 
-    if (error) throw error;
+    // إنشاء اسم فريد للملف
+    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`;
+    const filePath = path.join(uploadDir, fileName);
 
-    // جلب الرابط العام
-    const { data: { publicUrl } } = supabase
-      .storage
-      .from('public-assets')
-      .getPublicUrl(filePath);
+    // حفظ الملف محلياً
+    fs.writeFileSync(filePath, file.buffer);
 
+    console.log(`✅ File uploaded locally: ${folder}/${fileName}`);
+
+    // إرجاع اسم الملف فقط (لأن file-proxy يحتاج الاسم والنوع، وليس رابطاً كاملاً)
     return res.status(200).json({ 
         success: true, 
-        url: publicUrl, 
-        fileId: filePath // نحتفظ بالمسار للحذف لاحقاً إذا احتجنا
+        url: fileName, // التطبيق سيحفظ هذا الاسم لاستخدامه لاحقاً
+        fileId: fileName
     });
 
   } catch (err) {
