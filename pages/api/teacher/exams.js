@@ -9,7 +9,6 @@ export default async (req, res) => {
   // --- إنشاء امتحان جديد (Create) ---
   if (req.method === 'POST') {
       
-      // ✅ التعديل الأول: استخراج البيانات بشكل صحيح سواء جاءت داخل payload أو مباشرة
       let examData = req.body;
       if (req.body.action === 'create' && req.body.payload) {
           examData = req.body.payload;
@@ -17,10 +16,23 @@ export default async (req, res) => {
 
       const { title, subjectId, duration, questions, start_time, end_time } = examData;
 
-      // تحقق بسيط لمنع أخطاء قاعدة البيانات
       if (!title || !subjectId) {
           return res.status(400).json({ error: 'بيانات الامتحان ناقصة (العنوان أو المادة)' });
       }
+
+      // 🛠️ دالة مساعدة لتصحيح فرق التوقيت (إنقاص ساعة واحدة)
+      // هذا يحل مشكلة أن السيرفر متأخر ساعة عن توقيت مصر
+      const adjustTimeForServer = (dateString) => {
+          if (!dateString) return null;
+          const date = new Date(dateString);
+          // ننقص ساعة واحدة (60 دقيقة) ليتم الحفظ بتوقيت السيرفر
+          date.setHours(date.getHours() - 1); 
+          return date.toISOString();
+      };
+
+      // تطبيق تصحيح الوقت
+      const adjustedStartTime = adjustTimeForServer(start_time);
+      const adjustedEndTime = adjustTimeForServer(end_time);
 
       // 1. إنشاء الامتحان
       const { data: newExam, error: examErr } = await supabase.from('exams').insert({
@@ -30,9 +42,10 @@ export default async (req, res) => {
           requires_student_name: true,
           randomize_questions: true,
           sort_order: 999,
-          teacher_id: auth.teacherId, // ربط الامتحان بالمعلم
-          start_time: start_time || null, 
-          end_time: end_time || null      
+          teacher_id: auth.teacherId,
+          start_time: adjustedStartTime, // ✅ تم استخدام الوقت المصحح
+          end_time: adjustedEndTime,     // ✅ تم استخدام الوقت المصحح
+          is_active: true // ضمان أن يكون الامتحان مفعلاً
       }).select().single();
 
       if (examErr) {
@@ -72,8 +85,6 @@ export default async (req, res) => {
   if (req.method === 'GET') {
       const { examId } = req.query;
       
-      // جلب المحاولات المكتملة
-      // ✅ نطلب هنا users(first_name, phone) لجلب الاسم ورقم الهاتف
       const { data: attempts } = await supabase
           .from('user_attempts') 
           .select('score, student_name_input, completed_at, users(first_name, phone)')
@@ -88,10 +99,9 @@ export default async (req, res) => {
           ? (attempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalAttempts).toFixed(1) 
           : 0;
 
-      // ✅ التعديل الثاني: تجهيز قائمة أفضل 10 طلاب مع رقم الهاتف
       const topStudents = attempts.slice(0, 10).map(a => ({
           name: a.student_name_input || a.users?.first_name || 'طالب غير مسجل',
-          phone: a.users?.phone || 'غير متوفر', // إظهار الرقم هنا
+          phone: a.users?.phone || 'غير متوفر',
           score: a.score,
           date: a.completed_at
       }));
