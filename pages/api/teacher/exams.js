@@ -2,12 +2,14 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
+  // التحقق من صلاحية المعلم
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
   // --- إنشاء امتحان جديد (Create) ---
   if (req.method === 'POST') {
-      const { title, subjectId, duration, questions } = req.body; // questions: array of {text, options, correctIndex, image}
+      // ✅ التعديل: استقبال start_time و end_time من الطلب
+      const { title, subjectId, duration, questions, start_time, end_time } = req.body; // questions: array of {text, options, correctIndex, image}
 
       // 1. إنشاء الامتحان
       const { data: newExam, error: examErr } = await supabase.from('exams').insert({
@@ -16,28 +18,39 @@ export default async (req, res) => {
           duration_minutes: duration,
           requires_student_name: true,
           randomize_questions: true,
-          sort_order: 999
+          sort_order: 999,
+          teacher_id: auth.teacherId, // ✅ يفضل ضمان ربط الامتحان بالمعلم
+          start_time: start_time || null, // ✅ إضافة وقت البداية
+          end_time: end_time || null      // ✅ إضافة وقت النهاية
       }).select().single();
 
       if (examErr) return res.status(500).json({ error: examErr.message });
 
       // 2. إضافة الأسئلة
-      for (const [index, q] of questions.entries()) {
-          const { data: newQ } = await supabase.from('questions').insert({
-              exam_id: newExam.id,
-              question_text: q.text,
-              image_file_id: q.image || null,
-              sort_order: index
-          }).select().single();
+      if (questions && questions.length > 0) {
+        for (const [index, q] of questions.entries()) {
+            const { data: newQ, error: qErr } = await supabase.from('questions').insert({
+                exam_id: newExam.id,
+                question_text: q.text,
+                image_file_id: q.image || null,
+                sort_order: index,
+                // يمكنك إضافة الدرجة هنا إذا كانت موجودة في الـ q object
+                // marks: q.marks || 1 
+            }).select().single();
 
-          // 3. إضافة الخيارات
-          const optionsData = q.options.map((optText, i) => ({
-              question_id: newQ.id,
-              option_text: optText,
-              is_correct: i === parseInt(q.correctIndex),
-              sort_order: i
-          }));
-          await supabase.from('options').insert(optionsData);
+            if (qErr) console.error("Error creating question:", qErr);
+
+            // 3. إضافة الخيارات
+            if (newQ && q.options) {
+                const optionsData = q.options.map((optText, i) => ({
+                    question_id: newQ.id,
+                    option_text: optText,
+                    is_correct: i === parseInt(q.correctIndex),
+                    sort_order: i
+                }));
+                await supabase.from('options').insert(optionsData);
+            }
+        }
       }
 
       return res.status(200).json({ success: true, examId: newExam.id });
@@ -49,7 +62,7 @@ export default async (req, res) => {
       
       // جلب المحاولات المكتملة
       const { data: attempts } = await supabase
-          .from('user_attempts')
+          .from('user_attempts') // تأكد من اسم الجدول (في ردودي السابقة استخدمت exam_attempts، تأكد أيهما تستخدم)
           .select('score, student_name_input, completed_at, users(first_name, phone)')
           .eq('exam_id', examId)
           .eq('status', 'completed')
