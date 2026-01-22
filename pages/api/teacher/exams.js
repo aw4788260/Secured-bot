@@ -6,107 +6,141 @@ export default async (req, res) => {
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
-  // --- إنشاء امتحان جديد (Create) ---
+  // 🛠️ دالة تحويل التوقيت (موجودة سابقاً)
+  const toEgyptUTC = (dateString) => {
+      if (!dateString) return null;
+      try {
+        const cleanDate = dateString.replace('Z', '');
+        const dateAsUtc = new Date(cleanDate + 'Z');
+        if (isNaN(dateAsUtc.getTime())) return null;
+        
+        // حساب الإزاحة الزمنية للقاهرة
+        const timeZone = 'Africa/Cairo';
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' });
+        const parts = fmt.formatToParts(dateAsUtc);
+        const offsetPart = parts.find(p => p.type === 'timeZoneName').value;
+        const offsetHours = parseInt(offsetPart.replace(/[^\d+-]/g, ''));
+        
+        // تعديل الوقت
+        dateAsUtc.setHours(dateAsUtc.getHours() - offsetHours);
+        return dateAsUtc.toISOString();
+      } catch (e) {
+        console.error("Time conversion error:", e);
+        return null;
+      }
+  };
+
+  // --- معالجة الطلبات (POST): إنشاء أو تحديث ---
   if (req.method === 'POST') {
       
+      // استقبال البيانات سواء كانت مباشرة أو داخل payload
       let examData = req.body;
-      if (req.body.action === 'create' && req.body.payload) {
+      let action = 'create'; // الافتراضي
+
+      // دعم هيكلية action/payload أو البيانات المباشرة
+      if (req.body.action && req.body.payload) {
+          action = req.body.action;
           examData = req.body.payload;
+      } else if (req.body.examId) {
+          // إذا تم إرسال examId، نعتبره تحديث تلقائياً
+          action = 'update';
       }
 
-      const { title, subjectId, duration, questions, start_time, end_time } = examData;
+      const { title, subjectId, duration, questions, start_time, end_time, examId } = examData;
 
       if (!title || !subjectId) {
-          return res.status(400).json({ error: 'بيانات الامتحان ناقصة (العنوان أو المادة)' });
+          return res.status(400).json({ error: 'بيانات الامتحان ناقصة' });
       }
 
-      // 🛠️ دالة ذكية لتحويل توقيت مصر إلى UTC ديناميكياً
-      // هذه الدالة تكتشف تلقائياً ما إذا كان التاريخ في الصيف (+3) أو الشتاء (+2)
-      const toEgyptUTC = (dateString) => {
-          if (!dateString) return null;
-          
-          try {
-            // 1. نعتبر الوقت المدخل هو وقت UTC خام لنحصل على مكونات الوقت
-            const cleanDate = dateString.replace('Z', '');
-            const dateAsUtc = new Date(cleanDate + 'Z');
-
-            if (isNaN(dateAsUtc.getTime())) return null;
-
-            // 2. نستخدم Intl للحصول على الإزاحة (Offset) الخاصة بمصر في هذا التاريخ تحديداً
-            // هذه الدالة ستعيد نصاً مثل "GMT+2" أو "GMT+3" حسب التوقيت الصيفي/الشتوي في ذلك التاريخ
-            const timeZone = 'Africa/Cairo';
-            const fmt = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' });
-            const parts = fmt.formatToParts(dateAsUtc);
-            const offsetPart = parts.find(p => p.type === 'timeZoneName').value; // e.g., "GMT+3" or "GMT+2"
-
-            // 3. استخراج الرقم من النص (مثلاً 3 أو 2)
-            const offsetHours = parseInt(offsetPart.replace(/[^\d+-]/g, ''));
-
-            // 4. طرح الإزاحة من الوقت الأصلي لتحويله إلى UTC حقيقي يقبله السيرفر
-            // إذا كنا في الصيف سيطرح 3، وإذا في الشتاء سيطرح 2 تلقائياً
-            dateAsUtc.setHours(dateAsUtc.getHours() - offsetHours);
-
-            return dateAsUtc.toISOString();
-          } catch (e) {
-            console.error("Time conversion error:", e);
-            return null; // في حالة حدوث خطأ نعيد القيمة فارغة
-          }
-      };
-
-      // تطبيق تصحيح الوقت الذكي
       const adjustedStartTime = toEgyptUTC(start_time);
       const adjustedEndTime = toEgyptUTC(end_time);
 
-      console.log(`Time Input: ${start_time} -> Adjusted UTC: ${adjustedStartTime}`); // للتأكد في اللوج
+      try {
+        let targetExamId = examId;
 
-      // 1. إنشاء الامتحان
-      const { data: newExam, error: examErr } = await supabase.from('exams').insert({
-          title, 
-          subject_id: subjectId,
-          duration_minutes: duration,
-          requires_student_name: true,
-          randomize_questions: true,
-          sort_order: 999,
-          teacher_id: auth.teacherId,
-          start_time: adjustedStartTime, // ✅ توقيت عالمي دقيق
-          end_time: adjustedEndTime,     // ✅ توقيت عالمي دقيق
-          is_active: true 
-      }).select().single();
-
-      if (examErr) {
-          console.error("Exam Creation Error:", examErr);
-          return res.status(500).json({ error: examErr.message });
-      }
-
-      // 2. إضافة الأسئلة
-      if (questions && questions.length > 0) {
-        for (const [index, q] of questions.entries()) {
-            const { data: newQ, error: qErr } = await supabase.from('questions').insert({
-                exam_id: newExam.id,
-                question_text: q.text,
-                image_file_id: q.image || null,
-                sort_order: index,
+        // =================================================
+        // الحالة 1: إنشاء امتحان جديد (Create)
+        // =================================================
+        if (action === 'create') {
+            const { data: newExam, error: examErr } = await supabase.from('exams').insert({
+                title, 
+                subject_id: subjectId,
+                duration_minutes: duration,
+                requires_student_name: true,
+                randomize_questions: true,
+                sort_order: 999,
+                teacher_id: auth.teacherId,
+                start_time: adjustedStartTime,
+                end_time: adjustedEndTime,
+                is_active: true 
             }).select().single();
 
-            if (qErr) console.error("Error creating question:", qErr);
+            if (examErr) throw examErr;
+            targetExamId = newExam.id;
+        } 
+        // =================================================
+        // الحالة 2: تحديث امتحان موجود (Update)
+        // =================================================
+        else if (action === 'update') {
+            if (!targetExamId) return res.status(400).json({ error: 'Exam ID required for update' });
 
-            // 3. إضافة الخيارات
-            if (newQ && q.options) {
-                const optionsData = q.options.map((optText, i) => ({
-                    question_id: newQ.id,
-                    option_text: optText,
-                    is_correct: i === parseInt(q.correctIndex),
-                    sort_order: i
-                }));
-                await supabase.from('options').insert(optionsData);
+            // 1. تحديث بيانات الامتحان الأساسية
+            const { error: updateErr } = await supabase.from('exams').update({
+                title,
+                duration_minutes: duration,
+                start_time: adjustedStartTime,
+                end_time: adjustedEndTime,
+            })
+            .eq('id', targetExamId)
+            .eq('teacher_id', auth.teacherId); // أمان: التأكد أن المعلم هو صاحب الامتحان
+
+            if (updateErr) throw updateErr;
+
+            // 2. حذف الأسئلة القديمة (سيتم حذف الخيارات تلقائياً بسبب Cascade في قاعدة البيانات)
+            // ملاحظة: هذا الأسلوب هو الأسهل للتعديل (حذف الكل وإعادة الإضافة)
+            await supabase.from('questions').delete().eq('exam_id', targetExamId);
+        }
+
+        // =================================================
+        // إدخال الأسئلة (مشترك للإنشاء والتحديث)
+        // =================================================
+        if (questions && questions.length > 0) {
+            for (const [index, q] of questions.entries()) {
+                const { data: newQ, error: qErr } = await supabase.from('questions').insert({
+                    exam_id: targetExamId, // نستخدم الـ ID سواء كان جديداً أو قديماً
+                    question_text: q.text,
+                    image_file_id: q.image || null,
+                    sort_order: index,
+                }).select().single();
+
+                if (qErr) console.error("Error creating question:", qErr);
+
+                // إضافة الخيارات
+                if (newQ && q.options) {
+                    const optionsData = q.options.map((optText, i) => ({
+                        question_id: newQ.id,
+                        option_text: optText,
+                        is_correct: i === parseInt(q.correctIndex),
+                        sort_order: i
+                    }));
+                    await supabase.from('options').insert(optionsData);
+                }
             }
         }
-      }
 
-      return res.status(200).json({ success: true, examId: newExam.id });
+        return res.status(200).json({ 
+            success: true, 
+            examId: targetExamId, 
+            message: action === 'update' ? 'Exam Updated' : 'Exam Created' 
+        });
+
+      } catch (err) {
+          console.error("Exam Operation Error:", err);
+          return res.status(500).json({ error: err.message });
+      }
   }
 
-  // --- GET: إحصائيات امتحان ---
+  // --- GET: إحصائيات امتحان (لم يتم تغييره) ---
   if (req.method === 'GET') {
       const { examId } = req.query;
       
