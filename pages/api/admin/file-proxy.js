@@ -2,31 +2,44 @@ import fs from 'fs';
 import path from 'path';
 import { supabase } from '../../../lib/supabaseClient';
 import { parse } from 'cookie';
+import { checkUserAccess } from '../../../lib/authHelper'; // ✅ استيراد الحارس الأمني
 
 export default async (req, res) => {
   const { type, filename } = req.query;
 
-  // 1. الحماية: التأكد من أن الطالب هو "أدمن" عبر الكوكيز
+  let isAuthorized = false;
+
+  // 1. المحاولة الأولى: التحقق عبر الكوكيز (للوحة تحكم الأدمن ويب)
   const cookies = parse(req.headers.cookie || '');
   const sessionToken = cookies.admin_session;
 
-  if (!sessionToken) {
-      return res.status(401).send('Unauthorized');
+  if (sessionToken) {
+      const { data: user } = await supabase
+          .from('users')
+          .select('is_admin')
+          .eq('session_token', sessionToken)
+          .single();
+      
+      if (user && user.is_admin) {
+          isAuthorized = true;
+      }
   }
 
-  // (اختياري: للسرعة القصوى يمكن تخطي فحص الداتابيز والاكتفاء بوجود الكوكي، 
-  // ولكن للأمان سنبقيه، الكاش سيتولى السرعة في المرات القادمة)
-  const { data: user, error } = await supabase
-      .from('users')
-      .select('is_admin')
-      .eq('session_token', sessionToken)
-      .single();
-
-  if (error || !user || !user.is_admin) {
-      return res.status(403).send('Forbidden');
+  // 2. المحاولة الثانية: التحقق عبر التوكن (لتطبيق المعلم)
+  if (!isAuthorized) {
+      // نستخدم الحارس الأمني للتحقق من التوكن وبصمة الجهاز
+      const hasAppAccess = await checkUserAccess(req);
+      if (hasAppAccess) {
+          isAuthorized = true;
+      }
   }
 
-  // 2. التحقق من المسار
+  // إذا فشلت الطريقتين، نرفض الطلب
+  if (!isAuthorized) {
+      return res.status(403).send('Forbidden: Access Denied');
+  }
+
+  // 3. التحقق من المسار والملف
   const validTypes = ['receipts', 'pdfs', 'exam_images'];
   if (!validTypes.includes(type) || !filename) {
     return res.status(400).send('Invalid request');
@@ -38,15 +51,13 @@ export default async (req, res) => {
     return res.status(404).send('File not found');
   }
 
-  // 3. إعداد الكاش والنوع
+  // 4. إرسال الملف
   const ext = path.extname(filename).toLowerCase();
   let contentType = 'application/octet-stream';
   if (['.png', '.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
   else if (ext === '.pdf') contentType = 'application/pdf';
 
   res.setHeader('Content-Type', contentType);
-  
-  // 🔥 سر السرعة: تخزين الصورة في متصفح الأدمن لمدة سنة
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   
   const fileStream = fs.createReadStream(filePath);
