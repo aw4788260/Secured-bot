@@ -6,15 +6,14 @@ export default async (req, res) => {
 
   const { subjectId } = req.query;
 
-  // 2. التحقق الأمني من الهوية والجهاز (بدون مورد محدد)
-  // هذا يضمن أن التوكن سليم، الجهاز مطابق، والمستخدم غير محظور
+  // 2. التحقق الأمني من الهوية والجهاز
   const isAuthorized = await checkUserAccess(req);
   
   if (!isAuthorized) {
       return res.status(401).json({ error: 'Unauthorized: Invalid Token or Device' });
   }
 
-  // 3. استخدام المعرف الآمن (الذي حقنه authHelper)
+  // 3. استخدام المعرف الآمن
   const userId = req.headers['x-user-id'];
 
   if (!subjectId || !userId) {
@@ -23,7 +22,6 @@ export default async (req, res) => {
 
   try {
     // 4. التحقق من الاشتراك (Subscription Check)
-    // نبقي هذا المنطق هنا لأنه خاص بجلب محتوى المادة
     const { data: subAccess } = await supabase
       .from('user_subject_access')
       .select('id')
@@ -53,6 +51,7 @@ export default async (req, res) => {
     }
 
     // 5. جلب "الداتا الضخمة" (Big Data Fetch)
+    // ✅ تم التعديل هنا لإضافة start_time و end_time في قسم الامتحانات
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -63,7 +62,7 @@ export default async (req, res) => {
           videos (id, title, sort_order, type, youtube_video_id), 
           pdfs (id, title, sort_order)
         ),
-        exams (id, title, duration_minutes, sort_order)
+        exams (id, title, duration_minutes, sort_order, start_time, end_time) 
       `)
       .eq('id', subjectId)
       .single();
@@ -103,6 +102,7 @@ export default async (req, res) => {
           })),
           pdfs: ch.pdfs.sort((a, b) => a.sort_order - b.sort_order)
         })),
+        
       exams: subjectData.exams
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => {
@@ -110,7 +110,7 @@ export default async (req, res) => {
           return {
             ...ex,
             isCompleted: !!attemptId, 
-            attempt_id: attemptId      
+            attempt_id: attemptId       
           };
         })
     };
