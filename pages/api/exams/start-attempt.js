@@ -26,12 +26,47 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'Access Denied: Unauthorized Device or Subscription' });
   }
 
-  // 2. استخدام المعرف الآمن (المحقون بعد فك التوكن)
+  // 2. استخدام المعرف الآمن
   const userId = req.headers['x-user-id'];
   console.log(`${apiName} 🚀 Starting attempt for Exam: ${examId} by User: ${userId}`);
 
   try {
-    // 3. التحقق من الاكتمال (هل أنهى الطالب الامتحان سابقاً؟)
+    // 🆕 3. جلب إعدادات ووقت الامتحان أولاً (للتحقق قبل البدء)
+    const { data: examConfig, error: configError } = await supabase
+        .from('exams')
+        .select('randomize_questions, randomize_options, start_time, end_time, is_active')
+        .eq('id', examId)
+        .single();
+
+    if (configError || !examConfig) throw new Error('Exam configuration not found');
+
+    // ✅ التحقق من حالة النشاط
+    if (!examConfig.is_active) {
+         return res.status(403).json({ error: 'عذراً، هذا الامتحان غير نشط حالياً.' });
+    }
+
+    const now = new Date();
+
+    // ✅ التحقق من وقت البداية
+    if (examConfig.start_time) {
+        const startTime = new Date(examConfig.start_time);
+        if (now < startTime) {
+            return res.status(403).json({ 
+                error: 'عذراً، لم يحن موعد الامتحان بعد.', 
+                startTime: examConfig.start_time 
+            });
+        }
+    }
+
+    // ✅ التحقق من وقت النهاية
+    if (examConfig.end_time) {
+        const endTime = new Date(examConfig.end_time);
+        if (now > endTime) {
+            return res.status(403).json({ error: 'عذراً، انتهى وقت الامتحان.' });
+        }
+    }
+
+    // 4. التحقق من الاكتمال (هل أنهى الطالب الامتحان سابقاً؟)
     const { count } = await supabase.from('user_attempts')
       .select('id', { count: 'exact', head: true })
       .match({ user_id: userId, exam_id: examId, status: 'completed' });
@@ -46,25 +81,19 @@ export default async (req, res) => {
         .delete()
         .match({ user_id: userId, exam_id: examId, status: 'started' });
 
-    // 4. إنشاء المحاولة الجديدة
+    // 5. إنشاء المحاولة الجديدة
     console.log(`${apiName} 📝 Creating new attempt record...`);
     const { data: newAttempt, error: attError } = await supabase.from('user_attempts').insert({
         user_id: userId,
         exam_id: examId,
         student_name_input: studentName || null,
         status: 'started'
-        // start_time: new Date().toISOString() // ❌ تم إزالة هذا السطر لمنع الخطأ
       }).select().single();
 
     if (attError) throw attError;
 
-    // 5. تجهيز الأسئلة (خلط وترتيب)
+    // 6. تجهيز الأسئلة (استخدام الإعدادات التي جلبناها سابقاً)
     console.log(`${apiName} ❓ Fetching and shuffling questions...`);
-    const { data: examConfig } = await supabase
-        .from('exams')
-        .select('randomize_questions, randomize_options')
-        .eq('id', examId)
-        .single();
     
     const { data: questions } = await supabase.from('questions')
       .select(`id, question_text, sort_order, image_file_id, options ( id, question_id, option_text, sort_order )`)
@@ -74,12 +103,12 @@ export default async (req, res) => {
 
     let finalQuestions = questions;
     
-    // خلط الأسئلة
+    // خلط الأسئلة (بناءً على examConfig)
     if (examConfig.randomize_questions) {
-        finalQuestions = shuffleArray([...finalQuestions]); // نسخة جديدة للخلط
+        finalQuestions = shuffleArray([...finalQuestions]); 
     }
     
-    // خلط الخيارات
+    // خلط الخيارات (بناءً على examConfig)
     if (examConfig.randomize_options) {
         finalQuestions = finalQuestions.map(q => ({ 
             ...q, 
@@ -87,7 +116,7 @@ export default async (req, res) => {
         }));
     }
 
-    // حفظ ترتيب الأسئلة في قاعدة البيانات (لضمان ظهور النتيجة بنفس الترتيب لاحقاً)
+    // حفظ ترتيب الأسئلة في قاعدة البيانات
     const questionOrder = finalQuestions.map(q => q.id);
     await supabase.from('user_attempts')
         .update({ question_order: questionOrder })
@@ -95,7 +124,7 @@ export default async (req, res) => {
 
     console.log(`${apiName} ✅ Exam started. Attempt ID: ${newAttempt.id}`);
     
-    // إرجاع البيانات (الأسئلة بدون الإجابات الصحيحة)
+    // إرجاع البيانات
     return res.status(200).json({ 
         attemptId: newAttempt.id, 
         questions: finalQuestions 
