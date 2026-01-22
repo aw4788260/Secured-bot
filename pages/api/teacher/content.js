@@ -10,7 +10,7 @@ export default async (req, res) => {
 
   const { action, type, data } = req.body; 
   // action: 'create', 'update', 'delete'
-  // type: 'courses', 'subjects', 'chapters', 'videos', 'pdfs' (لاحظ صيغة الجمع لتطابق أسماء الجداول)
+  // type: 'courses', 'subjects', 'chapters', 'videos', 'pdfs'
 
   try {
     // --- إضافة عنصر جديد (Create) ---
@@ -21,9 +21,15 @@ export default async (req, res) => {
       if (type === 'courses') {
         insertData.teacher_id = auth.teacherId;
         insertData.sort_order = 999; // يضاف في النهاية بشكل افتراضي
+
+        // ✅ [تعديل] توليد كود رقمي عشوائي مكون من 6 أرقام للكورس
+        if (!insertData.code) {
+            // يولد رقماً صحيحاً عشوائياً بين 100000 و 999999
+            insertData.code = Math.floor(100000 + Math.random() * 900000);
+        }
+
       } else {
         // لباقي العناصر، يجب التأكد أن الأب (الكورس/المادة) يتبع لهذا المعلم
-        // (يمكن إضافة تحقق إضافي هنا للأمان القصوى، لكن سنكتفي بالربط المباشر للتبسيط الآن)
         insertData.sort_order = 999;
       }
       
@@ -33,7 +39,14 @@ export default async (req, res) => {
         .select()
         .single();
 
-      if (error) throw error;
+      // ✅ معالجة خطأ التكرار (Unique Violation) في حال توليد رقم موجود مسبقاً
+      if (error) {
+          if (error.code === '23505') { // Postgres error code for unique violation
+             return res.status(400).json({ error: 'حدث تكرار في كود الكورس، يرجى المحاولة مرة أخرى لتوليد كود جديد.' });
+          }
+          throw error;
+      }
+
       return res.status(200).json({ success: true, item: newItem });
     }
 
@@ -42,7 +55,6 @@ export default async (req, res) => {
       const { id, ...updates } = data;
       
       // هنا يجب إضافة شرط أن العنصر يتبع للمعلم (teacher_id) في حالة الكورسات
-      // أو يتبع لسلسلة تنتهي للمعلم في حالة العناصر الأخرى
       let query = supabase.from(type).update(updates).eq('id', id);
       
       if (type === 'courses') {
