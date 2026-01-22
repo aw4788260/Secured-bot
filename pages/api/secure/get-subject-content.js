@@ -50,8 +50,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب "الداتا الضخمة" (Big Data Fetch)
-    // ✅ تم إضافة is_active هنا للتأكد من حالة التفعيل
+    // 4. جلب البيانات
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -69,7 +68,7 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 5. التحقق من حالة الامتحانات وجلب attempt_id
+    // 5. جلب محاولات الطالب
     const examIds = subjectData.exams.map(e => e.id);
     let attemptsMap = {}; 
 
@@ -86,12 +85,9 @@ export default async (req, res) => {
       });
     }
 
-    // ✅ تحديد الوقت الحالي (توقيت السيرفر العالمي)
-    // بما أننا حفظنا وقت الامتحان كتوقيت عالمي في الخطوة السابقة
-    // فالمقارنة هنا ستكون سليمة ودقيقة 100%
     const now = new Date();
 
-    // 6. تنسيق البيانات وترتيبها وفلترتها
+    // 6. تنسيق البيانات مع الفلترة المطلوبة
     const formattedData = {
       id: subjectData.id,
       title: subjectData.title,
@@ -109,24 +105,20 @@ export default async (req, res) => {
         })),
         
       exams: subjectData.exams
-        // 🚀 الفلترة الذكية (تعتمد على التوقيت العالمي)
         .filter(ex => {
-            // أ) استبعاد المعطل يدوياً
+            // أ) استبعاد المعطل يدوياً دائماً
             if (ex.is_active === false) return false;
 
-            // ب) استبعاد ما لم يبدأ بعد
+            // ب) استبعاد الامتحان الذي لم يبدأ وقته بعد
             if (ex.start_time) {
                 const startTime = new Date(ex.start_time);
                 if (now < startTime) return false;
             }
 
-            // ج) استبعاد المنتهي
-            if (ex.end_time) {
-                const endTime = new Date(ex.end_time);
-                if (now > endTime) return false;
-            }
-
-            return true; // الامتحان متاح
+            // ✅ ملاحظة: تم إزالة شرط استبعاد (now > endTime) 
+            // لكي تظهر الامتحانات المنتهية للطالب
+            
+            return true; 
         })
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => {
