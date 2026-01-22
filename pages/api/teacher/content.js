@@ -5,6 +5,7 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   // 1. التحقق من الصلاحية
+  // auth يحتوي عادة على { teacherId, userId, ... }
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
@@ -46,6 +47,23 @@ export default async (req, res) => {
           }
           throw error;
       }
+
+      // =========================================================================
+      // ✅ [إضافة جديدة]: منح المدرس صلاحية الوصول للكورس فور إنشائه
+      // =========================================================================
+      if (type === 'courses' && newItem) {
+          // نستخدم auth.userId لجلب معرف المستخدم الخاص بالمدرس
+          // ملاحظة: يجب التأكد أن verifyTeacher يعيد userId ضمن كائن auth
+          const userIdToGrant = auth.userId || auth.id; 
+
+          if (userIdToGrant) {
+              await supabase.from('user_course_access').upsert({
+                  user_id: userIdToGrant,
+                  course_id: newItem.id
+              }, { onConflict: 'user_id, course_id' });
+          }
+      }
+      // =========================================================================
 
       return res.status(200).json({ success: true, item: newItem });
     }
