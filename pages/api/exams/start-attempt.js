@@ -11,46 +11,83 @@ function shuffleArray(array) {
 
 export default async (req, res) => {
   const apiName = '[API: start-attempt]';
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  
+  // 🔍 1. تسجيل بداية الطلب (Debug Logs)
+  console.log(`\n\n🟢 --- START ${apiName} ---`);
+  console.log(`${apiName} Method: ${req.method}`);
+  console.log(`${apiName} Body:`, JSON.stringify(req.body));
+  // طباعة الهيدرز المهمة للتأكد من وصول التوكن وبصمة الجهاز
+  console.log(`${apiName} Debug Headers:`, {
+      host: req.headers.host,
+      referer: req.headers.referer || 'No Referer',
+      'x-device-id': req.headers['x-device-id'] || 'MISSING',
+      'authorization': req.headers['authorization'] ? 'Present (Hidden)' : 'MISSING'
+  });
+
+  if (req.method !== 'POST') {
+      console.log(`${apiName} ⛔ Wrong Method: ${req.method}`);
+      return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
   const { examId, studentName } = req.body;
 
-  if (!examId) return res.status(400).json({ error: 'Missing Data' });
-
-  // 1. التحقق الأمني الشامل (الحارس)
-  // يتحقق من التوكن، الجهاز، واشتراك الطالب في هذا الامتحان
-  const hasAccess = await checkUserAccess(req, examId, 'exam');
-  
-  if (!hasAccess) {
-      console.warn(`${apiName} ⛔ Access Denied.`);
-      return res.status(403).json({ error: 'Access Denied: Unauthorized Device or Subscription' });
+  if (!examId) {
+      console.error(`${apiName} ❌ Error: Missing examId`);
+      return res.status(400).json({ error: 'Missing Data' });
   }
 
-  // 2. استخدام المعرف الآمن
-  const userId = req.headers['x-user-id'];
-  console.log(`${apiName} 🚀 Starting attempt for Exam: ${examId} by User: ${userId}`);
-
   try {
-    // 🆕 3. جلب إعدادات ووقت الامتحان أولاً (للتحقق قبل البدء)
+    // 2. التحقق الأمني (مع طباعة النتيجة)
+    console.log(`${apiName} 🛡️ Calling checkUserAccess()...`);
+    
+    const hasAccess = await checkUserAccess(req, examId, 'exam');
+    
+    console.log(`${apiName} 🛡️ checkUserAccess Result: ${hasAccess}`); // سيطبع true أو false
+    
+    if (!hasAccess) {
+        console.warn(`${apiName} ⛔ Access Denied by AuthHelper.`);
+        return res.status(403).json({ error: 'Access Denied: Unauthorized Device or Subscription' });
+    }
+
+    // 3. استخراج هوية المستخدم (بعد نجاح الحماية)
+    const userId = req.headers['x-user-id'];
+    console.log(`${apiName} 👤 User Identified: ${userId}`);
+
+    // 4. جلب إعدادات الامتحان
+    console.log(`${apiName} 📥 Fetching Exam Config for ID: ${examId}...`);
+    
     const { data: examConfig, error: configError } = await supabase
         .from('exams')
         .select('randomize_questions, randomize_options, start_time, end_time, is_active')
         .eq('id', examId)
         .single();
 
-    if (configError || !examConfig) throw new Error('Exam configuration not found');
+    if (configError) {
+        console.error(`${apiName} 🔥 DB Error (Exam Config):`, configError);
+        throw new Error(`Database Error: ${configError.message}`);
+    }
 
-    // ✅ التحقق من حالة النشاط
-    if (!examConfig.is_active) {
+    if (!examConfig) {
+        console.error(`${apiName} ❌ Exam Not Found in DB`);
+        throw new Error('Exam configuration not found');
+    }
+
+    console.log(`${apiName} ⚙️ Config Loaded:`, JSON.stringify(examConfig));
+
+    // 5. التحقق من التفعيل والوقت
+    // (ملاحظة: نستخدم تحقق مرن للـ is_active تحسباً للقيم الفارغة)
+    if (examConfig.is_active === false) {
+         console.warn(`${apiName} ⛔ Exam is Inactive (is_active = false)`);
          return res.status(403).json({ error: 'عذراً، هذا الامتحان غير نشط حالياً.' });
     }
 
     const now = new Date();
+    console.log(`${apiName} 🕒 Checking Time. Now: ${now.toISOString()}`);
 
-    // ✅ التحقق من وقت البداية
     if (examConfig.start_time) {
         const startTime = new Date(examConfig.start_time);
         if (now < startTime) {
+            console.warn(`${apiName} ⛔ Too Early. Starts at: ${startTime.toISOString()}`);
             return res.status(403).json({ 
                 error: 'عذراً، لم يحن موعد الامتحان بعد.', 
                 startTime: examConfig.start_time 
@@ -58,31 +95,32 @@ export default async (req, res) => {
         }
     }
 
-    // ✅ التحقق من وقت النهاية
     if (examConfig.end_time) {
         const endTime = new Date(examConfig.end_time);
         if (now > endTime) {
+            console.warn(`${apiName} ⛔ Too Late. Ended at: ${endTime.toISOString()}`);
             return res.status(403).json({ error: 'عذراً، انتهى وقت الامتحان.' });
         }
     }
 
-    // 4. التحقق من الاكتمال (هل أنهى الطالب الامتحان سابقاً؟)
+    // 6. التحقق من المحاولات السابقة
+    console.log(`${apiName} 🔍 Checking previous attempts...`);
     const { count } = await supabase.from('user_attempts')
       .select('id', { count: 'exact', head: true })
       .match({ user_id: userId, exam_id: examId, status: 'completed' });
     
     if (count > 0) {
-        console.warn(`${apiName} ⚠️ Exam already completed.`);
+        console.warn(`${apiName} ⚠️ Attempt Rejected: Exam already completed.`);
         return res.status(409).json({ error: 'الامتحان مكتمل سابقاً.', isCompleted: true });
     }
     
-    // تنظيف المحاولات المعلقة القديمة (In Progress) لنفس الامتحان
+    // تنظيف المحاولات المعلقة
     await supabase.from('user_attempts')
         .delete()
         .match({ user_id: userId, exam_id: examId, status: 'started' });
 
-    // 5. إنشاء المحاولة الجديدة
-    console.log(`${apiName} 📝 Creating new attempt record...`);
+    // 7. إنشاء المحاولة
+    console.log(`${apiName} 📝 Creating new attempt row...`);
     const { data: newAttempt, error: attError } = await supabase.from('user_attempts').insert({
         user_id: userId,
         exam_id: examId,
@@ -92,46 +130,50 @@ export default async (req, res) => {
 
     if (attError) throw attError;
 
-    // 6. تجهيز الأسئلة (استخدام الإعدادات التي جلبناها سابقاً)
-    console.log(`${apiName} ❓ Fetching and shuffling questions...`);
-    
-    const { data: questions } = await supabase.from('questions')
+    // 8. جلب الأسئلة
+    console.log(`${apiName} ❓ Fetching questions...`);
+    const { data: questions, error: qError } = await supabase.from('questions')
       .select(`id, question_text, sort_order, image_file_id, options ( id, question_id, option_text, sort_order )`)
       .eq('exam_id', examId)
       .order('sort_order', { ascending: true })
       .order('sort_order', { foreignTable: 'options', ascending: true });
 
-    let finalQuestions = questions;
+    if (qError) throw qError;
+
+    console.log(`${apiName} ✅ Questions Fetched: ${questions?.length || 0}`);
+
+    let finalQuestions = questions || [];
     
-    // خلط الأسئلة (بناءً على examConfig)
+    // خلط الأسئلة
     if (examConfig.randomize_questions) {
+        console.log(`${apiName} 🔀 Shuffling Questions...`);
         finalQuestions = shuffleArray([...finalQuestions]); 
     }
     
-    // خلط الخيارات (بناءً على examConfig)
+    // خلط الخيارات
     if (examConfig.randomize_options) {
+        console.log(`${apiName} 🔀 Shuffling Options...`);
         finalQuestions = finalQuestions.map(q => ({ 
             ...q, 
             options: shuffleArray([...q.options]) 
         }));
     }
 
-    // حفظ ترتيب الأسئلة في قاعدة البيانات
+    // حفظ ترتيب الأسئلة
     const questionOrder = finalQuestions.map(q => q.id);
     await supabase.from('user_attempts')
         .update({ question_order: questionOrder })
         .eq('id', newAttempt.id);
 
-    console.log(`${apiName} ✅ Exam started. Attempt ID: ${newAttempt.id}`);
+    console.log(`${apiName} 🚀 SUCCESS! Attempt ID: ${newAttempt.id}`);
     
-    // إرجاع البيانات
     return res.status(200).json({ 
         attemptId: newAttempt.id, 
         questions: finalQuestions 
     });
 
   } catch (err) {
-    console.error(`${apiName} 🔥 ERROR:`, err.message);
+    console.error(`${apiName} 🔥 FATAL ERROR:`, err.message);
     res.status(500).json({ error: err.message });
   }
 };
