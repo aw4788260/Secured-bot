@@ -31,7 +31,6 @@ export default async (req, res) => {
 
     let hasAccess = !!subAccess;
 
-    // إذا لم يملك المادة، هل يملك الكورس الأم؟
     if (!hasAccess) {
       const { data: subjectInfo } = await supabase.from('subjects').select('course_id').eq('id', subjectId).single();
       if (subjectInfo && subjectInfo.course_id) {
@@ -68,7 +67,7 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 5. جلب محاولات الطالب
+    // 5. جلب محاولات الطالب المكتملة
     const examIds = subjectData.exams.map(e => e.id);
     let attemptsMap = {}; 
 
@@ -87,7 +86,7 @@ export default async (req, res) => {
 
     const now = new Date();
 
-    // 6. تنسيق البيانات مع الفلترة المطلوبة
+    // 6. تنسيق البيانات وترتيبها وفلترتها
     const formattedData = {
       id: subjectData.id,
       title: subjectData.title,
@@ -106,26 +105,35 @@ export default async (req, res) => {
         
       exams: subjectData.exams
         .filter(ex => {
-            // أ) استبعاد المعطل يدوياً دائماً
+            // استبعاد المعطل يدوياً
             if (ex.is_active === false) return false;
 
-            // ب) استبعاد الامتحان الذي لم يبدأ وقته بعد
+            // استبعاد الامتحان الذي لم يبدأ وقته بعد
             if (ex.start_time) {
                 const startTime = new Date(ex.start_time);
                 if (now < startTime) return false;
             }
-
-            // ✅ ملاحظة: تم إزالة شرط استبعاد (now > endTime) 
-            // لكي تظهر الامتحانات المنتهية للطالب
-            
             return true; 
         })
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => {
           const attemptId = attemptsMap[ex.id] || null;
+          const isCompleted = !!attemptId;
+          
+          // فحص هل انتهى وقت الامتحان؟
+          let isExpired = false;
+          if (ex.end_time) {
+              const endTime = new Date(ex.end_time);
+              // إذا انتهى الوقت ولم يحل الطالب الامتحان
+              if (now > endTime && !isCompleted) {
+                  isExpired = true;
+              }
+          }
+
           return {
             ...ex,
-            isCompleted: !!attemptId, 
+            isCompleted: isCompleted, 
+            isExpired: isExpired, // حقل جديد لتنبيه التطبيق بأن الوقت انتهى ولم يتم الحل
             attempt_id: attemptId       
           };
         })
