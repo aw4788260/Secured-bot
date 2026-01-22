@@ -16,14 +16,7 @@ export default async (req, res) => {
   console.log(`\n\n🟢 --- START ${apiName} ---`);
   console.log(`${apiName} Method: ${req.method}`);
   console.log(`${apiName} Body:`, JSON.stringify(req.body));
-  // طباعة الهيدرز المهمة للتأكد من وصول التوكن وبصمة الجهاز
-  console.log(`${apiName} Debug Headers:`, {
-      host: req.headers.host,
-      referer: req.headers.referer || 'No Referer',
-      'x-device-id': req.headers['x-device-id'] || 'MISSING',
-      'authorization': req.headers['authorization'] ? 'Present (Hidden)' : 'MISSING'
-  });
-
+  
   if (req.method !== 'POST') {
       console.log(`${apiName} ⛔ Wrong Method: ${req.method}`);
       return res.status(405).json({ error: 'Method Not Allowed' });
@@ -37,28 +30,26 @@ export default async (req, res) => {
   }
 
   try {
-    // 2. التحقق الأمني (مع طباعة النتيجة)
+    // 2. التحقق الأمني
     console.log(`${apiName} 🛡️ Calling checkUserAccess()...`);
     
     const hasAccess = await checkUserAccess(req, examId, 'exam');
-    
-    console.log(`${apiName} 🛡️ checkUserAccess Result: ${hasAccess}`); // سيطبع true أو false
     
     if (!hasAccess) {
         console.warn(`${apiName} ⛔ Access Denied by AuthHelper.`);
         return res.status(403).json({ error: 'Access Denied: Unauthorized Device or Subscription' });
     }
 
-    // 3. استخراج هوية المستخدم (بعد نجاح الحماية)
+    // 3. استخراج هوية المستخدم
     const userId = req.headers['x-user-id'];
     console.log(`${apiName} 👤 User Identified: ${userId}`);
 
-    // 4. جلب إعدادات الامتحان
+    // 4. جلب إعدادات الامتحان (تمت إضافة duration_minutes)
     console.log(`${apiName} 📥 Fetching Exam Config for ID: ${examId}...`);
     
     const { data: examConfig, error: configError } = await supabase
         .from('exams')
-        .select('randomize_questions, randomize_options, start_time, end_time, is_active')
+        .select('randomize_questions, randomize_options, start_time, end_time, is_active, duration_minutes')
         .eq('id', examId)
         .single();
 
@@ -72,18 +63,15 @@ export default async (req, res) => {
         throw new Error('Exam configuration not found');
     }
 
-    console.log(`${apiName} ⚙️ Config Loaded:`, JSON.stringify(examConfig));
-
     // 5. التحقق من التفعيل والوقت
-    // (ملاحظة: نستخدم تحقق مرن للـ is_active تحسباً للقيم الفارغة)
     if (examConfig.is_active === false) {
-         console.warn(`${apiName} ⛔ Exam is Inactive (is_active = false)`);
+         console.warn(`${apiName} ⛔ Exam is Inactive`);
          return res.status(403).json({ error: 'عذراً، هذا الامتحان غير نشط حالياً.' });
     }
 
     const now = new Date();
-    console.log(`${apiName} 🕒 Checking Time. Now: ${now.toISOString()}`);
-
+    
+    // التحقق من وقت البداية
     if (examConfig.start_time) {
         const startTime = new Date(examConfig.start_time);
         if (now < startTime) {
@@ -95,16 +83,17 @@ export default async (req, res) => {
         }
     }
 
+    // ✅ التحقق من انتهاء الوقت (Model Answer Mode)
+    let isExpiredMode = false;
     if (examConfig.end_time) {
         const endTime = new Date(examConfig.end_time);
         if (now > endTime) {
-            console.warn(`${apiName} ⛔ Too Late. Ended at: ${endTime.toISOString()}`);
-            return res.status(403).json({ error: 'عذراً، انتهى وقت الامتحان.' });
+            console.warn(`${apiName} ⚠️ Exam Expired. Switching to Model Answer Mode.`);
+            isExpiredMode = true; 
         }
     }
 
     // 6. التحقق من المحاولات السابقة
-    console.log(`${apiName} 🔍 Checking previous attempts...`);
     const { count } = await supabase.from('user_attempts')
       .select('id', { count: 'exact', head: true })
       .match({ user_id: userId, exam_id: examId, status: 'completed' });
@@ -114,13 +103,35 @@ export default async (req, res) => {
         return res.status(409).json({ error: 'الامتحان مكتمل سابقاً.', isCompleted: true });
     }
     
+    // ✅✅ سيناريو 1: إذا كان الامتحان منتهياً (Expired) -> إرسال نموذج الإجابة
+    if (isExpiredMode) {
+        // جلب الأسئلة مع الإجابات الصحيحة (is_correct)
+        const { data: questionsWithAnswers, error: qAnsError } = await supabase.from('questions')
+          .select(`
+             id, question_text, sort_order, image_file_id, 
+             options ( id, question_id, option_text, sort_order, is_correct )
+          `)
+          .eq('exam_id', examId)
+          .order('sort_order', { ascending: true })
+          .order('sort_order', { foreignTable: 'options', ascending: true });
+
+        if (qAnsError) throw qAnsError;
+
+        return res.status(200).json({ 
+            mode: 'model_answer', // علامة للفرونت إند
+            message: 'انتهى وقت الامتحان، هذا نموذج الإجابة.',
+            questions: questionsWithAnswers 
+        });
+    }
+
+    // ✅✅ سيناريو 2: الامتحان ساري -> بدء محاولة جديدة
+
     // تنظيف المحاولات المعلقة
     await supabase.from('user_attempts')
         .delete()
         .match({ user_id: userId, exam_id: examId, status: 'started' });
 
-    // 7. إنشاء المحاولة
-    console.log(`${apiName} 📝 Creating new attempt row...`);
+    // إنشاء المحاولة
     const { data: newAttempt, error: attError } = await supabase.from('user_attempts').insert({
         user_id: userId,
         exam_id: examId,
@@ -130,29 +141,27 @@ export default async (req, res) => {
 
     if (attError) throw attError;
 
-    // 8. جلب الأسئلة
-    console.log(`${apiName} ❓ Fetching questions...`);
+    // جلب الأسئلة (بدون is_correct)
     const { data: questions, error: qError } = await supabase.from('questions')
-      .select(`id, question_text, sort_order, image_file_id, options ( id, question_id, option_text, sort_order )`)
+      .select(`
+         id, question_text, sort_order, image_file_id, 
+         options ( id, question_id, option_text, sort_order ) 
+      `) // ⚠️ هام: لا نرسل is_correct هنا
       .eq('exam_id', examId)
       .order('sort_order', { ascending: true })
       .order('sort_order', { foreignTable: 'options', ascending: true });
 
     if (qError) throw qError;
 
-    console.log(`${apiName} ✅ Questions Fetched: ${questions?.length || 0}`);
-
     let finalQuestions = questions || [];
     
     // خلط الأسئلة
     if (examConfig.randomize_questions) {
-        console.log(`${apiName} 🔀 Shuffling Questions...`);
         finalQuestions = shuffleArray([...finalQuestions]); 
     }
     
     // خلط الخيارات
     if (examConfig.randomize_options) {
-        console.log(`${apiName} 🔀 Shuffling Options...`);
         finalQuestions = finalQuestions.map(q => ({ 
             ...q, 
             options: shuffleArray([...q.options]) 
@@ -169,7 +178,8 @@ export default async (req, res) => {
     
     return res.status(200).json({ 
         attemptId: newAttempt.id, 
-        questions: finalQuestions 
+        questions: finalQuestions,
+        durationMinutes: examConfig.duration_minutes || 10 // ✅ إرجاع مدة الامتحان من القاعدة
     });
 
   } catch (err) {
