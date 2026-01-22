@@ -1,19 +1,19 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
+import { checkUserAccess } from '../../../lib/authHelper';
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
 
   const { subjectId } = req.query;
 
-  // 2. التحقق الأمني من الهوية والجهاز
+  // 1. التحقق الأمني من الهوية والجهاز
   const isAuthorized = await checkUserAccess(req);
   
   if (!isAuthorized) {
       return res.status(401).json({ error: 'Unauthorized: Invalid Token or Device' });
   }
 
-  // 3. استخدام المعرف الآمن
+  // 2. استخدام المعرف الآمن
   const userId = req.headers['x-user-id'];
 
   if (!subjectId || !userId) {
@@ -21,7 +21,7 @@ export default async (req, res) => {
   }
 
   try {
-    // 4. التحقق من الاشتراك (Subscription Check)
+    // 3. التحقق من الاشتراك (Subscription Check)
     const { data: subAccess } = await supabase
       .from('user_subject_access')
       .select('id')
@@ -50,8 +50,8 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 5. جلب "الداتا الضخمة" (Big Data Fetch)
-    // ✅ تم التعديل هنا لإضافة start_time و end_time في قسم الامتحانات
+    // 4. جلب "الداتا الضخمة" (Big Data Fetch)
+    // ✅ تم إضافة is_active هنا للتأكد من حالة التفعيل
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -62,14 +62,14 @@ export default async (req, res) => {
           videos (id, title, sort_order, type, youtube_video_id), 
           pdfs (id, title, sort_order)
         ),
-        exams (id, title, duration_minutes, sort_order, start_time, end_time) 
+        exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active) 
       `)
       .eq('id', subjectId)
       .single();
 
     if (contentError) throw contentError;
 
-    // 6. التحقق من حالة الامتحانات وجلب attempt_id
+    // 5. التحقق من حالة الامتحانات وجلب attempt_id
     const examIds = subjectData.exams.map(e => e.id);
     let attemptsMap = {}; 
 
@@ -86,7 +86,12 @@ export default async (req, res) => {
       });
     }
 
-    // 7. تنسيق البيانات وترتيبها
+    // ✅ تحديد الوقت الحالي (توقيت السيرفر العالمي)
+    // بما أننا حفظنا وقت الامتحان كتوقيت عالمي في الخطوة السابقة
+    // فالمقارنة هنا ستكون سليمة ودقيقة 100%
+    const now = new Date();
+
+    // 6. تنسيق البيانات وترتيبها وفلترتها
     const formattedData = {
       id: subjectData.id,
       title: subjectData.title,
@@ -104,6 +109,25 @@ export default async (req, res) => {
         })),
         
       exams: subjectData.exams
+        // 🚀 الفلترة الذكية (تعتمد على التوقيت العالمي)
+        .filter(ex => {
+            // أ) استبعاد المعطل يدوياً
+            if (ex.is_active === false) return false;
+
+            // ب) استبعاد ما لم يبدأ بعد
+            if (ex.start_time) {
+                const startTime = new Date(ex.start_time);
+                if (now < startTime) return false;
+            }
+
+            // ج) استبعاد المنتهي
+            if (ex.end_time) {
+                const endTime = new Date(ex.end_time);
+                if (now > endTime) return false;
+            }
+
+            return true; // الامتحان متاح
+        })
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ex => {
           const attemptId = attemptsMap[ex.id] || null;
