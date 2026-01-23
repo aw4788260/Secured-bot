@@ -7,7 +7,6 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   // 2. التحقق الأمني (هوية المستخدم وجهازه)
-  // لا نمرر resourceId هنا لأننا سنتحقق من ملكية المحاولة يدوياً بالأسفل
   const isAuthorized = await checkUserAccess(req);
   if (!isAuthorized) {
       return res.status(401).json({ error: 'Unauthorized Access' });
@@ -85,25 +84,29 @@ export default async (req, res) => {
         if (ansError) throw ansError;
     }
 
-    // 9. تحديث المحاولة بالدرجة النهائية وإنهاء الحالة
+    // ✅ حساب النسبة المئوية
+    const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+
+    // 9. تحديث المحاولة بالدرجة النهائية (score) والنسبة (percentage)
     const { error: updateError } = await supabase
       .from('user_attempts')
       .update({
         score: score,
+        percentage: percentage, // ✅ تم إضافة هذا السطر لحفظ النسبة
         status: 'completed',
-        completed_at: new Date().toISOString() // يفضل ISO string للتوافق
+        completed_at: new Date().toISOString()
       })
       .eq('id', attemptId);
 
     if (updateError) throw updateError;
 
-    console.log(`${apiName} ✅ Exam submitted. Score: ${score}/${total}`);
+    console.log(`${apiName} ✅ Exam submitted. Score: ${score}/${total} (${percentage}%)`);
 
     return res.status(200).json({
       success: true,
       score: score,
       total: total,
-      percentage: total > 0 ? Math.round((score / total) * 100) : 0
+      percentage: percentage
     });
 
   } catch (err) {
