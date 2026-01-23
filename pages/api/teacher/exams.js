@@ -6,7 +6,7 @@ export default async (req, res) => {
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
-  // 🛠️ دالة تحويل التوقيت (موجودة سابقاً)
+  // 🛠️ دالة تحويل التوقيت
   const toEgyptUTC = (dateString) => {
       if (!dateString) return null;
       try {
@@ -97,7 +97,6 @@ export default async (req, res) => {
             if (updateErr) throw updateErr;
 
             // 2. حذف الأسئلة القديمة (سيتم حذف الخيارات تلقائياً بسبب Cascade في قاعدة البيانات)
-            // ملاحظة: هذا الأسلوب هو الأسهل للتعديل (حذف الكل وإعادة الإضافة)
             await supabase.from('questions').delete().eq('exam_id', targetExamId);
         }
 
@@ -140,31 +139,51 @@ export default async (req, res) => {
       }
   }
 
-  // --- GET: إحصائيات امتحان (لم يتم تغييره) ---
+  // --- GET: إحصائيات امتحان (تم التعديل ليشمل النسبة المئوية) ---
   if (req.method === 'GET') {
       const { examId } = req.query;
       
+      // ✅ 1. تم تعديل الاستعلام لجلب percentage و score
       const { data: attempts } = await supabase
           .from('user_attempts') 
-          .select('score, student_name_input, completed_at, users(first_name, phone)')
+          .select('score, percentage, student_name_input, completed_at, users(first_name, phone)')
           .eq('exam_id', examId)
           .eq('status', 'completed')
-          .order('score', { ascending: false });
+          .order('percentage', { ascending: false }); // الترتيب حسب النسبة الأعلى
 
-      if (!attempts) return res.status(200).json({ average: 0, topStudents: [], totalAttempts: 0 });
+      if (!attempts) return res.status(200).json({ 
+          averageScore: 0, 
+          averagePercentage: 0,
+          topStudents: [], 
+          totalAttempts: 0 
+      });
 
       const totalAttempts = attempts.length;
-      const average = totalAttempts > 0 
+      
+      // ✅ 2. حساب متوسط الدرجات
+      const averageScore = totalAttempts > 0 
           ? (attempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalAttempts).toFixed(1) 
           : 0;
 
+      // ✅ 3. حساب متوسط النسب المئوية
+      const averagePercentage = totalAttempts > 0 
+          ? (attempts.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalAttempts).toFixed(1) 
+          : 0;
+
+      // ✅ 4. تجهيز بيانات الطلاب (شاملة الدرجة والنسبة)
       const topStudents = attempts.slice(0, 10).map(a => ({
           name: a.student_name_input || a.users?.first_name || 'طالب غير مسجل',
           phone: a.users?.phone || 'غير متوفر',
-          score: a.score,
+          score: a.score || 0,        // الدرجة الرقمية
+          percentage: a.percentage || 0, // النسبة المئوية
           date: a.completed_at
       }));
 
-      return res.status(200).json({ average, totalAttempts, topStudents });
+      return res.status(200).json({ 
+          averageScore, 
+          averagePercentage, 
+          totalAttempts, 
+          topStudents 
+      });
   }
 };
