@@ -24,14 +24,13 @@ export default async (req, res) => {
     const courseIds = courses.map(c => c.id);
 
     // ب. جلب المواد (Subjects) المرتبطة بهذه الكورسات
-    // (لأن جدول subjects لا يحتوي على teacher_id، نستخدم course_id)
     let subjects = [];
     let subjectIds = [];
 
     if (courseIds.length > 0) {
         const { data: subjectsData, error: subjectsError } = await supabase
           .from('subjects')
-          .select('id, title') // تأكدنا من الجدول أن العمود اسمه title
+          .select('id, title') 
           .in('course_id', courseIds);
 
         if (subjectsError) throw subjectsError;
@@ -40,7 +39,7 @@ export default async (req, res) => {
     }
 
     // =========================================================
-    // 3. جلب صلاحيات الوصول (عدد الطلاب المشتركين)
+    // 3. جلب صلاحيات الوصول (مع فلترة الطلاب فقط)
     // =========================================================
     
     // أ. الطلاب المشتركون في الكورسات (Full Course)
@@ -48,8 +47,9 @@ export default async (req, res) => {
     if (courseIds.length > 0) {
       const { data: caData, error: caError } = await supabase
         .from('user_course_access')
-        .select('course_id, user_id')
-        .in('course_id', courseIds);
+        .select('course_id, user_id, users!inner(role)') // 🔹 Join داخلي
+        .in('course_id', courseIds)
+        .eq('users.role', 'student'); // 🔹 شرط: أن يكون الدور 'student' فقط
       
       if (caError) throw caError;
       courseAccess = caData || [];
@@ -60,8 +60,9 @@ export default async (req, res) => {
     if (subjectIds.length > 0) {
       const { data: saData, error: saError } = await supabase
         .from('user_subject_access')
-        .select('subject_id, user_id')
-        .in('subject_id', subjectIds);
+        .select('subject_id, user_id, users!inner(role)') // 🔹 Join داخلي
+        .in('subject_id', subjectIds)
+        .eq('users.role', 'student'); // 🔹 شرط: أن يكون الدور 'student' فقط
         
       if (saError) throw saError;
       subjectAccess = saData || [];
@@ -71,6 +72,8 @@ export default async (req, res) => {
     // 4. معالجة بيانات الطلاب للإحصائيات
     // =========================================================
 
+    // بما أننا قمنا بفلترة courseAccess و subjectAccess أعلاه،
+    // فإن الأرقام هنا ستعكس الطلاب فقط (بدون المعلمين والمشرفين)
     const coursesStats = courses.map(course => {
       const count = courseAccess.filter(a => a.course_id === course.id).length;
       return { title: course.title, count };
@@ -89,11 +92,11 @@ export default async (req, res) => {
     const totalUniqueStudents = allStudentIds.size;
 
     // =========================================================
-    // 5. حساب الأرباح (من requested_data داخل الطلبات)
+    // 5. حساب الأرباح (من الطلبات المقبولة)
     // =========================================================
+    // ملاحظة: الأرباح تُحسب بناءً على الأموال المدفوعة في الطلبات المقبولة
     let totalEarnings = 0;
 
-    // نجلب فقط الطلبات المقبولة (approved)
     const { data: requestsData, error: reqError } = await supabase
         .from('subscription_requests')
         .select('requested_data')
@@ -103,11 +106,9 @@ export default async (req, res) => {
 
     const requests = requestsData || [];
 
-    // التكرار عبر كل الطلبات
     requests.forEach(req => {
         const items = req.requested_data; 
         
-        // التحقق أن requested_data هو مصفوفة صالحة
         if (Array.isArray(items)) {
             items.forEach(item => {
                 const price = Number(item.price) || 0;
@@ -116,7 +117,6 @@ export default async (req, res) => {
                 if (item.type === 'course' && courseIds.includes(item.id)) {
                     totalEarnings += price;
                 }
-                
                 // إذا كان العنصر مادة وموجودة ضمن مواد المدرس
                 else if (item.type === 'subject' && subjectIds.includes(item.id)) {
                     totalEarnings += price;
