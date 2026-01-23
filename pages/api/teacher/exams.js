@@ -30,10 +30,10 @@ export default async (req, res) => {
       }
   };
 
-  // --- معالجة الطلبات (POST): إنشاء أو تحديث ---
+  // --- معالجة الطلبات (POST): إنشاء، تحديث، أو حذف ---
   if (req.method === 'POST') {
       
-      // استقبال البيانات سواء كانت مباشرة أو داخل payload
+      // استقبال البيانات
       let examData = req.body;
       let action = 'create'; // الافتراضي
 
@@ -42,26 +42,48 @@ export default async (req, res) => {
           action = req.body.action;
           examData = req.body.payload;
       } else if (req.body.examId) {
-          // إذا تم إرسال examId، نعتبره تحديث تلقائياً
+          // إذا تم إرسال examId بدون تحديد action، نعتبره تحديث
           action = 'update';
       }
 
       const { title, subjectId, duration, questions, start_time, end_time, examId } = examData;
 
-      if (!title || !subjectId) {
-          return res.status(400).json({ error: 'بيانات الامتحان ناقصة' });
-      }
-
-      const adjustedStartTime = toEgyptUTC(start_time);
-      const adjustedEndTime = toEgyptUTC(end_time);
-
       try {
         let targetExamId = examId;
 
         // =================================================
+        // الحالة 3 (الجديدة): حذف امتحان (Delete)
+        // =================================================
+        if (action === 'delete') {
+            if (!examId) return res.status(400).json({ error: 'Exam ID required for delete' });
+
+            // 1. حذف محاولات الطلاب المرتبطة بالامتحان أولاً (Foreign Key Constraint)
+            await supabase.from('user_attempts').delete().eq('exam_id', examId);
+            
+            // 2. حذف الأسئلة (سيتم حذف الخيارات تلقائياً بفضل Cascade في قاعدة البيانات)
+            await supabase.from('questions').delete().eq('exam_id', examId);
+
+            // 3. حذف الامتحان نفسه
+            const { error: deleteErr } = await supabase
+                .from('exams')
+                .delete()
+                .eq('id', examId)
+                .eq('teacher_id', auth.teacherId); // أمان: المعلم يحذف امتحاناته فقط
+
+            if (deleteErr) throw deleteErr;
+
+            return res.status(200).json({ success: true, message: 'Exam and all related data deleted' });
+        }
+        
+        // =================================================
         // الحالة 1: إنشاء امتحان جديد (Create)
         // =================================================
-        if (action === 'create') {
+        else if (action === 'create') {
+            if (!title || !subjectId) return res.status(400).json({ error: 'بيانات الامتحان ناقصة' });
+
+            const adjustedStartTime = toEgyptUTC(start_time);
+            const adjustedEndTime = toEgyptUTC(end_time);
+
             const { data: newExam, error: examErr } = await supabase.from('exams').insert({
                 title, 
                 subject_id: subjectId,
@@ -84,6 +106,9 @@ export default async (req, res) => {
         else if (action === 'update') {
             if (!targetExamId) return res.status(400).json({ error: 'Exam ID required for update' });
 
+            const adjustedStartTime = toEgyptUTC(start_time);
+            const adjustedEndTime = toEgyptUTC(end_time);
+
             // 1. تحديث بيانات الامتحان الأساسية
             const { error: updateErr } = await supabase.from('exams').update({
                 title,
@@ -96,17 +121,17 @@ export default async (req, res) => {
 
             if (updateErr) throw updateErr;
 
-            // 2. حذف الأسئلة القديمة (سيتم حذف الخيارات تلقائياً بسبب Cascade في قاعدة البيانات)
+            // 2. حذف الأسئلة القديمة (سيتم حذف الخيارات تلقائياً بسبب Cascade)
             await supabase.from('questions').delete().eq('exam_id', targetExamId);
         }
 
         // =================================================
-        // إدخال الأسئلة (مشترك للإنشاء والتحديث)
+        // إدخال الأسئلة (مشترك للإنشاء والتحديث فقط)
         // =================================================
-        if (questions && questions.length > 0) {
+        if (action !== 'delete' && questions && questions.length > 0) {
             for (const [index, q] of questions.entries()) {
                 const { data: newQ, error: qErr } = await supabase.from('questions').insert({
-                    exam_id: targetExamId, // نستخدم الـ ID سواء كان جديداً أو قديماً
+                    exam_id: targetExamId, 
                     question_text: q.text,
                     image_file_id: q.image || null,
                     sort_order: index,
@@ -139,17 +164,16 @@ export default async (req, res) => {
       }
   }
 
-  // --- GET: إحصائيات امتحان (تم التعديل ليشمل النسبة المئوية) ---
+  // --- GET: إحصائيات امتحان ---
   if (req.method === 'GET') {
       const { examId } = req.query;
       
-      // ✅ 1. تم تعديل الاستعلام لجلب percentage و score
       const { data: attempts } = await supabase
           .from('user_attempts') 
           .select('score, percentage, student_name_input, completed_at, users(first_name, phone)')
           .eq('exam_id', examId)
           .eq('status', 'completed')
-          .order('percentage', { ascending: false }); // الترتيب حسب النسبة الأعلى
+          .order('percentage', { ascending: false });
 
       if (!attempts) return res.status(200).json({ 
           averageScore: 0, 
@@ -160,22 +184,19 @@ export default async (req, res) => {
 
       const totalAttempts = attempts.length;
       
-      // ✅ 2. حساب متوسط الدرجات
       const averageScore = totalAttempts > 0 
           ? (attempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalAttempts).toFixed(1) 
           : 0;
 
-      // ✅ 3. حساب متوسط النسب المئوية
       const averagePercentage = totalAttempts > 0 
           ? (attempts.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalAttempts).toFixed(1) 
           : 0;
 
-      // ✅ 4. تجهيز بيانات الطلاب (شاملة الدرجة والنسبة)
       const topStudents = attempts.slice(0, 10).map(a => ({
           name: a.student_name_input || a.users?.first_name || 'طالب غير مسجل',
           phone: a.users?.phone || 'غير متوفر',
-          score: a.score || 0,        // الدرجة الرقمية
-          percentage: a.percentage || 0, // النسبة المئوية
+          score: a.score || 0,
+          percentage: a.percentage || 0,
           date: a.completed_at
       }));
 
