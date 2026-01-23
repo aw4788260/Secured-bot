@@ -10,48 +10,64 @@ export default async (req, res) => {
 
   try {
     // ---------------------------------------------------------
-    // 2. جلب الكورسات والمواد الخاصة بالمدرس
+    // 2. جلب الكورسات والمواد الخاصة بالمدرس (مع حماية ضد null)
     // ---------------------------------------------------------
-    const { data: courses } = await supabase
+    const { data: coursesData, error: coursesError } = await supabase
       .from('courses')
       .select('id, title')
       .eq('teacher_id', teacherId);
+    
+    if (coursesError) throw coursesError;
+    // ✅ التصحيح: ضمان أنها مصفوفة
+    const courses = coursesData || []; 
 
-    const { data: subjects } = await supabase
+    const { data: subjectsData, error: subjectsError } = await supabase
       .from('subjects')
       .select('id, name')
       .eq('teacher_id', teacherId);
+
+    if (subjectsError) throw subjectsError;
+    // ✅ التصحيح: ضمان أنها مصفوفة
+    const subjects = subjectsData || [];
 
     const courseIds = courses.map(c => c.id);
     const subjectIds = subjects.map(s => s.id);
 
     // ---------------------------------------------------------
-    // 3. جلب صلاحيات الوصول لحساب عدد الطلاب (اشتراك كامل وفردي)
+    // 3. جلب صلاحيات الوصول (مع التحقق من وجود كورسات أصلاً)
     // ---------------------------------------------------------
     
-    // أ. الطلاب المشتركون في الكورسات (Full Course)
-    const { data: courseAccess } = await supabase
-      .from('user_course_access')
-      .select('course_id, user_id')
-      .in('course_id', courseIds);
+    let courseAccess = [];
+    if (courseIds.length > 0) {
+      const { data: caData, error: caError } = await supabase
+        .from('user_course_access')
+        .select('course_id, user_id')
+        .in('course_id', courseIds);
+      
+      if (caError) throw caError;
+      courseAccess = caData || [];
+    }
 
-    // ب. الطلاب المشتركون في المواد (Single Subject)
-    const { data: subjectAccess } = await supabase
-      .from('user_subject_access')
-      .select('subject_id, user_id')
-      .in('subject_id', subjectIds);
+    let subjectAccess = [];
+    if (subjectIds.length > 0) {
+      const { data: saData, error: saError } = await supabase
+        .from('user_subject_access')
+        .select('subject_id, user_id')
+        .in('subject_id', subjectIds);
+        
+      if (saError) throw saError;
+      subjectAccess = saData || [];
+    }
 
     // ---------------------------------------------------------
     // 4. معالجة البيانات للإحصائيات التفصيلية
     // ---------------------------------------------------------
 
-    // حساب عدد الطلاب لكل كورس
     const coursesStats = courses.map(course => {
       const count = courseAccess.filter(a => a.course_id === course.id).length;
       return { title: course.title, count };
     });
 
-    // حساب عدد الطلاب لكل مادة
     const subjectsStats = subjects.map(subject => {
       const count = subjectAccess.filter(a => a.subject_id === subject.id).length;
       return { title: subject.name, count };
@@ -60,7 +76,6 @@ export default async (req, res) => {
     // ---------------------------------------------------------
     // 5. حساب إجمالي الطلاب (Unique Students)
     // ---------------------------------------------------------
-    // نجمع كل الـ user_ids من الكورسات والمواد ونضعهم في Set لحذف التكرار
     const allStudentIds = new Set([
       ...courseAccess.map(a => a.user_id),
       ...subjectAccess.map(a => a.user_id)
@@ -69,29 +84,29 @@ export default async (req, res) => {
     const totalUniqueStudents = allStudentIds.size;
 
     // ---------------------------------------------------------
-    // 6. حساب الأرباح (من الطلبات المقبولة فقط)
+    // 6. حساب الأرباح (بأمان)
     // ---------------------------------------------------------
-    const { data: earningsData } = await supabase
-      .from('subscription_requests')
-      .select('total_price')
-      .eq('status', 'approved')
-      .or(`course_id.in.(${courseIds.join(',')}),subject_id.in.(${subjectIds.join(',')})`); 
-      // ملاحظة: الـ Syntax الخاص بـ or مع المصفوفات قد يحتاج adjustment حسب نسخة supbase-js
-      // البديل الأكثر أماناً هو جلب الطلبات وفلترتها بالكود إذا كانت المصفوفة صغيرة، أو عمل استعلامين
-
-    // طريقة بديلة وآمنة لحساب الأرباح لضمان الدقة:
-    const { data: allRequests } = await supabase
-        .from('subscription_requests')
-        .select('total_price, course_id, subject_id')
-        .eq('status', 'approved');
+    let totalEarnings = 0;
     
-    // فلترة الطلبات الخاصة بهذا المدرس فقط
-    const myRequests = allRequests.filter(r => 
-        (r.course_id && courseIds.includes(r.course_id)) || 
-        (r.subject_id && subjectIds.includes(r.subject_id))
-    );
+    if (courseIds.length > 0 || subjectIds.length > 0) {
+        // جلب الطلبات المقبولة فقط
+        const { data: allRequests, error: reqError } = await supabase
+            .from('subscription_requests')
+            .select('total_price, course_id, subject_id')
+            .eq('status', 'approved');
+        
+        if (reqError) throw reqError;
 
-    const totalEarnings = myRequests.reduce((sum, item) => sum + (item.total_price || 0), 0);
+        const requests = allRequests || [];
+
+        // فلترة الطلبات الخاصة بهذا المدرس فقط
+        const myRequests = requests.filter(r => 
+            (r.course_id && courseIds.includes(r.course_id)) || 
+            (r.subject_id && subjectIds.includes(r.subject_id))
+        );
+
+        totalEarnings = myRequests.reduce((sum, item) => sum + (item.total_price || 0), 0);
+    }
 
     // ---------------------------------------------------------
     // 7. إرسال الرد
