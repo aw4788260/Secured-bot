@@ -85,7 +85,7 @@ export default async (req, res) => {
         return res.status(200).json({ success: true, message: 'Student promoted and access granted' });
       }
 
-      // 🅱️ سحب الإشراف (إعادته كطالب)
+      // 🅱️ سحب الإشراف (إعادته كطالب) وحذف الصلاحيات
       if (action === 'demote') {
         // التحقق أولاً أن هذا المشرف يتبع هذا المعلم (لمنع حذف مشرفي معلمين آخرين)
         const { data: userCheck } = await supabase
@@ -97,6 +97,23 @@ export default async (req, res) => {
         
         if (!userCheck) return res.status(403).json({ error: 'Unauthorized to modify this user' });
 
+        // ✅ خطوة جديدة: حذف صلاحيات الكورسات الخاصة بهذا المعلم
+        const { data: teacherCourses } = await supabase
+          .from('courses')
+          .select('id')
+          .eq('teacher_id', teacherId);
+
+        if (teacherCourses && teacherCourses.length > 0) {
+          const courseIds = teacherCourses.map(c => c.id);
+          
+          // حذف الصفوف من جدول الصلاحيات لهذا المستخدم والكورسات المحددة
+          await supabase
+            .from('user_course_access')
+            .delete()
+            .eq('user_id', userId)
+            .in('course_id', courseIds);
+        }
+
         // إعادة الدور لطالب وفك الارتباط
         await supabase
           .from('users')
@@ -106,7 +123,7 @@ export default async (req, res) => {
           })
           .eq('id', userId);
 
-        return res.status(200).json({ success: true, message: 'Moderator removed' });
+        return res.status(200).json({ success: true, message: 'Moderator removed and access revoked' });
       }
 
     } catch (err) {
