@@ -10,7 +10,7 @@ export default async (req, res) => {
 
   try {
     // ---------------------------------------------------------
-    // 2. جلب الكورسات والمواد الخاصة بالمدرس (مع حماية ضد null)
+    // 2. جلب الكورسات الخاصة بالمدرس
     // ---------------------------------------------------------
     const { data: coursesData, error: coursesError } = await supabase
       .from('courses')
@@ -18,25 +18,34 @@ export default async (req, res) => {
       .eq('teacher_id', teacherId);
     
     if (coursesError) throw coursesError;
-    // ✅ التصحيح: ضمان أنها مصفوفة
     const courses = coursesData || []; 
-
-    const { data: subjectsData, error: subjectsError } = await supabase
-      .from('subjects')
-      .select('id, name')
-      .eq('teacher_id', teacherId);
-
-    if (subjectsError) throw subjectsError;
-    // ✅ التصحيح: ضمان أنها مصفوفة
-    const subjects = subjectsData || [];
-
     const courseIds = courses.map(c => c.id);
-    const subjectIds = subjects.map(s => s.id);
 
     // ---------------------------------------------------------
-    // 3. جلب صلاحيات الوصول (مع التحقق من وجود كورسات أصلاً)
+    // 3. جلب المواد (Subjects) المرتبطة بهذه الكورسات
+    // ---------------------------------------------------------
+    // بما أن جدول subjects لا يحتوي على teacher_id، نجلب المواد التابعة لكورسات هذا المدرس
+    let subjects = [];
+    let subjectIds = [];
+
+    if (courseIds.length > 0) {
+        // ✅ تصحيح: استخدام title بدلاً من name
+        // ✅ تصحيح: الجلب بدلالة course_id لأن teacher_id غير موجود في جدول subjects
+        const { data: subjectsData, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('id, title') 
+          .in('course_id', courseIds);
+
+        if (subjectsError) throw subjectsError;
+        subjects = subjectsData || [];
+        subjectIds = subjects.map(s => s.id);
+    }
+
+    // ---------------------------------------------------------
+    // 4. جلب صلاحيات الوصول (الطلاب المشتركين)
     // ---------------------------------------------------------
     
+    // أ. الطلاب المشتركون في الكورسات (Full Course)
     let courseAccess = [];
     if (courseIds.length > 0) {
       const { data: caData, error: caError } = await supabase
@@ -48,6 +57,7 @@ export default async (req, res) => {
       courseAccess = caData || [];
     }
 
+    // ب. الطلاب المشتركون في المواد (Single Subject)
     let subjectAccess = [];
     if (subjectIds.length > 0) {
       const { data: saData, error: saError } = await supabase
@@ -60,7 +70,7 @@ export default async (req, res) => {
     }
 
     // ---------------------------------------------------------
-    // 4. معالجة البيانات للإحصائيات التفصيلية
+    // 5. معالجة البيانات للإحصائيات التفصيلية
     // ---------------------------------------------------------
 
     const coursesStats = courses.map(course => {
@@ -70,11 +80,12 @@ export default async (req, res) => {
 
     const subjectsStats = subjects.map(subject => {
       const count = subjectAccess.filter(a => a.subject_id === subject.id).length;
-      return { title: subject.name, count };
+      // ✅ تصحيح: استخدام subject.title هنا أيضاً
+      return { title: subject.title, count }; 
     });
 
     // ---------------------------------------------------------
-    // 5. حساب إجمالي الطلاب (Unique Students)
+    // 6. حساب إجمالي الطلاب (Unique Students)
     // ---------------------------------------------------------
     const allStudentIds = new Set([
       ...courseAccess.map(a => a.user_id),
@@ -84,7 +95,7 @@ export default async (req, res) => {
     const totalUniqueStudents = allStudentIds.size;
 
     // ---------------------------------------------------------
-    // 6. حساب الأرباح (بأمان)
+    // 7. حساب الأرباح (من الطلبات المقبولة)
     // ---------------------------------------------------------
     let totalEarnings = 0;
     
@@ -109,7 +120,7 @@ export default async (req, res) => {
     }
 
     // ---------------------------------------------------------
-    // 7. إرسال الرد
+    // 8. إرسال الرد النهائي
     // ---------------------------------------------------------
     return res.status(200).json({
       totalUniqueStudents,
