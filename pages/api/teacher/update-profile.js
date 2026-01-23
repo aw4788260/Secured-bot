@@ -2,36 +2,46 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
+  // التأكد من طريقة الطلب
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   // 1. التحقق من صحة المدرس
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
-  // التحقق من الصلاحية (مدرس فقط)
+  // التحقق من الصلاحية (مدرس فقط - في حال كان هناك مساعدين)
   if (auth.role !== 'teacher') {
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
-  // 2. استقبال البيانات (بما في ذلك القوائم الثلاث)
-  const { name, bio, specialty, cashNumbersList, instapayNumbersList, instapayLinksList } = req.body;
+  // 2. استقبال البيانات (البيانات الشخصية + الواتساب + قوائم الدفع)
+  const { 
+    name, 
+    bio, 
+    specialty, 
+    whatsappNumber, // ✅ الرقم المستلم من الواجهة
+    cashNumbersList, 
+    instapayNumbersList, 
+    instapayLinksList 
+  } = req.body;
 
   try {
-    // 3. تجهيز هيكل بيانات الدفع
+    // 3. تجهيز هيكل بيانات الدفع (JSON)
     const paymentData = {
-      cash_numbers: cashNumbersList || [],       // قائمة أرقام الكاش
+      cash_numbers: cashNumbersList || [],        // قائمة أرقام الكاش
       instapay_numbers: instapayNumbersList || [], // قائمة أرقام إنستا باي
       instapay_links: instapayLinksList || []      // قائمة لينكات/يوزرات إنستا باي
     };
 
-    // 4. التحديث في قاعدة البيانات
+    // 4. التحديث في قاعدة البيانات (جدول teachers)
     const { error } = await supabase
       .from('teachers')
       .update({
         name: name,
         bio: bio,
         specialty: specialty,
-        payment_details: paymentData // ✅ الحفظ في العمود الجديد
+        whatsapp_number: whatsappNumber, // ✅ تحديث عمود الواتساب
+        payment_details: paymentData     // ✅ تحديث عمود تفاصيل الدفع
       })
       .eq('id', auth.teacherId);
 
