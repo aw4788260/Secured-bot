@@ -9,31 +9,29 @@ export default async (req, res) => {
   const teacherId = auth.teacherId;
 
   try {
-    // ---------------------------------------------------------
-    // 2. جلب الكورسات الخاصة بالمدرس
-    // ---------------------------------------------------------
+    // =========================================================
+    // 2. جلب الكورسات والمواد الخاصة بالمدرس
+    // =========================================================
+    
+    // أ. جلب الكورسات (Courses)
     const { data: coursesData, error: coursesError } = await supabase
       .from('courses')
       .select('id, title')
       .eq('teacher_id', teacherId);
     
     if (coursesError) throw coursesError;
-    const courses = coursesData || []; 
+    const courses = coursesData || [];
     const courseIds = courses.map(c => c.id);
 
-    // ---------------------------------------------------------
-    // 3. جلب المواد (Subjects) المرتبطة بهذه الكورسات
-    // ---------------------------------------------------------
-    // بما أن جدول subjects لا يحتوي على teacher_id، نجلب المواد التابعة لكورسات هذا المدرس
+    // ب. جلب المواد (Subjects) المرتبطة بهذه الكورسات
+    // (لأن جدول subjects لا يحتوي على teacher_id، نستخدم course_id)
     let subjects = [];
     let subjectIds = [];
 
     if (courseIds.length > 0) {
-        // ✅ تصحيح: استخدام title بدلاً من name
-        // ✅ تصحيح: الجلب بدلالة course_id لأن teacher_id غير موجود في جدول subjects
         const { data: subjectsData, error: subjectsError } = await supabase
           .from('subjects')
-          .select('id, title') 
+          .select('id, title') // تأكدنا من الجدول أن العمود اسمه title
           .in('course_id', courseIds);
 
         if (subjectsError) throw subjectsError;
@@ -41,9 +39,9 @@ export default async (req, res) => {
         subjectIds = subjects.map(s => s.id);
     }
 
-    // ---------------------------------------------------------
-    // 4. جلب صلاحيات الوصول (الطلاب المشتركين)
-    // ---------------------------------------------------------
+    // =========================================================
+    // 3. جلب صلاحيات الوصول (عدد الطلاب المشتركين)
+    // =========================================================
     
     // أ. الطلاب المشتركون في الكورسات (Full Course)
     let courseAccess = [];
@@ -69,9 +67,9 @@ export default async (req, res) => {
       subjectAccess = saData || [];
     }
 
-    // ---------------------------------------------------------
-    // 5. معالجة البيانات للإحصائيات التفصيلية
-    // ---------------------------------------------------------
+    // =========================================================
+    // 4. معالجة بيانات الطلاب للإحصائيات
+    // =========================================================
 
     const coursesStats = courses.map(course => {
       const count = courseAccess.filter(a => a.course_id === course.id).length;
@@ -80,48 +78,56 @@ export default async (req, res) => {
 
     const subjectsStats = subjects.map(subject => {
       const count = subjectAccess.filter(a => a.subject_id === subject.id).length;
-      // ✅ تصحيح: استخدام subject.title هنا أيضاً
-      return { title: subject.title, count }; 
+      return { title: subject.title, count };
     });
 
-    // ---------------------------------------------------------
-    // 6. حساب إجمالي الطلاب (Unique Students)
-    // ---------------------------------------------------------
+    // حساب إجمالي الطلاب (بدون تكرار)
     const allStudentIds = new Set([
       ...courseAccess.map(a => a.user_id),
       ...subjectAccess.map(a => a.user_id)
     ]);
-    
     const totalUniqueStudents = allStudentIds.size;
 
-    // ---------------------------------------------------------
-    // 7. حساب الأرباح (من الطلبات المقبولة)
-    // ---------------------------------------------------------
+    // =========================================================
+    // 5. حساب الأرباح (من requested_data داخل الطلبات)
+    // =========================================================
     let totalEarnings = 0;
-    
-    if (courseIds.length > 0 || subjectIds.length > 0) {
-        // جلب الطلبات المقبولة فقط
-        const { data: allRequests, error: reqError } = await supabase
-            .from('subscription_requests')
-            .select('total_price, course_id, subject_id')
-            .eq('status', 'approved');
+
+    // نجلب فقط الطلبات المقبولة (approved)
+    const { data: requestsData, error: reqError } = await supabase
+        .from('subscription_requests')
+        .select('requested_data')
+        .eq('status', 'approved');
+
+    if (reqError) throw reqError;
+
+    const requests = requestsData || [];
+
+    // التكرار عبر كل الطلبات
+    requests.forEach(req => {
+        const items = req.requested_data; 
         
-        if (reqError) throw reqError;
+        // التحقق أن requested_data هو مصفوفة صالحة
+        if (Array.isArray(items)) {
+            items.forEach(item => {
+                const price = Number(item.price) || 0;
+                
+                // إذا كان العنصر كورس وموجود ضمن كورسات المدرس
+                if (item.type === 'course' && courseIds.includes(item.id)) {
+                    totalEarnings += price;
+                }
+                
+                // إذا كان العنصر مادة وموجودة ضمن مواد المدرس
+                else if (item.type === 'subject' && subjectIds.includes(item.id)) {
+                    totalEarnings += price;
+                }
+            });
+        }
+    });
 
-        const requests = allRequests || [];
-
-        // فلترة الطلبات الخاصة بهذا المدرس فقط
-        const myRequests = requests.filter(r => 
-            (r.course_id && courseIds.includes(r.course_id)) || 
-            (r.subject_id && subjectIds.includes(r.subject_id))
-        );
-
-        totalEarnings = myRequests.reduce((sum, item) => sum + (item.total_price || 0), 0);
-    }
-
-    // ---------------------------------------------------------
-    // 8. إرسال الرد النهائي
-    // ---------------------------------------------------------
+    // =========================================================
+    // 6. إرسال الرد
+    // =========================================================
     return res.status(200).json({
       totalUniqueStudents,
       totalEarnings,
