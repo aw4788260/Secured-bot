@@ -5,16 +5,16 @@ export default async (req, res) => {
   if (!teacherId) return res.status(400).json({ error: 'Missing Id' });
 
   try {
-    // جلب بيانات المدرس
+    // جلب بيانات المدرس (تم إضافة whatsapp_number)
     const { data: teacher } = await supabase
       .from('teachers')
-      .select('id, name, bio, specialty')
+      .select('id, name, bio, specialty, whatsapp_number')
       .eq('id', teacherId)
       .single();
 
     if (!teacher) return res.status(404).json({ error: 'Not found' });
 
-    // ✅ التعديل هنا: طلب الأعمدة الأساسية فقط لتجنب الأخطاء
+    // جلب الكورسات الخاصة بالمدرس
     const { data: courses } = await supabase
       .from('courses')
       .select('id, title, price, code') 
