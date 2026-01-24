@@ -5,13 +5,11 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   // 1. التحقق من الصلاحية
-  // auth: { userId (المستخدم الفعلي), teacherId (بروفايل المعلم), role, ... }
+  // auth: { userId, teacherId, role, ... }
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
   const { action, type, data } = req.body; 
-  // action: 'create', 'update', 'delete'
-  // type: 'courses', 'subjects', 'chapters', 'videos', 'pdfs'
 
   try {
     // --- إضافة عنصر جديد (Create) ---
@@ -21,15 +19,14 @@ export default async (req, res) => {
       // إذا كان كورس، نربطه بالمعلم تلقائياً لضمان الملكية
       if (type === 'courses') {
         insertData.teacher_id = auth.teacherId;
-        insertData.sort_order = 999; // يضاف في النهاية بشكل افتراضي
+        insertData.sort_order = 999; 
 
-        // ✅ توليد كود رقمي عشوائي مكون من 6 أرقام للكورس
+        // توليد كود للكورس إذا لم يكن موجوداً
         if (!insertData.code) {
             insertData.code = Math.floor(100000 + Math.random() * 900000);
         }
 
       } else {
-        // لباقي العناصر، يجب التأكد أن الأب (الكورس/المادة) يتبع لهذا المعلم
         insertData.sort_order = 999;
       }
       
@@ -39,7 +36,6 @@ export default async (req, res) => {
         .select()
         .single();
 
-      // ✅ معالجة خطأ التكرار (Unique Violation)
       if (error) {
           if (error.code === '23505') { 
              return res.status(400).json({ error: 'حدث تكرار في كود الكورس، يرجى المحاولة مرة أخرى.' });
@@ -48,60 +44,60 @@ export default async (req, res) => {
       }
 
       // =========================================================================
-      // ✅ [تعديل شامل]: منح الصلاحيات (للمنشئ + المعلم المالك + جميع المشرفين)
+      // ✅ إدارة الصلاحيات: (المنشئ + المعلم المالك + المشرفين moderators)
       // =========================================================================
       if (type === 'courses' && newItem) {
           try {
             const accessList = [];
-            
-            // 1️⃣ إضافة المنشئ الحالي (سواء كان المعلم أو المشرف)
-            // نأخذ الـ ID من نتيجة التحقق (verifyTeacher)
             const currentUserId = auth.userId || auth.id;
+
+            // 1️⃣ إضافة المنشئ الحالي فوراً (سواء كان معلم أو مشرف)
             if (currentUserId) {
                 accessList.push({ user_id: currentUserId, course_id: newItem.id });
             }
 
-            // 2️⃣ إضافة المعلم الرئيسي (المالك) لضمان عدم فقدانه الصلاحية إذا أنشأ الكورس مشرف
-            // نستعلم عن user_id الخاص بالمعلم من جدول teachers باستخدام teacherId
-            const { data: teacherData } = await supabase
-                .from('teachers')
-                .select('user_id')
-                .eq('id', auth.teacherId)
-                .single();
+            // 2️⃣ إضافة المعلم الرئيسي (المالك)
+            // نبحث في جدول users عن الشخص الذي يملك هذا البروفايل ورتبته teacher
+            const { data: mainTeacherUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('teacher_profile_id', auth.teacherId)
+                .eq('role', 'teacher') 
+                .maybeSingle();
 
-            // إذا وجدنا المعلم وكان مختلفاً عن الشخص الحالي (المنشئ)، نضيفه
-            if (teacherData && teacherData.user_id && teacherData.user_id !== currentUserId) {
-                accessList.push({ user_id: teacherData.user_id, course_id: newItem.id });
+            if (mainTeacherUser && mainTeacherUser.id && mainTeacherUser.id !== currentUserId) {
+                accessList.push({ user_id: mainTeacherUser.id, course_id: newItem.id });
             }
 
-            // 3️⃣ إضافة باقي فريق العمل (المشرفين المساعدين)
-            const { data: teamMembers } = await supabase
-                .from('team_members')
-                .select('user_id')
-                .eq('teacher_id', auth.teacherId);
+            // 3️⃣ إضافة جميع المشرفين المساعدين (Moderators)
+            // نبحث في جدول users عن الأشخاص الذين يتبعون نفس البروفايل ورتبتهم moderator
+            const { data: moderators } = await supabase
+                .from('users')
+                .select('id')
+                .eq('teacher_profile_id', auth.teacherId)
+                .eq('role', 'moderator'); // ✅ التعديل هنا: البحث في users بدلاً من team_members
 
-            if (teamMembers && teamMembers.length > 0) {
-                teamMembers.forEach(member => {
-                    // نتأكد من عدم تكرار الإضافة (إذا كان المشرف هو المنشئ مثلاً)
-                    const isAlreadyAdded = accessList.some(item => item.user_id === member.user_id);
+            if (moderators && moderators.length > 0) {
+                moderators.forEach(mod => {
+                    // تجنب التكرار (إذا كان المشرف هو المنشئ مثلاً)
+                    const isAlreadyAdded = accessList.some(item => item.user_id === mod.id);
                     if (!isAlreadyAdded) {
-                        accessList.push({ user_id: member.user_id, course_id: newItem.id });
+                        accessList.push({ user_id: mod.id, course_id: newItem.id });
                     }
                 });
             }
 
-            // 4️⃣ تنفيذ الإضافة الجماعية للصلاحيات (Upsert)
+            // 4️⃣ تنفيذ الإضافة الجماعية
             if (accessList.length > 0) {
                 await supabase.from('user_course_access').upsert(
                     accessList, 
                     { onConflict: 'user_id, course_id' }
                 );
-                console.log(`✅ Permissions granted to ${accessList.length} users for course ${newItem.id}`);
+                console.log(`✅ Permissions granted to ${accessList.length} users (Teacher & Moderators)`);
             }
 
           } catch (permError) {
               console.error("Error granting permissions:", permError);
-              // لا نوقف العملية لأن الكورس تم إنشاؤه بنجاح، فقط نسجل الخطأ
           }
       }
       // =========================================================================
@@ -112,15 +108,9 @@ export default async (req, res) => {
     // --- تعديل عنصر (Update) ---
     if (action === 'update') {
       const { id, ...updates } = data;
-      
       let query = supabase.from(type).update(updates).eq('id', id);
-      
-      if (type === 'courses') {
-        query = query.eq('teacher_id', auth.teacherId);
-      }
-
+      if (type === 'courses') query = query.eq('teacher_id', auth.teacherId);
       const { error } = await query;
-
       if (error) throw error;
       return res.status(200).json({ success: true });
     }
@@ -128,15 +118,9 @@ export default async (req, res) => {
     // --- حذف عنصر (Delete) ---
     if (action === 'delete') {
       const { id } = data;
-      
       let query = supabase.from(type).delete().eq('id', id);
-      
-      if (type === 'courses') {
-        query = query.eq('teacher_id', auth.teacherId);
-      }
-
+      if (type === 'courses') query = query.eq('teacher_id', auth.teacherId);
       const { error } = await query;
-
       if (error) throw error;
       return res.status(200).json({ success: true });
     }
