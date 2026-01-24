@@ -8,10 +8,11 @@ export default async (req, res) => {
   const { identifier, password, deviceId } = req.body;
 
   try {
-    // 1. البحث عن المستخدم (تم تعديل الاستعلام ليشمل role)
+    // 1. البحث عن المستخدم
+    // ✅ تمت إضافة teacher_profile_id للاستعلام لنتمكن من جلب الصورة لاحقاً
     const { data: user } = await supabase
       .from('users')
-      .select('id, password, first_name, username, is_admin, is_blocked, role') // ✅ تمت إضافة role هنا
+      .select('id, password, first_name, username, is_admin, is_blocked, role, teacher_profile_id') 
       .or(`username.eq.${identifier},phone.eq.${identifier}`)
       .maybeSingle();
 
@@ -52,7 +53,19 @@ export default async (req, res) => {
       });
     }
 
-    // 4. إنشاء التوكن (JWT)
+    // 4. ✅ خطوة جديدة: جلب صورة المدرس من جدول teachers
+    let profileImage = null;
+    if (user.role === 'teacher' && user.teacher_profile_id) {
+        const { data: teacherData } = await supabase
+            .from('teachers')
+            .select('profile_image')
+            .eq('id', user.teacher_profile_id)
+            .single();
+        
+        if (teacherData) profileImage = teacherData.profile_image;
+    }
+
+    // 5. إنشاء التوكن (JWT)
     const token = jwt.sign(
         { 
             userId: user.id, 
@@ -63,7 +76,7 @@ export default async (req, res) => {
         { expiresIn: '365d' } // صلاحية سنة كاملة
     );
 
-    // 5. حفظ التوكن في العمود الجديد (jwt_token)
+    // حفظ التوكن في العمود الجديد
     const { error: updateError } = await supabase
         .from('users')
         .update({ jwt_token: token })
@@ -71,7 +84,7 @@ export default async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // 6. الرد مع التوكن وبيانات المستخدم (شاملة الرتبة)
+    // 6. الرد مع التوكن والبيانات (شاملة الصورة والرتبة)
     return res.status(200).json({
       success: true,
       token,
@@ -80,7 +93,8 @@ export default async (req, res) => {
         firstName: user.first_name,
         username: user.username,
         isAdmin: user.is_admin,
-        role: user.role // ✅ تمت إضافة هذا السطر ليتعرف التطبيق على المعلم فوراً
+        role: user.role,
+        profileImage: profileImage // ✅ تم إرجاع الصورة هنا
       }
     });
 
