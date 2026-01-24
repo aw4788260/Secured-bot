@@ -14,7 +14,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
-  // 2. استقبال البيانات (البيانات الشخصية + الواتساب + قوائم الدفع)
+  // 2. استقبال البيانات (البيانات الشخصية + الواتساب + قوائم الدفع + الصورة)
   const { 
     name, 
     bio, 
@@ -22,7 +22,8 @@ export default async (req, res) => {
     whatsappNumber, // ✅ الرقم المستلم من الواجهة
     cashNumbersList, 
     instapayNumbersList, 
-    instapayLinksList 
+    instapayLinksList,
+    profileImage // ✅ الصورة الجديدة
   } = req.body;
 
   try {
@@ -33,16 +34,24 @@ export default async (req, res) => {
       instapay_links: instapayLinksList || []      // قائمة لينكات/يوزرات إنستا باي
     };
 
-    // 4. التحديث في قاعدة البيانات (جدول teachers)
-    const { error } = await supabase
-      .from('teachers')
-      .update({
+    // تجهيز كائن التحديث
+    const updates = {
         name: name,
         bio: bio,
         specialty: specialty,
         whatsapp_number: whatsappNumber, // ✅ تحديث عمود الواتساب
         payment_details: paymentData     // ✅ تحديث عمود تفاصيل الدفع
-      })
+    };
+
+    // ✅ إضافة منطق تعديل الصورة (إضافتها للكائن فقط إذا تم إرسالها)
+    if (profileImage) {
+        updates.profile_image = profileImage;
+    }
+
+    // 4. التحديث في قاعدة البيانات (جدول teachers)
+    const { error } = await supabase
+      .from('teachers')
+      .update(updates)
       .eq('id', auth.teacherId);
 
     if (error) throw error;
