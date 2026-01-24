@@ -28,7 +28,7 @@ export default async (req, res) => {
   const form = formidable({
     uploadDir: uploadDir,
     keepExtensions: true,
-    maxFileSize: 10 * 1024 * 1024, // ✅ 2. زيادة الحجم إلى 10 ميجابايت
+    maxFileSize: 30 * 1024 * 1024, // ✅ 2. زيادة الحجم إلى 10 ميجابايت
     filename: (name, ext, part, form) => {
       // تسمية الملف: avatar_timestamp_random.ext
       return `avatar_${Date.now()}_${Math.floor(Math.random() * 1000)}${ext}`;
