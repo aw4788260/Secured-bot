@@ -28,15 +28,14 @@ export default async (req, res) => {
 
   try {
     // 2. جلب تفاصيل الكورس والمدرس
+    // ✅ تم التعديل: جلب payment_details بدلاً من الأعمدة القديمة المتفرقة
     const { data: course, error: courseError } = await supabase
       .from('courses')
       .select(`
         id, title, price, description, code,
         teacher:teachers (
             id, name, bio, specialty,
-            vodafone_cash_number,
-            instapay_number,
-            instapay_link
+            payment_details
         ),
         subjects (id, title, price, sort_order)
       `)
@@ -46,11 +45,28 @@ export default async (req, res) => {
     if (courseError || !course) return res.status(404).json({ error: 'Course not found' });
 
     // 3. تجهيز معلومات الدفع
+    // ✅ نستخرج البيانات من JSONB ونضع القيم الافتراضية
+    const rawDetails = course.teacher?.payment_details || {};
+
+    // نأخذ أول عنصر من المصفوفات لملء الحقول التي تتوقع قيمة واحدة (للحفاظ على توافق الواجهة)
+    const firstCash = (Array.isArray(rawDetails.cash_numbers) && rawDetails.cash_numbers.length > 0) 
+        ? rawDetails.cash_numbers[0] 
+        : '';
+        
+    const firstInstaNum = (Array.isArray(rawDetails.instapay_numbers) && rawDetails.instapay_numbers.length > 0) 
+        ? rawDetails.instapay_numbers[0] 
+        : '';
+
+    const firstInstaLink = (Array.isArray(rawDetails.instapay_links) && rawDetails.instapay_links.length > 0) 
+        ? rawDetails.instapay_links[0] 
+        : '';
+
     const paymentInfo = {
-        vodafone_cash_number: course.teacher?.vodafone_cash_number || '',
-        instapay_number: course.teacher?.instapay_number || '',
-        instapay_link: course.teacher?.instapay_link || '',
-        ownerName: course.teacher?.name || 'Admin'
+        vodafone_cash_number: firstCash, // Mapping for legacy UI support
+        instapay_number: firstInstaNum,
+        instapay_link: firstInstaLink,
+        ownerName: course.teacher?.name || 'Admin',
+        all_details: rawDetails // نرسل التفاصيل كاملة أيضاً
     };
 
     // 4. التحقق من الملكية (فقط إذا تم التعرف على المستخدم)
@@ -90,6 +106,7 @@ export default async (req, res) => {
     });
 
   } catch (err) {
+    console.error("Error in get-course-sales-details:", err);
     return res.status(500).json({ error: err.message });
   }
 };
