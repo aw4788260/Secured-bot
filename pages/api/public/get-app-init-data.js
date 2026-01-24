@@ -55,15 +55,19 @@ export default async (req, res) => {
                 .eq('id', user.teacher_profile_id)
                 .single();
              
-             if (teacherData) {
+             if (teacherData && teacherData.profile_image) {
                 profileImage = teacherData.profile_image;
+                // ✅ معالجة الرابط إذا كان اسم ملف فقط
+                if (!profileImage.startsWith('http')) {
+                    profileImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${profileImage}`;
+                }
              }
           }
 
           // ✅ "خداع التطبيق": توحيد الرتبة للمعلم والمشرف
           const appRole = (user.role === 'moderator' || user.role === 'teacher') ? 'teacher' : (user.role || 'student');
 
-          // ✅ إضافة البيانات الجديدة (بما فيها الصورة) للكائن المرسل للتطبيق
+          // ✅ إضافة البيانات الجديدة (بما فيها الصورة المعالجة) للكائن المرسل للتطبيق
           userData = {
               id: user.id,
               first_name: user.first_name,
