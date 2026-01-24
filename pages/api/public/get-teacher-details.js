@@ -5,10 +5,10 @@ export default async (req, res) => {
   if (!teacherId) return res.status(400).json({ error: 'Missing Id' });
 
   try {
-    // جلب بيانات المدرس (تم إضافة whatsapp_number)
+    // جلب بيانات المدرس (تم إضافة profile_image)
     const { data: teacher } = await supabase
       .from('teachers')
-      .select('id, name, bio, specialty, whatsapp_number')
+      .select('id, name, bio, specialty, whatsapp_number, profile_image') // ✅ تم إضافة الصورة هنا
       .eq('id', teacherId)
       .single();
 
@@ -21,7 +21,7 @@ export default async (req, res) => {
       .eq('teacher_id', teacherId);
 
     return res.status(200).json({
-      ...teacher,
+      ...teacher, // سيحتوي الآن على profile_image تلقائياً
       courses: courses || []
     });
   } catch (err) {
