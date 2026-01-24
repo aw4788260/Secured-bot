@@ -1,53 +1,63 @@
 import { supabase } from '../../../lib/supabaseClient';
 
 export default async (req, res) => {
-  const { teacherId, courseId } = req.query;
+  const { teacherId, courseId, subjectId } = req.query;
 
   try {
-    let targetTeacherId = teacherId;
-
-    // 1. إذا تم تحديد كورس، نجلب معرف المدرس (teacher_id) أولاً من جدول الكورسات
-    if (courseId && !targetTeacherId) {
-        const { data: course, error: courseError } = await supabase
-            .from('courses')
-            .select('teacher_id')
-            .eq('id', courseId)
-            .single();
-        
-        if (courseError) {
-            console.error("Error fetching course:", courseError);
-        } else if (course) {
-            targetTeacherId = course.teacher_id;
-        }
-    }
-
-    // إعداد البنية الافتراضية للرد
+    // القيمة الافتراضية
     let paymentData = {
         cash_numbers: [],
         instapay_numbers: [],
         instapay_links: []
     };
 
-    // إذا لم نجد مدرس، نعود بمصفوفات فارغة
-    if (!targetTeacherId) {
-        return res.status(200).json(paymentData);
-    }
+    let rawDetails = null;
 
-    // 2. نجلب بيانات الدفع من جدول المدرسين مباشرة باستخدام معرف المدرس
-    const { data: teacher, error: teacherError } = await supabase
-        .from('teachers')
-        .select('payment_details')
-        .eq('id', targetTeacherId)
-        .single();
+    // 1. ✅ إذا تم تحديد مادة (Subject)
+    // نبحث عن المادة -> ومنها للكورس -> ومنه للمدرس -> ومنه لتفاصيل الدفع
+    if (subjectId) {
+        const { data: subject } = await supabase
+            .from('subjects')
+            .select(`
+                courses (
+                    teachers ( payment_details )
+                )
+            `)
+            .eq('id', subjectId)
+            .single();
+
+        // استخراج البيانات من الهيكل المتداخل
+        if (subject?.courses?.teachers?.payment_details) {
+            rawDetails = subject.courses.teachers.payment_details;
+        }
+    }
+    // 2. ✅ إذا تم تحديد كورس (Course)
+    // نبحث عن الكورس -> ومنه للمدرس -> ومنه لتفاصيل الدفع
+    else if (courseId) {
+        const { data: course } = await supabase
+            .from('courses')
+            .select('teachers ( payment_details )')
+            .eq('id', courseId)
+            .single();
         
-    if (teacherError) {
-        console.error("Error fetching teacher:", teacherError);
-        // في حال حدوث خطأ في جلب المدرس، سنكمل وسيعود الرد فارغاً بدلاً من ضرب خطأ 500
+        if (course?.teachers?.payment_details) {
+            rawDetails = course.teachers.payment_details;
+        }
+    } 
+    // 3. ✅ إذا تم تحديد مدرس مباشرة (Teacher)
+    else if (teacherId) {
+        const { data: teacher } = await supabase
+            .from('teachers')
+            .select('payment_details')
+            .eq('id', teacherId)
+            .single();
+            
+        if (teacher?.payment_details) {
+            rawDetails = teacher.payment_details;
+        }
     }
 
-    // 3. تنسيق البيانات (مع التعامل مع القيم الفارغة)
-    const rawDetails = teacher?.payment_details;
-
+    // تنسيق البيانات للتأكد من أنها مصفوفات دائمًا لتجنب الأخطاء في التطبيق
     if (rawDetails) {
         paymentData = {
             cash_numbers: Array.isArray(rawDetails.cash_numbers) ? rawDetails.cash_numbers : [],
