@@ -49,11 +49,10 @@ export default async (req, res) => {
       }
 
       // =========================================================================
-      // ✅ [إضافة جديدة]: منح المدرس صلاحية الوصول للكورس فور إنشائه
+      // ✅ 1. منح المدرس صلاحية الوصول للكورس فور إنشائه
       // =========================================================================
       if (type === 'courses' && newItem) {
           // نستخدم auth.userId لجلب معرف المستخدم الخاص بالمدرس
-          // ملاحظة: يجب التأكد أن verifyTeacher يعيد userId ضمن كائن auth
           const userIdToGrant = auth.userId || auth.id; 
 
           if (userIdToGrant) {
@@ -61,6 +60,36 @@ export default async (req, res) => {
                   user_id: userIdToGrant,
                   course_id: newItem.id
               }, { onConflict: 'user_id, course_id' });
+          }
+
+          // =========================================================================
+          // ✅ 2. [إضافة جديدة]: منح الصلاحية للمشرفين المساعدين (فريق العمل)
+          // =========================================================================
+          try {
+            // أ. جلب قائمة المساعدين المرتبطين بهذا المعلم
+            const { data: teamMembers } = await supabase
+                .from('team_members')
+                .select('user_id')
+                .eq('teacher_id', auth.teacherId);
+
+            if (teamMembers && teamMembers.length > 0) {
+                // ب. تجهيز قائمة الصلاحيات للإضافة
+                const teamAccessList = teamMembers.map(member => ({
+                    user_id: member.user_id,
+                    course_id: newItem.id
+                }));
+
+                // ج. إضافة الصلاحيات دفعة واحدة
+                await supabase.from('user_course_access').upsert(
+                    teamAccessList, 
+                    { onConflict: 'user_id, course_id' }
+                );
+                
+                console.log(`✅ Granted access to ${teamMembers.length} team members for course ${newItem.id}`);
+            }
+          } catch (teamError) {
+              console.error("Error granting access to team members:", teamError);
+              // لا نوقف العملية لأن الكورس تم إنشاؤه بالفعل، فقط نسجل الخطأ
           }
       }
       // =========================================================================
