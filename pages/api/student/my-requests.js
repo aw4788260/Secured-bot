@@ -15,7 +15,8 @@ export default async (req, res) => {
       // جلب الطلبات الخاصة بهذا المستخدم
       const { data, error } = await supabase
           .from('subscription_requests')
-          .select('id, created_at, status, course_title, total_price, rejection_reason')
+          // ✅ تم إضافة user_note هنا ليتم جلبها مع البيانات
+          .select('id, created_at, status, course_title, total_price, rejection_reason, user_note')
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
