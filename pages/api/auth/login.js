@@ -8,10 +8,10 @@ export default async (req, res) => {
   const { identifier, password, deviceId } = req.body;
 
   try {
-    // 1. البحث عن المستخدم (باليوزر نيم أو رقم الهاتف)
+    // 1. البحث عن المستخدم (تم تعديل الاستعلام ليشمل role)
     const { data: user } = await supabase
       .from('users')
-      .select('id, password, first_name, username, is_admin, is_blocked')
+      .select('id, password, first_name, username, is_admin, is_blocked, role') // ✅ تمت إضافة role هنا
       .or(`username.eq.${identifier},phone.eq.${identifier}`)
       .maybeSingle();
 
@@ -53,7 +53,6 @@ export default async (req, res) => {
     }
 
     // 4. إنشاء التوكن (JWT)
-    // نضع بداخله المعرف والبصمة للتأكد لاحقاً من التطابق
     const token = jwt.sign(
         { 
             userId: user.id, 
@@ -65,23 +64,23 @@ export default async (req, res) => {
     );
 
     // 5. حفظ التوكن في العمود الجديد (jwt_token)
-    // هذا يسمح لنا بطرد المستخدم لاحقاً عبر حذف هذا الحقل من الداتابيز
     const { error: updateError } = await supabase
         .from('users')
-        .update({ jwt_token: token }) // ✅ هنا التعديل للعمود الجديد
+        .update({ jwt_token: token })
         .eq('id', user.id);
 
     if (updateError) throw updateError;
 
-    // 6. الرد مع التوكن
+    // 6. الرد مع التوكن وبيانات المستخدم (شاملة الرتبة)
     return res.status(200).json({
       success: true,
-      token, // ✅ التوكن الذي سيحفظه التطبيق ويرسله في الهيدر لاحقاً
+      token,
       user: {
         id: user.id,
         firstName: user.first_name,
         username: user.username,
-        isAdmin: user.is_admin
+        isAdmin: user.is_admin,
+        role: user.role // ✅ تمت إضافة هذا السطر ليتعرف التطبيق على المعلم فوراً
       }
     });
 
