@@ -39,7 +39,7 @@ export default async (req, res) => {
     // 4. دمج البيانات وإرسالها مع تحويل الأسماء للفرونت إند
     const fullExamData = {
         title: exam.title,
-        duration: exam.duration_minutes,
+        duration_minutes: exam.duration_minutes, // ✅ إرسال الاسم كما هو
         start_time: exam.start_time,
         end_time: exam.end_time,
         
