@@ -18,7 +18,7 @@ export default async (req, res) => {
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
   // إعداد مجلد الرفع على VPS
-  const uploadDir = '/var/www/uploads/avatars'; 
+  const uploadDir = '/var/www/wwwroot/secured-bot-prod/storage/avatars'; 
   
   // التأكد من وجود المجلد
   if (!fs.existsSync(uploadDir)) {
