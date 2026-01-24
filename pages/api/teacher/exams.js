@@ -121,6 +121,10 @@ export default async (req, res) => {
 
             if (updateErr) throw updateErr;
 
+            // ✅ التعديل الجديد: حذف جميع محاولات الطلاب لهذا الامتحان لضمان التوافق مع التعديلات
+            // هذا سيؤدي أيضاً إلى حذف الإجابات المرتبطة بالمحاولات إذا كانت العلاقة cascade
+            await supabase.from('user_attempts').delete().eq('exam_id', targetExamId);
+
             // 2. حذف الأسئلة القديمة (سيتم حذف الخيارات تلقائياً بسبب Cascade)
             await supabase.from('questions').delete().eq('exam_id', targetExamId);
         }
