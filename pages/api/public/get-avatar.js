@@ -8,8 +8,9 @@ export default async (req, res) => {
     return res.status(400).json({ error: 'File name is required' });
   }
 
-  // ✅ تحديد المسار الصحيح للمجلد
-  const storagePath = '/www/wwwroot/secured-bot-prod/storage/avatars';
+  // ✅ استخدام process.cwd() لضمان الوصول للمسار الصحيح ديناميكياً
+  // هذا يضمن أن المسار هو: /www/wwwroot/secured-bot-prod/storage/avatars
+  const storagePath = path.join(process.cwd(), 'storage', 'avatars');
   
   // حماية من محاولات الوصول لملفات النظام (Directory Traversal)
   const safeFileName = path.basename(file);
@@ -29,9 +30,10 @@ export default async (req, res) => {
 
   // ✅ إرسال الهيدرز المناسبة
   res.setHeader('Content-Type', contentType);
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // كاش لمدة سنة للسرعة
+  // كاش لمدة سنة للسرعة (لأن اسم الملف يتغير مع كل تحديث للصورة فلا داعي للخوف من الكاش القديم)
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); 
 
-  // ✅ قراءة الملف وإرساله كـ Stream (نفس منطق الامتحانات)
+  // ✅ قراءة الملف وإرساله كـ Stream
   const fileStream = fs.createReadStream(filePath);
   fileStream.pipe(res);
 };
