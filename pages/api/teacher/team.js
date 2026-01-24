@@ -1,19 +1,53 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { verifyTeacher } from '../../../lib/teacherAuth';
+import { checkUserAccess } from '../../../lib/authHelper'; // سنستخدم هذا فقط للتحقق من صحة التوكن والجهاز
 
 export default async (req, res) => {
-  const auth = await verifyTeacher(req);
-  if (auth.error) return res.status(auth.status).json({ error: auth.error });
-
-  const teacherId = auth.teacherId;
-
   // =================================================================
-  // GET: البحث عن طلاب أو عرض الفريق الحالي
+  // 🔒 التحقق الأمني الصارم (Manual Strict Check)
   // =================================================================
-  if (req.method === 'GET') {
-    const { mode, query } = req.query;
+  
+  // 1. التحقق من صحة التوكن وبصمة الجهاز
+  const isAuthorized = await checkUserAccess(req);
+  if (!isAuthorized) {
+    return res.status(401).json({ error: 'Unauthorized Device/Token' });
+  }
 
-    try {
+  const userId = req.headers['x-user-id']; // يتم حقنه بواسطة checkUserAccess
+
+  try {
+    // 2. جلب بيانات المستخدم مباشرة من قاعدة البيانات
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('role, teacher_profile_id, is_blocked')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.is_blocked) {
+      return res.status(403).json({ error: 'Account Blocked' });
+    }
+
+    // 3. 🛑 الشرط الحاسم: السماح فقط للمعلم (role === 'teacher')
+    // يتم رفض 'moderator' أو أي رتبة أخرى هنا
+    if (user.role !== 'teacher') {
+      return res.status(403).json({ error: 'Access Denied: Only the main teacher can manage the team.' });
+    }
+
+    if (!user.teacher_profile_id) {
+      return res.status(400).json({ error: 'No teacher profile linked to this account' });
+    }
+
+    const teacherId = user.teacher_profile_id;
+
+    // =================================================================
+    // GET: البحث عن طلاب أو عرض الفريق الحالي
+    // =================================================================
+    if (req.method === 'GET') {
+      const { mode, query } = req.query;
+
       // 1. عرض المشرفين الحاليين التابعين لهذا المعلم
       if (mode === 'list') {
         const { data: team, error } = await supabase
@@ -40,18 +74,14 @@ export default async (req, res) => {
         if (error) throw error;
         return res.status(200).json(students);
       }
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
     }
-  }
 
-  // =================================================================
-  // POST: ترقية طالب أو حذف مشرف
-  // =================================================================
-  if (req.method === 'POST') {
-    const { action, userId } = req.body;
+    // =================================================================
+    // POST: ترقية طالب أو حذف مشرف
+    // =================================================================
+    if (req.method === 'POST') {
+      const { action, userId: targetUserId } = req.body; // تغيير الاسم لتجنب التعارض
 
-    try {
       // 🅰️ ترقية طالب إلى مشرف + منح صلاحيات الكورسات
       if (action === 'promote') {
         // 1. تحديث دور المستخدم وربطه بالمعلم
@@ -61,7 +91,7 @@ export default async (req, res) => {
             role: 'moderator', 
             teacher_profile_id: teacherId 
           })
-          .eq('id', userId);
+          .eq('id', targetUserId);
 
         if (updateError) throw updateError;
 
@@ -74,7 +104,7 @@ export default async (req, res) => {
         // 3. منح الصلاحيات تلقائياً لكل الكورسات
         if (myCourses && myCourses.length > 0) {
           const accessRows = myCourses.map(c => ({
-            user_id: userId,
+            user_id: targetUserId,
             course_id: c.id
           }));
 
@@ -91,7 +121,7 @@ export default async (req, res) => {
         const { data: userCheck } = await supabase
             .from('users')
             .select('id')
-            .eq('id', userId)
+            .eq('id', targetUserId)
             .eq('teacher_profile_id', teacherId)
             .single();
         
@@ -110,7 +140,7 @@ export default async (req, res) => {
           await supabase
             .from('user_course_access')
             .delete()
-            .eq('user_id', userId)
+            .eq('user_id', targetUserId)
             .in('course_id', courseIds);
         }
 
@@ -121,16 +151,16 @@ export default async (req, res) => {
             role: 'student', 
             teacher_profile_id: null 
           })
-          .eq('id', userId);
+          .eq('id', targetUserId);
 
         return res.status(200).json({ success: true, message: 'Moderator removed and access revoked' });
       }
-
-    } catch (err) {
-      console.error("Team API Error:", err);
-      return res.status(500).json({ error: err.message });
     }
-  }
 
-  return res.status(405).json({ message: 'Method Not Allowed' });
+    return res.status(405).json({ message: 'Method Not Allowed' });
+
+  } catch (err) {
+    console.error("Team API Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
 };
