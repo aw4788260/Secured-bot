@@ -5,7 +5,7 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   // 1. التحقق من الصلاحية
-  // auth يحتوي على { teacherId, userId, role, ... }
+  // auth: { userId (المستخدم الفعلي), teacherId (بروفايل المعلم), role, ... }
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
@@ -23,7 +23,7 @@ export default async (req, res) => {
         insertData.teacher_id = auth.teacherId;
         insertData.sort_order = 999; // يضاف في النهاية بشكل افتراضي
 
-        // ✅ توليد كود رقمي عشوائي للكورس
+        // ✅ توليد كود رقمي عشوائي مكون من 6 أرقام للكورس
         if (!insertData.code) {
             insertData.code = Math.floor(100000 + Math.random() * 900000);
         }
@@ -48,32 +48,33 @@ export default async (req, res) => {
       }
 
       // =========================================================================
-      // ✅ [تعديل شامل]: منح الصلاحيات (للمنشئ + المعلم المالك + المشرفين)
+      // ✅ [تعديل شامل]: منح الصلاحيات (للمنشئ + المعلم المالك + جميع المشرفين)
       // =========================================================================
       if (type === 'courses' && newItem) {
           try {
             const accessList = [];
-            // معرف المستخدم الحالي (الذي قام بالإنشاء)
+            
+            // 1️⃣ إضافة المنشئ الحالي (سواء كان المعلم أو المشرف)
+            // نأخذ الـ ID من نتيجة التحقق (verifyTeacher)
             const currentUserId = auth.userId || auth.id;
-
-            // 1. إضافة المنشئ الحالي فوراً
             if (currentUserId) {
                 accessList.push({ user_id: currentUserId, course_id: newItem.id });
             }
 
-            // 2. إضافة المعلم الرئيسي (المالك) إذا لم يكن هو المنشئ
-            // نحتاج لجلب user_id الخاص بحساب المعلم من جدول teachers
+            // 2️⃣ إضافة المعلم الرئيسي (المالك) لضمان عدم فقدانه الصلاحية إذا أنشأ الكورس مشرف
+            // نستعلم عن user_id الخاص بالمعلم من جدول teachers باستخدام teacherId
             const { data: teacherData } = await supabase
                 .from('teachers')
                 .select('user_id')
                 .eq('id', auth.teacherId)
                 .single();
 
+            // إذا وجدنا المعلم وكان مختلفاً عن الشخص الحالي (المنشئ)، نضيفه
             if (teacherData && teacherData.user_id && teacherData.user_id !== currentUserId) {
                 accessList.push({ user_id: teacherData.user_id, course_id: newItem.id });
             }
 
-            // 3. إضافة باقي فريق العمل (المشرفين المساعدين)
+            // 3️⃣ إضافة باقي فريق العمل (المشرفين المساعدين)
             const { data: teamMembers } = await supabase
                 .from('team_members')
                 .select('user_id')
@@ -81,7 +82,7 @@ export default async (req, res) => {
 
             if (teamMembers && teamMembers.length > 0) {
                 teamMembers.forEach(member => {
-                    // تجنب التكرار إذا كان العضو هو نفسه المنشئ أو المعلم (الذي تم إضافته سابقاً)
+                    // نتأكد من عدم تكرار الإضافة (إذا كان المشرف هو المنشئ مثلاً)
                     const isAlreadyAdded = accessList.some(item => item.user_id === member.user_id);
                     if (!isAlreadyAdded) {
                         accessList.push({ user_id: member.user_id, course_id: newItem.id });
@@ -89,18 +90,18 @@ export default async (req, res) => {
                 });
             }
 
-            // 4. تنفيذ الإضافة الجماعية للصلاحيات
+            // 4️⃣ تنفيذ الإضافة الجماعية للصلاحيات (Upsert)
             if (accessList.length > 0) {
                 await supabase.from('user_course_access').upsert(
                     accessList, 
                     { onConflict: 'user_id, course_id' }
                 );
-                console.log(`✅ Permissions granted to ${accessList.length} users (Creator, Teacher, Team).`);
+                console.log(`✅ Permissions granted to ${accessList.length} users for course ${newItem.id}`);
             }
 
           } catch (permError) {
               console.error("Error granting permissions:", permError);
-              // لا نوقف العملية لأن الكورس تم إنشاؤه بنجاح
+              // لا نوقف العملية لأن الكورس تم إنشاؤه بنجاح، فقط نسجل الخطأ
           }
       }
       // =========================================================================
