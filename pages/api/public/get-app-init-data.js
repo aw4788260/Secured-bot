@@ -45,13 +45,19 @@ export default async (req, res) => {
        const incomingToken = authHeader.split(' ')[1];
        
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
+          
+          // ✅ التعديل هنا: "خداع التطبيق"
+          // سواء كان المستخدم teacher أو moderator، نرسل الرتبة للتطبيق على أنها 'teacher'
+          // أما إذا كان طالباً أو غير ذلك، نرسل الرتبة الأصلية
+          const appRole = (user.role === 'moderator' || user.role === 'teacher') ? 'teacher' : (user.role || 'student');
+
           // ✅ التحديث هنا: إضافة البيانات الجديدة للكائن المرسل للتطبيق
           userData = {
               id: user.id,
               first_name: user.first_name,
               username: user.username,
               phone: user.phone,
-              role: user.role || 'student', // الافتراضي طالب
+              role: appRole, // ✅ نرسل الرتبة المعدلة (teacher) ليفتح التطبيق لوحة التحكم
               teacher_profile_id: user.teacher_profile_id
           };
           isLoggedIn = true;
@@ -161,7 +167,6 @@ export default async (req, res) => {
     }
 
     // 3. جلب بيانات المتجر (عام للجميع)
-    // ملاحظة: يمكنك هنا لاحقاً استثناء كورسات المدرس نفسه من الظهور في المتجر له إذا أردت
     const { data: courses } = await supabase
       .from('view_course_details')
       .select('*')
