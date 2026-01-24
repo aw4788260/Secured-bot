@@ -9,7 +9,7 @@ export default async (req, res) => {
 
   try {
     // 1. البحث عن المستخدم
-    // ✅ تمت إضافة teacher_profile_id للاستعلام لنتمكن من جلب الصورة لاحقاً
+    // ✅ جلب teacher_profile_id للوصول لبيانات المدرس
     const { data: user } = await supabase
       .from('users')
       .select('id, password, first_name, username, is_admin, is_blocked, role, teacher_profile_id') 
@@ -38,7 +38,7 @@ export default async (req, res) => {
       .maybeSingle();
 
     if (deviceData) {
-      // إذا كان مسجلاً، يجب أن يتطابق الجهاز
+      // إذا كان الجهاز مسجلاً مسبقاً، يجب أن يتطابق
       if (deviceData.fingerprint !== deviceId) {
         return res.status(403).json({ 
           success: false, 
@@ -53,7 +53,7 @@ export default async (req, res) => {
       });
     }
 
-    // 4. ✅ خطوة جديدة: جلب صورة المدرس من جدول teachers
+    // 4. ✅ جلب صورة المدرس ومعالجة الرابط
     let profileImage = null;
     if (user.role === 'teacher' && user.teacher_profile_id) {
         const { data: teacherData } = await supabase
@@ -62,7 +62,14 @@ export default async (req, res) => {
             .eq('id', user.teacher_profile_id)
             .single();
         
-        if (teacherData) profileImage = teacherData.profile_image;
+        if (teacherData && teacherData.profile_image) {
+            profileImage = teacherData.profile_image;
+            
+            // ✅ التعديل الهام: إذا كان مخزناً كاسم ملف فقط، نقوم بتحويله لرابط كامل
+            if (!profileImage.startsWith('http')) {
+                profileImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${profileImage}`;
+            }
+        }
     }
 
     // 5. إنشاء التوكن (JWT)
@@ -73,10 +80,10 @@ export default async (req, res) => {
             deviceId: deviceId 
         },
         process.env.JWT_SECRET,
-        { expiresIn: '365d' } // صلاحية سنة كاملة
+        { expiresIn: '365d' } // صلاحية سنة
     );
 
-    // حفظ التوكن في العمود الجديد
+    // حفظ التوكن في قاعدة البيانات
     const { error: updateError } = await supabase
         .from('users')
         .update({ jwt_token: token })
@@ -84,7 +91,7 @@ export default async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // 6. الرد مع التوكن والبيانات (شاملة الصورة والرتبة)
+    // 6. الرد مع البيانات (شاملة رابط الصورة الكامل)
     return res.status(200).json({
       success: true,
       token,
@@ -94,7 +101,7 @@ export default async (req, res) => {
         username: user.username,
         isAdmin: user.is_admin,
         role: user.role,
-        profileImage: profileImage // ✅ تم إرجاع الصورة هنا
+        profileImage: profileImage // ✅ يصل للتطبيق كرابط كامل جاهز للعرض
       }
     });
 
