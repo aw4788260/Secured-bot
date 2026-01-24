@@ -46,29 +46,40 @@ export default async (req, res) => {
           action = 'update';
       }
 
-      const { title, subjectId, duration, questions, start_time, end_time, examId } = examData;
+      // ✅ استقبال إعدادات العشوائية مع باقي البيانات
+      const { 
+        title, 
+        subjectId, 
+        duration, 
+        questions, 
+        start_time, 
+        end_time, 
+        examId,
+        randomizeQuestions, // جديد
+        randomizeOptions    // جديد
+      } = examData;
 
       try {
         let targetExamId = examId;
 
         // =================================================
-        // الحالة 3 (الجديدة): حذف امتحان (Delete)
+        // الحالة 3: حذف امتحان (Delete)
         // =================================================
         if (action === 'delete') {
             if (!examId) return res.status(400).json({ error: 'Exam ID required for delete' });
 
-            // 1. حذف محاولات الطلاب المرتبطة بالامتحان أولاً (Foreign Key Constraint)
+            // 1. حذف محاولات الطلاب
             await supabase.from('user_attempts').delete().eq('exam_id', examId);
             
-            // 2. حذف الأسئلة (سيتم حذف الخيارات تلقائياً بفضل Cascade في قاعدة البيانات)
+            // 2. حذف الأسئلة
             await supabase.from('questions').delete().eq('exam_id', examId);
 
-            // 3. حذف الامتحان نفسه
+            // 3. حذف الامتحان
             const { error: deleteErr } = await supabase
                 .from('exams')
                 .delete()
                 .eq('id', examId)
-                .eq('teacher_id', auth.teacherId); // أمان: المعلم يحذف امتحاناته فقط
+                .eq('teacher_id', auth.teacherId); 
 
             if (deleteErr) throw deleteErr;
 
@@ -89,12 +100,14 @@ export default async (req, res) => {
                 subject_id: subjectId,
                 duration_minutes: duration,
                 requires_student_name: true,
-                randomize_questions: true,
                 sort_order: 999,
                 teacher_id: auth.teacherId,
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
-                is_active: true 
+                is_active: true,
+                // ✅ حفظ إعدادات العشوائية
+                randomize_questions: randomizeQuestions || false,
+                randomize_options: randomizeOptions || false
             }).select().single();
 
             if (examErr) throw examErr;
@@ -109,28 +122,28 @@ export default async (req, res) => {
             const adjustedStartTime = toEgyptUTC(start_time);
             const adjustedEndTime = toEgyptUTC(end_time);
 
-            // 1. تحديث بيانات الامتحان الأساسية
+            // 1. تحديث بيانات الامتحان
             const { error: updateErr } = await supabase.from('exams').update({
                 title,
                 duration_minutes: duration,
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
+                // ✅ تحديث إعدادات العشوائية
+                randomize_questions: randomizeQuestions || false,
+                randomize_options: randomizeOptions || false
             })
             .eq('id', targetExamId)
-            .eq('teacher_id', auth.teacherId); // أمان: التأكد أن المعلم هو صاحب الامتحان
+            .eq('teacher_id', auth.teacherId); 
 
             if (updateErr) throw updateErr;
 
-            // ✅ التعديل الجديد: حذف جميع محاولات الطلاب لهذا الامتحان لضمان التوافق مع التعديلات
-            // هذا سيؤدي أيضاً إلى حذف الإجابات المرتبطة بالمحاولات إذا كانت العلاقة cascade
+            // ✅ حذف المحاولات والأسئلة القديمة لضمان التوافق
             await supabase.from('user_attempts').delete().eq('exam_id', targetExamId);
-
-            // 2. حذف الأسئلة القديمة (سيتم حذف الخيارات تلقائياً بسبب Cascade)
             await supabase.from('questions').delete().eq('exam_id', targetExamId);
         }
 
         // =================================================
-        // إدخال الأسئلة (مشترك للإنشاء والتحديث فقط)
+        // إدخال الأسئلة (مشترك للإنشاء والتحديث)
         // =================================================
         if (action !== 'delete' && questions && questions.length > 0) {
             for (const [index, q] of questions.entries()) {
