@@ -46,19 +46,32 @@ export default async (req, res) => {
        
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
           
-          // ✅ التعديل هنا: "خداع التطبيق"
-          // سواء كان المستخدم teacher أو moderator، نرسل الرتبة للتطبيق على أنها 'teacher'
-          // أما إذا كان طالباً أو غير ذلك، نرسل الرتبة الأصلية
+          // ✅ منطق جديد: جلب صورة المدرس إذا كان الحساب مرتبطاً بملف مدرس
+          let profileImage = null;
+          if (user.teacher_profile_id) {
+             const { data: teacherData } = await supabase
+                .from('teachers')
+                .select('profile_image')
+                .eq('id', user.teacher_profile_id)
+                .single();
+             
+             if (teacherData) {
+                profileImage = teacherData.profile_image;
+             }
+          }
+
+          // ✅ "خداع التطبيق": توحيد الرتبة للمعلم والمشرف
           const appRole = (user.role === 'moderator' || user.role === 'teacher') ? 'teacher' : (user.role || 'student');
 
-          // ✅ التحديث هنا: إضافة البيانات الجديدة للكائن المرسل للتطبيق
+          // ✅ إضافة البيانات الجديدة (بما فيها الصورة) للكائن المرسل للتطبيق
           userData = {
               id: user.id,
               first_name: user.first_name,
               username: user.username,
               phone: user.phone,
-              role: appRole, // ✅ نرسل الرتبة المعدلة (teacher) ليفتح التطبيق لوحة التحكم
-              teacher_profile_id: user.teacher_profile_id
+              role: appRole, 
+              teacher_profile_id: user.teacher_profile_id,
+              profile_image: profileImage // ✅ تم إضافة الصورة هنا
           };
           isLoggedIn = true;
 
@@ -175,7 +188,7 @@ export default async (req, res) => {
     return res.status(200).json({
       success: true,
       isLoggedIn: isLoggedIn,
-      user: userData,        
+      user: userData,         
       myAccess: userAccess, 
       library: libraryData, 
       courses: courses || [] 
