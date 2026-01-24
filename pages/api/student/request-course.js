@@ -1,5 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
+import { checkUserAccess } from '../../../lib/authHelper';
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
@@ -70,7 +70,7 @@ export default async (req, res) => {
 
       // استقبال البيانات
       const selectedItemsStr = getValue('selectedItems');
-      const userNote = getValue('user_note');
+      const userNote = getValue('user_note'); // استلام الملاحظة
       const receiptFile = getFile('receiptFile');
       
       if (!selectedItemsStr) return res.status(400).json({ error: 'لا توجد عناصر مختارة' });
@@ -101,14 +101,12 @@ export default async (req, res) => {
           });
       });
 
-      // تنسيق العنوان النهائي
-      let finalTitle = titleList.join('\n');
+      // تنسيق العنوان النهائي (أسماء الكورسات فقط)
+      const finalTitle = titleList.join('\n');
       
-      if (userNote && userNote.trim() !== '') {
-          finalTitle += `\n\n📝 ملاحظة الطالب:\n${userNote}`;
-      }
+      // ملاحظة: تم إزالة الكود الذي كان يدمج الملاحظة مع العنوان هنا
 
-      // الحفظ في القاعدة باستخدام بيانات المستخدم التي جلبناها بالأعلى
+      // الحفظ في القاعدة
       const { error: dbError } = await supabase.from('subscription_requests').insert({
         user_id: user.id,
         user_name: user.first_name,
@@ -118,6 +116,9 @@ export default async (req, res) => {
         course_title: finalTitle,
         total_price: totalPrice,
         
+        // ✅ تخزين الملاحظة في العمود الجديد
+        user_note: userNote,
+
         payment_file_path: fileName,
         status: 'pending',
         requested_data: requestedData
