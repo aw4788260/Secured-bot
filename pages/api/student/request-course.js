@@ -44,7 +44,7 @@ export default async (req, res) => {
   const form = formidable({
     uploadDir,
     keepExtensions: true,
-    maxFileSize: 10 * 1024 * 1024,
+    maxFileSize: 30 * 1024 * 1024,
     filename: (name, ext, part) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
       return `receipt_${uniqueSuffix}${ext}`;
