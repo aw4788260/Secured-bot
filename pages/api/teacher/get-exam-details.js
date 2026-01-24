@@ -2,7 +2,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
-  // 1. التحقق من أن الطالب هو معلم
+  // 1. التحقق من صلاحية المعلم
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
@@ -11,7 +11,7 @@ export default async (req, res) => {
   if (!examId) return res.status(400).json({ error: 'Missing Exam ID' });
 
   try {
-    // 2. جلب بيانات الامتحان الأساسية
+    // 2. جلب بيانات الامتحان الأساسية بما فيها إعدادات العشوائية
     const { data: exam, error: examError } = await supabase
       .from('exams')
       .select('*')
@@ -23,7 +23,7 @@ export default async (req, res) => {
         return res.status(404).json({ error: 'Exam not found or you do not have permission' });
     }
 
-    // 3. جلب الأسئلة مع الخيارات (بما في ذلك is_correct)
+    // 3. جلب الأسئلة مع الخيارات
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .select(`
@@ -36,9 +36,17 @@ export default async (req, res) => {
 
     if (qError) throw qError;
 
-    // 4. دمج البيانات وإرسالها
+    // 4. دمج البيانات وإرسالها مع تحويل الأسماء للفرونت إند
     const fullExamData = {
-        ...exam,
+        title: exam.title,
+        duration: exam.duration_minutes,
+        start_time: exam.start_time,
+        end_time: exam.end_time,
+        
+        // ✅ إرسال إعدادات العشوائية التي تمت إضافتها
+        randomizeQuestions: exam.randomize_questions, 
+        randomizeOptions: exam.randomize_options,
+        
         questions: questions
     };
 
