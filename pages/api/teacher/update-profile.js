@@ -14,7 +14,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
-  // 2. استقبال البيانات (البيانات الشخصية + الواتساب + قوائم الدفع + الصورة)
+  // 2. استقبال البيانات (البيانات الشخصية + الواتساب + قوائم الدفع + الصورة + بيانات الحساب)
   const { 
     name, 
     bio, 
@@ -23,19 +23,28 @@ export default async (req, res) => {
     cashNumbersList, 
     instapayNumbersList, 
     instapayLinksList,
-    profileImage // ✅ الصورة الجديدة
+    profileImage, // ✅ الصورة الجديدة
+    username,     // ✅ اسم المستخدم (للتحقق والتحديث)
+    phone         // ✅ رقم الهاتف (للتحديث)
   } = req.body;
 
   try {
-    // 3. تجهيز هيكل بيانات الدفع (JSON)
+    // ✅ 3. التحقق من صحة اسم المستخدم (حروف إنجليزية وأرقام فقط بدون مسافات)
+    if (username) {
+        const usernameRegex = /^[a-zA-Z0-9]+$/;
+        if (!usernameRegex.test(username)) {
+            return res.status(400).json({ error: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط (بدون مسافات أو رموز)' });
+        }
+    }
+
+    // 4. تحديث جدول المدرسين (teachers) - البيانات المهنية والدفع والصورة
     const paymentData = {
       cash_numbers: cashNumbersList || [],        // قائمة أرقام الكاش
       instapay_numbers: instapayNumbersList || [], // قائمة أرقام إنستا باي
       instapay_links: instapayLinksList || []      // قائمة لينكات/يوزرات إنستا باي
     };
 
-    // تجهيز كائن التحديث
-    const updates = {
+    const teacherUpdates = {
         name: name,
         bio: bio,
         specialty: specialty,
@@ -43,18 +52,37 @@ export default async (req, res) => {
         payment_details: paymentData     // ✅ تحديث عمود تفاصيل الدفع
     };
 
-    // ✅ إضافة منطق تعديل الصورة (إضافتها للكائن فقط إذا تم إرسالها)
+    // ✅ إضافة منطق تعديل الصورة
     if (profileImage) {
-        updates.profile_image = profileImage;
+        teacherUpdates.profile_image = profileImage;
     }
 
-    // 4. التحديث في قاعدة البيانات (جدول teachers)
-    const { error } = await supabase
+    const { error: teacherError } = await supabase
       .from('teachers')
-      .update(updates)
+      .update(teacherUpdates)
       .eq('id', auth.teacherId);
 
-    if (error) throw error;
+    if (teacherError) throw teacherError;
+
+    // 5. تحديث جدول المستخدمين (users) - اسم المستخدم ورقم الهاتف فقط
+    const userUpdates = {};
+    if (username) userUpdates.username = username;
+    if (phone) userUpdates.phone = phone;
+
+    if (Object.keys(userUpdates).length > 0) {
+        const { error: userError } = await supabase
+            .from('users')
+            .update(userUpdates)
+            .eq('id', auth.userId);
+        
+        if (userError) {
+            // معالجة خطأ التكرار (اسم المستخدم أو الهاتف موجود مسبقاً)
+            if (userError.code === '23505') { 
+                return res.status(400).json({ error: 'اسم المستخدم أو رقم الهاتف مستخدم بالفعل.' });
+            }
+            throw userError;
+        }
+    }
 
     return res.status(200).json({ success: true, message: 'Profile updated successfully' });
 
