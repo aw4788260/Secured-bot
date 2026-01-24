@@ -4,6 +4,14 @@ import { checkUserAccess } from '../../../lib/authHelper';
 import fs from 'fs';
 import path from 'path';
 
+// ✅ التعديل الهام: تعطيل حد الحجم الافتراضي (4MB) والسماح بالتعامل مع Streams خارجية
+export const config = {
+  api: {
+    responseLimit: false, // يسمح بإرسال ملفات أكبر من 4 ميجابايت
+    externalResolver: true, // يمنع تحذيرات false-positive عند استخدام streams خارجية
+  },
+};
+
 export default async (req, res) => {
   const apiName = '[API: get-image]';
   const { file_id } = req.query;
