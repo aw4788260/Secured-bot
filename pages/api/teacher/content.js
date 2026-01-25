@@ -11,11 +11,37 @@ export default async (req, res) => {
 
   const { action, type, data } = req.body; 
 
+  // ============================================================
+  // 🛡️ دالة مساعدة للتحقق من ملكية الكورس
+  // هذه الدالة تضمن أن المعلم لا يقوم بتعديل محتوى داخل كورس لا يملكه
+  // ============================================================
+  const checkCourseOwnership = async (courseId) => {
+      if (!courseId) return false;
+      const { data: course } = await supabase
+          .from('courses')
+          .select('teacher_id')
+          .eq('id', courseId)
+          .single();
+      // السماح فقط إذا كان الكورس موجوداً والمعلم هو المالك
+      return course && course.teacher_id === auth.teacherId;
+  };
+
   try {
     // --- إضافة عنصر جديد (Create) ---
     if (action === 'create') {
       let insertData = { ...data };
       
+      // 🛡️ التحقق الأمني للعناصر الفرعية (فصول، ملفات، إلخ)
+      if (type !== 'courses') {
+          // نفترض أن البيانات المرسلة تحتوي على course_id (وهو الطبيعي للفصول والملفات)
+          if (insertData.course_id) {
+              const isOwner = await checkCourseOwnership(insertData.course_id);
+              if (!isOwner) {
+                  return res.status(403).json({ error: 'غير مسموح لك بإضافة محتوى في كورس لا تملكه.' });
+              }
+          }
+      }
+
       // إذا كان كورس، نربطه بالمعلم تلقائياً لضمان الملكية
       if (type === 'courses') {
         insertData.teacher_id = auth.teacherId;
@@ -57,7 +83,6 @@ export default async (req, res) => {
             }
 
             // 2️⃣ إضافة المعلم الرئيسي (المالك)
-            // نبحث في جدول users عن الشخص الذي يملك هذا البروفايل ورتبته teacher
             const { data: mainTeacherUser } = await supabase
                 .from('users')
                 .select('id')
@@ -70,16 +95,14 @@ export default async (req, res) => {
             }
 
             // 3️⃣ إضافة جميع المشرفين المساعدين (Moderators)
-            // نبحث في جدول users عن الأشخاص الذين يتبعون نفس البروفايل ورتبتهم moderator
             const { data: moderators } = await supabase
                 .from('users')
                 .select('id')
                 .eq('teacher_profile_id', auth.teacherId)
-                .eq('role', 'moderator'); // ✅ التعديل هنا: البحث في users بدلاً من team_members
+                .eq('role', 'moderator');
 
             if (moderators && moderators.length > 0) {
                 moderators.forEach(mod => {
-                    // تجنب التكرار (إذا كان المشرف هو المنشئ مثلاً)
                     const isAlreadyAdded = accessList.some(item => item.user_id === mod.id);
                     if (!isAlreadyAdded) {
                         accessList.push({ user_id: mod.id, course_id: newItem.id });
@@ -108,8 +131,28 @@ export default async (req, res) => {
     // --- تعديل عنصر (Update) ---
     if (action === 'update') {
       const { id, ...updates } = data;
+
+      // 🛡️ التحقق الأمني قبل التعديل
+      if (type !== 'courses') {
+          // يجب جلب العنصر لمعرفة الكورس الذي ينتمي إليه
+          const { data: currentItem } = await supabase
+              .from(type)
+              .select('course_id')
+              .eq('id', id)
+              .single();
+          
+          if (currentItem && currentItem.course_id) {
+              const isOwner = await checkCourseOwnership(currentItem.course_id);
+              if (!isOwner) {
+                  return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا العنصر لأنه يتبع كورس ليس ملكك.' });
+              }
+          }
+      }
+
       let query = supabase.from(type).update(updates).eq('id', id);
+      // حماية إضافية للكورسات نفسها
       if (type === 'courses') query = query.eq('teacher_id', auth.teacherId);
+      
       const { error } = await query;
       if (error) throw error;
       return res.status(200).json({ success: true });
@@ -118,8 +161,28 @@ export default async (req, res) => {
     // --- حذف عنصر (Delete) ---
     if (action === 'delete') {
       const { id } = data;
+
+      // 🛡️ التحقق الأمني قبل الحذف
+      if (type !== 'courses') {
+          // يجب جلب العنصر لمعرفة الكورس الذي ينتمي إليه
+          const { data: currentItem } = await supabase
+              .from(type)
+              .select('course_id')
+              .eq('id', id)
+              .single();
+
+          if (currentItem && currentItem.course_id) {
+              const isOwner = await checkCourseOwnership(currentItem.course_id);
+              if (!isOwner) {
+                  return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا العنصر لأنه يتبع كورس ليس ملكك.' });
+              }
+          }
+      }
+
       let query = supabase.from(type).delete().eq('id', id);
+      // حماية إضافية للكورسات نفسها
       if (type === 'courses') query = query.eq('teacher_id', auth.teacherId);
+      
       const { error } = await query;
       if (error) throw error;
       return res.status(200).json({ success: true });
