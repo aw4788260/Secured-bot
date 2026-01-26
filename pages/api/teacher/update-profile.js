@@ -2,12 +2,22 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
+  // بداية التشخيص: طباعة نوع الطلب
+  console.log(`\n[UpdateProfile] Received ${req.method} request...`);
+
   // 1. التحقق من صحة المدرس (Authentication)
   const auth = await verifyTeacher(req);
-  if (auth.error) return res.status(auth.status).json({ error: auth.error });
+  if (auth.error) {
+      console.error("[UpdateProfile] Auth Failed:", auth.error);
+      return res.status(auth.status).json({ error: auth.error });
+  }
+
+  // [DEBUG] طباعة بيانات المدرس الذي يقوم بالعملية
+  console.log(`[UpdateProfile] Authenticated User -> UserID: ${auth.userId}, TeacherID: ${auth.teacherId}`);
 
   // التحقق من الصلاحية (Authorization) - المدرس الرئيسي فقط
   if (auth.role !== 'teacher') {
+      console.warn("[UpdateProfile] Access Denied: User is not a teacher.");
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
@@ -26,33 +36,30 @@ export default async (req, res) => {
       if (error) throw error;
 
       // ب) جلب بيانات المستخدم من جدول users
-      // نلاحظ هنا جلبنا first_name لأنه الاسم المستخدم في جدول users
       const { data: user } = await supabase
         .from('users')
         .select('username, phone, first_name')
         .eq('id', auth.userId)
         .single();
 
-      // ج) معالجة رابط الصورة (إذا كان مجرد اسم ملف، نضيف الرابط الكامل)
+      // ج) معالجة رابط الصورة
       let processedImage = teacher.profile_image;
       if (processedImage && !processedImage.startsWith('http')) {
          processedImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${processedImage}`;
       }
 
-      // د) تجهيز هيكل بيانات الدفع
       const paymentDetails = teacher.payment_details || {};
 
       return res.status(200).json({
         success: true,
         data: {
-          name: teacher.name, // الاسم الأساسي
+          name: teacher.name, 
           bio: teacher.bio || "",
           specialty: teacher.specialty || "",
           whatsapp_number: teacher.whatsapp_number || "",
           profile_image: processedImage,
           username: user?.username || "",
           phone: user?.phone || "",
-          // نعيد الاسم من جدول المستخدمين أيضاً للعلم (اختياري)
           user_first_name: user?.first_name || "",
           payment_details: {
             cash_numbers: paymentDetails.cash_numbers || [],
@@ -63,7 +70,7 @@ export default async (req, res) => {
       });
 
     } catch (err) {
-      console.error("Fetch Profile Error:", err);
+      console.error("[UpdateProfile] GET Error:", err);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -72,7 +79,7 @@ export default async (req, res) => {
   // ✅ 2. معالجة طلب POST: لتحديث البيانات
   // ==========================================================
   if (req.method === 'POST') {
-    // استقبال البيانات من جسم الطلب
+    // استقبال البيانات
     const { 
       name, 
       bio, 
@@ -86,14 +93,18 @@ export default async (req, res) => {
       phone         
     } = req.body;
 
-    console.log("Update Profile Body:", req.body);
+    // [DEBUG LOG] طباعة البيانات القادمة من التطبيق بالكامل
+    console.log("========================================");
+    console.log("[UpdateProfile] INCOMING DATA FROM APP:");
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log("========================================");
 
     try {
       // التحقق من صحة اسم المستخدم
       if (username) {
           const usernameRegex = /^[a-zA-Z0-9]+$/;
           if (!usernameRegex.test(username)) {
-              return res.status(400).json({ error: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط (بدون مسافات أو رموز)' });
+              return res.status(400).json({ error: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط' });
           }
       }
 
@@ -105,7 +116,7 @@ export default async (req, res) => {
       };
 
       // -------------------------------------------------------
-      // 1. تحديث جدول teachers (العمود name)
+      // 1. تجهيز وتحديث جدول teachers
       // -------------------------------------------------------
       const teacherUpdates = {
           bio: bio,
@@ -114,28 +125,39 @@ export default async (req, res) => {
           payment_details: paymentData
       };
       
-      // نضيف الاسم والصورة فقط إذا تم إرسالهم
       if (name) teacherUpdates.name = name;
       if (profileImage) teacherUpdates.profile_image = profileImage;
+
+      // [DEBUG] طباعة ما سيتم إرساله لجدول Teachers
+      console.log("[UpdateProfile] Updating Teachers Table with:", teacherUpdates);
 
       const { error: teacherError } = await supabase
         .from('teachers')
         .update(teacherUpdates)
         .eq('id', auth.teacherId);
 
-      if (teacherError) throw teacherError;
+      if (teacherError) {
+          console.error("[UpdateProfile] Teacher Table Update FAILED:", teacherError);
+          throw teacherError;
+      }
+      console.log("[UpdateProfile] ✅ Teacher Table Updated Successfully.");
 
       // -------------------------------------------------------
-      // 2. تحديث جدول users (العمود first_name)
+      // 2. تجهيز وتحديث جدول users
       // -------------------------------------------------------
       const userUpdates = {};
       if (username) userUpdates.username = username;
       if (phone) userUpdates.phone = phone;
 
-      // ✅ التعديل الأهم: تحديث first_name بنفس قيمة name
-      if (name) userUpdates.first_name = name;
+      // ✅ [CRITICAL FIX] ربط الاسم بـ first_name
+      if (name) {
+          userUpdates.first_name = name;
+      }
 
       if (Object.keys(userUpdates).length > 0) {
+          // [DEBUG] طباعة ما سيتم إرساله لجدول Users
+          console.log("[UpdateProfile] Updating Users Table with:", userUpdates);
+
           const { error: userError } = await supabase
               .from('users')
               .update(userUpdates)
@@ -145,19 +167,22 @@ export default async (req, res) => {
               if (userError.code === '23505') { 
                   return res.status(400).json({ error: 'اسم المستخدم أو رقم الهاتف مستخدم بالفعل.' });
               }
-              // في حال حدوث خطأ هنا، نسجله فقط لأن تحديث المدرس تم بالفعل
-              console.error("User table update warning:", userError);
+              console.error("[UpdateProfile] ⚠️ User Table Update Warning:", userError);
+          } else {
+              console.log("[UpdateProfile] ✅ User Table Updated Successfully.");
           }
+      } else {
+          console.log("[UpdateProfile] No updates required for Users table.");
       }
 
       return res.status(200).json({ success: true, message: 'Profile updated successfully' });
 
     } catch (err) {
-      console.error("Update Profile Error:", err);
+      console.error("[UpdateProfile] CRITICAL ERROR:", err);
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // إذا لم تكن الطريقة GET أو POST
+  // طريقة غير مدعومة
   return res.status(405).json({ message: 'Method Not Allowed' });
 };
