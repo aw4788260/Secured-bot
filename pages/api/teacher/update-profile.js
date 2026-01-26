@@ -32,13 +32,13 @@ export default async (req, res) => {
         .eq('id', auth.userId)
         .single();
 
-      // ج) معالجة رابط الصورة (إذا كان مجرد اسم ملف، نضيف الرابط الكامل)
+      // ج) معالجة رابط الصورة
       let processedImage = teacher.profile_image;
       if (processedImage && !processedImage.startsWith('http')) {
          processedImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${processedImage}`;
       }
 
-      // د) تجهيز هيكل بيانات الدفع (لضمان عدم حدوث خطأ null في التطبيق)
+      // د) تجهيز هيكل بيانات الدفع
       const paymentDetails = teacher.payment_details || {};
 
       return res.status(200).json({
@@ -51,7 +51,6 @@ export default async (req, res) => {
           profile_image: processedImage,
           username: user?.username || "",
           phone: user?.phone || "",
-          // إرجاع القوائم بشكل منظم
           payment_details: {
             cash_numbers: paymentDetails.cash_numbers || [],
             instapay_numbers: paymentDetails.instapay_numbers || [],
@@ -80,12 +79,12 @@ export default async (req, res) => {
       instapayNumbersList, 
       instapayLinksList,
       profileImage, 
-      username,     
-      phone         
+      username,      
+      phone          
     } = req.body;
 
     try {
-      // التحقق من صحة اسم المستخدم (حروف إنجليزية وأرقام فقط)
+      // التحقق من صحة اسم المستخدم (حروف إنجليزية وأرقام فقط) - كما طلبت بدون تعديل
       if (username) {
           const usernameRegex = /^[a-zA-Z0-9]+$/;
           if (!usernameRegex.test(username)) {
@@ -100,7 +99,7 @@ export default async (req, res) => {
         instapay_links: instapayLinksList || []      
       };
 
-      // تجهيز بيانات تحديث المدرس
+      // تجهيز بيانات تحديث المدرس (بما فيها الاسم الأول والثاني الموجود في حقل name)
       const teacherUpdates = {
           name: name,
           bio: bio,
@@ -113,13 +112,19 @@ export default async (req, res) => {
           teacherUpdates.profile_image = profileImage;
       }
 
-      // تحديث جدول teachers
-      const { error: teacherError } = await supabase
+      // [تعديل هام جداً]: إضافة .select() للتحقق من أن التحديث تم فعلاً
+      const { data: updatedTeacher, error: teacherError } = await supabase
         .from('teachers')
         .update(teacherUpdates)
-        .eq('id', auth.teacherId);
+        .eq('id', auth.teacherId)
+        .select(); // ✅ هذا السطر هو الحل
 
       if (teacherError) throw teacherError;
+
+      // ✅ التحقق: هل تم تعديل الصف فعلاً؟ إذا كانت المصفوفة فارغة فهذا يعني أن ID المدرس خطأ
+      if (!updatedTeacher || updatedTeacher.length === 0) {
+          return res.status(404).json({ error: 'فشل تحديث البيانات: لم يتم العثور على سجل المدرس. تأكد من الحساب المسجل.' });
+      }
 
       // تحديث جدول users (اسم المستخدم والهاتف)
       const userUpdates = {};
@@ -127,16 +132,23 @@ export default async (req, res) => {
       if (phone) userUpdates.phone = phone;
 
       if (Object.keys(userUpdates).length > 0) {
-          const { error: userError } = await supabase
+          // [تعديل هام]: إضافة .select() هنا أيضاً
+          const { data: updatedUser, error: userError } = await supabase
               .from('users')
               .update(userUpdates)
-              .eq('id', auth.userId);
+              .eq('id', auth.userId)
+              .select(); // ✅
           
           if (userError) {
               if (userError.code === '23505') { 
                   return res.status(400).json({ error: 'اسم المستخدم أو رقم الهاتف مستخدم بالفعل.' });
               }
               throw userError;
+          }
+
+          // ✅ التحقق من تحديث المستخدم
+          if (!updatedUser || updatedUser.length === 0) {
+             return res.status(404).json({ error: 'فشل تحديث بيانات المستخدم (الهاتف/اليوزر): الحساب غير موجود.' });
           }
       }
 
