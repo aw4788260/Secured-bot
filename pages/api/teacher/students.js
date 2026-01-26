@@ -79,10 +79,13 @@ export default async (req, res) => {
         const { data: student, error: userError } = await supabase
           .from('users')
           .select('id, first_name, username, phone, created_at, is_blocked')
+          .eq('role', 'student') // ✅✅ التعديل هنا: قصر البحث على الطلاب فقط
           .or(`username.eq.${query},phone.eq.${query}`)
           .maybeSingle();
         
         if (userError) throw userError;
+        
+        // إذا لم يتم العثور على طالب (أو كان المستخدم موجوداً لكنه ليس طالباً)
         if (!student) return res.status(404).json({ error: 'Student not found' });
 
         // ب) جلب صلاحيات الكورسات (التابعة للمعلم)
