@@ -2,31 +2,25 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
-  // بداية التشخيص: طباعة نوع الطلب
   console.log(`\n[UpdateProfile] Received ${req.method} request...`);
 
-  // 1. التحقق من صحة المدرس (Authentication)
+  // 1. التحقق من صحة المدرس
   const auth = await verifyTeacher(req);
   if (auth.error) {
       console.error("[UpdateProfile] Auth Failed:", auth.error);
       return res.status(auth.status).json({ error: auth.error });
   }
 
-  // [DEBUG] طباعة بيانات المدرس الذي يقوم بالعملية
-  console.log(`[UpdateProfile] Authenticated User -> UserID: ${auth.userId}, TeacherID: ${auth.teacherId}`);
-
-  // التحقق من الصلاحية (Authorization) - المدرس الرئيسي فقط
+  // التحقق من الصلاحية
   if (auth.role !== 'teacher') {
-      console.warn("[UpdateProfile] Access Denied: User is not a teacher.");
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
   // ==========================================================
-  // ✅ 1. معالجة طلب GET: لجلب البيانات الحالية
+  // ✅ 1. معالجة طلب GET
   // ==========================================================
   if (req.method === 'GET') {
     try {
-      // أ) جلب بيانات المدرس من جدول teachers
       const { data: teacher, error } = await supabase
         .from('teachers')
         .select('name, bio, specialty, whatsapp_number, payment_details, profile_image')
@@ -35,14 +29,12 @@ export default async (req, res) => {
 
       if (error) throw error;
 
-      // ب) جلب بيانات المستخدم من جدول users
       const { data: user } = await supabase
         .from('users')
         .select('username, phone, first_name')
         .eq('id', auth.userId)
         .single();
 
-      // ج) معالجة رابط الصورة
       let processedImage = teacher.profile_image;
       if (processedImage && !processedImage.startsWith('http')) {
          processedImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${processedImage}`;
@@ -76,12 +68,13 @@ export default async (req, res) => {
   }
 
   // ==========================================================
-  // ✅ 2. معالجة طلب POST: لتحديث البيانات
+  // ✅ 2. معالجة طلب POST
   // ==========================================================
   if (req.method === 'POST') {
     // استقبال البيانات
     const { 
       name, 
+      firstName, // ✅ إضافة استقبال firstName لأن التطبيق يرسلها بهذا الاسم
       bio, 
       specialty, 
       whatsappNumber, 
@@ -93,14 +86,16 @@ export default async (req, res) => {
       phone         
     } = req.body;
 
-    // [DEBUG LOG] طباعة البيانات القادمة من التطبيق بالكامل
+    // ✅ توحيد متغير الاسم (نأخذ name أو firstName أيهما وصل)
+    const newName = name || firstName;
+
     console.log("========================================");
     console.log("[UpdateProfile] INCOMING DATA FROM APP:");
     console.log(JSON.stringify(req.body, null, 2));
+    console.log(`[UpdateProfile] Resolved Name to update: "${newName}"`); // طباعة للتأكد
     console.log("========================================");
 
     try {
-      // التحقق من صحة اسم المستخدم
       if (username) {
           const usernameRegex = /^[a-zA-Z0-9]+$/;
           if (!usernameRegex.test(username)) {
@@ -108,7 +103,6 @@ export default async (req, res) => {
           }
       }
 
-      // تجهيز بيانات الدفع
       const paymentData = {
         cash_numbers: cashNumbersList || [],        
         instapay_numbers: instapayNumbersList || [], 
@@ -116,7 +110,7 @@ export default async (req, res) => {
       };
 
       // -------------------------------------------------------
-      // 1. تجهيز وتحديث جدول teachers
+      // 1. تحديث جدول teachers
       // -------------------------------------------------------
       const teacherUpdates = {
           bio: bio,
@@ -125,10 +119,10 @@ export default async (req, res) => {
           payment_details: paymentData
       };
       
-      if (name) teacherUpdates.name = name;
+      // ✅ استخدام المتغير الموحد newName
+      if (newName) teacherUpdates.name = newName;
       if (profileImage) teacherUpdates.profile_image = profileImage;
 
-      // [DEBUG] طباعة ما سيتم إرساله لجدول Teachers
       console.log("[UpdateProfile] Updating Teachers Table with:", teacherUpdates);
 
       const { error: teacherError } = await supabase
@@ -143,19 +137,18 @@ export default async (req, res) => {
       console.log("[UpdateProfile] ✅ Teacher Table Updated Successfully.");
 
       // -------------------------------------------------------
-      // 2. تجهيز وتحديث جدول users
+      // 2. تحديث جدول users
       // -------------------------------------------------------
       const userUpdates = {};
       if (username) userUpdates.username = username;
       if (phone) userUpdates.phone = phone;
 
-      // ✅ [CRITICAL FIX] ربط الاسم بـ first_name
-      if (name) {
-          userUpdates.first_name = name;
+      // ✅ استخدام المتغير الموحد newName لتحديث first_name
+      if (newName) {
+          userUpdates.first_name = newName;
       }
 
       if (Object.keys(userUpdates).length > 0) {
-          // [DEBUG] طباعة ما سيتم إرساله لجدول Users
           console.log("[UpdateProfile] Updating Users Table with:", userUpdates);
 
           const { error: userError } = await supabase
@@ -171,8 +164,6 @@ export default async (req, res) => {
           } else {
               console.log("[UpdateProfile] ✅ User Table Updated Successfully.");
           }
-      } else {
-          console.log("[UpdateProfile] No updates required for Users table.");
       }
 
       return res.status(200).json({ success: true, message: 'Profile updated successfully' });
@@ -183,6 +174,5 @@ export default async (req, res) => {
     }
   }
 
-  // طريقة غير مدعومة
   return res.status(405).json({ message: 'Method Not Allowed' });
 };
