@@ -20,7 +20,7 @@ export default async (req, res) => {
       const token = authHeader.split(' ')[1];
       try {
           const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          
+           
           // تحقق أمني بسيط: يجب أن يطابق الجهاز المسجل في التوكن الجهاز المرسل في الهيدر
           if (decoded.deviceId === deviceIdHeader) {
               userId = decoded.userId;
@@ -34,7 +34,7 @@ export default async (req, res) => {
   try {
     // 2. إذا تم التعرف على المستخدم، نجلب بياناته الخاصة
     if (userId) {
-       // ✅ التحديث هنا: جلب الصلاحية ورقم بروفايل المعلم
+       // ✅ جلب الصلاحية ورقم بروفايل المعلم
        const { data: user } = await supabase
           .from('users')
           .select('id, first_name, username, phone, is_blocked, jwt_token, role, teacher_profile_id')
@@ -45,7 +45,7 @@ export default async (req, res) => {
        const incomingToken = authHeader.split(' ')[1];
        
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
-          
+           
           // ✅ منطق جديد: جلب صورة المدرس إذا كان الحساب مرتبطاً بملف مدرس
           let profileImage = null;
           if (user.teacher_profile_id) {
@@ -83,25 +83,25 @@ export default async (req, res) => {
           // منطق المكتبة (Library Logic)
           // ==========================================
 
-          // أ) جلب الكورسات الكاملة
+          // أ) جلب الكورسات الكاملة (✅ تم إضافة description و price)
           const { data: fullCourses } = await supabase
             .from('user_course_access')
             .select(`
               course_id,
               courses ( 
-                id, title, code, teacher_id,
+                id, title, code, teacher_id, description, price,
                 teachers ( name )
               )
             `)
             .eq('user_id', userId);
 
-          // ب) جلب مواد هذه الكورسات
+          // ب) جلب مواد هذه الكورسات (✅ تم إضافة price)
           let courseSubjectsMap = {};
           if (fullCourses && fullCourses.length > 0) {
             const courseIds = fullCourses.map(item => item.course_id);
             const { data: allSubjects } = await supabase
                 .from('subjects')
-                .select('id, title, course_id, sort_order')
+                .select('id, title, price, course_id, sort_order')
                 .in('course_id', courseIds)
                 .order('sort_order', { ascending: true }); 
 
@@ -110,20 +110,24 @@ export default async (req, res) => {
                     if (!courseSubjectsMap[sub.course_id]) {
                         courseSubjectsMap[sub.course_id] = [];
                     }
-                    courseSubjectsMap[sub.course_id].push({ id: sub.id, title: sub.title });
+                    courseSubjectsMap[sub.course_id].push({ 
+                        id: sub.id, 
+                        title: sub.title,
+                        price: sub.price // ✅
+                    });
                 });
             }
           }
 
-          // ج) جلب المواد المنفصلة
+          // ج) جلب المواد المنفصلة (✅ تم إضافة price للمادة و description للكورس)
           const { data: singleSubjects } = await supabase
             .from('user_subject_access')
             .select(`
               subject_id,
               subjects (
-                id, title,
+                id, title, price,
                 courses ( 
-                  id, title, code, teacher_id,
+                  id, title, code, teacher_id, description,
                   teachers ( name ) 
                 )
               )
@@ -147,6 +151,8 @@ export default async (req, res) => {
                 type: 'course',
                 id: cId,
                 title: item.courses.title,
+                description: item.courses.description, // ✅
+                price: item.courses.price,             // ✅
                 code: item.courses.code,
                 instructor: item.courses.teachers?.name || 'Instructor',
                 teacherId: item.courses.teacher_id, 
@@ -160,20 +166,27 @@ export default async (req, res) => {
             const subject = item.subjects;
             const parentCourse = subject?.courses;
             if (parentCourse) {
+              const subjectData = { 
+                  id: subject.id, 
+                  title: subject.title, 
+                  price: subject.price // ✅
+              };
+
               if (libraryMap.has(parentCourse.id)) {
                 const existingEntry = libraryMap.get(parentCourse.id);
                 if (existingEntry.type === 'subject_group') { 
-                   existingEntry.owned_subjects.push({ id: subject.id, title: subject.title });
+                   existingEntry.owned_subjects.push(subjectData);
                 }
               } else {
                 libraryMap.set(parentCourse.id, {
                   type: 'subject_group',
                   id: parentCourse.id,
                   title: parentCourse.title,
+                  description: parentCourse.description, // ✅
                   code: parentCourse.code,
                   instructor: parentCourse.teachers?.name || 'Instructor',
                   teacherId: parentCourse.teacher_id,
-                  owned_subjects: [{ id: subject.id, title: subject.title }]
+                  owned_subjects: [subjectData]
                 });
               }
             }
@@ -192,7 +205,7 @@ export default async (req, res) => {
     return res.status(200).json({
       success: true,
       isLoggedIn: isLoggedIn,
-      user: userData,         
+      user: userData,          
       myAccess: userAccess, 
       library: libraryData, 
       courses: courses || [] 
