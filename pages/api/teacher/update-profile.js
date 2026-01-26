@@ -25,10 +25,11 @@ export default async (req, res) => {
 
       if (error) throw error;
 
-      // ب) جلب بيانات المستخدم (للاسم والهاتف) من جدول users
+      // ب) جلب بيانات المستخدم من جدول users
+      // نلاحظ هنا جلبنا first_name لأنه الاسم المستخدم في جدول users
       const { data: user } = await supabase
         .from('users')
-        .select('username, phone')
+        .select('username, phone, first_name')
         .eq('id', auth.userId)
         .single();
 
@@ -38,20 +39,21 @@ export default async (req, res) => {
          processedImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${processedImage}`;
       }
 
-      // د) تجهيز هيكل بيانات الدفع (لضمان عدم حدوث خطأ null في التطبيق)
+      // د) تجهيز هيكل بيانات الدفع
       const paymentDetails = teacher.payment_details || {};
 
       return res.status(200).json({
         success: true,
         data: {
-          name: teacher.name,
+          name: teacher.name, // الاسم الأساسي
           bio: teacher.bio || "",
           specialty: teacher.specialty || "",
           whatsapp_number: teacher.whatsapp_number || "",
           profile_image: processedImage,
           username: user?.username || "",
           phone: user?.phone || "",
-          // إرجاع القوائم بشكل منظم
+          // نعيد الاسم من جدول المستخدمين أيضاً للعلم (اختياري)
+          user_first_name: user?.first_name || "",
           payment_details: {
             cash_numbers: paymentDetails.cash_numbers || [],
             instapay_numbers: paymentDetails.instapay_numbers || [],
@@ -84,8 +86,10 @@ export default async (req, res) => {
       phone         
     } = req.body;
 
+    console.log("Update Profile Body:", req.body);
+
     try {
-      // التحقق من صحة اسم المستخدم (حروف إنجليزية وأرقام فقط)
+      // التحقق من صحة اسم المستخدم
       if (username) {
           const usernameRegex = /^[a-zA-Z0-9]+$/;
           if (!usernameRegex.test(username)) {
@@ -93,27 +97,27 @@ export default async (req, res) => {
           }
       }
 
-      // تجهيز كائن تفاصيل الدفع (JSON)
+      // تجهيز بيانات الدفع
       const paymentData = {
         cash_numbers: cashNumbersList || [],        
         instapay_numbers: instapayNumbersList || [], 
         instapay_links: instapayLinksList || []      
       };
 
-      // تجهيز بيانات تحديث المدرس
+      // -------------------------------------------------------
+      // 1. تحديث جدول teachers (العمود name)
+      // -------------------------------------------------------
       const teacherUpdates = {
-          name: name,
           bio: bio,
           specialty: specialty,
           whatsapp_number: whatsappNumber,
           payment_details: paymentData
       };
+      
+      // نضيف الاسم والصورة فقط إذا تم إرسالهم
+      if (name) teacherUpdates.name = name;
+      if (profileImage) teacherUpdates.profile_image = profileImage;
 
-      if (profileImage) {
-          teacherUpdates.profile_image = profileImage;
-      }
-
-      // تحديث جدول teachers
       const { error: teacherError } = await supabase
         .from('teachers')
         .update(teacherUpdates)
@@ -121,10 +125,15 @@ export default async (req, res) => {
 
       if (teacherError) throw teacherError;
 
-      // تحديث جدول users (اسم المستخدم والهاتف)
+      // -------------------------------------------------------
+      // 2. تحديث جدول users (العمود first_name)
+      // -------------------------------------------------------
       const userUpdates = {};
       if (username) userUpdates.username = username;
       if (phone) userUpdates.phone = phone;
+
+      // ✅ التعديل الأهم: تحديث first_name بنفس قيمة name
+      if (name) userUpdates.first_name = name;
 
       if (Object.keys(userUpdates).length > 0) {
           const { error: userError } = await supabase
@@ -136,7 +145,8 @@ export default async (req, res) => {
               if (userError.code === '23505') { 
                   return res.status(400).json({ error: 'اسم المستخدم أو رقم الهاتف مستخدم بالفعل.' });
               }
-              throw userError;
+              // في حال حدوث خطأ هنا، نسجله فقط لأن تحديث المدرس تم بالفعل
+              console.error("User table update warning:", userError);
           }
       }
 
