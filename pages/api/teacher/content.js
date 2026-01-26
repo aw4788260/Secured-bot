@@ -25,29 +25,23 @@ export default async (req, res) => {
 
   // ============================================================
   // 🛡️ دالة لاستخراج معرف الكورس (Course ID) من العناصر الفرعية
-  // هذه الدالة تتتبع السلسلة: Video -> Chapter -> Subject -> Course
   // ============================================================
   const getParentCourseId = async (itemType, itemData, isUpdateOrDelete = false) => {
       // الحالة 1: التعامل مع "مادة" (Subject)
-      // إذا كان إنشاء: الكورس موجود في البيانات المرسلة
-      // إذا كان تعديل/حذف: نجلب الكورس من قاعدة البيانات
       if (itemType === 'subjects') {
           if (!isUpdateOrDelete) return itemData.course_id;
-          
+          // في حالة التعديل نجلب الكورس من قاعدة البيانات
           const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.id).single();
           return subject?.course_id;
       }
 
       // الحالة 2: التعامل مع "شابتر" (Chapter)
-      // الشابتر يتبع مادة (Subject) -> والمادة تتبع كورس
       if (itemType === 'chapters') {
           let subjectId = itemData.subject_id;
-          
           if (isUpdateOrDelete) {
               const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.id).single();
               subjectId = chapter?.subject_id;
           }
-
           if (subjectId) {
               const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', subjectId).single();
               return subject?.course_id;
@@ -55,25 +49,18 @@ export default async (req, res) => {
       }
 
       // الحالة 3: التعامل مع "فيديو" أو "ملف" (Video/PDF)
-      // الفيديو يتبع شابتر -> الشابتر يتبع مادة -> المادة تتبع كورس
       if (itemType === 'videos' || itemType === 'pdfs') {
           let chapterId = itemData.chapter_id;
-
           if (isUpdateOrDelete) {
-              // ملاحظة: الجدول videos أو pdfs يجب أن يكون فيه chapter_id
               const { data: item } = await supabase.from(itemType).select('chapter_id').eq('id', itemData.id).single();
               chapterId = item?.chapter_id;
           }
-
           if (chapterId) {
-              // نجلب المادة عبر الشابتر (Chain Look-up)
               const { data: chapter } = await supabase
                   .from('chapters')
-                  .select('subjects (course_id)') // Join لجلب الكورس مباشرة
+                  .select('subjects (course_id)')
                   .eq('id', chapterId)
                   .single();
-              
-              // استخراج الكورس من العلاقة المتداخلة
               return chapter?.subjects?.course_id;
           }
       }
@@ -86,23 +73,19 @@ export default async (req, res) => {
     if (action === 'create') {
       let insertData = { ...data };
       
-      // 🛡️ التحقق الأمني العميق (Deep Security Check)
+      // 🛡️ التحقق الأمني عند الإضافة
       if (type !== 'courses') {
-          // محاولة معرفة الكورس الأب للعنصر المراد إضافته
           const targetCourseId = await getParentCourseId(type, insertData, false);
 
           if (targetCourseId) {
               const isOwner = await checkCourseOwnership(targetCourseId);
               if (!isOwner) {
-                  return res.status(403).json({ 
-                      error: `Violation: لا تملك صلاحية الإضافة في الكورس رقم ${targetCourseId}` 
-                  });
+                  return res.status(403).json({ error: 'غير مسموح لك بالإضافة في هذا الكورس.' });
               }
           } else {
-              // إذا لم نستطع تحديد الكورس (مثلاً بيانات ناقصة)، نرفض الطلب احتياطياً
-               // (إلا إذا كان النوع مدعوماً بشكل خاص)
+               // إذا لم نستطع تحديد الكورس (بيانات ناقصة)
                if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) {
-                   return res.status(400).json({ error: 'Invalid Parent ID (Missing context for security check)' });
+                   return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
                }
           }
       }
@@ -123,26 +106,22 @@ export default async (req, res) => {
         .single();
 
       if (error) {
-          if (error.code === '23505') return res.status(400).json({ error: 'تكرار في البيانات (Duplicate Code/ID)' });
+          if (error.code === '23505') { 
+             return res.status(400).json({ error: 'تكرار في البيانات (Duplicate Code/ID)' });
+          }
           throw error;
       }
 
-      // إضافة الصلاحيات للكورسات الجديدة (كما هي)
+      // إدارة الصلاحيات (كما هي)
       if (type === 'courses' && newItem) {
           try {
             const accessList = [];
             const currentUserId = auth.userId || auth.id;
             if (currentUserId) accessList.push({ user_id: currentUserId, course_id: newItem.id });
-            
             const { data: mainTeacherUser } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).eq('role', 'teacher').maybeSingle();
             if (mainTeacherUser && mainTeacherUser.id !== currentUserId) accessList.push({ user_id: mainTeacherUser.id, course_id: newItem.id });
-
             const { data: moderators } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).eq('role', 'moderator');
-            if (moderators) {
-                moderators.forEach(mod => {
-                    if (!accessList.some(item => item.user_id === mod.id)) accessList.push({ user_id: mod.id, course_id: newItem.id });
-                });
-            }
+            if (moderators) moderators.forEach(mod => { if (!accessList.some(item => item.user_id === mod.id)) accessList.push({ user_id: mod.id, course_id: newItem.id }); });
             if (accessList.length > 0) await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' });
           } catch (permError) { console.error("Error granting permissions:", permError); }
       }
@@ -150,44 +129,64 @@ export default async (req, res) => {
       return res.status(200).json({ success: true, item: newItem });
     }
 
-    // --- تعديل (Update) ---
+    // --- تعديل عنصر (Update) - تم الإصلاح هنا ---
     if (action === 'update') {
        const { id, ...updates } = data;
+       let isAuthorized = false;
 
-       // 🛡️ التحقق قبل التعديل
-       if (type !== 'courses') {
+       // 1. التحقق الصريح قبل التنفيذ
+       if (type === 'courses') {
+           // نجلب الكورس ونتحقق من teacher_id
+           const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
+           if (course && course.teacher_id === auth.teacherId) {
+               isAuthorized = true;
+           }
+       } else {
+           // للعناصر الفرعية: نتتبع السلسلة لنصل للكورس الأب ونتحقق منه
            const targetCourseId = await getParentCourseId(type, { id }, true);
-           if (targetCourseId) {
-               const isOwner = await checkCourseOwnership(targetCourseId);
-               if (!isOwner) return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا العنصر.' });
+           if (targetCourseId && await checkCourseOwnership(targetCourseId)) {
+               isAuthorized = true;
            }
        }
 
-       let query = supabase.from(type).update(updates).eq('id', id);
-       if (type === 'courses') query = query.eq('teacher_id', auth.teacherId);
+       // 2. إذا لم يكن مصرحاً له، نرجع خطأ 403 صريح
+       if (!isAuthorized) {
+           return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا المحتوى.' });
+       }
+
+       // 3. التنفيذ الآمن (بعد التأكد)
+       const { error } = await supabase.from(type).update(updates).eq('id', id);
        
-       const { error } = await query;
        if (error) throw error;
        return res.status(200).json({ success: true });
     }
 
-    // --- حذف (Delete) ---
+    // --- حذف عنصر (Delete) - تم الإصلاح هنا ---
     if (action === 'delete') {
        const { id } = data;
+       let isAuthorized = false;
 
-       // 🛡️ التحقق قبل الحذف
-       if (type !== 'courses') {
+       // 1. التحقق الصريح قبل التنفيذ
+       if (type === 'courses') {
+           const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
+           if (course && course.teacher_id === auth.teacherId) {
+               isAuthorized = true;
+           }
+       } else {
            const targetCourseId = await getParentCourseId(type, { id }, true);
-           if (targetCourseId) {
-               const isOwner = await checkCourseOwnership(targetCourseId);
-               if (!isOwner) return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا العنصر.' });
+           if (targetCourseId && await checkCourseOwnership(targetCourseId)) {
+               isAuthorized = true;
            }
        }
 
-       let query = supabase.from(type).delete().eq('id', id);
-       if (type === 'courses') query = query.eq('teacher_id', auth.teacherId);
-       
-       const { error } = await query;
+       // 2. إذا لم يكن مصرحاً له، نرجع خطأ 403 صريح
+       if (!isAuthorized) {
+           return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
+       }
+
+       // 3. التنفيذ الآمن
+       const { error } = await supabase.from(type).delete().eq('id', id);
+
        if (error) throw error;
        return res.status(200).json({ success: true });
     }
