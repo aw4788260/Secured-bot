@@ -74,7 +74,7 @@ export default async (req, res) => {
             // 2. حذف الأسئلة
             await supabase.from('questions').delete().eq('exam_id', examId);
 
-            // 3. حذف الامتحان
+            // 3. حذف الامتحان (مع التحقق من الملكية عبر teacher_id)
             const { error: deleteErr } = await supabase
                 .from('exams')
                 .delete()
@@ -92,6 +92,19 @@ export default async (req, res) => {
         else if (action === 'create') {
             if (!title || !subjectId) return res.status(400).json({ error: 'بيانات الامتحان ناقصة' });
 
+            // 🛡️ [جديد وهام جداً] التحقق الأمني: هل يملك المعلم هذه المادة؟
+            // نقوم بجلب بيانات المادة والكورس المرتبط بها للتحقق من teacher_id
+            const { data: subjectInfo, error: subErr } = await supabase
+                .from('subjects')
+                .select('courses!inner(teacher_id)') // Join Inner لضمان وجود الكورس
+                .eq('id', subjectId)
+                .single();
+            
+            // إذا لم يتم العثور على المادة أو كان المعلم المالك مختلفاً عن المعلم الحالي
+            if (subErr || !subjectInfo || subjectInfo.courses.teacher_id !== auth.teacherId) {
+                return res.status(403).json({ error: 'غير مسموح لك بإضافة امتحان لمادة في كورس لا تملكه.' });
+            }
+
             const adjustedStartTime = toEgyptUTC(start_time);
             const adjustedEndTime = toEgyptUTC(end_time);
 
@@ -101,7 +114,7 @@ export default async (req, res) => {
                 duration_minutes: duration,
                 requires_student_name: true,
                 sort_order: 999,
-                teacher_id: auth.teacherId,
+                teacher_id: auth.teacherId, // تسجيل الملكية
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
                 is_active: true,
@@ -122,7 +135,7 @@ export default async (req, res) => {
             const adjustedStartTime = toEgyptUTC(start_time);
             const adjustedEndTime = toEgyptUTC(end_time);
 
-            // 1. تحديث بيانات الامتحان
+            // 1. تحديث بيانات الامتحان (مع شرط teacher_id للحماية)
             const { error: updateErr } = await supabase.from('exams').update({
                 title,
                 duration_minutes: duration,
@@ -137,7 +150,7 @@ export default async (req, res) => {
 
             if (updateErr) throw updateErr;
 
-            // ✅ حذف المحاولات والأسئلة القديمة لضمان التوافق
+            // ✅ حذف المحاولات والأسئلة القديمة لضمان التوافق وإعادة بنائها
             await supabase.from('user_attempts').delete().eq('exam_id', targetExamId);
             await supabase.from('questions').delete().eq('exam_id', targetExamId);
         }
