@@ -2,25 +2,21 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
-  console.log(`\n[UpdateProfile] Received ${req.method} request...`);
-
-  // 1. التحقق من صحة المدرس
+  // 1. التحقق من صحة المدرس (Authentication)
   const auth = await verifyTeacher(req);
-  if (auth.error) {
-      console.error("[UpdateProfile] Auth Failed:", auth.error);
-      return res.status(auth.status).json({ error: auth.error });
-  }
+  if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
-  // التحقق من الصلاحية
+  // التحقق من الصلاحية (Authorization) - المدرس الرئيسي فقط
   if (auth.role !== 'teacher') {
       return res.status(403).json({ error: 'Only the main teacher can edit profile details' });
   }
 
   // ==========================================================
-  // ✅ 1. معالجة طلب GET
+  // ✅ 1. معالجة طلب GET: لجلب البيانات الحالية
   // ==========================================================
   if (req.method === 'GET') {
     try {
+      // أ) جلب بيانات المدرس من جدول teachers
       const { data: teacher, error } = await supabase
         .from('teachers')
         .select('name, bio, specialty, whatsapp_number, payment_details, profile_image')
@@ -29,17 +25,20 @@ export default async (req, res) => {
 
       if (error) throw error;
 
+      // ب) جلب بيانات المستخدم من جدول users
       const { data: user } = await supabase
         .from('users')
         .select('username, phone, first_name')
         .eq('id', auth.userId)
         .single();
 
+      // ج) معالجة رابط الصورة
       let processedImage = teacher.profile_image;
       if (processedImage && !processedImage.startsWith('http')) {
          processedImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${processedImage}`;
       }
 
+      // د) تجهيز هيكل بيانات الدفع
       const paymentDetails = teacher.payment_details || {};
 
       return res.status(200).json({
@@ -62,19 +61,19 @@ export default async (req, res) => {
       });
 
     } catch (err) {
-      console.error("[UpdateProfile] GET Error:", err);
+      console.error("Fetch Profile Error:", err);
       return res.status(500).json({ error: err.message });
     }
   }
 
   // ==========================================================
-  // ✅ 2. معالجة طلب POST
+  // ✅ 2. معالجة طلب POST: لتحديث البيانات
   // ==========================================================
   if (req.method === 'POST') {
     // استقبال البيانات
     const { 
       name, 
-      firstName, // ✅ إضافة استقبال firstName لأن التطبيق يرسلها بهذا الاسم
+      firstName, // ✅ إضافة استقبال firstName لدعم ما يرسله التطبيق
       bio, 
       specialty, 
       whatsappNumber, 
@@ -86,16 +85,11 @@ export default async (req, res) => {
       phone         
     } = req.body;
 
-    // ✅ توحيد متغير الاسم (نأخذ name أو firstName أيهما وصل)
+    // ✅ تحديد الاسم الجديد سواء وصل كـ name أو firstName
     const newName = name || firstName;
 
-    console.log("========================================");
-    console.log("[UpdateProfile] INCOMING DATA FROM APP:");
-    console.log(JSON.stringify(req.body, null, 2));
-    console.log(`[UpdateProfile] Resolved Name to update: "${newName}"`); // طباعة للتأكد
-    console.log("========================================");
-
     try {
+      // التحقق من صحة اسم المستخدم
       if (username) {
           const usernameRegex = /^[a-zA-Z0-9]+$/;
           if (!usernameRegex.test(username)) {
@@ -103,6 +97,7 @@ export default async (req, res) => {
           }
       }
 
+      // تجهيز بيانات الدفع
       const paymentData = {
         cash_numbers: cashNumbersList || [],        
         instapay_numbers: instapayNumbersList || [], 
@@ -119,22 +114,16 @@ export default async (req, res) => {
           payment_details: paymentData
       };
       
-      // ✅ استخدام المتغير الموحد newName
+      // نستخدم الاسم الموحد newName
       if (newName) teacherUpdates.name = newName;
       if (profileImage) teacherUpdates.profile_image = profileImage;
-
-      console.log("[UpdateProfile] Updating Teachers Table with:", teacherUpdates);
 
       const { error: teacherError } = await supabase
         .from('teachers')
         .update(teacherUpdates)
         .eq('id', auth.teacherId);
 
-      if (teacherError) {
-          console.error("[UpdateProfile] Teacher Table Update FAILED:", teacherError);
-          throw teacherError;
-      }
-      console.log("[UpdateProfile] ✅ Teacher Table Updated Successfully.");
+      if (teacherError) throw teacherError;
 
       // -------------------------------------------------------
       // 2. تحديث جدول users
@@ -143,14 +132,12 @@ export default async (req, res) => {
       if (username) userUpdates.username = username;
       if (phone) userUpdates.phone = phone;
 
-      // ✅ استخدام المتغير الموحد newName لتحديث first_name
+      // ✅ تحديث first_name باستخدام الاسم الجديد
       if (newName) {
           userUpdates.first_name = newName;
       }
 
       if (Object.keys(userUpdates).length > 0) {
-          console.log("[UpdateProfile] Updating Users Table with:", userUpdates);
-
           const { error: userError } = await supabase
               .from('users')
               .update(userUpdates)
@@ -160,19 +147,19 @@ export default async (req, res) => {
               if (userError.code === '23505') { 
                   return res.status(400).json({ error: 'اسم المستخدم أو رقم الهاتف مستخدم بالفعل.' });
               }
-              console.error("[UpdateProfile] ⚠️ User Table Update Warning:", userError);
-          } else {
-              console.log("[UpdateProfile] ✅ User Table Updated Successfully.");
+              // تحذير فقط في حالة فشل تحديث المستخدم، لكن العملية تستمر
+              console.error("User table update warning:", userError);
           }
       }
 
       return res.status(200).json({ success: true, message: 'Profile updated successfully' });
 
     } catch (err) {
-      console.error("[UpdateProfile] CRITICAL ERROR:", err);
+      console.error("Update Profile Error:", err);
       return res.status(500).json({ error: err.message });
     }
   }
 
+  // طريقة غير مدعومة
   return res.status(405).json({ message: 'Method Not Allowed' });
 };
