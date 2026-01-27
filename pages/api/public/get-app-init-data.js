@@ -202,13 +202,29 @@ export default async (req, res) => {
       .select('*')
       .order('sort_order', { ascending: true });
 
+    // 4. ✅ (جديد) جلب إعدادات التواصل ودمجها
+    const { data: settingsData } = await supabase
+      .from('app_settings')
+      .select('key, value')
+      .in('key', ['support_whatsapp', 'support_telegram']);
+
+    const contactInfo = {};
+    settingsData?.forEach(item => {
+        contactInfo[item.key] = item.value;
+    });
+
     return res.status(200).json({
       success: true,
       isLoggedIn: isLoggedIn,
       user: userData,          
       myAccess: userAccess, 
       library: libraryData, 
-      courses: courses || [] 
+      courses: courses || [],
+      // ✅ إرسال معلومات التواصل
+      contactInfo: {
+          whatsapp: contactInfo['support_whatsapp'] || '',
+          telegram: contactInfo['support_telegram'] || ''
+      }
     });
 
   } catch (err) {
