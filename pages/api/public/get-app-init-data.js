@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import jwt from 'jsonwebtoken';
+import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 
 export default async (req, res) => {
   if (req.method !== 'GET') {
@@ -57,9 +58,10 @@ export default async (req, res) => {
              
              if (teacherData && teacherData.profile_image) {
                 profileImage = teacherData.profile_image;
-                // ✅ معالجة الرابط إذا كان اسم ملف فقط
+                
+                // ✅ 2. معالجة الرابط باستخدام BASE_URL بدلاً من الرابط الثابت
                 if (!profileImage.startsWith('http')) {
-                    profileImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${profileImage}`;
+                    profileImage = `${BASE_URL}/api/public/get-avatar?file=${profileImage}`;
                 }
              }
           }
