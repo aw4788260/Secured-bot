@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 
 export default async (req, res) => {
   const { teacherId } = req.query;
@@ -14,10 +15,9 @@ export default async (req, res) => {
 
     if (!teacher) return res.status(404).json({ error: 'Not found' });
 
-    // ✅ معالجة رابط الصورة ليصبح رابطاً كاملاً للـ API
+    // ✅ 2. معالجة رابط الصورة باستخدام BASE_URL بدلاً من الرابط الثابت
     if (teacher.profile_image && !teacher.profile_image.startsWith('http')) {
-        // نقوم بدمج الدومين ومسار الـ API مع اسم الصورة
-        teacher.profile_image = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${teacher.profile_image}`;
+        teacher.profile_image = `${BASE_URL}/api/public/get-avatar?file=${teacher.profile_image}`;
     }
 
     // جلب الكورسات الخاصة بالمدرس
