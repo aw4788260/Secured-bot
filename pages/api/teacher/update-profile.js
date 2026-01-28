@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 
 export default async (req, res) => {
   // 1. التحقق من صحة المدرس (Authentication)
@@ -34,8 +35,10 @@ export default async (req, res) => {
 
       // ج) معالجة رابط الصورة
       let processedImage = teacher.profile_image;
+      
+      // ✅ 2. استخدام BASE_URL بدلاً من الرابط الثابت
       if (processedImage && !processedImage.startsWith('http')) {
-         processedImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${processedImage}`;
+         processedImage = `${BASE_URL}/api/public/get-avatar?file=${processedImage}`;
       }
 
       // د) تجهيز هيكل بيانات الدفع
