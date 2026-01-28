@@ -8,7 +8,7 @@ export default async (req, res) => {
 
   // 1. التحقق الأمني من الهوية والجهاز
   const isAuthorized = await checkUserAccess(req);
-  
+   
   if (!isAuthorized) {
       return res.status(401).json({ error: 'Unauthorized: Invalid Token or Device' });
   }
@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات
+    // 4. جلب البيانات (تم حذف type من هنا)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -57,7 +57,7 @@ export default async (req, res) => {
         courses ( id, title ),
         chapters (
           id, title, sort_order,
-          videos (id, title, sort_order, type, youtube_video_id), 
+          videos (id, title, sort_order, youtube_video_id), 
           pdfs (id, title, sort_order)
         ),
         exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active) 
@@ -78,7 +78,7 @@ export default async (req, res) => {
         .eq('user_id', userId)
         .in('exam_id', examIds)
         .eq('status', 'completed'); 
-      
+       
       attempts?.forEach(attempt => {
         attemptsMap[attempt.exam_id] = attempt.id;
       });
@@ -97,8 +97,9 @@ export default async (req, res) => {
         .sort((a, b) => a.sort_order - b.sort_order)
         .map(ch => ({
           ...ch,
+          // تم حذف type من هنا أيضاً
           videos: ch.videos.sort((a, b) => a.sort_order - b.sort_order).map(v => ({
-            id: v.id, title: v.title, type: v.type, hasId: !!v.youtube_video_id 
+            id: v.id, title: v.title, hasId: !!v.youtube_video_id 
           })),
           pdfs: ch.pdfs.sort((a, b) => a.sort_order - b.sort_order)
         })),
@@ -133,8 +134,8 @@ export default async (req, res) => {
           return {
             ...ex,
             isCompleted: isCompleted, 
-            isExpired: isExpired, // حقل جديد لتنبيه التطبيق بأن الوقت انتهى ولم يتم الحل
-            attempt_id: attemptId       
+            isExpired: isExpired, 
+            attempt_id: attemptId        
           };
         })
     };
