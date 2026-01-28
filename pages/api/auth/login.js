@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -65,9 +66,9 @@ export default async (req, res) => {
         if (teacherData && teacherData.profile_image) {
             profileImage = teacherData.profile_image;
             
-            // ✅ التعديل الهام: إذا كان مخزناً كاسم ملف فقط، نقوم بتحويله لرابط كامل
+            // ✅ 2. التعديل الهام: استخدام BASE_URL بدلاً من الرابط الثابت
             if (!profileImage.startsWith('http')) {
-                profileImage = `https://courses.aw478260.dpdns.org/api/public/get-avatar?file=${profileImage}`;
+                profileImage = `${BASE_URL}/api/public/get-avatar?file=${profileImage}`;
             }
         }
     }
