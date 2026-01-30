@@ -3,16 +3,58 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 
-// إعداد Multer لاستقبال الملفات في الذاكرة مؤقتاً
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-
+// إعدادات الكونفج الخاصة بـ Next.js
 export const config = {
   api: {
-    bodyParser: false,
+    bodyParser: false, // يجب أن يكون false لكي يعمل multer
+    responseLimit: false,
   },
 };
 
+// ---------------------------------------------------------
+// 1. إعداد Multer مع سجلات تتبع (Logging)
+// ---------------------------------------------------------
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log(`[Upload Step 3] Multer is determining destination for: ${file.originalname}`);
+    
+    // تحديد المجلد بناءً على الامتداد
+    const ext = path.extname(file.originalname).toLowerCase();
+    let folder = 'others';
+    
+    if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+        folder = 'exam_images'; 
+    } else if (ext === '.pdf') {
+        folder = 'pdfs';       
+    }
+
+    const uploadDir = path.join(process.cwd(), 'storage', folder);
+    console.log(`[Upload Step 4] Target Folder: ${folder} | Path: ${uploadDir}`);
+
+    // إنشاء المجلد إذا لم يكن موجوداً
+    if (!fs.existsSync(uploadDir)) {
+      console.log(`[Upload Step 4.1] Directory created: ${uploadDir}`);
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`;
+    
+    console.log(`[Upload Step 5] Generated Filename: ${uniqueName}`);
+    cb(null, uniqueName);
+  }
+});
+
+// إعداد خيارات الرفع (حجم الملف 500 ميجا)
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 500 * 1024 * 1024 } 
+});
+
+// دالة مساعدة لتشغيل الـ Middleware
 function runMiddleware(req, res, fn) {
   return new Promise((resolve, reject) => {
     fn(req, res, (result) => {
@@ -22,57 +64,63 @@ function runMiddleware(req, res, fn) {
   });
 }
 
+// ---------------------------------------------------------
+// 2. معالج الطلب الرئيسي (Handler)
+// ---------------------------------------------------------
 export default async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
-
-  // 1. التحقق من الصلاحية أولاً (قبل معالجة الملف لتوفير الموارد)
-  // ملاحظة: الهيدرز متاحة دائماً حتى قبل معالجة الـ Body
-  const auth = await verifyTeacher(req);
-  if (auth.error) return res.status(auth.status).json({ error: auth.error });
-
-  // 2. معالجة الملف
-  await runMiddleware(req, res, upload.single('file'));
-
-  if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+  console.log("---------------------------------------------------------");
+  console.log(`[Upload Step 0] New Request Received: ${req.method}`);
+  
+  if (req.method !== 'POST') {
+      console.log("[Error] Method Not Allowed");
+      return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
   try {
-    const file = req.file;
-    // تحديد الامتداد والمجلد المناسب بناءً على النوع
-    const ext = path.extname(file.originalname).toLowerCase();
-    let folder = 'others';
+    // 1. التحقق من صلاحية المعلم
+    console.log("[Upload Step 1] Verifying Teacher Auth...");
+    const auth = await verifyTeacher(req);
     
-    if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-        folder = 'exam_images'; // لتطابق file-proxy type=exam_images
-    } else if (ext === '.pdf') {
-        folder = 'pdfs';        // لتطابق file-proxy type=pdfs
+    if (auth.error) {
+        console.error(`[Error] Auth Failed: ${auth.error}`);
+        return res.status(auth.status).json({ error: auth.error });
+    }
+    console.log(`[Upload Step 2] Auth Success. Teacher ID: ${auth.user?.id}`);
+
+    // 2. بدء عملية الرفع
+    console.log("[Upload Step 3] Starting Multer Middleware...");
+    
+    // تشغيل Multer (سيقوم بالقفز إلى دوال destination و filename بالأعلى)
+    await runMiddleware(req, res, upload.single('file'));
+
+    // 3. التحقق من نجاح الرفع
+    if (!req.file) {
+        console.error("[Error] Middleware finished but No file found in req.file");
+        return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // التأكد من وجود المجلد
-    const uploadDir = path.join(process.cwd(), 'storage', folder);
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
+    console.log(`[Upload Step 6] File Saved Successfully on Disk!`);
+    console.log(`   -> Original Name: ${req.file.originalname}`);
+    console.log(`   -> Saved Name:    ${req.file.filename}`);
+    console.log(`   -> Size:          ${(req.file.size / 1024 / 1024).toFixed(2)} MB`);
 
-    // إنشاء اسم فريد للملف
-    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`;
-    const filePath = path.join(uploadDir, fileName);
-
-    // حفظ الملف محلياً
-    fs.writeFileSync(filePath, file.buffer);
-
-    console.log(`✅ File uploaded locally: ${folder}/${fileName}`);
-
-    // إرجاع اسم الملف فقط (لأن file-proxy يحتاج الاسم والنوع، وليس رابطاً كاملاً)
+    // 4. إرسال الرد
     return res.status(200).json({ 
         success: true, 
-        url: fileName, // التطبيق سيحفظ هذا الاسم لاستخدامه لاحقاً
-        fileId: fileName
+        url: req.file.filename,
+        fileId: req.file.filename
     });
 
   } catch (err) {
-    console.error("Upload Error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("❌ [CRITICAL UPLOAD ERROR]:");
+    console.error(err);
+
+    // محاولة تنظيف الملف التالف إذا وجد
+    if (req.file && req.file.path) {
+        console.log(`[Cleanup] Removing corrupted file: ${req.file.path}`);
+        try { fs.unlinkSync(req.file.path); } catch (e) { console.error("[Cleanup Error]", e.message); }
+    }
+
+    return res.status(500).json({ error: `Upload Failed: ${err.message}` });
   }
 };
