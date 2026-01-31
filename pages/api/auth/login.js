@@ -6,17 +6,10 @@ import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف 
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  // ✅ 2. التحقق من App Secret (طبقة الحماية الأولى)
-  // يمنع أي طلب لا يحمل الرمز السري الخاص بالتطبيق
-  const appSecret = req.headers['x-app-secret'];
-  if (appSecret !== process.env.APP_SECRET) {
-    return res.status(403).json({ success: false, message: 'غير مصرح لك باستخدام هذا الرابط (Invalid App Secret)' });
-  }
-
   const { identifier, password, deviceId } = req.body;
 
   try {
-    // 3. البحث عن المستخدم
+    // 1. البحث عن المستخدم
     // ✅ جلب teacher_profile_id للوصول لبيانات المدرس
     const { data: user } = await supabase
       .from('users')
@@ -32,13 +25,13 @@ export default async (req, res) => {
       return res.status(403).json({ success: false, message: 'هذا الحساب محظور. تواصل مع الدعم.' });
     }
 
-    // 4. التحقق من كلمة المرور
+    // 2. التحقق من كلمة المرور
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
 
-    // 5. إدارة بصمة الجهاز (Device Lock)
+    // 3. إدارة بصمة الجهاز (Device Lock)
     const { data: deviceData } = await supabase
       .from('devices')
       .select('fingerprint')
@@ -61,7 +54,7 @@ export default async (req, res) => {
       });
     }
 
-    // 6. ✅ جلب صورة المدرس ومعالجة الرابط
+    // 4. ✅ جلب صورة المدرس ومعالجة الرابط
     let profileImage = null;
     if (user.role === 'teacher' && user.teacher_profile_id) {
         const { data: teacherData } = await supabase
@@ -73,14 +66,14 @@ export default async (req, res) => {
         if (teacherData && teacherData.profile_image) {
             profileImage = teacherData.profile_image;
             
-            // ✅ استخدام BASE_URL بدلاً من الرابط الثابت
+            // ✅ 2. التعديل الهام: استخدام BASE_URL بدلاً من الرابط الثابت
             if (!profileImage.startsWith('http')) {
                 profileImage = `${BASE_URL}/api/public/get-avatar?file=${profileImage}`;
             }
         }
     }
 
-    // 7. إنشاء التوكن (JWT)
+    // 5. إنشاء التوكن (JWT)
     const token = jwt.sign(
         { 
             userId: user.id, 
@@ -99,7 +92,7 @@ export default async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // 8. الرد مع البيانات (شاملة رابط الصورة الكامل)
+    // 6. الرد مع البيانات (شاملة رابط الصورة الكامل)
     return res.status(200).json({
       success: true,
       token,
