@@ -2,51 +2,87 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
-  // 1. التحقق من الصلاحية (استخدام dashboardHelper لضمان عمل الجلسة)
+  // تفعيل اللوج لمعرفة بداية الطلب
+  console.log(`🚀 [ContentAPI] Incoming Request: ${req.method}`);
+
+  // 1. التحقق من الجلسة والصلاحيات
   const { user, error } = await requireTeacherOrAdmin(req, res);
   
-  // إذا كان هناك خطأ في الجلسة، الدالة المساعدة أرسلت الرد بالفعل
-  if (error) return;
+  if (error) {
+      console.error(`❌ [ContentAPI] Auth Failed: ${error}`);
+      return; // الرد بالخطأ تم إرساله مسبقاً
+  }
 
-  // تجهيز كائن auth ليتوافق مع المنطق الذي طلبته
   const auth = {
       teacherId: user.teacherId,
       userId: user.id
   };
 
+  console.log(`👤 [ContentAPI] Authenticated User: ${auth.userId} | TeacherID: ${auth.teacherId}`);
+
   // ============================================================
-  // GET: جلب المحتوى (ضروري لعرض الجدول في الصفحة)
+  // GET: جلب المحتوى (لعرضه في الجدول)
   // ============================================================
   if (req.method === 'GET') {
+      console.log("📥 [ContentAPI] Fetching content tree...");
       try {
           const { data: courses, error: fetchError } = await supabase
               .from('courses')
               .select(`
                   *,
                   subjects (
-                      id, title, sort_order,
+                      id, title, sort_order, price,
                       chapters (
-                          id, title, sort_order
+                          id, title, sort_order,
+                          videos (id, title, url),
+                          pdfs (id, title, file_path)
                       )
                   )
               `)
               .eq('teacher_id', auth.teacherId)
               .order('sort_order', { ascending: true });
 
-          if (fetchError) throw fetchError;
+          if (fetchError) {
+              console.error("❌ [ContentAPI] DB Fetch Error:", fetchError.message);
+              throw fetchError;
+          }
+
+          // ترتيب العناصر الفرعية
+          courses.forEach(c => {
+             if(c.subjects) c.subjects.sort((a,b) => a.sort_order - b.sort_order);
+             c.subjects?.forEach(s => {
+                if(s.chapters) s.chapters.sort((a,b) => a.sort_order - b.sort_order);
+             });
+          });
+
+          console.log(`✅ [ContentAPI] Successfully fetched ${courses.length} courses.`);
           return res.status(200).json({ success: true, courses });
+
       } catch (err) {
+          console.error("🔥 [ContentAPI] Critical GET Error:", err.message);
           return res.status(500).json({ error: err.message });
       }
   }
 
   // ============================================================
-  // POST: العمليات (المنطق الخاص بك)
+  // POST: العمليات (إضافة - تعديل - حذف)
   // ============================================================
   if (req.method === 'POST') {
-      const { action, type, data } = req.body; 
+      // استلام البيانات ودعم الصيغتين
+      const { action, type } = req.body;
+      const requestData = req.body.data || req.body.payload;
 
-      // 🛡️ دالة للتحقق من ملكية الكورس
+      console.log(`📝 [ContentAPI] POST Action: '${action}' | Type: '${type}'`);
+      console.log(`📄 [ContentAPI] Payload:`, JSON.stringify(requestData));
+
+      if (!requestData) {
+          console.warn("⚠️ [ContentAPI] Missing data/payload in request body.");
+          return res.status(400).json({ error: 'بيانات الطلب مفقودة (Missing data/payload)' });
+      }
+
+      // --------------------------------------------------------
+      // دوال التحقق من الملكية
+      // --------------------------------------------------------
       const checkCourseOwnership = async (courseId) => {
           if (!courseId) return false;
           const { data: course } = await supabase
@@ -54,178 +90,168 @@ export default async (req, res) => {
               .select('teacher_id')
               .eq('id', courseId)
               .single();
-          // مقارنة TeacherID كـ String لضمان الدقة
-          return course && String(course.teacher_id) === String(auth.teacherId);
+          
+          const isOwner = course && String(course.teacher_id) === String(auth.teacherId);
+          console.log(`🛡️ [ContentAPI] Ownership Check (Course: ${courseId}): ${isOwner ? 'PASSED' : 'FAILED'}`);
+          return isOwner;
       };
 
-      // 🛡️ دالة لاستخراج معرف الكورس (Course ID) من العناصر الفرعية
       const getParentCourseId = async (itemType, itemData, isUpdateOrDelete = false) => {
+          console.log(`🔍 [ContentAPI] Resolving Parent for ${itemType} (Update/Delete: ${isUpdateOrDelete})...`);
           try {
-            // الحالة 1: التعامل مع "مادة" (Subject)
+            // 1. مادة (Subject)
             if (itemType === 'subjects') {
                 if (!isUpdateOrDelete) return itemData.course_id;
                 const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.id).single();
                 return subject?.course_id;
             }
 
-            // الحالة 2: التعامل مع "شابتر" (Chapter)
+            // 2. شابتر (Chapter)
             if (itemType === 'chapters') {
-                let subjectId = itemData.subject_id;
-                if (isUpdateOrDelete) {
+                if (!isUpdateOrDelete) {
+                    const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.subject_id).single();
+                    return subject?.course_id;
+                } else {
                     const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.id).single();
-                    subjectId = chapter?.subject_id;
-                }
-                if (subjectId) {
-                    const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', subjectId).single();
+                    if (!chapter) { console.warn("⚠️ Chapter not found"); return null; }
+                    const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', chapter.subject_id).single();
                     return subject?.course_id;
                 }
             }
 
-            // الحالة 3: التعامل مع "فيديو" أو "ملف" (Video/PDF)
+            // 3. فيديو أو ملف (Video/PDF)
             if (itemType === 'videos' || itemType === 'pdfs') {
-                let chapterId = itemData.chapter_id;
-                if (isUpdateOrDelete) {
+                if (!isUpdateOrDelete) {
+                    const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.chapter_id).single();
+                    if (!chapter) return null;
+                    const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', chapter.subject_id).single();
+                    return subject?.course_id;
+                } else {
                     const { data: item } = await supabase.from(itemType).select('chapter_id').eq('id', itemData.id).single();
-                    chapterId = item?.chapter_id;
-                }
-                if (chapterId) {
-                    const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', chapterId).single();
-                    if (chapter?.subject_id) {
-                        const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', chapter.subject_id).single();
-                        return subject?.course_id;
-                    }
+                    if (!item) return null;
+                    const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', item.chapter_id).single();
+                    if (!chapter) return null;
+                    const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', chapter.subject_id).single();
+                    return subject?.course_id;
                 }
             }
             return null;
           } catch (e) {
-              console.error("Parent ID Lookup Error:", e);
+              console.error("❌ [ParentLookup Error]:", e.message);
               return null;
           }
       };
 
       try {
-        // --- إضافة عنصر جديد (Create) ---
+        // --- 1. إضافة (Create) ---
         if (action === 'create') {
-          let insertData = { ...data };
+          console.log("➕ [ContentAPI] Processing CREATE...");
+          let insertData = { ...requestData };
           
-          // 🛡️ التحقق الأمني عند الإضافة
           if (type !== 'courses') {
               const targetCourseId = await getParentCourseId(type, insertData, false);
-
-              if (targetCourseId) {
-                  const isOwner = await checkCourseOwnership(targetCourseId);
-                  if (!isOwner) {
-                      return res.status(403).json({ error: 'غير مسموح لك بالإضافة في هذا الكورس.' });
-                  }
-              } else {
-                   // إذا لم نستطع تحديد الكورس (بيانات ناقصة)
-                   if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) {
-                       return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
-                   }
+              console.log(`🎯 [ContentAPI] Target Course ID: ${targetCourseId}`);
+              
+              if (!targetCourseId || !(await checkCourseOwnership(targetCourseId))) {
+                  console.warn("⛔ [ContentAPI] Access Denied: Not the course owner.");
+                  return res.status(403).json({ error: 'غير مصرح لك بالإضافة في هذا المسار.' });
               }
-          }
-
-          // إعدادات الكورس الجديد
-          if (type === 'courses') {
-            insertData.teacher_id = auth.teacherId;
-            insertData.sort_order = 999; 
-            if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
           } else {
-            insertData.sort_order = 999;
+              insertData.teacher_id = auth.teacherId;
+              insertData.sort_order = 999; 
+              if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
           }
           
-          const { data: newItem, error } = await supabase
-            .from(type)
-            .insert(insertData)
-            .select()
-            .single();
+          if (type !== 'courses') insertData.sort_order = 999;
+          
+          const { data: newItem, error } = await supabase.from(type).insert(insertData).select().single();
 
           if (error) {
-              if (error.code === '23505') { 
-                 return res.status(400).json({ error: 'تكرار في البيانات (Duplicate Code/ID)' });
-              }
+              console.error("❌ [ContentAPI] Insert Failed:", error.message);
               throw error;
           }
+          
+          console.log(`✅ [ContentAPI] Created successfully. New ID: ${newItem.id}`);
 
-          // إدارة الصلاحيات التلقائية
+          // صلاحيات الكورس الجديد
           if (type === 'courses' && newItem) {
-              try {
-                const accessList = [];
-                const currentUserId = auth.userId;
-                if (currentUserId) accessList.push({ user_id: currentUserId, course_id: newItem.id });
-                
-                // إضافة حساب المعلم الرئيسي
-                const { data: mainTeacherUser } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).eq('role', 'teacher').maybeSingle();
-                if (mainTeacherUser && mainTeacherUser.id !== currentUserId) accessList.push({ user_id: mainTeacherUser.id, course_id: newItem.id });
-                
-                // إضافة المشرفين
-                const { data: moderators } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).eq('role', 'moderator');
-                if (moderators) moderators.forEach(mod => { if (!accessList.some(item => item.user_id === mod.id)) accessList.push({ user_id: mod.id, course_id: newItem.id }); });
-                
-                if (accessList.length > 0) await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' });
-              } catch (permError) { console.error("Error granting permissions:", permError); }
+             const accessList = [{ user_id: auth.userId, course_id: newItem.id }];
+             await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' }).catch(e => console.error(e));
           }
 
           return res.status(200).json({ success: true, item: newItem });
         }
 
-        // --- تعديل عنصر (Update) ---
+        // --- 2. تعديل (Update) ---
         if (action === 'update') {
-           const { id, ...updates } = data;
+           console.log("✏️ [ContentAPI] Processing UPDATE...");
+           const { id, ...updates } = requestData;
            let isAuthorized = false;
+
+           if (!id) {
+               console.error("❌ [ContentAPI] Update Failed: ID missing.");
+               return res.status(400).json({ error: 'ID مطلوب للتعديل' });
+           }
 
            if (type === 'courses') {
                const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
-               if (course && String(course.teacher_id) === String(auth.teacherId)) {
-                   isAuthorized = true;
-               }
+               if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
            } else {
                const targetCourseId = await getParentCourseId(type, { id }, true);
-               if (targetCourseId && await checkCourseOwnership(targetCourseId)) {
-                   isAuthorized = true;
-               }
+               if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
            }
 
            if (!isAuthorized) {
+               console.warn(`⛔ [ContentAPI] Update Denied for user ${auth.userId} on ${type}:${id}`);
                return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا المحتوى.' });
            }
 
            const { error } = await supabase.from(type).update(updates).eq('id', id);
            
-           if (error) throw error;
+           if (error) {
+               console.error("❌ [ContentAPI] Update DB Error:", error.message);
+               throw error;
+           }
+           
+           console.log(`✅ [ContentAPI] Updated ${type}:${id} successfully.`);
            return res.status(200).json({ success: true });
         }
 
-        // --- حذف عنصر (Delete) ---
+        // --- 3. حذف (Delete) ---
         if (action === 'delete') {
-           const { id } = data;
+           console.log("🗑️ [ContentAPI] Processing DELETE...");
+           const { id } = requestData;
            let isAuthorized = false;
+           
+           if (!id) return res.status(400).json({ error: 'ID مطلوب للحذف' });
 
            if (type === 'courses') {
                const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
-               if (course && String(course.teacher_id) === String(auth.teacherId)) {
-                   isAuthorized = true;
-               }
+               if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
            } else {
                const targetCourseId = await getParentCourseId(type, { id }, true);
-               if (targetCourseId && await checkCourseOwnership(targetCourseId)) {
-                   isAuthorized = true;
-               }
+               if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
            }
 
            if (!isAuthorized) {
-               return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
+               console.warn(`⛔ [ContentAPI] Delete Denied for user ${auth.userId}`);
+               return res.status(403).json({ error: 'لا تملك صلاحية الحذف.' });
            }
 
            const { error } = await supabase.from(type).delete().eq('id', id);
 
-           if (error) throw error;
+           if (error) {
+               console.error("❌ [ContentAPI] Delete DB Error:", error.message);
+               throw error;
+           }
+           
+           console.log(`✅ [ContentAPI] Deleted ${type}:${id} successfully.`);
            return res.status(200).json({ success: true });
         }
 
       } catch (err) {
-        console.error("Teacher Content API Error:", err);
-        return res.status(500).json({ error: err.message });
+        console.error("🔥 [ContentAPI] EXCEPTION:", err);
+        return res.status(500).json({ error: err.message || 'خطأ في السيرفر' });
       }
   }
 
