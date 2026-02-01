@@ -2,15 +2,13 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
-  // تفعيل اللوج لمعرفة بداية الطلب
-  console.log(`🚀 [ContentAPI] Incoming Request: ${req.method}`);
+  console.log(`🚀 [ContentAPI] Request: ${req.method}`);
 
-  // 1. التحقق من الجلسة والصلاحيات
+  // 1. التحقق من الصلاحية
   const { user, error } = await requireTeacherOrAdmin(req, res);
-  
   if (error) {
       console.error(`❌ [ContentAPI] Auth Failed: ${error}`);
-      return; // الرد بالخطأ تم إرساله مسبقاً
+      return; 
   }
 
   const auth = {
@@ -18,14 +16,13 @@ export default async (req, res) => {
       userId: user.id
   };
 
-  console.log(`👤 [ContentAPI] Authenticated User: ${auth.userId} | TeacherID: ${auth.teacherId}`);
-
   // ============================================================
-  // GET: جلب المحتوى (لعرضه في الجدول)
+  // GET: جلب المحتوى
   // ============================================================
   if (req.method === 'GET') {
-      console.log("📥 [ContentAPI] Fetching content tree...");
+      console.log("📥 [ContentAPI] Fetching tree...");
       try {
+          // التعديل: نستخدم (*) لجلب كل الأعمدة بما فيها youtube_video_id
           const { data: courses, error: fetchError } = await supabase
               .from('courses')
               .select(`
@@ -34,7 +31,7 @@ export default async (req, res) => {
                       id, title, sort_order, price,
                       chapters (
                           id, title, sort_order,
-                          videos (id, title, url),
+                          videos (*),
                           pdfs (id, title, file_path)
                       )
                   )
@@ -42,24 +39,27 @@ export default async (req, res) => {
               .eq('teacher_id', auth.teacherId)
               .order('sort_order', { ascending: true });
 
-          if (fetchError) {
-              console.error("❌ [ContentAPI] DB Fetch Error:", fetchError.message);
-              throw fetchError;
-          }
+          if (fetchError) throw fetchError;
 
-          // ترتيب العناصر الفرعية
+          // تحسين البيانات: تحويل youtube_video_id إلى url ليتوافق مع الواجهة إذا كانت تحتاجه
           courses.forEach(c => {
              if(c.subjects) c.subjects.sort((a,b) => a.sort_order - b.sort_order);
              c.subjects?.forEach(s => {
                 if(s.chapters) s.chapters.sort((a,b) => a.sort_order - b.sort_order);
+                s.chapters?.forEach(ch => {
+                    // إضافة خاصية url للفيديوهات لتسهيل التعامل في الواجهة
+                    if(ch.videos) {
+                        ch.videos.forEach(v => v.url = v.youtube_video_id);
+                        ch.videos.sort((a,b) => a.sort_order - b.sort_order);
+                    }
+                });
              });
           });
 
-          console.log(`✅ [ContentAPI] Successfully fetched ${courses.length} courses.`);
           return res.status(200).json({ success: true, courses });
 
       } catch (err) {
-          console.error("🔥 [ContentAPI] Critical GET Error:", err.message);
+          console.error("🔥 [ContentAPI] GET Error:", err.message);
           return res.status(500).json({ error: err.message });
       }
   }
@@ -68,20 +68,26 @@ export default async (req, res) => {
   // POST: العمليات (إضافة - تعديل - حذف)
   // ============================================================
   if (req.method === 'POST') {
-      // استلام البيانات ودعم الصيغتين
       const { action, type } = req.body;
-      const requestData = req.body.data || req.body.payload;
+      // دعم الصيغتين (data أو payload)
+      let requestData = req.body.data || req.body.payload;
 
-      console.log(`📝 [ContentAPI] POST Action: '${action}' | Type: '${type}'`);
-      console.log(`📄 [ContentAPI] Payload:`, JSON.stringify(requestData));
+      console.log(`📝 [ContentAPI] POST ${action} on ${type}`);
 
       if (!requestData) {
-          console.warn("⚠️ [ContentAPI] Missing data/payload in request body.");
-          return res.status(400).json({ error: 'بيانات الطلب مفقودة (Missing data/payload)' });
+          return res.status(400).json({ error: 'بيانات الطلب مفقودة' });
+      }
+
+      // 🛠️ إصلاح هام: تحويل url إلى youtube_video_id للفيديوهات
+      if (type === 'videos') {
+          if (requestData.url) {
+              requestData.youtube_video_id = requestData.url;
+              delete requestData.url; // حذف الحقل القديم حتى لا يسبب خطأ
+          }
       }
 
       // --------------------------------------------------------
-      // دوال التحقق من الملكية
+      // دوال مساعدة (الملكية والبحث عن الأب)
       // --------------------------------------------------------
       const checkCourseOwnership = async (courseId) => {
           if (!courseId) return false;
@@ -90,36 +96,27 @@ export default async (req, res) => {
               .select('teacher_id')
               .eq('id', courseId)
               .single();
-          
-          const isOwner = course && String(course.teacher_id) === String(auth.teacherId);
-          console.log(`🛡️ [ContentAPI] Ownership Check (Course: ${courseId}): ${isOwner ? 'PASSED' : 'FAILED'}`);
-          return isOwner;
+          return course && String(course.teacher_id) === String(auth.teacherId);
       };
 
       const getParentCourseId = async (itemType, itemData, isUpdateOrDelete = false) => {
-          console.log(`🔍 [ContentAPI] Resolving Parent for ${itemType} (Update/Delete: ${isUpdateOrDelete})...`);
           try {
-            // 1. مادة (Subject)
             if (itemType === 'subjects') {
                 if (!isUpdateOrDelete) return itemData.course_id;
                 const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.id).single();
                 return subject?.course_id;
             }
-
-            // 2. شابتر (Chapter)
             if (itemType === 'chapters') {
                 if (!isUpdateOrDelete) {
                     const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.subject_id).single();
                     return subject?.course_id;
                 } else {
                     const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.id).single();
-                    if (!chapter) { console.warn("⚠️ Chapter not found"); return null; }
+                    if (!chapter) return null;
                     const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', chapter.subject_id).single();
                     return subject?.course_id;
                 }
             }
-
-            // 3. فيديو أو ملف (Video/PDF)
             if (itemType === 'videos' || itemType === 'pdfs') {
                 if (!isUpdateOrDelete) {
                     const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.chapter_id).single();
@@ -137,7 +134,7 @@ export default async (req, res) => {
             }
             return null;
           } catch (e) {
-              console.error("❌ [ParentLookup Error]:", e.message);
+              console.error("ParentLookup Error:", e.message);
               return null;
           }
       };
@@ -145,16 +142,12 @@ export default async (req, res) => {
       try {
         // --- 1. إضافة (Create) ---
         if (action === 'create') {
-          console.log("➕ [ContentAPI] Processing CREATE...");
           let insertData = { ...requestData };
           
           if (type !== 'courses') {
               const targetCourseId = await getParentCourseId(type, insertData, false);
-              console.log(`🎯 [ContentAPI] Target Course ID: ${targetCourseId}`);
-              
               if (!targetCourseId || !(await checkCourseOwnership(targetCourseId))) {
-                  console.warn("⛔ [ContentAPI] Access Denied: Not the course owner.");
-                  return res.status(403).json({ error: 'غير مصرح لك بالإضافة في هذا المسار.' });
+                  return res.status(403).json({ error: 'غير مصرح لك بالإضافة هنا.' });
               }
           } else {
               insertData.teacher_id = auth.teacherId;
@@ -167,16 +160,19 @@ export default async (req, res) => {
           const { data: newItem, error } = await supabase.from(type).insert(insertData).select().single();
 
           if (error) {
-              console.error("❌ [ContentAPI] Insert Failed:", error.message);
+              console.error("Insert Error:", error.message);
               throw error;
           }
-          
-          console.log(`✅ [ContentAPI] Created successfully. New ID: ${newItem.id}`);
 
-          // صلاحيات الكورس الجديد
+          // صلاحيات الكورس
           if (type === 'courses' && newItem) {
              const accessList = [{ user_id: auth.userId, course_id: newItem.id }];
              await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' }).catch(e => console.error(e));
+          }
+
+          // إعادة تعيين url في الرد ليتوافق مع الواجهة
+          if (type === 'videos' && newItem) {
+              newItem.url = newItem.youtube_video_id;
           }
 
           return res.status(200).json({ success: true, item: newItem });
@@ -184,14 +180,10 @@ export default async (req, res) => {
 
         // --- 2. تعديل (Update) ---
         if (action === 'update') {
-           console.log("✏️ [ContentAPI] Processing UPDATE...");
            const { id, ...updates } = requestData;
            let isAuthorized = false;
 
-           if (!id) {
-               console.error("❌ [ContentAPI] Update Failed: ID missing.");
-               return res.status(400).json({ error: 'ID مطلوب للتعديل' });
-           }
+           if (!id) return res.status(400).json({ error: 'ID مطلوب' });
 
            if (type === 'courses') {
                const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
@@ -201,29 +193,20 @@ export default async (req, res) => {
                if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
            }
 
-           if (!isAuthorized) {
-               console.warn(`⛔ [ContentAPI] Update Denied for user ${auth.userId} on ${type}:${id}`);
-               return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا المحتوى.' });
-           }
+           if (!isAuthorized) return res.status(403).json({ error: 'لا تملك صلاحية التعديل.' });
 
            const { error } = await supabase.from(type).update(updates).eq('id', id);
            
-           if (error) {
-               console.error("❌ [ContentAPI] Update DB Error:", error.message);
-               throw error;
-           }
-           
-           console.log(`✅ [ContentAPI] Updated ${type}:${id} successfully.`);
+           if (error) throw error;
            return res.status(200).json({ success: true });
         }
 
         // --- 3. حذف (Delete) ---
         if (action === 'delete') {
-           console.log("🗑️ [ContentAPI] Processing DELETE...");
            const { id } = requestData;
            let isAuthorized = false;
            
-           if (!id) return res.status(400).json({ error: 'ID مطلوب للحذف' });
+           if (!id) return res.status(400).json({ error: 'ID مطلوب' });
 
            if (type === 'courses') {
                const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
@@ -233,24 +216,16 @@ export default async (req, res) => {
                if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
            }
 
-           if (!isAuthorized) {
-               console.warn(`⛔ [ContentAPI] Delete Denied for user ${auth.userId}`);
-               return res.status(403).json({ error: 'لا تملك صلاحية الحذف.' });
-           }
+           if (!isAuthorized) return res.status(403).json({ error: 'لا تملك صلاحية الحذف.' });
 
            const { error } = await supabase.from(type).delete().eq('id', id);
 
-           if (error) {
-               console.error("❌ [ContentAPI] Delete DB Error:", error.message);
-               throw error;
-           }
-           
-           console.log(`✅ [ContentAPI] Deleted ${type}:${id} successfully.`);
+           if (error) throw error;
            return res.status(200).json({ success: true });
         }
 
       } catch (err) {
-        console.error("🔥 [ContentAPI] EXCEPTION:", err);
+        console.error("API Exception:", err);
         return res.status(500).json({ error: err.message || 'خطأ في السيرفر' });
       }
   }
