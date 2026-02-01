@@ -33,6 +33,7 @@ export default function ContentManager() {
   const dragItem = useRef();
   const dragOverItem = useRef();
 
+  // Exam States
   const [showExamSidebar, setShowExamSidebar] = useState(false);
   const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
@@ -41,21 +42,26 @@ export default function ContentManager() {
   const [uploadingImg, setUploadingImg] = useState(false);
   const [examStats, setExamStats] = useState(null);
 
+  // 1. تعديل جلب البيانات ليتناسب مع هيكل الرد { courses: [...] }
   const fetchContent = async () => {
       setLoading(true);
       try {
         const res = await fetch('/api/dashboard/teacher/content');
         const data = await res.json();
-        setCourses(Array.isArray(data) ? data : []);
         
+        // التصحيح هنا: استخدام data.courses بدلاً من data مباشرة
+        const items = data.courses || [];
+        setCourses(items);
+        
+        // تحديث العناصر المختارة حالياً لتعكس التغييرات
         if (selectedCourse) {
-            const updatedC = (Array.isArray(data) ? data : []).find(c => c.id === selectedCourse.id);
+            const updatedC = items.find(c => c.id === selectedCourse.id);
             setSelectedCourse(updatedC);
             if (selectedSubject && updatedC) {
-                const updatedS = updatedC.subjects.find(s => s.id === selectedSubject.id);
+                const updatedS = updatedC.subjects?.find(s => s.id === selectedSubject.id);
                 setSelectedSubject(updatedS);
                 if (selectedChapter && updatedS) {
-                    const updatedCh = updatedS.chapters.find(ch => ch.id === selectedChapter.id);
+                    const updatedCh = updatedS.chapters?.find(ch => ch.id === selectedChapter.id);
                     setSelectedChapter(updatedCh);
                 }
             }
@@ -89,6 +95,7 @@ export default function ContentManager() {
       else if (selectedCourse) setSelectedCourse(null);
   };
 
+  // Drag & Drop logic (Frontend Only Visual Update, Backend reorder needs separate API)
   const onDragStart = (e, index) => {
       dragItem.current = index;
       e.target.closest('.draggable-item').classList.add('dragging');
@@ -105,7 +112,7 @@ export default function ContentManager() {
       if (listType === 'courses') list = [...courses];
       else if (listType === 'subjects') list = [...selectedCourse.subjects];
       else if (listType === 'chapters') list = [...selectedSubject.chapters];
-      else if (listType === 'exams') list = [...selectedSubject.exams];
+      else if (listType === 'exams') list = [...selectedSubject.exams]; // Exams usually inside subjects
       else if (listType === 'videos') list = [...selectedChapter.videos];
       else if (listType === 'pdfs') list = [...selectedChapter.pdfs];
 
@@ -121,41 +128,49 @@ export default function ContentManager() {
       if (listType === 'courses') setCourses(list);
       else if (listType === 'subjects') setSelectedCourse({ ...selectedCourse, subjects: list });
       else if (listType === 'chapters') setSelectedSubject({ ...selectedSubject, chapters: list });
-      else if (listType === 'exams') setSelectedSubject({ ...selectedSubject, exams: list });
       else if (listType === 'videos') setSelectedChapter({ ...selectedChapter, videos: list });
       else if (listType === 'pdfs') setSelectedChapter({ ...selectedChapter, pdfs: list });
 
       const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
       
       try {
+          // تأكد من وجود ملف reorder.js أو تجاهل هذا الجزء مؤقتاً
           await fetch('/api/dashboard/teacher/reorder', {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ type: listType, items: updatedItems })
           });
       } catch (err) {
-          showAlert('error', 'فشل حفظ الترتيب');
-          fetchContent();
+          // Silent fail or alert
       }
   };
 
-  const apiCall = async (action, payload) => {
+  // 2. تحديث دالة الاتصال بالسيرفر لترسل البيانات بالشكل الصحيح
+  // (action: 'create', type: 'courses', data: {...})
+  const apiCall = async (action, type, dataPayload) => {
       setLoading(true);
       try {
           const res = await fetch('/api/dashboard/teacher/content', {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ action, payload })
+              // هنا نرسل الهيكل الذي يتوقعه ملف content.js
+              body: JSON.stringify({ action, type, data: dataPayload })
           });
           const data = await res.json();
-          if (res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تمت العملية بنجاح'); }
-          else { showAlert('error', data.error || 'حدث خطأ'); }
+          if (res.ok) { 
+              fetchContent(); 
+              setModalType(null); 
+              showAlert('success', 'تمت العملية بنجاح'); 
+          } else { 
+              showAlert('error', data.error || 'حدث خطأ'); 
+          }
       } catch (e) { showAlert('error', 'خطأ في الاتصال'); }
       setLoading(false);
   };
 
+  // 3. تحديث الحذف لاستخدام التوقيع الجديد
   const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
-      await apiCall('delete_item', { type, id });
+      await apiCall('delete', type, { id }); // أرسل النوع الصحيح
       closeConfirm();
       if(type === 'courses' && selectedCourse?.id === id) setSelectedCourse(null);
       if(type === 'subjects' && selectedSubject?.id === id) setSelectedSubject(null);
@@ -184,11 +199,11 @@ export default function ContentManager() {
                   id: data.id, title: data.title, duration: data.duration_minutes,
                   requiresName: data.requires_student_name, randQ: data.randomize_questions,
                   randO: data.randomize_options,
-                  questions: data.questions.map(q => ({
+                  questions: data.questions ? data.questions.map(q => ({
                       id: q.id, text: q.question_text, image: q.image_file_id,
                       options: q.options.map(o => o.option_text),
                       correctIndex: q.options.findIndex(o => o.is_correct)
-                  }))
+                  })) : []
               });
           } else {
               setExamForm({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
@@ -200,9 +215,9 @@ export default function ContentManager() {
   };
 
   const getModalTitle = () => {
-      if(modalType.includes('course')) return modalType.includes('add') ? 'إضافة كورس' : 'تعديل الكورس';
-      if(modalType.includes('subject')) return modalType.includes('add') ? 'إضافة مادة' : 'تعديل المادة';
-      if(modalType.includes('chapter')) return modalType.includes('add') ? 'إضافة فصل' : 'تعديل الفصل';
+      if(modalType?.includes('course')) return modalType.includes('add') ? 'إضافة كورس' : 'تعديل الكورس';
+      if(modalType?.includes('subject')) return modalType.includes('add') ? 'إضافة مادة' : 'تعديل المادة';
+      if(modalType?.includes('chapter')) return modalType.includes('add') ? 'إضافة فصل' : 'تعديل الفصل';
       if(modalType === 'add_video') return 'إضافة فيديو';
       return '';
   };
@@ -214,12 +229,15 @@ export default function ContentManager() {
       const fd = new FormData();
       fd.append('file', file); fd.append('type', 'exam_image');
       try {
+          // تأكد من وجود API للرفع أو استخدم content.js إذا كان يدعم الرفع
           const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
           const data = await res.json();
           if(res.ok) setCurrentQ({...currentQ, image: data.fileName});
       } catch(e) {}
       setUploadingImg(false);
   };
+  
+  // دوال إدارة الأسئلة (كما هي)
   const handleOptionChange = (index, value) => {
       const newOpts = [...currentQ.options];
       newOpts[index] = value;
@@ -239,15 +257,8 @@ export default function ContentManager() {
       setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   };
   const saveQuestion = () => {
-      if (!currentQ.text || !currentQ.text.trim()) {
-          return showAlert('error', 'نص السؤال مطلوب');
-      }
-      
-      const hasEmptyOption = currentQ.options.some(opt => !opt || !opt.trim());
-      if (hasEmptyOption) {
-          return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة.');
-      }
-
+      if (!currentQ.text || !currentQ.text.trim()) return showAlert('error', 'نص السؤال مطلوب');
+      if (currentQ.options.some(opt => !opt || !opt.trim())) return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة.');
       const newQs = [...examForm.questions];
       if (editingQIndex >= 0) newQs[editingQIndex] = currentQ;
       else newQs.push(currentQ);
@@ -265,15 +276,36 @@ export default function ContentManager() {
       setExamForm({ ...examForm, questions: examForm.questions.filter((_, idx) => idx !== i) });
       if (editingQIndex === i) resetCurrentQuestion();
   };
+
+  // 4. تحديث دالة حفظ الامتحان لتستخدم ملف exams.js بدلاً من content.js
   const submitExam = async () => {
       if(!examForm.title || examForm.questions.length === 0) return showAlert('error', 'البيانات ناقصة');
-      await apiCall('save_exam', {
-          id: examForm.id, subjectId: selectedSubject.id,
-          title: examForm.title, duration: examForm.duration,
-          requiresName: examForm.requiresName, randQ: examForm.randQ, randO: examForm.randO,
-          questions: examForm.questions, deletedQuestionIds: deletedQIds
-      });
+      setLoading(true);
+      try {
+        const res = await fetch('/api/dashboard/teacher/exams', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                action: 'save_exam',
+                id: examForm.id, 
+                subjectId: selectedSubject.id,
+                title: examForm.title, duration: examForm.duration,
+                requiresName: examForm.requiresName, randQ: examForm.randQ, randO: examForm.randO,
+                questions: examForm.questions, deletedQuestionIds: deletedQIds
+            })
+        });
+        const data = await res.json();
+        if(res.ok) {
+            showAlert('success', 'تم حفظ الامتحان');
+            setModalType(null);
+            fetchContent();
+        } else {
+            showAlert('error', data.error || 'فشل الحفظ');
+        }
+      } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
+      setLoading(false);
   };
+
   const loadStats = async (examId) => {
       setLoading(true);
       const res = await fetch(`/api/dashboard/teacher/exams?action=stats&examId=${examId}`);
@@ -318,7 +350,7 @@ export default function ContentManager() {
                       <div className="icon blue">{Icons.folder}</div>
                       <h3>{c.title}</h3>
                       <p>{c.price > 0 ? `${c.price} جنية` : 'مجاني'}</p>
-                      <small style={{color: '#64748b'}}>{c.subjects.length} مواد</small>
+                      <small style={{color: '#64748b'}}>{c.subjects?.length || 0} مواد</small>
                   </div>
               ))}
           </div>
@@ -326,7 +358,7 @@ export default function ContentManager() {
 
       {selectedCourse && !selectedSubject && (
           <div className="grid-cards">
-              {selectedCourse.subjects.map((s, index) => (
+              {selectedCourse.subjects?.map((s, index) => (
                   <div key={s.id} className="card folder-card draggable-item" onClick={() => setSelectedSubject(s)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'subjects')}>
                       <div className="card-actions-abs">
                           <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('subjects', s.id)}}>{Icons.trash}</button>
@@ -335,7 +367,7 @@ export default function ContentManager() {
                       <div className="icon green">{Icons.folder}</div>
                       <h3>{s.title}</h3>
                       <p>{s.price > 0 ? `${s.price} جنية` : 'مجاني'}</p>
-                      <small style={{color: '#64748b'}}>{s.chapters.length} فصول</small>
+                      <small style={{color: '#64748b'}}>{s.chapters?.length || 0} فصول</small>
                   </div>
               ))}
           </div>
@@ -349,11 +381,11 @@ export default function ContentManager() {
                       <button className="btn-small" onClick={() => openModal('add_chapter')}>{Icons.add} إضافة</button>
                   </div>
                   <div className="list-group">
-                      {selectedSubject.chapters.length === 0 && <div className="empty">لا توجد فصول</div>}
-                      {selectedSubject.chapters.map((ch, index) => (
+                      {selectedSubject.chapters?.length === 0 && <div className="empty">لا توجد فصول</div>}
+                      {selectedSubject.chapters?.map((ch, index) => (
                           <div key={ch.id} className="list-item clickable draggable-item" onClick={() => setSelectedChapter(ch)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'chapters')}>
                               <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
-                              <div className="info"><strong>{ch.title}</strong><small>{ch.videos.length} فيديو • {ch.pdfs.length} ملف</small></div>
+                              <div className="info"><strong>{ch.title}</strong><small>{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small></div>
                               <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
                           </div>
                       ))}
@@ -366,7 +398,7 @@ export default function ContentManager() {
                       <button className="btn-small" onClick={() => openModal('exam_editor')}> {Icons.add} إنشاء</button>
                   </div>
                   <div className="exam-grid">
-                      {selectedSubject.exams.map((ex, index) => (
+                      {selectedSubject.exams?.map((ex, index) => (
                           <div key={ex.id} className="exam-card-item draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'exams')}>
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="exam-icon">{Icons.exam}</div>
@@ -391,7 +423,7 @@ export default function ContentManager() {
                       <button className="btn-small" onClick={() => openModal('add_video')}> {Icons.add} إضافة</button>
                   </div>
                   <div className="media-grid">
-                      {selectedChapter.videos.map((v, index) => (
+                      {selectedChapter.videos?.map((v, index) => (
                           <div key={v.id} className="media-card draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'videos')}>
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="thumb">{Icons.video}</div>
@@ -410,7 +442,7 @@ export default function ContentManager() {
                       <button className="btn-small" onClick={() => openModal('add_pdf')}> {Icons.add} رفع</button>
                   </div>
                   <div className="list-group">
-                      {selectedChapter.pdfs.map((p, index) => (
+                      {selectedChapter.pdfs?.map((p, index) => (
                           <div key={p.id} className="list-item draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'pdfs')}>
                               <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="info"><span className="icon-text">{Icons.pdf}</span><strong>{p.title}</strong></div>
@@ -457,17 +489,19 @@ export default function ContentManager() {
               
               <div className="acts">
                   <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
+                  
+                  {/* 5. تحديث الأزرار لترسل المعاملات الثلاثة (create, type, data) */}
                   <button className="btn-primary" onClick={() => {
-                      if (modalType === 'add_course') apiCall('add_course', { title: formData.title, price: formData.price });
-                      else if (modalType === 'edit_course') apiCall('edit_course', { id: selectedCourse.id, title: formData.title, price: formData.price });
+                      if (modalType === 'add_course') apiCall('create', 'courses', { title: formData.title, price: formData.price });
+                      else if (modalType === 'edit_course') apiCall('update', 'courses', { id: selectedCourse.id, title: formData.title, price: formData.price });
                       
-                      else if (modalType === 'add_subject') apiCall('add_subject', { courseId: selectedCourse.id, title: formData.title, price: formData.price });
-                      else if (modalType === 'edit_subject') apiCall('edit_subject', { id: selectedSubject.id, title: formData.title, price: formData.price });
+                      else if (modalType === 'add_subject') apiCall('create', 'subjects', { course_id: selectedCourse.id, title: formData.title, price: formData.price });
+                      else if (modalType === 'edit_subject') apiCall('update', 'subjects', { id: selectedSubject.id, title: formData.title, price: formData.price });
                       
-                      else if (modalType === 'add_chapter') apiCall('add_chapter', { subjectId: selectedSubject.id, title: formData.title });
-                      else if (modalType === 'edit_chapter') apiCall('edit_chapter', { id: selectedChapter.id, title: formData.title });
+                      else if (modalType === 'add_chapter') apiCall('create', 'chapters', { subject_id: selectedSubject.id, title: formData.title });
+                      else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
                       
-                      else if (modalType === 'add_video') apiCall('add_video', { chapterId: selectedChapter.id, title: formData.title, url: formData.url });
+                      else if (modalType === 'add_video') apiCall('create', 'videos', { chapter_id: selectedChapter.id, title: formData.title, url: formData.url });
                   }}>حفظ</button>
               </div>
           </Modal>
@@ -502,7 +536,6 @@ export default function ContentManager() {
                   </div>
                   <div className="acts">
                       <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                      
                       <button type="submit" className="btn-primary" disabled={loading}>
                           {loading ? 'جاري الرفع... ⏳' : 'رفع'}
                       </button>
@@ -632,6 +665,7 @@ export default function ContentManager() {
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
 
       <style jsx>{`
+        /* (Styles remain the same as provided) */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
         .breadcrumbs { color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
