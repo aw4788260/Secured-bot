@@ -1,54 +1,71 @@
-// pages/api/dashboard/teacher/stats.js
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
-  const { user, error, status } = await requireTeacherOrAdmin(req, res);
-  if (error) return; // الرد تم التعامل معه داخل الدالة المساعدة
+  // 1. التحقق من الصلاحية
+  const { user, error } = await requireTeacherOrAdmin(req, res);
+  if (error) return; 
+
+  const teacherId = user.teacherId;
 
   try {
-    const teacherId = user.teacherId;
-
-    // 1. جلب أرقام الكورسات الخاصة بالمدرس
-    const { data: courses } = await supabase
+    // ---------------------------------------------------------
+    // 1. جلب عدد الكورسات (فقط العدد)
+    // ---------------------------------------------------------
+    const { count: coursesCount, error: coursesError } = await supabase
       .from('courses')
-      .select('id')
+      .select('*', { count: 'exact', head: true }) // head: true تعني لا تجلب البيانات، فقط العدد
       .eq('teacher_id', teacherId);
 
-    const courseIds = courses?.map(c => c.id) || [];
+    if (coursesError) throw coursesError;
+
+    // ---------------------------------------------------------
+    // 2. حساب الأرباح والطلاب من جدول طلبات الاشتراك
+    // ---------------------------------------------------------
+    // نعتمد على الطلبات التي حالتها "approved" فقط لأنها المدفوعة
+    const { data: requests, error: requestsError } = await supabase
+      .from('subscription_requests')
+      .select('total_price, user_id')
+      .eq('teacher_id', teacherId)
+      .eq('status', 'approved'); // شرط أساسي: الطلب مقبول
+
+    if (requestsError) throw requestsError;
+
+    // ---------------------------------------------------------
+    // 3. العمليات الحسابية
+    // ---------------------------------------------------------
     
-    // 2. عدد الطلاب (الفريدين)
-    const { count: studentsCount } = await supabase
-      .from('user_course_access')
-      .select('user_id', { count: 'exact', head: true })
-      .in('course_id', courseIds);
+    let totalEarnings = 0;
+    // نستخدم Set لحساب عدد الطلاب الفريدين (بدون تكرار)
+    const uniqueStudents = new Set();
 
-    // 3. الأرباح (من الطلبات المقبولة لهذا المدرس فقط)
-    // نعتمد الآن على العمود الجديد teacher_id الذي أضفناه
-    const { data: earningsData } = await supabase
-      .from('subscription_requests')
-      .select('total_price')
-      .eq('teacher_id', teacherId)
-      .eq('status', 'approved');
+    requests.forEach(req => {
+        // جمع الأرباح من عمود total_price
+        if (req.total_price) {
+            totalEarnings += req.total_price;
+        }
+        
+        // إضافة الطالب للقائمة الفريدة
+        if (req.user_id) {
+            uniqueStudents.add(req.user_id);
+        }
+    });
 
-    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
-
-    // 4. عدد الطلبات المعلقة
-    const { count: pendingRequests } = await supabase
-      .from('subscription_requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', teacherId)
-      .eq('status', 'pending');
-
+    // ---------------------------------------------------------
+    // 4. إرسال النتيجة
+    // ---------------------------------------------------------
     return res.status(200).json({
-      students: studentsCount || 0,
-      earnings: totalEarnings,
-      courses: courses?.length || 0,
-      pendingRequests: pendingRequests || 0,
-      currency: 'EGP'
+      success: true,
+      stats: {
+        students: uniqueStudents.size, // عدد الطلاب الذين اشتروا بالفعل
+        courses: coursesCount || 0,
+        earnings: totalEarnings,       // إجمالي المبالغ من الطلبات المقبولة
+        views: 0 // يمكن تفعيله لاحقاً إذا وجد جدول مشاهدات
+      }
     });
 
   } catch (err) {
+    console.error("Stats API Error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 };
