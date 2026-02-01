@@ -1,7 +1,6 @@
-import AdminLayout from '../../components/AdminLayout';
+import TeacherLayout from '../../components/TeacherLayout';
 import { useState, useEffect, useRef } from 'react';
 
-// --- أيقونات SVG ---
 const Icons = {
     back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
     add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
@@ -21,22 +20,18 @@ export default function ContentManager() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Navigation
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedChapter, setSelectedChapter] = useState(null);
 
-  // Modals & UI
   const [modalType, setModalType] = useState(null); 
   const [formData, setFormData] = useState({ title: '', url: '', price: 0 });
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
-  // Drag & Drop State
   const dragItem = useRef();
   const dragOverItem = useRef();
 
-  // Exam Editor (Separate System)
   const [showExamSidebar, setShowExamSidebar] = useState(false);
   const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
@@ -45,17 +40,15 @@ export default function ContentManager() {
   const [uploadingImg, setUploadingImg] = useState(false);
   const [examStats, setExamStats] = useState(null);
 
-  // --- Initial Fetch ---
   const fetchContent = async () => {
       setLoading(true);
       try {
-        const res = await fetch('/api/admin/manage-content');
+        const res = await fetch('/api/dashboard/teacher/content');
         const data = await res.json();
-        setCourses(data);
+        setCourses(Array.isArray(data) ? data : []);
         
-        // Refresh Current View (Keep user in same place)
         if (selectedCourse) {
-            const updatedC = data.find(c => c.id === selectedCourse.id);
+            const updatedC = (Array.isArray(data) ? data : []).find(c => c.id === selectedCourse.id);
             setSelectedCourse(updatedC);
             if (selectedSubject && updatedC) {
                 const updatedS = updatedC.subjects.find(s => s.id === selectedSubject.id);
@@ -71,13 +64,10 @@ export default function ContentManager() {
   };
 
   useEffect(() => { 
-      // ✅ إجبار الصفحة على البدء من الأعلى عند الفتح أو التحديث
       window.scrollTo(0, 0);
-      
       fetchContent(); 
   }, []);
 
-  // --- Helpers ---
   const showAlert = (type, msg) => {
       setAlertData({ show: true, type, msg });
       setTimeout(() => setAlertData({ ...alertData, show: false }), 3000);
@@ -98,7 +88,6 @@ export default function ContentManager() {
       else if (selectedCourse) setSelectedCourse(null);
   };
 
-  // --- Drag & Drop ---
   const onDragStart = (e, index) => {
       dragItem.current = index;
       e.target.closest('.draggable-item').classList.add('dragging');
@@ -138,7 +127,7 @@ export default function ContentManager() {
       const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
       
       try {
-          await fetch('/api/admin/reorder', {
+          await fetch('/api/dashboard/teacher/reorder', {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ type: listType, items: updatedItems })
@@ -149,11 +138,10 @@ export default function ContentManager() {
       }
   };
 
-  // --- API Actions ---
   const apiCall = async (action, payload) => {
       setLoading(true);
       try {
-          const res = await fetch('/api/admin/manage-content', {
+          const res = await fetch('/api/dashboard/teacher/content', {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ action, payload })
@@ -172,12 +160,9 @@ export default function ContentManager() {
       if(type === 'subjects' && selectedSubject?.id === id) setSelectedSubject(null);
   });
 
-  // --- Modal Opening (Unified System) ---
-  // --- Modal Opening (Unified System) ---
   const openModal = (type, data = {}) => {
-      setFormData({ title: '', url: '', price: 0 }); // Reset defaults
+      setFormData({ title: '', url: '', price: 0 }); 
       
-      // Populate for Editing
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
           setFormData({ 
               title: data.title || '', 
@@ -186,13 +171,10 @@ export default function ContentManager() {
           });
       }
 
-      // Special handling for Exam Editor
       if (type === 'exam_editor') {
-          
-          // ✅ [تعديل هام] منع التعديل إذا كان الامتحان محلولاً مسبقاً
           if (data.id && data.attempts_count > 0) {
-              showAlert('error', '⛔ لا يمكن تعديل هذا الامتحان لأنه تم حله من قبل طلاب مسبقاً. حفاظاً على صحة الدرجات، يرجى حذفه وإنشاء واحد جديد.');
-              return; // إيقاف العملية وعدم فتح النافذة
+              showAlert('error', '⛔ لا يمكن تعديل هذا الامتحان لأنه تم حله من قبل طلاب مسبقاً.');
+              return; 
           }
 
           setShowExamSidebar(false);
@@ -216,19 +198,6 @@ export default function ContentManager() {
       setModalType(type);
   };
 
-  const handleSaveForm = () => {
-      const { title, price, url } = formData;
-      switch(modalType) {
-          case 'add_course': apiCall('add_course', { title, price }); break;
-          case 'edit_course': apiCall('edit_course', { id: selectedCourse.id, title, price }); break;
-          case 'add_subject': apiCall('add_subject', { courseId: selectedCourse.id, title, price }); break;
-          case 'edit_subject': apiCall('edit_subject', { id: selectedSubject.id, title, price }); break;
-          case 'add_chapter': apiCall('add_chapter', { subjectId: selectedSubject.id, title }); break;
-          case 'edit_chapter': apiCall('edit_chapter', { id: selectedChapter.id, title }); break;
-          case 'add_video': apiCall('add_video', { chapterId: selectedChapter.id, title, url }); break;
-      }
-  };
-
   const getModalTitle = () => {
       if(modalType.includes('course')) return modalType.includes('add') ? 'إضافة كورس' : 'تعديل الكورس';
       if(modalType.includes('subject')) return modalType.includes('add') ? 'إضافة مادة' : 'تعديل المادة';
@@ -237,7 +206,6 @@ export default function ContentManager() {
       return '';
   };
 
-  // --- Exam Logic --- (As it was in content 3.js)
   const handleImageUpload = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -245,7 +213,7 @@ export default function ContentManager() {
       const fd = new FormData();
       fd.append('file', file); fd.append('type', 'exam_image');
       try {
-          const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+          const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
           const data = await res.json();
           if(res.ok) setCurrentQ({...currentQ, image: data.fileName});
       } catch(e) {}
@@ -270,15 +238,13 @@ export default function ContentManager() {
       setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   };
   const saveQuestion = () => {
-      // 1. التحقق من نص السؤال
       if (!currentQ.text || !currentQ.text.trim()) {
           return showAlert('error', 'نص السؤال مطلوب');
       }
       
-      // 2. التحقق من أن جميع الاختيارات ممتلئة
       const hasEmptyOption = currentQ.options.some(opt => !opt || !opt.trim());
       if (hasEmptyOption) {
-          return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة. املأ جميع الخيارات أو احذف الزائد منها.');
+          return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة.');
       }
 
       const newQs = [...examForm.questions];
@@ -309,14 +275,13 @@ export default function ContentManager() {
   };
   const loadStats = async (examId) => {
       setLoading(true);
-      const res = await fetch(`/api/admin/exam-stats?examId=${examId}`);
+      const res = await fetch(`/api/dashboard/teacher/exams?action=stats&examId=${examId}`);
       if(res.ok) { setExamStats(await res.json()); setModalType('stats'); }
       setLoading(false);
   };
 
-  // --- Render ---
   return (
-    <AdminLayout title="المحتوى">
+    <TeacherLayout title="المحتوى">
       
       <div className="header-bar">
           <div className="title-area">
@@ -329,12 +294,10 @@ export default function ContentManager() {
               </div>
           </div>
           <div className="actions-area">
-              {/* Edit Buttons (Conditional) */}
               {selectedChapter && <button className="btn-secondary edit" onClick={() => openModal('edit_chapter', selectedChapter)}>{Icons.edit} تعديل الفصل</button>}
               {selectedSubject && !selectedChapter && <button className="btn-secondary edit" onClick={() => openModal('edit_subject', selectedSubject)}>{Icons.edit} تعديل المادة</button>}
               {selectedCourse && !selectedSubject && <button className="btn-secondary edit" onClick={() => openModal('edit_course', selectedCourse)}>{Icons.edit} تعديل الكورس</button>}
               
-              {/* Add/Back Buttons */}
               {!selectedCourse && <button className="btn-secondary" onClick={() => openModal('add_course')}>{Icons.add} كورس جديد</button>}
               {selectedCourse && !selectedSubject && <button className="btn-secondary" onClick={() => openModal('add_subject')}>{Icons.add} مادة جديدة</button>}
               {(selectedCourse || selectedSubject || selectedChapter) && <button className="btn-secondary" onClick={handleBack}>{Icons.back} تحديث ورجوع</button>}
@@ -343,7 +306,6 @@ export default function ContentManager() {
 
       {loading && <div className="loader-line"></div>}
 
-      {/* 1. Courses List */}
       {!selectedCourse && (
           <div className="grid-cards">
               {courses.map((c, index) => (
@@ -361,7 +323,6 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 2. Subjects List */}
       {selectedCourse && !selectedSubject && (
           <div className="grid-cards">
               {selectedCourse.subjects.map((s, index) => (
@@ -379,7 +340,6 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 3. Subject Details */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -422,7 +382,6 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* 4. Chapter Content */}
       {selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -462,8 +421,6 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* --- Unified Modal System --- */}
-  {/* --- استبدل كود النافذة الموحدة بهذا البلوك --- */}
       {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
           <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
               <div className="form-group">
@@ -477,7 +434,6 @@ export default function ContentManager() {
                   />
               </div>
 
-              {/* حقل السعر يظهر فقط للكورسات والمواد */}
               {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
                   <div className="form-group">
                       <label>السعر (جنية)</label>
@@ -501,7 +457,6 @@ export default function ContentManager() {
               <div className="acts">
                   <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
                   <button className="btn-primary" onClick={() => {
-                      // منطق الحفظ والتعديل
                       if (modalType === 'add_course') apiCall('add_course', { title: formData.title, price: formData.price });
                       else if (modalType === 'edit_course') apiCall('edit_course', { id: selectedCourse.id, title: formData.title, price: formData.price });
                       
@@ -516,7 +471,7 @@ export default function ContentManager() {
               </div>
           </Modal>
       )}
-      {/* 2. PDF Modal */}
+      
     {modalType === 'add_pdf' && (
           <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
               <form onSubmit={async (e) => {
@@ -524,17 +479,17 @@ export default function ContentManager() {
                   const file = e.target.file.files[0];
                   if(!file) return showAlert('error', 'اختر الملف');
                   
-                  setLoading(true); // تفعيل التحميل
+                  setLoading(true); 
                   
                   const fd = new FormData();
                   fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
                   try {
-                      const res = await fetch('/api/admin/upload-file', {method:'POST', body:fd});
+                      const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
                       if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
                       else showAlert('error', 'فشل الرفع');
                   } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
                   
-                  setLoading(false); // إيقاف التحميل
+                  setLoading(false); 
               }}>
                   <div className="form-group">
                       <label>اسم الملف</label>
@@ -547,7 +502,6 @@ export default function ContentManager() {
                   <div className="acts">
                       <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
                       
-                      {/* [تعديل] الزر يظهر حالة الرفع ويتم تعطيله أثناء التحميل */}
                       <button type="submit" className="btn-primary" disabled={loading}>
                           {loading ? 'جاري الرفع... ⏳' : 'رفع'}
                       </button>
@@ -555,7 +509,7 @@ export default function ContentManager() {
               </form>
           </Modal>
       )}
-      {/* 3. Stats Modal */}
+      
       {modalType === 'stats' && examStats && (
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
               <div className="stats-summary">
@@ -581,7 +535,6 @@ export default function ContentManager() {
           </Modal>
       )}
 
-      {/* --- 4. Exam Editor (Original Layout - Separate from Modal) --- */}
       {modalType === 'exam_editor' && (
           <div className="editor-overlay">
               <div className="editor-container">
@@ -594,7 +547,6 @@ export default function ContentManager() {
                   </div>
                   
                   <div className="editor-body">
-                      {/* Left: Sidebar */}
                       <div className={`editor-sidebar ${showExamSidebar ? 'mobile-visible' : ''}`}>
                           <div className="meta-section styled">
                               <label className="field-label">عنوان الامتحان</label>
@@ -626,10 +578,8 @@ export default function ContentManager() {
                           </div>
                       </div>
                       
-                      {/* Overlay for mobile sidebar */}
                       {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
 
-                      {/* Right: Main Editor */}
                       <div className="editor-main">
                           <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
                           <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
@@ -639,10 +589,9 @@ export default function ContentManager() {
                                   <input type="file" hidden accept="image/*" onChange={handleImageUpload} disabled={uploadingImg} />
                               </label>
                               
-                              {/* [تعديل] نص التحميل يظهر بوضوح */}
                               {uploadingImg && <span style={{marginLeft: '10px', color: '#38bdf8', fontSize: '0.9em', fontWeight: 'bold'}}>جاري رفع الصورة... ⏳</span>}
                               
-                              {currentQ.image && <img src={`/api/admin/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
+                              {currentQ.image && <img src={`/api/dashboard/teacher/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
                           </div>
                           <div className="options-section">
                               <label className="section-label">الاختيارات (حدد الإجابة الصحيحة):</label>
@@ -666,7 +615,6 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* --- Confirm Modal --- */}
       {confirmData.show && (
           <div className="modal-overlay">
               <div className="modal-box">
@@ -680,11 +628,9 @@ export default function ContentManager() {
           </div>
       )}
 
-      {/* Alerts */}
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
 
       <style jsx>{`
-        /* General Layout */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
         .breadcrumbs { color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
@@ -693,7 +639,6 @@ export default function ContentManager() {
         .btn-secondary.edit { color: #facc15; border-color: #facc15; background: rgba(250, 204, 21, 0.05); }
         .loader-line { height: 3px; background: #38bdf8; width: 100%; position: fixed; top: 0; left: 0; z-index: 9999; }
 
-        /* Grids & Cards */
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
         .draggable-item.dragging { opacity: 0.5; border: 2px dashed #38bdf8 !important; }
         .folder-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
@@ -706,14 +651,12 @@ export default function ContentManager() {
         .drag-handle-abs:hover { color: white; background: rgba(0,0,0,0.2); border-radius: 4px; }
         .btn-icon.danger { width: 25px; height: 25px; }
 
-        /* Content Layout */
         .content-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
         .panel { background: #111827; border-radius: 12px; }
         .panel-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 15px; }
         .panel-head h3 { margin: 0; color: white; font-size: 1.2rem; }
         .btn-small { background: #38bdf8; color: #0f172a; padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 5px; }
 
-        /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; }
         .list-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; position: relative; }
         .drag-handle { cursor: grab; padding: 5px; color: #64748b; margin-left: 10px; z-index: 10; }
@@ -726,7 +669,6 @@ export default function ContentManager() {
         .btn-icon:hover { background: rgba(255,255,255,0.1); color: white; }
         .btn-icon.danger:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
 
-        /* Media & Exam Grids */
         .exam-grid, .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; }
         .exam-card-item { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; display: flex; align-items: center; gap: 15px; position: relative; }
         .exam-icon { color: #facc15; background: rgba(250, 204, 21, 0.1); padding: 10px; border-radius: 8px; }
@@ -743,55 +685,6 @@ export default function ContentManager() {
         .media-body { padding: 10px; display: flex; justify-content: space-between; align-items: center; }
         .media-body h4 { margin: 0; font-size: 0.9rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
-        /* --- Unified Modals (Popups) --- */
-       /* --- Unified Modals (Centered & Blurred) --- */
-.modal-overlay { 
-    position: fixed; 
-    top: 0; left: 0; right: 0; bottom: 0; 
-    width: 100vw; height: 100vh;
-    background: rgba(0,0,0,0.7); /* خلفية سوداء شفافة */
-    z-index: 10000; /* طبقة عالية جداً لتظهر فوق كل شيء */
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    backdrop-filter: blur(5px); /* تأثير الضبابية */
-}
-
-.modal-box { 
-    background: #1e293b; 
-    width: 95%; max-width: 450px; 
-    border-radius: 16px; 
-    border: 1px solid #475569; 
-    padding: 25px; 
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); 
-    animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    position: relative;
-}
-
-.modal-header { 
-    display: flex; 
-    justify-content: space-between; 
-    border-bottom: 1px solid #334155; 
-    padding-bottom: 10px; 
-    margin-bottom: 20px; 
-    align-items: center; 
-}
-
-.modal-header h3 { margin: 0; color: white; font-size: 1.2rem; }
-.close-btn { background: none; border: none; color: #94a3b8; font-size: 1rem; cursor: pointer; }
-
-/* تنسيقات الفورم داخل النافذة */
-.form-group { margin-bottom: 15px; }
-.form-group label { display: block; margin-bottom: 5px; color: #94a3b8; font-size: 0.9rem; }
-.input { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; }
-.input:focus { border-color: #38bdf8; outline: none; }
-
-.acts { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
-.btn-primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-.btn-cancel { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
-
-@keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        /* --- Exam Editor (Original Styles) --- */
         .editor-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 10000; display: flex; flex-direction: column; }
         .editor-container { display: flex; flex-direction: column; height: 100vh; }
         .editor-header { background: #1e293b; padding: 15px 25px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
@@ -864,13 +757,10 @@ export default function ContentManager() {
             .editor-sidebar.mobile-visible { transform: translateX(0); }
             .sidebar-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(2px); }
 
-            /* --- إصلاح الوضع الأفقي (Landscape) للهواتف --- */
-            /* --- إصلاح الوضع الأفقي (Landscape) --- */
             @media (orientation: landscape) {
-                /* 1. تحرير الشريط الجانبي للسماح بالسكرول */
                 .editor-sidebar {
-                    display: block; /* إلغاء Flex */
-                    overflow-y: auto; /* تفعيل السكرول */
+                    display: block; 
+                    overflow-y: auto; 
                     height: auto; 
                     max-height: 100vh; 
                     position: absolute;
@@ -878,16 +768,14 @@ export default function ContentManager() {
                     z-index: 50;
                 }
                 
-                /* 2. ضبط منطقة الكتابة لمنع اختفاء النص خلف الكيبورد */
                 .editor-main {
                     padding: 15px !important;
                     height: 100vh; 
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
-                    padding-bottom: 100px !important; /* مساحة أمان سفلية */
+                    padding-bottom: 100px !important; 
                 }
 
-                /* 3. تحسينات بصرية للعناصر الصغيرة */
                 .editor-header {
                     padding: 5px 15px;
                 }
@@ -896,7 +784,6 @@ export default function ContentManager() {
                     margin-bottom: 5px;
                 }
                 
-                /* 4. إلغاء السكرول الداخلي لقائمة الأسئلة لتظهر كاملة */
                 .q-list-scroll {
                     flex: none;
                     height: auto;
@@ -905,7 +792,6 @@ export default function ContentManager() {
                     border-bottom: 1px solid #334155;
                 }
 
-                /* 5. ضبط زر الحفظ ليظهر في نهاية القائمة */
                 .sidebar-footer {
                     position: static;
                     margin-top: 20px;
@@ -915,20 +801,16 @@ export default function ContentManager() {
         }
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        /* --- تحسين شبكة البطاقات للهواتف --- */
         @media (max-width: 600px) {
             .grid-cards {
-                /* جعل البطاقات تملأ العرض المتاح (عمود واحد) لتجنب مشاكل الأبعاد */
                 grid-template-columns: 1fr; 
                 gap: 15px;
             }
             
-            /* تقليل الحواف الداخلية للبطاقة قليلاً لتوفير مساحة */
             .folder-card {
                 padding: 15px;
             }
             
-            /* تحسين عرض الهيدر */
             .header-bar {
                 flex-direction: column;
                 align-items: flex-start;
@@ -948,8 +830,6 @@ export default function ContentManager() {
   );
 }
 
-// مكون النافذة الموحد القابل لإعادة الاستخدام
-// استبدل مكون Modal في نهاية الملف بهذا الكود:
 const Modal = ({ title, children, onClose }) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
