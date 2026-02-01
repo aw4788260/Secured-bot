@@ -1,4 +1,6 @@
 /* styles/globals.css */
+
+/* --- [ 1. الأساسيات والخطوط ] --- */
 html,
 body {
   padding: 0;
@@ -20,7 +22,7 @@ a {
   box-sizing: border-box;
 }
 
-/* ستايلات مشغل الفيديو المتجاوب (كما هي) */
+/* --- [ 2. ستايلات الحاويات ومشغل الفيديو ] --- */
 .container {
   display: flex;
   align-items: center;
@@ -50,14 +52,12 @@ a {
 .app-container {
   padding: 20px 15px;
   margin: 0;
-  
-  /* 2. نتأكد أنه يملأ الطول */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* (جديد) تنسيق العنوان الرئيسي */
+/* تنسيق العنوان الرئيسي */
 .app-container h1 {
   font-size: 1.8em;
   font-weight: 600;
@@ -67,8 +67,7 @@ a {
   border-bottom: 2px solid #38bdf8; /* لون مميز أزرق فاتح */
 }
 
-
-
+/* --- [ 3. القوائم والأزرار العامة ] --- */
 .item-list {
   list-style: none;
   padding: 0;
@@ -76,62 +75,59 @@ a {
 }
 
 .item-list li {
-  margin-bottom: 15px; /* زيادة المسافة */
+  margin-bottom: 15px;
 }
 
-/* (معدل) تنسيق الزر الرئيسي "الديناميكي" */
+/* زر الرابط "الديناميكي" */
 .button-link {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
   padding: 18px 20px;
-  background: #1e293b; /* خلفية أزرار (أزرق داكن) */
+  background: #1e293b;
   color: #f1f1f1;
   border: 1px solid #334155;
-  border-radius: 10px; /* زوايا أكثر استدارة */
+  border-radius: 10px;
   text-decoration: none;
   font-size: 1.15em;
   font-family: inherit;
   cursor: pointer;
   text-align: right;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* ظل خفيف */
-  transition: all 0.3s ease; /* حركة انتقالية ناعمة */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
 }
 
-/* (معدل) تأثير الـ Hover "الديناميكي" */
 .button-link:hover,
 .button-link:focus {
   background-color: #334155;
-  transform: translateY(-3px) scale(1.01); /* تأثير الرفع */
+  transform: translateY(-3px) scale(1.01);
   box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
   border-color: #475569;
 }
 
 .button-link:active {
-  transform: translateY(0) scale(1); /* تأثير الضغط */
+  transform: translateY(0) scale(1);
 }
 
-/* (معدل) تنسيق عدد الفيديوهات */
 .button-link span {
   font-size: 0.85em;
-  color: #94a3b8; /* رمادي-أزرق */
+  color: #94a3b8;
   font-weight: 500;
   margin-right: 10px;
 }
 
-/* (معدل) أيقونة الفيديو */
 .video-link::after {
   content: '▶';
   margin-right: 10px;
-  color: #38bdf8; /* أزرق فاتح مميز */
+  color: #38bdf8;
 }
 
-/* (معدل) زر الرجوع */
+/* زر الرجوع */
 .back-button {
   background: none;
   border: none;
-  color: #38bdf8; /* أزرق فاتح مميز */
+  color: #38bdf8;
   font-size: 1.05em;
   padding: 5px 0 15px;
   cursor: pointer;
@@ -140,26 +136,24 @@ a {
 }
 
 .back-button:hover {
-  color: #7dd3fc; /* لون أفتح عند الـ hover */
+  color: #7dd3fc;
 }
 
-/* --- [ ✅ إضافة تنسيق معلومات المبرمج (كنص فقط) ] --- */
+/* معلومات المبرمج */
 .developer-info {
   text-align: center;
-  margin-top: 30px; /* (مسافة لفصله عن المحتوى) */
-  padding: 10px 0; /* (مسافة بسيطة فوق وتحت) */
-  color: #94a3b8; /* (لون رمادي-أزرق مثل رسالة الترحيب) */
+  margin-top: 30px;
+  padding: 10px 0;
+  color: #94a3b8;
   font-size: 14px;
-  
-  /* (تم حذف الخلفية والحدود والـ padding الزائد) */
 }
 
 .developer-info p {
-  margin: 5px 0; /* (مسافة بين السطرين) */
+  margin: 5px 0;
 }
 
 .developer-info a {
-  color: #38bdf8; /* (لون الرابط الأزرق المميز) */
+  color: #38bdf8;
   text-decoration: none;
   font-weight: 500;
 }
@@ -167,27 +161,23 @@ a {
 .developer-info a:hover {
   text-decoration: underline;
 }
-/* --- [ نهاية الإضافة ] --- */
-/* --- [ ✅ جديد: تنسيق شاشة التحميل ] --- */
 
-/* (تعديل الحاوية الرئيسية لتوسيط المحتوى في الأعلى) */
+/* --- [ 4. تنسيقات شاشة التحميل ] --- */
 .loader-container {
-  justify-content: flex-start; /* (البدء من الأعلى) */
-  align-items: center; /* (التوسيط الأفقي) */
-  padding-top: 40px; /* (هامش من الأعلى) */
+  justify-content: flex-start;
+  align-items: center;
+  padding-top: 40px;
 }
 
-/* (تنسيق النص ليكون في اليمين كما طلبت) */
 .loader-container h1 {
   width: 100%;
-  text-align: right; /* (محاذاة لليمين) */
-  font-size: 1.2em; /* (تصغير الخط قليلاً) */
-  color: #bdc3c7; /* (لون أفتح) */
-  border-bottom: none; /* (إزالة الخط السفلي) */
+  text-align: right;
+  font-size: 1.2em;
+  color: #bdc3c7;
+  border-bottom: none;
   margin-bottom: 15px;
 }
 
-/* (كود شريط التحميل) */
 .loading-bar {
   width: 100%;
   height: 4px;
@@ -204,27 +194,19 @@ a {
   left: 0;
   height: 100%;
   width: 100%;
-  background-color: #38bdf8; /* (نفس اللون الأزرق المميز) */
+  background-color: #38bdf8;
   border-radius: 2px;
   animation: loading-bar-animation 1.5s infinite linear;
   transform-origin: left;
 }
 
-/* (حركة شريط التحميل - يميناً ويساراً) */
 @keyframes loading-bar-animation {
-  0% {
-    transform: translateX(-100%) scaleX(1);
-  }
-  50% {
-    transform: translateX(0%) scaleX(0.3);
-  }
-  100% {
-    transform: translateX(100%) scaleX(1);
-  }
+  0% { transform: translateX(-100%) scaleX(1); }
+  50% { transform: translateX(0%) scaleX(0.3); }
+  100% { transform: translateX(100%) scaleX(1); }
 }
-/* --- [ ✅ إضافة تنسيقات الامتحانات ] --- */
 
-/* (صندوق تفاصيل الامتحان قبل البدء) */
+/* --- [ 5. تنسيقات الامتحانات والنتائج ] --- */
 .exam-details-box {
   background: #1e293b;
   border: 1px solid #334155;
@@ -235,18 +217,19 @@ a {
   text-align: center;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
+
 .exam-details-box h1 {
   font-size: 1.5em;
   border-bottom: none;
   margin-bottom: 10px;
 }
+
 .exam-details-box p {
   font-size: 1.1em;
   color: #bdc3c7;
   margin: 10px 0;
 }
 
-/* (حقل إدخال اسم الطالب) */
 .exam-name-input {
   width: 100%;
   padding: 12px;
@@ -259,10 +242,9 @@ a {
   text-align: center;
 }
 
-/* (شريط عداد الوقت) */
 .timer-bar {
   width: 100%;
-  background-color: #e74c3c; /* (أحمر) */
+  background-color: #e74c3c;
   color: white;
   padding: 10px;
   text-align: center;
@@ -275,7 +257,6 @@ a {
   margin-bottom: 20px;
 }
 
-/* (مربع السؤال أثناء الامتحان) */
 .question-box {
   background: #1e293b;
   border: 1px solid #334155;
@@ -284,6 +265,7 @@ a {
   margin-bottom: 20px;
   width: 100%;
 }
+
 .question-box h4 {
   font-size: 1.2em;
   margin-top: 0;
@@ -291,12 +273,12 @@ a {
   line-height: 1.5;
 }
 
-/* (قائمة الاختيارات) */
 .options-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
+
 .option-label {
   display: flex;
   align-items: center;
@@ -308,27 +290,25 @@ a {
   cursor: pointer;
   transition: background 0.2s ease;
 }
+
 .option-label:hover {
   background: #475569;
 }
+
 .option-label input[type="radio"] {
   min-width: 18px;
   min-height: 18px;
-  accent-color: #38bdf8; /* (أزرق) */
+  accent-color: #38bdf8;
 }
 
-/* --- [ ✅ إضافة تنسيقات صفحة النتائج ] --- */
-
-/* (عرض النتيجة كرقم كبير) */
 .score-badge {
   font-size: 3em;
   font-weight: bold;
-  color: #38bdf8; /* (أزرق) */
+  color: #38bdf8;
   margin: 10px 0;
   text-align: center;
 }
 
-/* (مربع السؤال في صفحة النتائج) */
 .question-box-result {
   background: #1e293b;
   border-radius: 10px;
@@ -337,6 +317,7 @@ a {
   width: 100%;
   border: 1px solid #334155;
 }
+
 .question-box-result h4 {
   font-size: 1.2em;
   margin-top: 0;
@@ -344,7 +325,6 @@ a {
   line-height: 1.5;
 }
 
-/* (الاختيارات في صفحة النتائج) */
 .option-result {
   font-size: 1.1em;
   padding: 12px;
@@ -352,41 +332,229 @@ a {
   margin-bottom: 8px;
   border: 2px solid transparent;
 }
+
 .option-result.correct-answer {
   background-color: rgba(46, 204, 113, 0.2);
-  border-color: #2ecc71; /* (أخضر) */
+  border-color: #2ecc71;
   color: #2ecc71;
   font-weight: bold;
 }
+
 .option-result.wrong-answer {
   background-color: rgba(231, 76, 60, 0.2);
-  border-color: #e74c3c; /* (أحمر) */
+  border-color: #e74c3c;
   color: #e74c3c;
   font-weight: bold;
 }
-/* (تنسيق الاختيار الصحيح الذي لم يختره الطالب) */
+
 .option-result.correct-answer:not(.wrong-answer) {
    color: #2ecc71;
 }
-/* (تنسيق الاختيار العادي الذي لم يختره) */
+
 .option-result:not(.correct-answer):not(.wrong-answer) {
-   color: #94a3b8; /* (رمادي) */
+   color: #94a3b8;
    opacity: 0.8;
 }
 
-/* --- [ نهاية الإضافة ] --- */
-/* --- [ ✅ إضافة تنسيق صور الأسئلة ] --- */
 .question-image-container {
   width: 100%;
-  margin-bottom: 15px; /* (مسافة بين الصورة ونص السؤال) */
+  margin-bottom: 15px;
   display: flex;
-  justify-content: center; /* (توسيط الصورة أفقياً) */
+  justify-content: center;
 }
 
 .question-image {
-  max-width: 100%; /* (ضمان عدم خروج الصورة عن الإطار) */
-  height: auto; /* (الحفاظ على الأبعاد) */
-  border-radius: 8px; /* (زوايا مستديرة) */
-  border: 1px solid #334155; /* (حد خفيف يتناسب مع التصميم) */
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #334155;
 }
-/* --- [ نهاية الإضافة ] --- */
+
+/* --- [ 6. ✅ جديد: تنسيقات صفحة سياسة الخصوصية ] --- */
+
+.policy-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  background: transparent;
+}
+
+/* ترويسة الصفحة */
+.policy-header {
+  text-align: center;
+  margin-bottom: 50px;
+  animation: fadeInDown 0.8s ease;
+}
+
+.logo-placeholder {
+  font-size: 2em;
+  font-weight: bold;
+  color: #38bdf8;
+  margin-bottom: 10px;
+  letter-spacing: 2px;
+}
+
+.policy-header h1 {
+  font-size: 2.5em;
+  margin: 0;
+  background: linear-gradient(90deg, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  border-bottom: none; /* إزالة الخط الافتراضي */
+}
+
+.last-updated {
+  color: #64748b;
+  font-size: 0.9em;
+  margin-top: 10px;
+}
+
+/* شبكة البطاقات */
+.policy-grid {
+  display: grid;
+  gap: 25px;
+}
+
+/* تصميم البطاقة */
+.policy-card {
+  background: rgba(30, 41, 59, 0.7); /* خلفية نصف شفافة */
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 16px;
+  padding: 25px;
+  backdrop-filter: blur(10px); /* تأثير الزجاج */
+  transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.policy-card:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+}
+
+.policy-card h2 {
+  color: #f1f1f1;
+  font-size: 1.4em;
+  margin-top: 0;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding-bottom: 10px;
+}
+
+.policy-card .icon {
+  font-size: 1.2em;
+}
+
+.policy-card p {
+  color: #cbd5e1;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* القوائم داخل السياسة */
+.policy-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.policy-list li {
+  position: relative;
+  padding-right: 25px;
+  margin-bottom: 12px;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.policy-list li::before {
+  content: '•';
+  color: #38bdf8;
+  font-size: 1.5em;
+  position: absolute;
+  right: 0;
+  top: -5px;
+}
+
+.policy-list strong {
+  color: #fff;
+}
+
+/* منطقة الحذف (Danger Zone) */
+.danger-zone {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(30, 41, 59, 0.4);
+}
+
+.danger-zone h2 {
+  color: #fca5a5; /* أحمر فاتح */
+}
+
+.deletion-instructions {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 15px;
+  border-right: 3px solid #ef4444;
+}
+
+.deletion-instructions ol {
+  margin: 10px 20px 0 0;
+  padding: 0;
+  color: #cbd5e1;
+}
+
+/* بطاقة الاتصال */
+.contact-card {
+  text-align: center;
+}
+
+/* الزر الافتراضي (للاحتياط) */
+.contact-btn {
+  display: inline-block;
+  margin-top: 15px;
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  color: #fff;
+  border-radius: 50px;
+  font-weight: bold;
+  box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+/* ✅ زر الواتساب المخصص */
+.whatsapp-btn {
+  background: linear-gradient(135deg, #25D366 0%, #128C7E 100%) !important;
+  border: 1px solid #128C7E !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 220px;
+  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
+}
+
+.whatsapp-btn:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.5); /* ظل أخضر متوهج */
+}
+
+/* الفوتر */
+.policy-footer {
+  text-align: center;
+  margin-top: 50px;
+  color: #475569;
+  font-size: 0.9em;
+}
+
+/* حركة بسيطة عند التحميل */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* استجابة للجوال */
+@media (max-width: 600px) {
+  .policy-header h1 { font-size: 1.8em; }
+  .policy-card { padding: 20px; }
+}
