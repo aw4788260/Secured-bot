@@ -1,4 +1,4 @@
-import AdminLayout from '../../components/AdminLayout';
+import TeacherLayout from '../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 
 export default function RequestsPage() {
@@ -27,7 +27,8 @@ export default function RequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/requests');
+      // ✅ تحديث الرابط ل API المدرس الجديد
+      const res = await fetch('/api/dashboard/teacher/requests');
       const data = await res.json();
       if (Array.isArray(data)) setRequests(data);
     } catch (err) {
@@ -55,7 +56,8 @@ export default function RequestsPage() {
     setProcessingId(requestId);
 
     try {
-      const res = await fetch('/api/admin/requests', {
+      // ✅ تحديث الرابط ل API المدرس الجديد
+      const res = await fetch('/api/dashboard/teacher/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // [✅] إرسال سبب الرفض (إذا كان الإجراء رفض)
@@ -69,7 +71,7 @@ export default function RequestsPage() {
       const result = await res.json();
       
       if (res.ok) {
-        showToast(result.message, 'success');
+        showToast(result.message || 'تم تنفيذ العملية بنجاح', 'success');
         setRequests(requests.filter(r => r.id !== requestId));
       } else {
         showToast(result.error, 'error');
@@ -82,26 +84,39 @@ export default function RequestsPage() {
   };
 
   return (
-    <AdminLayout title="طلبات الاشتراك">
+    <TeacherLayout title="طلبات الاشتراك">
       {/* مكون الإشعار */}
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           {toast.message}
       </div>
 
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
-        <h1>📥 طلبات الاشتراك المعلقة</h1>
+        <div>
+            <h1>📥 طلبات الاشتراك المعلقة</h1>
+            <p style={{color:'#94a3b8', marginTop:'5px', fontSize:'0.9em'}}>الطلبات الخاصة بكورساتك فقط</p>
+        </div>
         <button onClick={fetchRequests} className="refresh-btn">🔄 تحديث</button>
       </div>
 
       {loading ? (
-        <div style={{textAlign:'center', color:'#38bdf8'}}>جاري التحميل...</div>
+        <div style={{textAlign:'center', color:'#38bdf8', padding:'40px'}}>
+            <div className="spinner"></div>
+            <p>جاري تحميل الطلبات...</p>
+            <style jsx>{`
+                .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            `}</style>
+        </div>
       ) : requests.length === 0 ? (
-        <div style={{textAlign:'center', padding:'40px', color:'#94a3b8', background:'#1e293b', borderRadius:'10px'}}>
-            ✅ لا توجد طلبات معلقة حالياً.
+        <div style={{textAlign:'center', padding:'60px', color:'#94a3b8', background:'#1e293b', borderRadius:'12px', border:'1px dashed #334155'}}>
+            <div style={{fontSize:'3em', marginBottom:'15px'}}>📭</div>
+            <h3>لا توجد طلبات معلقة حالياً</h3>
+            <p>عندما يطلب طالب الاشتراك في كورساتك، سيظهر طلبه هنا.</p>
         </div>
       ) : (
         <div className="requests-grid">
           {requests.map(req => {
+            // استخدام رابط البروكسي العام للملفات (يعمل مع الجميع)
             const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
             
             return (
@@ -143,6 +158,7 @@ export default function RequestsPage() {
                                     alt="Receipt" 
                                     className="receipt-thumbnail" 
                                     loading="lazy"
+                                    onError={(e) => {e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';}}
                                 />
                                 <div className="zoom-hint">🔍</div>
                             </div>
@@ -189,7 +205,7 @@ export default function RequestsPage() {
                   <p>
                       {confirmModal.action === 'approve' 
                         ? 'هل أنت متأكد من تفعيل هذا الاشتراك؟' 
-                        : 'هل أنت متأكد من رفض هذا الطلب وحذفه؟'}
+                        : 'هل أنت متأكد من رفض هذا الطلب؟'}
                   </p>
 
                   {/* [✅] حقل إدخال سبب الرفض (يظهر فقط عند الرفض) */}
@@ -243,7 +259,8 @@ export default function RequestsPage() {
         .btn.reject { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); }
         .btn.reject:hover { background: #ef4444; color: white; }
         
-        .refresh-btn { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
+        .refresh-btn { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .refresh-btn:hover { background: #38bdf8; color: #0f172a; }
 
         /* Receipt Thumbnail */
         .receipt-section { margin-top: 20px; text-align: center; }
@@ -296,6 +313,6 @@ export default function RequestsPage() {
 
         @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       `}</style>
-    </AdminLayout>
+    </TeacherLayout>
   );
 }
