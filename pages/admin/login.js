@@ -28,10 +28,12 @@ export default function AdminLogin() {
           const data = await res.json();
           
           if (res.ok && data.valid) {
-             router.replace('/admin'); // توجيه فوري للوحة التحكم
+             // 🆕 توجيه ذكي حسب الدور المحفوظ
+             const redirectUrl = localStorage.getItem('admin_redirect') || '/admin';
+             router.replace(redirectUrl);
           }
         } catch(e) { 
-            // في حالة الخطأ لا نفعل شيئاً (نبقى في صفحة الدخول)
+           // في حالة الخطأ لا نفعل شيئاً (نبقى في صفحة الدخول)
         }
       }
     };
@@ -53,15 +55,24 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (data.success) {
-        // ✅ هنا يتم تخزين البيانات اللازمة لنجاح الداش بورد
-        // نستخدم مفاتيح مختلفة عن الطالب لمنع التداخل
+        // ✅ تنظيف أي بيانات قديمة
+        localStorage.removeItem('admin_user_id');
+        localStorage.removeItem('is_admin_session');
+        localStorage.removeItem('admin_name');
+        localStorage.removeItem('admin_redirect');
+
+        // ✅ تخزين البيانات الجديدة
         localStorage.setItem('admin_user_id', data.userId);
         localStorage.setItem('is_admin_session', 'true');
         
-        // (اختياري) تخزين الاسم للعرض في الهيدر
         if (data.name) localStorage.setItem('admin_name', data.name);
+        
+        // 🆕 تخزين مسار التوجيه للزيارات المستقبلية
+        const redirectUrl = data.redirectUrl || '/admin';
+        localStorage.setItem('admin_redirect', redirectUrl);
 
-        router.replace('/admin');
+        // التوجيه
+        router.replace(redirectUrl);
       } else {
         setError(data.message || 'بيانات غير صحيحة');
       }
