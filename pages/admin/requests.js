@@ -88,10 +88,6 @@ export default function RequestsPage() {
         <div style={{textAlign:'center', color:'#38bdf8', padding:'40px'}}>
             <div className="spinner"></div>
             <p>جاري تحميل الطلبات...</p>
-            <style jsx>{`
-                .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            `}</style>
         </div>
       ) : requests.length === 0 ? (
         <div style={{textAlign:'center', padding:'60px', color:'#94a3b8', background:'#1e293b', borderRadius:'12px', border:'1px dashed #334155'}}>
@@ -261,6 +257,8 @@ export default function RequestsPage() {
         .toast.success { background: #22c55e; color: #0f172a; }
         .toast.error { background: #ef4444; color: white; }
         @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
       `}</style>
     </TeacherLayout>
   );
