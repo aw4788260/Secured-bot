@@ -8,16 +8,16 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  // حالة البيانات بناءً على هيكل الـ API المرسل
+  // حالة البيانات
   const [formData, setFormData] = useState({
     name: '',
     username: '',
     phone: '',
     whatsapp: '',
-    specialty: '', // التخصص
+    specialty: '', 
     bio: '',
-    avatar: '', // يخزن اسم الملف فقط
-    fullAvatarUrl: '' // يخزن الرابط الكامل للعرض
+    avatar: '', // اسم الملف للإرسال
+    fullAvatarUrl: '' // رابط العرض
   });
 
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
@@ -27,11 +27,11 @@ export default function ProfilePage() {
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
 
-  // جلب البيانات عند التحميل
+  // 1. جلب البيانات عند التحميل
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await fetch('/api/teacher/update-profile');
+        const res = await fetch('/api/dashboard/teacher/update-profile'); // تأكد من المسار الصحيح
         const responseData = await res.json();
 
         if (res.ok && responseData.success) {
@@ -43,7 +43,7 @@ export default function ProfilePage() {
             whatsapp: data.whatsapp_number || '',
             specialty: data.specialty || '',
             bio: data.bio || '',
-            avatar: '', // لا نحتاج تخزين القديم هنا، سنستخدمه فقط عند التحديث
+            avatar: '', 
             fullAvatarUrl: data.profile_image || ''
           });
         }
@@ -58,7 +58,7 @@ export default function ProfilePage() {
     fetchProfile();
   }, []);
 
-  // دالة رفع الصورة
+  // 2. دالة رفع الصورة
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -66,23 +66,25 @@ export default function ProfilePage() {
     setUploading(true);
     const fd = new FormData();
     fd.append('file', file);
-    // الـ API يحدد المجلد تلقائياً بناءً على الامتداد، لا حاجة لإرسال type
 
     try {
-      const res = await fetch('/api/teacher/upload', {
+      // نستخدم المسار الذي قمت بتعديله سابقاً في الباك إند
+      const res = await fetch('/api/dashboard/teacher/upload', {
         method: 'POST',
         body: fd
       });
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // تحديث الرابط للعرض وتخزين اسم الملف للإرسال لاحقاً
         const newFileName = data.url; 
+        
         setFormData(prev => ({ 
             ...prev, 
             avatar: newFileName, 
-            fullAvatarUrl: `/api/admin/file-proxy?type=exam_images&filename=${newFileName}` // عرض مؤقت
+            // ✅ تصحيح: استخدام api/public للعرض المباشر لتجنب مشاكل صلاحيات الأدمن
+            fullAvatarUrl: `/api/public/get-avatar?file=${newFileName}` 
         }));
+        
         showToast('تم رفع الصورة، اضغط حفظ لتأكيد التغيير', 'success');
       } else {
         showToast('فشل رفع الصورة', 'error');
@@ -94,25 +96,25 @@ export default function ProfilePage() {
     }
   };
 
-  // دالة الحفظ
+  // 3. دالة الحفظ
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
 
     try {
-      // تجهيز البيانات حسب ما يطلبه update-profile.js
+      // تجهيز Payload مطابق تماماً لملف update-profile.js
       const payload = {
         name: formData.name,
         username: formData.username,
         phone: formData.phone,
         bio: formData.bio,
         specialty: formData.specialty,
-        whatsappNumber: formData.whatsapp,
-        // نرسل الصورة فقط إذا تم تغييرها (لها قيمة في avatar)
-        ...(formData.avatar && { profileImage: formData.avatar })
+        whatsappNumber: formData.whatsapp, // ✅ مطابق للباك إند
+        // نرسل الصورة فقط إذا تم تغييرها
+        ...(formData.avatar && { profileImage: formData.avatar }) // ✅ مطابق للباك إند
       };
 
-      const res = await fetch('/api/teacher/update-profile', {
+      const res = await fetch('/api/dashboard/teacher/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -122,7 +124,7 @@ export default function ProfilePage() {
 
       if (res.ok) {
         showToast('تم حفظ التغييرات بنجاح', 'success');
-        // تحديث الصفحة لتنعكس التغييرات في الهيدر إذا لزم الأمر
+        // تحديث الصفحة لتنعكس التغييرات
         setTimeout(() => router.reload(), 1500);
       } else {
         showToast(data.error || 'فشل الحفظ', 'error');
