@@ -1,4 +1,4 @@
-import AdminLayout from '../../components/AdminLayout';
+import TeacherLayout from '../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 
 export default function StudentsPage() {
@@ -6,9 +6,9 @@ export default function StudentsPage() {
   const [allCourses, setAllCourses] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [totalStudents, setTotalStudents] = useState(0); 
-  const [currentUserId, setCurrentUserId] = useState(null); // [جديد]
+  const [currentUserId, setCurrentUserId] = useState(null); 
   
-  // [جديد] حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي (للتحكم في حذف المشرفين)
+  // حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي
   const [isMainAdmin, setIsMainAdmin] = useState(false);
 
   // البحث والفلترة
@@ -55,12 +55,15 @@ export default function StudentsPage() {
     setLoading(true);
     try {
         if (allCourses.length === 0) {
-            const resCourses = await fetch('/api/public/get-courses');
+            // استخدام رابط المدرس لجلب الكورسات (المسموح له برؤيتها فقط)
+            const resCourses = await fetch('/api/dashboard/teacher/content?type=courses');
             const coursesData = await resCourses.json();
-            setAllCourses(coursesData);
+            // الـ API يرجع { items: [] } أو مصفوفة مباشرة حسب التنفيذ، هنا نفترض مصفوفة أو نعدل
+            const coursesList = Array.isArray(coursesData) ? coursesData : (coursesData.items || []);
+            setAllCourses(coursesList);
         }
 
-        let url = `/api/admin/students?page=${currentPage}&limit=${itemsPerPage}`;
+        let url = `/api/dashboard/teacher/students?page=${currentPage}&limit=${itemsPerPage}`;
         
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
@@ -75,8 +78,7 @@ export default function StudentsPage() {
         if (res.ok) {
             setStudents(data.students || []);
             setTotalStudents(data.total || 0);
-            // [جديد] تحديث حالة الأدمن الرئيسي
-            setIsMainAdmin(data.isMainAdmin);
+            setIsMainAdmin(data.isMainAdmin || false);
             setSelectedUsers([]); 
         }
     } catch (err) { console.error(err); } 
@@ -84,10 +86,11 @@ export default function StudentsPage() {
   };
 
   useEffect(() => { 
-      setCurrentUserId(localStorage.getItem('admin_user_id')); // [جديد] حفظ الـ ID الحالي
+      setCurrentUserId(localStorage.getItem('admin_user_id'));
       window.scrollTo(0, 0);
       fetchData(); 
   }, [currentPage, activeFilters]);
+
   const handleSearchKey = (e) => {
       if (e.key === 'Enter') {
           setCurrentPage(1);
@@ -119,7 +122,7 @@ export default function StudentsPage() {
       setViewUser(user);
       setLoadingSubs(true);
       try {
-          const res = await fetch(`/api/admin/students?get_details_for_user=${user.id}`);
+          const res = await fetch(`/api/dashboard/teacher/students?get_details_for_user=${user.id}`);
           const data = await res.json();
           setUserSubs(data);
       } catch (e) {}
@@ -129,7 +132,7 @@ export default function StudentsPage() {
   // --- 3. تنفيذ الإجراءات ---
   const runApiCall = async (action, payload, autoCloseProfile = false) => {
       try {
-          const res = await fetch('/api/admin/students', {
+          const res = await fetch('/api/dashboard/teacher/students', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action, ...payload })
@@ -181,13 +184,9 @@ export default function StudentsPage() {
       if (actionType === 'grant') openGrantModal('bulk');
       else if (actionType === 'reset_device') showConfirm('إلغاء قفل الأجهزة للمحددين؟', () => runApiCall('reset_device', { userIds: selectedUsers }));
       
-      // [تعديل] تغيير زر الحظر الجماعي إلى حذف جماعي
-     else if (actionType === 'delete') {
-          // استبعاد الحساب الحالي من القائمة المختارة
+      else if (actionType === 'delete') {
           const safeUsers = selectedUsers.filter(id => String(id) !== String(currentUserId));
-          
           if (safeUsers.length === 0) return showToast('لا يمكنك حذف حسابك الخاص!', 'error');
-
           showConfirm(`⚠️ تحذير: هل أنت متأكد من حذف ${safeUsers.length} حساب نهائياً؟`, () => runApiCall('delete_user', { userIds: safeUsers }));
       }
       
@@ -200,20 +199,19 @@ export default function StudentsPage() {
       }
   };
 
-  // [جديد] دالة مساعدة للتحقق من إمكانية الحذف
- // دالة مساعدة للتحقق من إمكانية الحذف
+  // دالة مساعدة للتحقق من إمكانية الحذف
   const canDeleteUser = (user) => {
-      // 1. لا يمكن للمستخدم حذف نفسه نهائياً (سواء كان الرئيسي أو لا)
       if (String(user.id) === String(currentUserId)) return false;
-
-      if (!user.is_admin) return true; // يمكن حذف الطالب العادي
-      return isMainAdmin; // المشرف لا يحذفه إلا الأدمن الرئيسي
+      // المدرس يستطيع حذف الطالب العادي، لكن لا يحذف المشرف
+      if (!user.is_admin) return true; 
+      return false; // المشرف محمي من الحذف عبر هذه الصفحة (يتم حذفه من صفحة الفريق)
   };
+  
   const totalPages = Math.ceil(totalStudents / itemsPerPage);
   const hasActiveFilters = activeFilters.courses.length > 0 || activeFilters.subjects.length > 0;
 
   return (
-    <AdminLayout title="إدارة الطلاب">
+    <TeacherLayout title="إدارة الطلاب">
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>{toast.message}</div>
 
       <div className="controls-container">
@@ -240,7 +238,6 @@ export default function StudentsPage() {
                   <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ صلاحية</button>
                   {hasActiveFilters && <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn warning">❌ سحب المفلتر</button>}
                   
-                  {/* [تعديل] زر الحذف الجماعي */}
                   <button onClick={() => handleBulkAction('delete')} className="glass-btn danger">🗑️ حذف نهائي</button>
               </div>
           </div>
@@ -267,7 +264,6 @@ export default function StudentsPage() {
                             <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{std.id}</td>
                             <td style={{fontWeight:'600'}}>
                                 {std.first_name}
-                                {/* [تعديل] إظهار تاج المشرف */}
                                 {std.is_admin && <span className="admin-tag">مشرف</span>}
                             </td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#38bdf8'}}>{std.username}</td>
@@ -350,11 +346,10 @@ export default function StudentsPage() {
                           <button onClick={() => showConfirm('إلغاء قفل الجهاز؟', () => runApiCall('reset_device', { userId: viewUser.id }))}>🔓 إلغاء قفل الجهاز</button>
                           <button onClick={handlePassChange}>🔑 تغيير الباسورد</button>
                           
-                          {/* [تعديل] زر الحذف النهائي (مشروط بصلاحية الأدمن الرئيسي) */}
                           {canDeleteUser(viewUser) ? (
                               <button className="btn-red" onClick={() => showConfirm('⚠️ تحذير: سيتم حذف الحساب وجميع بياناته نهائياً. هل أنت متأكد؟', () => runApiCall('delete_user', { userId: viewUser.id }, true))}>🗑️ حذف نهائي</button>
                           ) : (
-                              <button className="btn-disabled" disabled title="لا يمكن حذف المشرفين إلا من الحساب الرئيسي">🔒 حذف (محمي)</button>
+                              <button className="btn-disabled" disabled title="لا يمكن حذف المشرفين">🔒 حذف (محمي)</button>
                           )}
                       </div>
                       <div className="subs-wrapper">
@@ -476,6 +471,6 @@ export default function StudentsPage() {
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
       `}</style>
-    </AdminLayout>
+    </TeacherLayout>
   );
 }
