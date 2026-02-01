@@ -85,11 +85,12 @@ export default async (req, res) => {
       let totalPrice = 0;
       let titleList = [];
       const requestedData = [];
+      let detectedTeacherId = null; // 🆕 متغير لحفظ رقم المدرس
 
       // ---------------------------------------------------------
       // حلقة التكرار (for...of) لدعم العمليات غير المتزامنة (await)
       // ---------------------------------------------------------
-      for (const item of selectedItems) {
+      for (const [index, item] of selectedItems.entries()) {
           const price = parseInt(item.price) || 0;
           totalPrice += price;
           
@@ -100,40 +101,46 @@ export default async (req, res) => {
           if (item.type === 'course') {
               formattedTitle = `📦 كورس شامل: ${item.title}`;
               parentCourseName = item.title;
+              
+              // 🆕 محاولة جلب رقم المدرس من الكورس (لأول عنصر فقط لتقليل الاستعلامات)
+              if (index === 0 && !detectedTeacherId) {
+                  const { data: courseData } = await supabase
+                      .from('courses')
+                      .select('teacher_id')
+                      .eq('id', item.id)
+                      .single();
+                  if (courseData) detectedTeacherId = courseData.teacher_id;
+              }
           } 
           // ب) إذا كان العنصر مادة
           else if (item.type === 'subject') {
               try {
-                  // جلب رقم الكورس الأب للمادة
+                  // جلب رقم الكورس الأب للمادة (ونحتاج المدرس أيضاً)
                   const { data: subjectData } = await supabase
                       .from('subjects')
-                      .select('course_id')
+                      .select('course_id, courses(title, teacher_id)') // ✅ جلبنا المدرس هنا
                       .eq('id', item.id)
                       .single();
 
-                  if (subjectData && subjectData.course_id) {
-                      // جلب اسم الكورس الأب
-                      const { data: courseData } = await supabase
-                          .from('courses')
-                          .select('title')
-                          .eq('id', subjectData.course_id)
-                          .single();
+                  if (subjectData && subjectData.courses) {
+                      parentCourseName = subjectData.courses.title;
                       
-                      if (courseData) {
-                          parentCourseName = courseData.title;
+                      // 🆕 حفظ رقم المدرس
+                      if (index === 0 && !detectedTeacherId) {
+                          detectedTeacherId = subjectData.courses.teacher_id;
                       }
                   }
               } catch (fetchErr) {
                   console.error('Error fetching parent info:', fetchErr);
               }
 
-              // تنسيق النص للمادة: المادة في سطر والكورس في سطر
+              // تنسيق النص للمادة
               formattedTitle = `📚 مادة: ${item.title}`;
               if (parentCourseName) {
                   formattedTitle += `\n   ⬅️ تابع لكورس: ${parentCourseName}`;
               }
           } 
-          // ج) أي نوع آخر (احتياطي فقط)
+          // ج) أي نوع آخر
           else {
               formattedTitle = `🔖 عنصر: ${item.title}`;
           }
@@ -145,7 +152,7 @@ export default async (req, res) => {
               type: item.type,
               title: item.title,
               price: price,
-              parent_course: parentCourseName || 'Unknown' // تسجيل اسم الكورس الأب في البيانات الخام
+              parent_course: parentCourseName || 'Unknown'
           });
       }
 
@@ -165,7 +172,9 @@ export default async (req, res) => {
         user_note: userNote,
         payment_file_path: fileName,
         status: 'pending',
-        requested_data: requestedData
+        requested_data: requestedData,
+        
+        teacher_id: detectedTeacherId // ✅ تم إضافة العمود الجديد هنا
       });
 
       if (dbError) throw dbError;
