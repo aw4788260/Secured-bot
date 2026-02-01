@@ -1,6 +1,7 @@
 import TeacherLayout from '../../components/TeacherLayout';
 import { useState, useEffect, useRef } from 'react';
 
+// --- أيقونات SVG ---
 const Icons = {
     back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
     add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
@@ -826,7 +827,7 @@ export default function ContentManager() {
             }
         }
       `}</style>
-    </AdminLayout>
+    </TeacherLayout>
   );
 }
 
