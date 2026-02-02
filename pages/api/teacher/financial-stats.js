@@ -2,7 +2,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
 export default async (req, res) => {
-  // 1. التحقق من أن المستخدم مدرس
+  // 1. التحقق من أن المستخدم مدرس (كما هو)
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
@@ -10,7 +10,7 @@ export default async (req, res) => {
 
   try {
     // =========================================================
-    // 2. جلب الكورسات والمواد الخاصة بالمدرس
+    // 2. جلب الكورسات والمواد الخاصة بالمدرس (كما هو)
     // =========================================================
     
     // أ. جلب الكورسات (Courses)
@@ -39,7 +39,7 @@ export default async (req, res) => {
     }
 
     // =========================================================
-    // 3. جلب صلاحيات الوصول (مع فلترة الطلاب فقط)
+    // 3. جلب صلاحيات الوصول (مع فلترة الطلاب فقط) (كما هو)
     // =========================================================
     
     // أ. الطلاب المشتركون في الكورسات (Full Course)
@@ -47,9 +47,9 @@ export default async (req, res) => {
     if (courseIds.length > 0) {
       const { data: caData, error: caError } = await supabase
         .from('user_course_access')
-        .select('course_id, user_id, users!inner(role)') // 🔹 Join داخلي
+        .select('course_id, user_id, users!inner(role)') 
         .in('course_id', courseIds)
-        .eq('users.role', 'student'); // 🔹 شرط: أن يكون الدور 'student' فقط
+        .eq('users.role', 'student'); 
       
       if (caError) throw caError;
       courseAccess = caData || [];
@@ -60,20 +60,18 @@ export default async (req, res) => {
     if (subjectIds.length > 0) {
       const { data: saData, error: saError } = await supabase
         .from('user_subject_access')
-        .select('subject_id, user_id, users!inner(role)') // 🔹 Join داخلي
+        .select('subject_id, user_id, users!inner(role)') 
         .in('subject_id', subjectIds)
-        .eq('users.role', 'student'); // 🔹 شرط: أن يكون الدور 'student' فقط
+        .eq('users.role', 'student'); 
         
       if (saError) throw saError;
       subjectAccess = saData || [];
     }
 
     // =========================================================
-    // 4. معالجة بيانات الطلاب للإحصائيات
+    // 4. معالجة بيانات الطلاب للإحصائيات (كما هو)
     // =========================================================
 
-    // بما أننا قمنا بفلترة courseAccess و subjectAccess أعلاه،
-    // فإن الأرقام هنا ستعكس الطلاب فقط (بدون المعلمين والمشرفين)
     const coursesStats = courses.map(course => {
       const count = courseAccess.filter(a => a.course_id === course.id).length;
       return { title: course.title, count };
@@ -92,41 +90,23 @@ export default async (req, res) => {
     const totalUniqueStudents = allStudentIds.size;
 
     // =========================================================
-    // 5. حساب الأرباح (من الطلبات المقبولة)
+    // 5. حساب الأرباح (تم التعديل هنا فقط للطريقة المباشرة)
     // =========================================================
-    // ملاحظة: الأرباح تُحسب بناءً على الأموال المدفوعة في الطلبات المقبولة
-    let totalEarnings = 0;
-
-    const { data: requestsData, error: reqError } = await supabase
+    
+    // جلب مجموع الأموال من الطلبات المقبولة مباشرة لهذا المدرس
+    const { data: earningsData, error: earnError } = await supabase
         .from('subscription_requests')
-        .select('requested_data')
+        .select('total_price')
+        .eq('teacher_id', teacherId)
         .eq('status', 'approved');
 
-    if (reqError) throw reqError;
+    if (earnError) throw earnError;
 
-    const requests = requestsData || [];
-
-    requests.forEach(req => {
-        const items = req.requested_data; 
-        
-        if (Array.isArray(items)) {
-            items.forEach(item => {
-                const price = Number(item.price) || 0;
-                
-                // إذا كان العنصر كورس وموجود ضمن كورسات المدرس
-                if (item.type === 'course' && courseIds.includes(item.id)) {
-                    totalEarnings += price;
-                }
-                // إذا كان العنصر مادة وموجودة ضمن مواد المدرس
-                else if (item.type === 'subject' && subjectIds.includes(item.id)) {
-                    totalEarnings += price;
-                }
-            });
-        }
-    });
+    // جمع القيم مباشرة
+    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
 
     // =========================================================
-    // 6. إرسال الرد
+    // 6. إرسال الرد (كما هو)
     // =========================================================
     return res.status(200).json({
       totalUniqueStudents,
