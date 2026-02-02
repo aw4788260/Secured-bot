@@ -548,12 +548,16 @@ export default function ContentManager() {
       )}
       
       {/* 3. Stats Modal */}
-      {modalType === 'stats' && examStats && (
+     {modalType === 'stats' && examStats && (
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
               <div className="stats-summary">
                   <div className="stat-card"><span>عدد الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
-                  <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averageScore}%</strong></div>
-                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{Number(examStats.averageScore).toFixed(1)} / 100</strong></div>
+                  
+                  {/* ✅ تصحيح: استخدام averagePercentage للنسبة */}
+                  <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averagePercentage}%</strong></div>
+                  
+                  {/* ✅ تصحيح: استخدام averageScore للدرجات */}
+                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{Number(examStats.averageScore).toFixed(1)}</strong></div>
               </div>
               <div className="table-wrap">
                   <table>
@@ -562,8 +566,13 @@ export default function ContentManager() {
                           {examStats.attempts.map((a, i) => (
                               <tr key={i}>
                                   <td>{a.student_name_input || 'غير معروف'}</td>
-                                  <td style={{color: a.score >= 50 ? '#4ade80' : '#ef4444'}}>{a.score}%</td>
+                                  
+                                  {/* ✅ تصحيح: عرض النسبة المئوية في عمود النسبة */}
+                                  <td style={{color: a.percentage >= 50 ? '#4ade80' : '#ef4444'}}>{a.percentage}%</td>
+                                  
+                                  {/* عرض الدرجة في عمود الدرجة */}
                                   <td>{a.score}</td>
+                                  
                                   <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
                               </tr>
                           ))}
