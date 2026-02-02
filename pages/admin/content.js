@@ -186,7 +186,8 @@ export default function ContentManager() {
           setFormData({ 
               title: data.title || '', 
               url: '', 
-              price: data.price || 0 
+              price: data.price || 0 ,
+              description: data.description || ''
           });
       }
 
@@ -479,6 +480,21 @@ export default function ContentManager() {
                       />
                   </div>
               )}
+{/* ✅ [تعديل 3] إضافة حقل الوصف (يظهر فقط للكورسات) */}
+              {['add_course', 'edit_course'].includes(modalType) && (
+                  <div className="form-group">
+                      <label>وصف الكورس (اختياري)</label>
+                      <textarea 
+                        className="input" 
+                        rows="3"
+                        value={formData.description} 
+                        onChange={e=>setFormData({...formData, description: e.target.value})} 
+                        placeholder="أضف وصفاً مختصراً للكورس..." 
+                        style={{ resize: 'vertical' }}
+                      />
+                  </div>
+              )}
+
 
               {modalType === 'add_video' && (
                   <div className="form-group">
@@ -492,8 +508,9 @@ export default function ContentManager() {
                   
                   {/* [تعديل] ربط الأزرار بالـ API الجديد عبر المعاملات الثلاثة (create/update, type, data) */}
                   <button className="btn-primary" onClick={() => {
-                      if (modalType === 'add_course') apiCall('create', 'courses', { title: formData.title, price: formData.price });
-                      else if (modalType === 'edit_course') apiCall('update', 'courses', { id: selectedCourse.id, title: formData.title, price: formData.price });
+                      // ✅ [تعديل 4] إرسال description عند الحفظ (للإضافة والتعديل)
+                      if (modalType === 'add_course') apiCall('create', 'courses', { title: formData.title, price: formData.price, description: formData.description });
+                      else if (modalType === 'edit_course') apiCall('update', 'courses', { id: selectedCourse.id, title: formData.title, price: formData.price, description: formData.description });
                       
                       else if (modalType === 'add_subject') apiCall('create', 'subjects', { course_id: selectedCourse.id, title: formData.title, price: formData.price });
                       else if (modalType === 'edit_subject') apiCall('update', 'subjects', { id: selectedSubject.id, title: formData.title, price: formData.price });
