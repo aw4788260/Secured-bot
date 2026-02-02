@@ -11,7 +11,6 @@ const extractYouTubeID = (url) => {
 
 export default async (req, res) => {
   // 1. التحقق من الصلاحية (مدرس أو أدمن)
-  // استخدمنا requireTeacherOrAdmin بدلاً من verifyTeacher للحفاظ على صلاحية دخول الأدمن للوحة التحكم
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -68,33 +67,30 @@ export default async (req, res) => {
   }
 
   // ============================================================
-  // POST: تنفيذ العمليات (Create, Update, Delete) باستخدام المنطق الجديد
+  // POST: تنفيذ العمليات (Create, Update, Delete)
   // ============================================================
   if (req.method === 'POST') {
     const { action, type } = req.body;
-    // دعم استقبال البيانات تحت مسميات مختلفة لضمان التوافق
     let data = req.body.data || req.body.payload;
 
     if (!data && action !== 'delete') {
        return res.status(400).json({ error: 'بيانات الطلب مفقودة' });
     }
     
-    // في حالة الحذف، قد يأتي الـ id مباشرة
     if (action === 'delete' && !data) {
         data = { id: req.body.id };
     }
 
-    // ✅ معالجة فيديو اليوتيوب (استخراج ID) قبل أي عملية
+    // ✅ معالجة فيديو اليوتيوب (استخراج ID)
     if (type === 'videos' && data?.url) {
       data.youtube_video_id = extractYouTubeID(data.url);
       delete data.url; 
     }
 
     // --------------------------------------------------------
-    // 🛡️ دوال التحقق الأمنية (من الكود الجديد)
+    // 🛡️ دوال التحقق الأمنية
     // --------------------------------------------------------
     
-    // 1. التحقق من ملكية الكورس
     const checkCourseOwnership = async (courseId) => {
       if (!courseId) return false;
       const { data: course } = await supabase
@@ -102,11 +98,9 @@ export default async (req, res) => {
           .select('teacher_id')
           .eq('id', courseId)
           .single();
-      // تحويل القيم لـ String لضمان المقارنة الصحيحة
       return course && String(course.teacher_id) === String(auth.teacherId);
     };
 
-    // 2. تتبع الكورس الأب (Parent Traversal)
     const getParentCourseId = async (itemType, itemData, isUpdateOrDelete = false) => {
        try {
           if (itemType === 'subjects') {
@@ -114,7 +108,6 @@ export default async (req, res) => {
              const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.id).single();
              return subject?.course_id;
           }
-
           if (itemType === 'chapters') {
              let subjectId = itemData.subject_id;
              if (isUpdateOrDelete) {
@@ -126,7 +119,6 @@ export default async (req, res) => {
                 return subject?.course_id;
              }
           }
-
           if (itemType === 'videos' || itemType === 'pdfs') {
              let chapterId = itemData.chapter_id;
              if (isUpdateOrDelete) {
@@ -150,21 +142,18 @@ export default async (req, res) => {
       if (action === 'create') {
         let insertData = { ...data };
         
-        // 🛡️ التحقق الأمني
         if (type !== 'courses') {
            const targetCourseId = await getParentCourseId(type, insertData, false);
            if (targetCourseId) {
                const isOwner = await checkCourseOwnership(targetCourseId);
                if (!isOwner) return res.status(403).json({ error: 'غير مسموح لك بالإضافة في هذا الكورس.' });
            } else {
-               // فشل في تحديد الكورس الأب
                if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) {
                    return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
                }
            }
            insertData.sort_order = 999;
         } else {
-           // إعدادات الكورس
            insertData.teacher_id = auth.teacherId;
            insertData.sort_order = 999;
            if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
@@ -181,27 +170,27 @@ export default async (req, res) => {
            throw error;
         }
 
-        // ✅ إدارة الصلاحيات (تم دمج منطق الفريق + الإصلاح التقني)
+        // ✅ إصلاح الصلاحيات: استخدام teacher_profile_id
         if (type === 'courses' && newItem) {
            let accessList = [{ user_id: auth.userId, course_id: newItem.id }];
            
            try {
-               // جلب فريق العمل (المدرسين والمشرفين التابعين لهذا المدرس - غير الطلاب)
+               // البحث عن الفريق باستخدام teacher_profile_id بدلاً من teacher_id
                const { data: teamMembers } = await supabase
                  .from('users')
                  .select('id')
-                 .eq('teacher_id', auth.teacherId)
+                 .eq('teacher_profile_id', auth.teacherId) // ✅ التصحيح هنا
                  .neq('role', 'student');
 
                if (teamMembers?.length > 0) {
                    teamMembers.forEach(member => {
+                       // تجنب تكرار إضافة المستخدم الحالي
                        if (member.id !== auth.userId) {
                            accessList.push({ user_id: member.id, course_id: newItem.id });
                        }
                    });
                }
 
-               // تنفيذ الإضافة بدون .catch لتجنب الخطأ السابق
                const { error: accessError } = await supabase
                   .from('user_course_access')
                   .upsert(accessList, { onConflict: 'user_id, course_id' });
@@ -211,7 +200,6 @@ export default async (req, res) => {
            } catch (permError) { console.error("Error calculating permissions:", permError); }
         }
 
-        // إعادة ضبط الرد (url) للفيديوهات
         if (type === 'videos' && newItem) newItem.url = newItem.youtube_video_id;
 
         return res.status(200).json({ success: true, item: newItem });
