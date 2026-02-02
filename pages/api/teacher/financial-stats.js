@@ -90,20 +90,17 @@ export default async (req, res) => {
     const totalUniqueStudents = allStudentIds.size;
 
     // =========================================================
-    // 5. حساب الأرباح (تم التعديل هنا فقط للطريقة المباشرة)
+    // 5. حساب الأرباح (باستخدام الدالة حصراً)
     // =========================================================
     
-    // جلب مجموع الأموال من الطلبات المقبولة مباشرة لهذا المدرس
-    const { data: earningsData, error: earnError } = await supabase
-        .from('subscription_requests')
-        .select('total_price')
-        .eq('teacher_id', teacherId)
-        .eq('status', 'approved');
+    // استدعاء دالة قاعدة البيانات مباشرة
+    const { data: rpcData, error: rpcError } = await supabase
+      .rpc('get_teacher_revenue', { teacher_id_arg: teacherId });
 
-    if (earnError) throw earnError;
+    if (rpcError) throw rpcError;
 
-    // جمع القيم مباشرة
-    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
+    // اعتماد القيمة القادمة من الدالة فقط
+    const totalEarnings = rpcData || 0;
 
     // =========================================================
     // 6. إرسال الرد (كما هو)
