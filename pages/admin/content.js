@@ -28,7 +28,7 @@ export default function ContentManager() {
 
   // Modals & UI
   const [modalType, setModalType] = useState(null); 
-  const [formData, setFormData] = useState({ title: '', url: '', price: 0 });
+  const [formData, setFormData] = useState({ title: '', url: '', price: 0, description: '' });
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
