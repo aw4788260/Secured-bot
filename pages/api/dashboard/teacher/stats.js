@@ -2,75 +2,138 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
+  // 1. التحقق من الصلاحية (بنظام الداشبورد)
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) return; 
 
+  const teacherId = user.teacherId;
+
   try {
-    const teacherId = user.teacherId;
-    console.log(`🔍 [StatsAPI] Calculating for Teacher ID: ${teacherId}`);
-
-    // 1. جلب الكورسات والمواد (لحساب الطلاب)
-    const { data: courses } = await supabase.from('courses').select('id').eq('teacher_id', teacherId);
-    const courseIds = courses?.map(c => c.id) || [];
-
-    let subjectIds = [];
-    if (courseIds.length > 0) {
-        const { data: subjects } = await supabase.from('subjects').select('id').in('course_id', courseIds);
-        subjectIds = subjects?.map(s => s.id) || [];
-    }
-
-    // 2. حساب الطلاب الفريدين
-    const uniqueStudentIds = new Set();
-    if (courseIds.length > 0) {
-        const { data: cUsers } = await supabase.from('user_course_access').select('user_id').in('course_id', courseIds);
-        cUsers?.forEach(u => uniqueStudentIds.add(u.user_id));
-    }
-    if (subjectIds.length > 0) {
-        const { data: sUsers } = await supabase.from('user_subject_access').select('user_id').in('subject_id', subjectIds);
-        sUsers?.forEach(u => uniqueStudentIds.add(u.user_id));
-    }
-
-    // 3. الأرباح (التركيز هنا)
-    const { data: earningsData, error: earnError } = await supabase
-      .from('subscription_requests')
-      .select('total_price')
-      .eq('teacher_id', teacherId) // تأكد أن هذا العمود ممتلئ في قاعدة البيانات
-      .eq('status', 'approved');
-
-    if (earnError) console.error("❌ [StatsAPI] Earnings DB Error:", earnError.message);
-
-    // حساب المجموع
-    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
+    // =========================================================
+    // 2. جلب الكورسات والمواد (Logic: Student Counting)
+    // =========================================================
     
-    // طباعة النتيجة في التيرمينال للتأكد
-    console.log(`💰 [StatsAPI] Found ${earningsData?.length || 0} approved requests. Total Earnings: ${totalEarnings}`);
+    // أ. جلب الكورسات
+    const { data: coursesData, error: coursesError } = await supabase
+      .from('courses')
+      .select('id, title')
+      .eq('teacher_id', teacherId);
+    
+    if (coursesError) throw coursesError;
+    const courses = coursesData || [];
+    const courseIds = courses.map(c => c.id);
 
-    // 4. الطلبات المعلقة
+    // ب. جلب المواد
+    let subjects = [];
+    let subjectIds = [];
+
+    if (courseIds.length > 0) {
+        const { data: subjectsData, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('id, title') 
+          .in('course_id', courseIds);
+
+        if (subjectsError) throw subjectsError;
+        subjects = subjectsData || [];
+        subjectIds = subjects.map(s => s.id);
+    }
+
+    // =========================================================
+    // 3. جلب صلاحيات الوصول (Students Only)
+    // =========================================================
+    
+    // أ. مشتركو الكورسات
+    let courseAccess = [];
+    if (courseIds.length > 0) {
+      const { data: caData, error: caError } = await supabase
+        .from('user_course_access')
+        .select('course_id, user_id, users!inner(role)') 
+        .in('course_id', courseIds)
+        .eq('users.role', 'student'); 
+      
+      if (caError) throw caError;
+      courseAccess = caData || [];
+    }
+
+    // ب. مشتركو المواد
+    let subjectAccess = [];
+    if (subjectIds.length > 0) {
+      const { data: saData, error: saError } = await supabase
+        .from('user_subject_access')
+        .select('subject_id, user_id, users!inner(role)') 
+        .in('subject_id', subjectIds)
+        .eq('users.role', 'student'); 
+        
+      if (saError) throw saError;
+      subjectAccess = saData || [];
+    }
+
+    // =========================================================
+    // 4. الحسابات النهائية للطلاب
+    // =========================================================
+
+    // تفاصيل للكورسات والمواد (للرسوم البيانية)
+    const coursesStats = courses.map(course => ({
+       title: course.title,
+       count: courseAccess.filter(a => a.course_id === course.id).length
+    }));
+
+    const subjectsStats = subjects.map(subject => ({
+       title: subject.title,
+       count: subjectAccess.filter(a => a.subject_id === subject.id).length
+    }));
+
+    // إجمالي الطلاب (بدون تكرار)
+    const allStudentIds = new Set([
+      ...courseAccess.map(a => a.user_id),
+      ...subjectAccess.map(a => a.user_id)
+    ]);
+    const totalUniqueStudents = allStudentIds.size;
+
+    // =========================================================
+    // 5. حساب الأرباح (الطريقة السهلة والمباشرة)
+    // =========================================================
+    
+    // جلب مجموع الأموال من الطلبات المقبولة مباشرة
+    const { data: earningsData, error: earnError } = await supabase
+        .from('subscription_requests')
+        .select('total_price')
+        .eq('teacher_id', teacherId)
+        .eq('status', 'approved');
+
+    if (earnError) throw earnError;
+
+    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
+
+    // جلب عدد الطلبات المعلقة (للعرض في الداشبورد)
     const { count: pendingRequests } = await supabase
       .from('subscription_requests')
       .select('id', { count: 'exact', head: true })
       .eq('teacher_id', teacherId)
       .eq('status', 'pending');
 
-    // تجهيز البيانات
-    const statsPayload = {
-        students: uniqueStudentIds.size || 0,
+    // =========================================================
+    // 6. إرسال الرد (بالهيكل القديم stats object)
+    // =========================================================
+    return res.status(200).json({
+      success: true,
+      stats: {
+        students: totalUniqueStudents,
         earnings: totalEarnings,
-        courses: courses?.length || 0,
+        courses: courses.length,
         pendingRequests: pendingRequests || 0,
         views: 0,
         currency: 'EGP'
-    };
-
-    // إرسال الرد بصيغة "هجينة" تدعم كل التنسيقات المتوقعة
-    return res.status(200).json({
-      success: true,
-      ...statsPayload, // الصيغة المباشرة (data.earnings)
-      stats: statsPayload // الصيغة المتداخلة (data.stats.earnings)
+      },
+      // نرسل هذه البيانات أيضاً لاستخدامها في الرسوم البيانية إذا كانت الواجهة تدعمها
+      charts: {
+          courses: coursesStats,
+          subjects: subjectsStats
+      }
     });
 
   } catch (err) {
-    console.error("🔥 [StatsAPI] Error:", err);
+    console.error("Stats API Error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 };
