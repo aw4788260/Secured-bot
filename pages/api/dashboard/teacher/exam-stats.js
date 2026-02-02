@@ -2,8 +2,6 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
-  console.log(`[ExamStats] Request started: ${req.method}`);
-
   try {
     // 1. التحقق من الصلاحية
     const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -46,41 +44,40 @@ export default async (req, res) => {
 
     if (attemptsError) throw attemptsError;
 
-    // 4. معالجة البيانات وتنسيقها لتطابق الفرونت اند
+    // 4. الحسابات (مطابقة للكود الذي طلبته)
     const totalAttempts = attemptsData ? attemptsData.length : 0;
-    let averageScore = 0;
     
-    // ملاحظة: الفرونت يستخدم averageScore في مكانين (كنسبة وكدرجة)، لذا سنرسل القيمتين
-    
-    if (totalAttempts > 0) {
-      const sumScore = attemptsData.reduce((acc, curr) => acc + (Number(curr.score) || 0), 0);
-      averageScore = (sumScore / totalAttempts).toFixed(1);
-    }
+    // حساب متوسط الدرجات (Score)
+    const averageScore = totalAttempts > 0 
+        ? (attemptsData.reduce((acc, curr) => acc + (Number(curr.score) || 0), 0) / totalAttempts).toFixed(1) 
+        : 0;
 
-    // تجهيز المصفوفة بنفس الأسماء التي يطلبها الفرونت (attempts, student_name_input, completed_at)
+    // ✅ حساب متوسط النسبة المئوية (Percentage) - تم إضافته كما طلبت
+    const averagePercentage = totalAttempts > 0 
+        ? (attemptsData.reduce((acc, curr) => acc + (Number(curr.percentage) || 0), 0) / totalAttempts).toFixed(1) 
+        : 0;
+
+    // 5. تنسيق قائمة الطلاب لتتوافق مع الفرونت اند (attempts array)
     const formattedAttempts = attemptsData ? attemptsData.map((attempt) => {
-      // استخراج الاسم
       const userData = Array.isArray(attempt.users) ? attempt.users[0] : attempt.users;
       const finalName = attempt.student_name_input || userData?.first_name || 'طالب غير مسجل';
       
       return {
-        // ✅ استخدام نفس المفاتيح الموجودة في الفرونت اند
         student_name_input: finalName, 
         score: attempt.score,
         percentage: attempt.percentage,
-        completed_at: attempt.completed_at, // الفرونت يستخدم completed_at
-        phone: userData?.phone // إضافة إضافية لو احتجتها
+        completed_at: attempt.completed_at,
+        phone: userData?.phone
       };
     }) : [];
 
-    console.log(`[ExamStats] Sending Response. Total: ${totalAttempts}`);
-
-    // إرسال الرد بالهيكل المتوقع
+    // 6. إرسال الرد (شاملاً averagePercentage)
     return res.status(200).json({
       examTitle: exam.title,
-      averageScore: averageScore, // الفرونت يستخدم هذا المفتاح
-      totalAttempts: totalAttempts, // الفرونت يستخدم هذا المفتاح
-      attempts: formattedAttempts // ✅ تم التعديل من topStudents إلى attempts
+      averageScore: averageScore,        // متوسط الدرجات
+      averagePercentage: averagePercentage, // ✅ متوسط النسبة المئوية
+      totalAttempts: totalAttempts,
+      attempts: formattedAttempts       // القائمة
     });
 
   } catch (err) {
