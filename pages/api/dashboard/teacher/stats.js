@@ -2,7 +2,7 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
-  // 1. التحقق من الصلاحية (بنظام الداشبورد)
+  // 1. التحقق من الصلاحية
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) return; 
 
@@ -10,20 +10,41 @@ export default async (req, res) => {
 
   try {
     // =========================================================
-    // 2. جلب الكورسات والمواد (لحساب الطلاب)
+    // 2. التنفيذ المتوازي (Parallel Execution)
+    // نجلب البيانات المستقلة في وقت واحد لتقليل زمن الانتظار
     // =========================================================
     
-    // أ. جلب الكورسات
-    const { data: coursesData, error: coursesError } = await supabase
-      .from('courses')
-      .select('id, title')
-      .eq('teacher_id', teacherId);
-    
-    if (coursesError) throw coursesError;
-    const courses = coursesData || [];
-    const courseIds = courses.map(c => c.id);
+    const [coursesResult, pendingResult, revenueResult] = await Promise.all([
+      // أ. جلب الكورسات
+      supabase
+        .from('courses')
+        .select('id, title')
+        .eq('teacher_id', teacherId),
 
-    // ب. جلب المواد
+      // ب. عدد الطلبات المعلقة (Count فقط)
+      supabase
+        .from('subscription_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('teacher_id', teacherId)
+        .eq('status', 'pending'),
+
+      // ج. حساب الأرباح (عبر دالة قاعدة البيانات السريعة)
+      supabase.rpc('get_teacher_revenue', { teacher_uuid: teacherId })
+    ]);
+
+    // التحقق من الأخطاء الأساسية
+    if (coursesResult.error) throw coursesResult.error;
+    
+    const courses = coursesResult.data || [];
+    const courseIds = courses.map(c => c.id);
+    
+    const pendingRequests = pendingResult.count || 0;
+    const totalEarnings = revenueResult.data || 0;
+
+    // =========================================================
+    // 3. جلب المواد (Subjects) المرتبطة بالكورسات
+    // =========================================================
+    
     let subjects = [];
     let subjectIds = [];
 
@@ -39,94 +60,67 @@ export default async (req, res) => {
     }
 
     // =========================================================
-    // 3. جلب صلاحيات الوصول (Students Only)
+    // 4. جلب بيانات الطلاب (بشكل متوازي للكورسات والمواد)
     // =========================================================
     
-    // أ. مشتركو الكورسات (مع التأكد أنهم طلاب فقط)
-    let courseAccess = [];
-    if (courseIds.length > 0) {
-      const { data: caData, error: caError } = await supabase
-        .from('user_course_access')
-        .select('course_id, user_id, users!inner(role)') 
-        .in('course_id', courseIds)
-        .eq('users.role', 'student'); 
-      
-      if (caError) throw caError;
-      courseAccess = caData || [];
-    }
+    const [courseAccessResult, subjectAccessResult] = await Promise.all([
+        // مشتركو الكورسات (طلاب فقط)
+        courseIds.length > 0 ? 
+            supabase
+            .from('user_course_access')
+            .select('course_id, user_id, users!inner(role)') 
+            .in('course_id', courseIds)
+            .eq('users.role', 'student') 
+            : { data: [] },
 
-    // ب. مشتركو المواد (مع التأكد أنهم طلاب فقط)
-    let subjectAccess = [];
-    if (subjectIds.length > 0) {
-      const { data: saData, error: saError } = await supabase
-        .from('user_subject_access')
-        .select('subject_id, user_id, users!inner(role)') 
-        .in('subject_id', subjectIds)
-        .eq('users.role', 'student'); 
-        
-      if (saError) throw saError;
-      subjectAccess = saData || [];
-    }
+        // مشتركو المواد (طلاب فقط)
+        subjectIds.length > 0 ?
+            supabase
+            .from('user_subject_access')
+            .select('subject_id, user_id, users!inner(role)') 
+            .in('subject_id', subjectIds)
+            .eq('users.role', 'student')
+            : { data: [] }
+    ]);
+
+    if (courseAccessResult.error) throw courseAccessResult.error;
+    if (subjectAccessResult.error) throw subjectAccessResult.error;
+
+    const courseAccess = courseAccessResult.data || [];
+    const subjectAccess = subjectAccessResult.data || [];
 
     // =========================================================
-    // 4. الحسابات النهائية وتفاصيل الأداء
+    // 5. الحسابات النهائية وتجهيز الرد
     // =========================================================
 
-    // تفاصيل للكورسات (للعرض في الجدول بالأسفل)
+    // تفاصيل للكورسات
     const coursesStats = courses.map(course => ({
        id: course.id,
        title: course.title,
        count: courseAccess.filter(a => a.course_id === course.id).length
     }));
 
-    // تفاصيل للمواد (للعرض في الجدول بالأسفل)
+    // تفاصيل للمواد
     const subjectsStats = subjects.map(subject => ({
        id: subject.id,
        title: subject.title,
        count: subjectAccess.filter(a => a.subject_id === subject.id).length
     }));
 
-    // إجمالي الطلاب (بدون تكرار)
+    // إجمالي الطلاب الفريدين
     const allStudentIds = new Set([
       ...courseAccess.map(a => a.user_id),
       ...subjectAccess.map(a => a.user_id)
     ]);
-    const totalUniqueStudents = allStudentIds.size;
 
-    // =========================================================
-    // 5. حساب الأرباح (الطريقة المباشرة من الطلبات)
-    // =========================================================
-    
-    const { data: earningsData, error: earnError } = await supabase
-        .from('subscription_requests')
-        .select('total_price')
-        .eq('teacher_id', teacherId)
-        .eq('status', 'approved');
-
-    if (earnError) throw earnError;
-
-    const totalEarnings = earningsData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
-
-    // عدد الطلبات المعلقة (مهم للصفحة الرئيسية)
-    const { count: pendingRequests } = await supabase
-      .from('subscription_requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', teacherId)
-      .eq('status', 'pending');
-
-    // =========================================================
-    // 6. إرسال الرد
-    // =========================================================
     return res.status(200).json({
       success: true,
-      // البيانات الإجمالية للبطاقات العلوية
       summary: {
-        students: totalUniqueStudents,
-        earnings: totalEarnings,
+        students: allStudentIds.size,
+        earnings: totalEarnings, // القيمة جاءت جاهزة من الدالة
         courses: courses.length,
-        pending: pendingRequests || 0
+        pending: pendingRequests
       },
-      // البيانات التفصيلية للجداول السفلية
       details: {
           courses: coursesStats,
           subjects: subjectsStats
