@@ -27,31 +27,34 @@ export default async (req, res) => {
     }
 
     // 2. حساب عدد الطلاب (الفريدين) بدقة
-    // نستخدم Set لضمان عدم تكرار الطالب إذا اشترى أكثر من شي
+    // نستخدم Set لضمان عدم تكرار الطالب
     const uniqueStudentIds = new Set();
 
-    // أ) المشتركون في الكورسات
+    // أ) المشتركون في الكورسات (مع فلترة الطلاب فقط)
     if (courseIds.length > 0) {
         const { data: courseUsers } = await supabase
             .from('user_course_access')
-            .select('user_id')
-            .in('course_id', courseIds);
+            // 👇 التغيير هنا: ربط داخلي مع جدول users للتأكد من الدور
+            .select('user_id, users!inner(role)') 
+            .in('course_id', courseIds)
+            .eq('users.role', 'student'); // 👈 هذا الشرط هو الذي سيجعل الرقم 11 بدلاً من 13
         
         courseUsers?.forEach(row => uniqueStudentIds.add(row.user_id));
     }
 
-    // ب) المشتركون في المواد الفردية
+    // ب) المشتركون في المواد الفردية (مع فلترة الطلاب فقط)
     if (subjectIds.length > 0) {
         const { data: subjectUsers } = await supabase
             .from('user_subject_access')
-            .select('user_id')
-            .in('subject_id', subjectIds);
+            // 👇 التغيير هنا أيضاً
+            .select('user_id, users!inner(role)')
+            .in('subject_id', subjectIds)
+            .eq('users.role', 'student'); // 👈 استبعاد أي شخص ليس طالباً
 
         subjectUsers?.forEach(row => uniqueStudentIds.add(row.user_id));
     }
 
     // 3. الأرباح (من الطلبات المقبولة في جدول subscription_requests)
-    // هذا هو المصدر الأدق للأموال المحصلة فعلياً
     const { data: earningsData } = await supabase
       .from('subscription_requests')
       .select('total_price')
@@ -67,12 +70,16 @@ export default async (req, res) => {
       .eq('teacher_id', teacherId)
       .eq('status', 'pending');
 
+    // إرجاع البيانات بنفس الهيكل (مع إضافة success و stats object لضمان عمل الواجهة)
     return res.status(200).json({
-      students: uniqueStudentIds.size || 0, // العدد الفريد
-      earnings: totalEarnings,
-      courses: courses?.length || 0,
-      pendingRequests: pendingRequests || 0,
-      currency: 'EGP'
+      success: true,
+      stats: {
+        students: uniqueStudentIds.size || 0, 
+        earnings: totalEarnings,
+        courses: courses?.length || 0,
+        pendingRequests: pendingRequests || 0,
+        currency: 'EGP'
+      }
     });
 
   } catch (err) {
