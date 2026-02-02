@@ -1,9 +1,8 @@
-// ✅ تأكد من أن المسار يحتوي على 4 مستويات للعودة للمجلد الرئيسي
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
-  // سجل تتبع لبدء الطلب
+  // سجل تتبع
   console.log(`[ExamStats] Request started: ${req.method}`);
 
   try {
@@ -17,13 +16,11 @@ export default async (req, res) => {
     const teacherId = user.teacherId;
     const { examId } = req.query;
 
-    console.log(`[ExamStats] Fetching for ExamID: ${examId}, TeacherID: ${teacherId}`);
-
     if (!examId) {
       return res.status(400).json({ error: 'Exam ID is required' });
     }
 
-    // 2. التحقق من ملكية الامتحان (مع معالجة الأخطاء)
+    // 2. التحقق من ملكية الامتحان
     const { data: exam, error: examError } = await supabase
       .from('exams')
       .select('id, title, teacher_id')
@@ -31,18 +28,14 @@ export default async (req, res) => {
       .single();
 
     if (examError) {
-      console.error("[ExamStats] Exam Lookup Error:", examError.message);
-      return res.status(404).json({ error: 'الامتحان غير موجود أو حدث خطأ في جلبه' });
+      return res.status(404).json({ error: 'Exam not found' });
     }
 
-    // السماح للأدمن أو صاحب الامتحان فقط
-    if (user.role !== 'admin' && user.role !== 'super_admin' && String(exam.teacher_id) !== String(teacherId)) {
-      console.error(`[ExamStats] Ownership mismatch. Exam Owner: ${exam.teacher_id}, Requestor: ${teacherId}`);
-      return res.status(403).json({ error: 'لا تملك صلاحية عرض إحصائيات هذا الامتحان' });
+    if (user.role !== 'admin' && String(exam.teacher_id) !== String(teacherId)) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 3. جلب المحاولات (استخدام نفس المنطق المطلوب)
-    // نستخدم maybeSingle أو نجلب البيانات بحذر
+    // 3. جلب المحاولات
     const { data: attempts, error: attemptsError } = await supabase
       .from('user_attempts')
       .select(`
@@ -59,12 +52,9 @@ export default async (req, res) => {
       .eq('status', 'completed')
       .order('percentage', { ascending: false });
 
-    if (attemptsError) {
-      console.error("[ExamStats] Attempts Fetch Error:", attemptsError.message);
-      throw attemptsError;
-    }
+    if (attemptsError) throw attemptsError;
 
-    // 4. معالجة البيانات (تجنب القسمة على صفر)
+    // 4. معالجة البيانات
     const totalAttempts = attempts ? attempts.length : 0;
     let averageScore = 0;
     let averagePercentage = 0;
@@ -77,13 +67,9 @@ export default async (req, res) => {
       averageScore = (sumScore / totalAttempts).toFixed(1);
       averagePercentage = (sumPercent / totalAttempts).toFixed(1);
 
-      // تجهيز قائمة الطلاب (مع معالجة احتمال أن يكون users مصفوفة أو كائن)
       topStudents = attempts.slice(0, 50).map((attempt) => {
-        // استخراج بيانات المستخدم بأمان
         const userData = Array.isArray(attempt.users) ? attempt.users[0] : attempt.users;
-        
-        // تحديد الاسم: إما المدخل يدوياً أو المسجل في الحساب
-        const name = attempt.student_name_input || (userData?.first_name) || 'طالب';
+        const name = attempt.student_name_input || userData?.first_name || 'طالب';
         const phone = userData?.phone || 'غير متوفر';
 
         return {
@@ -96,21 +82,20 @@ export default async (req, res) => {
       });
     }
 
-    console.log(`[ExamStats] Success. Total Attempts: ${totalAttempts}`);
+    console.log(`[ExamStats] Sending Response. Total: ${totalAttempts}`);
 
-    // 5. إرجاع النتيجة
+    // ✅ التعديل هنا: إزالة 'success: true' لتطابق المثال الذي طلبته تماماً
+    // وإرسال البيانات مباشرة كما يتوقعها الفرونت إند المحتمل
     return res.status(200).json({
-      success: true,
-      examTitle: exam.title,
-      totalAttempts,
+      examTitle: exam.title, // نحتفظ بالعنوان للفائدة
       averageScore,
       averagePercentage,
+      totalAttempts,
       topStudents
     });
 
   } catch (err) {
-    console.error("❌ [ExamStats] CRITICAL ERROR:", err);
-    // إرجاع رسالة خطأ واضحة بدلاً من Application Error الصامت
-    return res.status(500).json({ error: `Server Error: ${err.message}` });
+    console.error("❌ [ExamStats] Error:", err);
+    return res.status(500).json({ error: err.message });
   }
 };
