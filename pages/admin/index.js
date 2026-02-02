@@ -10,7 +10,7 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // جلب الإحصائيات من الـ API
+    // جلب الإحصائيات
     fetch('/api/dashboard/teacher/stats')
       .then(res => res.json())
       .then(json => {
@@ -27,16 +27,22 @@ export default function TeacherDashboard() {
       });
   }, []);
 
-  // استخراج البيانات بأمان (مع قيم افتراضية لتجنب الأخطاء أثناء التحميل)
-  const stats = data?.stats || { 
+  // ============================================================
+  // تصحيح: استخراج البيانات لتتوافق مع الـ API response
+  // ============================================================
+  
+  // 1. استخدام summary بدلاً من stats
+  // وتغيير pendingRequests إلى pending ليطابق الـ API
+  const stats = data?.summary || { 
     students: 0, 
     earnings: 0, 
     courses: 0, 
-    pendingRequests: 0 
+    pending: 0 
   };
   
-  const courseDetails = data?.charts?.courses || [];
-  const subjectDetails = data?.charts?.subjects || [];
+  // 2. استخدام details بدلاً من charts
+  const courseDetails = data?.details?.courses || [];
+  const subjectDetails = data?.details?.subjects || [];
 
   return (
     <TeacherLayout title="الرئيسية">
@@ -51,7 +57,8 @@ export default function TeacherDashboard() {
         <div className="stat-card clickable-card" onClick={() => router.push('/dashboard/teacher/requests')}>
             <h3>الطلبات المعلقة</h3>
             <div className="num yellow">
-                {loading ? '...' : stats.pendingRequests}
+                {/* استخدام stats.pending */}
+                {loading ? '...' : stats.pending}
             </div>
             <p>طلب بانتظار المراجعة</p>
         </div>
@@ -105,23 +112,21 @@ export default function TeacherDashboard() {
           </div>
       </div>
 
-      {/* --- القسم الثالث: تفاصيل الأداء (الجداول السفلية) --- */}
+      {/* --- القسم الثالث: تفاصيل الأداء --- */}
       {!loading && (courseDetails.length > 0 || subjectDetails.length > 0) && (
         <div className="details-grid">
-            {/* جدول أداء الكورسات */}
             <div className="detail-panel">
                 <div className="panel-header"><h3>📊 أداء الكورسات</h3></div>
                 <div className="list-container">
-                    {courseDetails.length > 0 ? courseDetails.map((c, i) => (
+                    {courseDetails.map((c, i) => (
                         <div key={i} className="list-row">
                             <span>{c.title}</span>
                             <span className="badge">{c.count} طالب</span>
                         </div>
-                    )) : <div className="list-row">لا توجد بيانات</div>}
+                    ))}
                 </div>
             </div>
             
-            {/* جدول أداء المواد */}
             {subjectDetails.length > 0 && (
                 <div className="detail-panel">
                     <div className="panel-header"><h3>📑 أداء المواد</h3></div>
