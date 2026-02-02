@@ -22,10 +22,11 @@ export default async (req, res) => {
   };
 
   // ============================================================
-  // GET: جلب هيكل المحتوى بالكامل (Courses -> Subjects -> Chapters -> Content)
+  // GET: جلب هيكل المحتوى بالكامل (Courses -> Subjects -> Chapters/Exams -> Content)
   // ============================================================
   if (req.method === 'GET') {
     try {
+      // ✅ تم تعديل هذا الاستعلام ليجلب الامتحانات والأسئلة أيضاً
       const { data: courses, error: fetchError } = await supabase
         .from('courses')
         .select(`
@@ -36,6 +37,14 @@ export default async (req, res) => {
                     id, title, sort_order,
                     videos (*),
                     pdfs (id, title, file_path)
+                ),
+                exams (
+                    id, title, duration_minutes, 
+                    requires_student_name, randomize_questions, randomize_options,
+                    questions (
+                        id, question_text, image_file_id, sort_order,
+                        options ( id, option_text, is_correct )
+                    )
                 )
             )
         `)
@@ -46,17 +55,30 @@ export default async (req, res) => {
 
       // تنسيق البيانات للواجهة الأمامية
       courses.forEach(c => {
-        if (c.subjects) c.subjects.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-        c.subjects?.forEach(s => {
-          if (s.chapters) s.chapters.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-          s.chapters?.forEach(ch => {
-            if (ch.videos) {
-              ch.videos.forEach(v => { v.url = v.youtube_video_id; }); // عرض الرابط
-              ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-            }
-            if (ch.pdfs) ch.pdfs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-          });
-        });
+        if (c.subjects) {
+            c.subjects.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            
+            c.subjects.forEach(s => {
+                // ترتيب الفصول
+                if (s.chapters) s.chapters.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                
+                // معالجة محتوى الفصول (فيديو ومذكرات)
+                s.chapters?.forEach(ch => {
+                    if (ch.videos) {
+                        ch.videos.forEach(v => { v.url = v.youtube_video_id; }); // عرض الرابط
+                        ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                    }
+                    if (ch.pdfs) ch.pdfs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+                });
+
+                // ✅ ترتيب الامتحانات وأسئلتها
+                if (s.exams) {
+                    s.exams.forEach(ex => {
+                        if (ex.questions) ex.questions.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                    });
+                }
+            });
+        }
       });
 
       return res.status(200).json({ success: true, courses });
@@ -175,16 +197,14 @@ export default async (req, res) => {
            let accessList = [{ user_id: auth.userId, course_id: newItem.id }];
            
            try {
-               // البحث عن الفريق باستخدام teacher_profile_id بدلاً من teacher_id
                const { data: teamMembers } = await supabase
                  .from('users')
                  .select('id')
-                 .eq('teacher_profile_id', auth.teacherId) // ✅ التصحيح هنا
+                 .eq('teacher_profile_id', auth.teacherId) 
                  .neq('role', 'student');
 
                if (teamMembers?.length > 0) {
                    teamMembers.forEach(member => {
-                       // تجنب تكرار إضافة المستخدم الحالي
                        if (member.id !== auth.userId) {
                            accessList.push({ user_id: member.id, course_id: newItem.id });
                        }
