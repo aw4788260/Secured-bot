@@ -16,84 +16,75 @@ export default async (req, res) => {
   }
 
   try {
-    // 2. التحقق من ملكية الامتحان (Security Check)
-    // نتحقق من أن الامتحان موجود وأنه يتبع هذا المدرس
-    const { data: exam, error: examError } = await supabase
+    // 🛡️ خطوة أمان إضافية: التحقق من أن المدرس يملك هذا الامتحان
+    const { data: exam, error: examCheckError } = await supabase
       .from('exams')
-      .select('id, title, teacher_id')
+      .select('id, teacher_id, title')
       .eq('id', examId)
       .single();
 
-    if (examError || !exam) {
+    if (examCheckError || !exam) {
       return res.status(404).json({ error: 'الامتحان غير موجود' });
     }
 
-    // إذا لم يكن أدمن، يجب أن يتطابق معرف المدرس
     if (String(exam.teacher_id) !== String(teacherId)) {
-      return res.status(403).json({ error: 'لا تملك صلاحية عرض إحصائيات هذا الامتحان' });
+      return res.status(403).json({ error: 'غير مصرح لك بمشاهدة إحصائيات هذا الامتحان' });
     }
 
-    // 3. جلب محاولات الطلاب (المكتملة فقط)
-    // نقوم بعمل Join مع جدول users لجلب الاسم ورقم الهاتف
-    const { data: attempts, error: attemptsError } = await supabase
-      .from('user_attempts')
-      .select(`
-        score,
-        percentage,
-        student_name_input,
-        completed_at,
-        users (
-          first_name,
-          last_name,
-          phone
-        )
-      `)
-      .eq('exam_id', examId)
-      .eq('status', 'completed')
-      .order('percentage', { ascending: false }); // الترتيب من الأعلى للأقل
+    // ============================================================
+    // ✅ المنطق الذي طلبته (نفس الكود المرسل)
+    // ============================================================
+    
+    // جلب المحاولات مع بيانات المستخدم (الاسم الأول والهاتف فقط كما طلبت)
+    const { data: attempts, error: fetchError } = await supabase
+        .from('user_attempts') 
+        .select('score, percentage, student_name_input, completed_at, users(first_name, phone)')
+        .eq('exam_id', examId)
+        .eq('status', 'completed')
+        .order('percentage', { ascending: false });
 
-    if (attemptsError) throw attemptsError;
+    if (fetchError) throw fetchError;
 
-    // 4. حساب الإحصائيات
+    // حالة عدم وجود محاولات
+    if (!attempts || attempts.length === 0) {
+        return res.status(200).json({ 
+            averageScore: 0, 
+            averagePercentage: 0,
+            topStudents: [], 
+            totalAttempts: 0,
+            examTitle: exam.title // إضافة العنوان للعرض
+        });
+    }
+
     const totalAttempts = attempts.length;
-    let averageScore = 0;
-    let averagePercentage = 0;
+    
+    // حساب متوسط الدرجات
+    const averageScore = totalAttempts > 0 
+        ? (attempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalAttempts).toFixed(1) 
+        : 0;
 
-    if (totalAttempts > 0) {
-      // جمع الدرجات
-      const sumScore = attempts.reduce((acc, curr) => acc + (curr.score || 0), 0);
-      const sumPercent = attempts.reduce((acc, curr) => acc + (curr.percentage || 0), 0);
-      
-      // حساب المتوسط
-      averageScore = (sumScore / totalAttempts).toFixed(1);
-      averagePercentage = (sumPercent / totalAttempts).toFixed(1);
-    }
+    // حساب متوسط النسبة المئوية
+    const averagePercentage = totalAttempts > 0 
+        ? (attempts.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalAttempts).toFixed(1) 
+        : 0;
 
-    // 5. تجهيز قائمة أفضل الطلاب (Top Students)
-    // نأخذ الاسم إما من المدخل اليدوي (student_name_input) أو من جدول المستخدمين
-    const topStudents = attempts.slice(0, 50).map((attempt) => {
-      let studentName = attempt.student_name_input;
-      if (!studentName && attempt.users) {
-        studentName = `${attempt.users.first_name || ''} ${attempt.users.last_name || ''}`.trim();
-      }
-      
-      return {
-        name: studentName || 'طالب غير مسجل',
-        phone: attempt.users?.phone || 'غير متوفر',
-        score: attempt.score,
-        percentage: attempt.percentage,
-        date: attempt.completed_at
-      };
-    });
+    // تجهيز قائمة أفضل 10 طلاب
+    const topStudents = attempts.slice(0, 10).map(a => ({
+        // الأولوية للاسم المدخل يدوياً، ثم الاسم المسجل، ثم قيمة افتراضية
+        name: a.student_name_input || a.users?.first_name || 'طالب غير مسجل',
+        phone: a.users?.phone || 'غير متوفر',
+        score: a.score || 0,
+        percentage: a.percentage || 0,
+        date: a.completed_at
+    }));
 
-    // 6. إرجاع النتيجة
-    return res.status(200).json({
-      success: true,
-      examTitle: exam.title,
-      totalAttempts,
-      averageScore,
-      averagePercentage,
-      topStudents
+    // إرجاع البيانات
+    return res.status(200).json({ 
+        averageScore, 
+        averagePercentage, 
+        totalAttempts, 
+        topStudents,
+        examTitle: exam.title
     });
 
   } catch (err) {
