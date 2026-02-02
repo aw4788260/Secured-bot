@@ -10,7 +10,7 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // جلب الإحصائيات
+    // جلب الإحصائيات من الـ API
     fetch('/api/dashboard/teacher/stats')
       .then(res => res.json())
       .then(json => {
@@ -27,7 +27,7 @@ export default function TeacherDashboard() {
       });
   }, []);
 
-  // استخراج البيانات بأمان (مع قيم افتراضية لتجنب الأخطاء)
+  // استخراج البيانات بأمان (مع قيم افتراضية لتجنب الأخطاء أثناء التحميل)
   const stats = data?.stats || { 
     students: 0, 
     earnings: 0, 
@@ -105,21 +105,23 @@ export default function TeacherDashboard() {
           </div>
       </div>
 
-      {/* --- القسم الثالث: تفاصيل الأداء (إضافة مفيدة) --- */}
+      {/* --- القسم الثالث: تفاصيل الأداء (الجداول السفلية) --- */}
       {!loading && (courseDetails.length > 0 || subjectDetails.length > 0) && (
         <div className="details-grid">
+            {/* جدول أداء الكورسات */}
             <div className="detail-panel">
                 <div className="panel-header"><h3>📊 أداء الكورسات</h3></div>
                 <div className="list-container">
-                    {courseDetails.map((c, i) => (
+                    {courseDetails.length > 0 ? courseDetails.map((c, i) => (
                         <div key={i} className="list-row">
                             <span>{c.title}</span>
                             <span className="badge">{c.count} طالب</span>
                         </div>
-                    ))}
+                    )) : <div className="list-row">لا توجد بيانات</div>}
                 </div>
             </div>
             
+            {/* جدول أداء المواد */}
             {subjectDetails.length > 0 && (
                 <div className="detail-panel">
                     <div className="panel-header"><h3>📑 أداء المواد</h3></div>
@@ -147,7 +149,7 @@ export default function TeacherDashboard() {
         .clickable-card { cursor: pointer; position: relative; }
         .clickable-card:hover { transform: translateY(-5px); border-color: #38bdf8; background: #252f45; }
         
-        .num { font-size: 32px; fontWeight: bold; margin-bottom: 5px; }
+        .num { font-size: 32px; font-weight: bold; margin-bottom: 5px; }
         .num.yellow { color: #facc15; } .num.blue { color: #38bdf8; } .num.green { color: #4ade80; } .num.pink { color: #f472b6; }
 
         /* تنسيقات قسم الاختصارات */
