@@ -33,16 +33,29 @@ export default async (req, res) => {
       supabase.rpc('get_teacher_revenue', { teacher_id_arg: teacherId })
     ]);
 
-    // التحقق من الأخطاء
+    // التحقق من الأخطاء في البيانات الأساسية
     if (coursesResult.error) throw coursesResult.error;
-    if (revenueResult.error) throw revenueResult.error; // سيتوقف إذا فشلت الدالة
+
+    // معالجة الأرباح (Fallback Logic)
+    let totalEarnings = 0;
+    if (!revenueResult.error) {
+        totalEarnings = revenueResult.data || 0;
+    } else {
+        console.warn("⚠️ RPC Failed, falling back to manual calculation:", revenueResult.error.message);
+        // الحساب اليدوي كاحتياطي
+        const { data: manualData } = await supabase
+            .from('subscription_requests')
+            .select('total_price')
+            .eq('teacher_id', teacherId)
+            .eq('status', 'approved');
+            
+        totalEarnings = manualData?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
+    }
 
     // استخراج البيانات الأساسية
     const courses = coursesResult.data || [];
     const courseIds = courses.map(c => c.id);
-    
     const pendingRequests = pendingResult.count || 0;
-    const totalEarnings = revenueResult.data || 0;
 
     // =========================================================
     // 3. جلب المواد (Subjects) المرتبطة بالكورسات
@@ -63,24 +76,27 @@ export default async (req, res) => {
     }
 
     // =========================================================
-    // 4. جلب بيانات الطلاب (بشكل متوازي للكورسات والمواد)
+    // 4. جلب بيانات الطلاب (مع استثناء المدرسين والمشرفين)
     // =========================================================
     
     const [courseAccessResult, subjectAccessResult] = await Promise.all([
-        // مشتركو الكورسات
+        // أ. مشتركو الكورسات (فقط من لديهم دور student)
         courseIds.length > 0 ? 
             supabase
             .from('user_course_access')
-            .select('course_id, user_id') 
+            // users!inner تجبر الاستعلام على التحقق من جدول المستخدمين
+            .select('course_id, user_id, users!inner(role)') 
             .in('course_id', courseIds)
+            .eq('users.role', 'student') // 👈 هذا السطر يستثني المدرس والمشرفين
             : { data: [] },
 
-        // مشتركو المواد
+        // ب. مشتركو المواد (فقط من لديهم دور student)
         subjectIds.length > 0 ?
             supabase
             .from('user_subject_access')
-            .select('subject_id, user_id') 
+            .select('subject_id, user_id, users!inner(role)') 
             .in('subject_id', subjectIds)
+            .eq('users.role', 'student') // 👈 هذا السطر يستثني المدرس والمشرفين
             : { data: [] }
     ]);
 
@@ -117,8 +133,8 @@ export default async (req, res) => {
     return res.status(200).json({
       success: true,
       summary: {
-        students: allStudentIds.size,
-        earnings: totalEarnings, // القيمة القادمة من دالة SQL مباشرة
+        students: allStudentIds.size, // الآن هذا الرقم نظيف (طلاب فقط)
+        earnings: totalEarnings,
         courses: courses.length,
         pending: pendingRequests
       },
