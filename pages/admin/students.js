@@ -38,7 +38,6 @@ export default function StudentsPage() {
   const [selectedGrantItems, setSelectedGrantItems] = useState({ courses: [], subjects: [] });
 
   const [confirmData, setConfirmData] = useState({ show: false, message: '', onConfirm: null });
-  const [promptData, setPromptData] = useState({ show: false, title: '', value: '', onSubmit: null });
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
 
   // --- دوال المساعدة ---
@@ -47,7 +46,7 @@ export default function StudentsPage() {
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
   const showConfirm = (msg, callback) => setConfirmData({ show: true, message: msg, onConfirm: callback });
-  const showPrompt = (title, initialVal, callback) => setPromptData({ show: true, title, value: initialVal || '', onSubmit: callback });
+  
   const formatDate = (dateString) => {
       if (!dateString) return '-';
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -149,9 +148,8 @@ export default function StudentsPage() {
           if (res.ok) {
               showToast(resData.message, 'success');
               if (autoCloseProfile) setViewUser(null);
-              if (viewUser && ['grant_access','revoke_access','change_username','change_phone'].includes(action)) {
-                  if (action === 'change_username') setViewUser({...viewUser, username: payload.newData.username});
-                  if (action === 'change_phone') setViewUser({...viewUser, phone: payload.newData.phone});
+              // إعادة تحميل البيانات لتحديث الصلاحيات
+              if (viewUser && ['grant_access','revoke_access'].includes(action)) {
                   openUserProfile(viewUser);
                   fetchData();
               } else {
@@ -160,10 +158,6 @@ export default function StudentsPage() {
           } else { showToast(resData.error, 'error'); }
       } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   };
-
-  const handlePassChange = () => showPrompt('كلمة المرور الجديدة:', '', (val) => val && runApiCall('change_password', { userId: viewUser.id, newData: { password: val } }));
-  const handleUserChange = () => showPrompt('تغيير اسم المستخدم:', viewUser.username, (val) => val && runApiCall('change_username', { userId: viewUser.id, newData: { username: val } }));
-  const handlePhoneChange = () => showPrompt('تغيير رقم الهاتف:', viewUser.phone, (val) => val && runApiCall('change_phone', { userId: viewUser.id, newData: { phone: val } }));
 
   // مودال المنح
   const openGrantModal = (target) => {
@@ -189,16 +183,10 @@ export default function StudentsPage() {
   
   const handleBulkAction = (actionType) => {
       if (!selectedUsers.length) return;
+      
       if (actionType === 'grant') {
         setGrantOptions({ courses: allCourses, subjects: [] }); 
         openGrantModal('bulk');
-      }
-      else if (actionType === 'reset_device') showConfirm('إلغاء قفل الأجهزة للمحددين؟', () => runApiCall('reset_device', { userIds: selectedUsers }));
-      
-      else if (actionType === 'delete') {
-          const safeUsers = selectedUsers.filter(id => String(id) !== String(currentUserId));
-          if (safeUsers.length === 0) return showToast('لا يمكنك حذف حسابك الخاص!', 'error');
-          showConfirm(`⚠️ تحذير: هل أنت متأكد من حذف ${safeUsers.length} حساب نهائياً؟`, () => runApiCall('delete_user', { userIds: safeUsers }));
       }
       
       else if (actionType === 'revoke_filtered') {
@@ -209,22 +197,14 @@ export default function StudentsPage() {
           });
       }
   };
-
-  const canDeleteUser = (user) => {
-      if (String(user.id) === String(currentUserId)) return false;
-      if (!user.is_admin) return true; 
-      return false; 
-  };
   
   const totalPages = Math.ceil(totalStudents / itemsPerPage);
   const hasActiveFilters = activeFilters.courses.length > 0 || activeFilters.subjects.length > 0;
 
   // --- دالة مساعدة لتجهيز قائمة المنح ---
-  // نستخدم allCourses لأنها تحتوي على تفاصيل المواد، ونفلترها بناءً على المتاح للطالب
   const getRenderableGrantGroups = () => {
     return allCourses.filter(course => {
         if (grantTarget === 'bulk') return true;
-        // نعرض المجموعة إذا كان الكورس متاحاً أو إذا كان لديه مواد متاحة
         const isCourseAvailable = grantOptions.courses.some(c => c.id === course.id);
         const hasSubjectsAvailable = course.subjects?.some(s => grantOptions.subjects.some(gs => gs.id === s.id));
         return isCourseAvailable || hasSubjectsAvailable;
@@ -256,11 +236,9 @@ export default function StudentsPage() {
           <div className="bulk-glass-bar">
               <div className="bulk-info"><span className="count-badge">{selectedUsers.length}</span> <span>محدد</span></div>
               <div className="bulk-actions">
-                  <button onClick={() => handleBulkAction('reset_device')} className="glass-btn">🔓 فك قفل</button>
+                  {/* الأزرار المتاحة فقط: منح وسحب مفلتر */}
                   <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ صلاحية</button>
                   {hasActiveFilters && <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn warning">❌ سحب المفلتر</button>}
-                  
-                  <button onClick={() => handleBulkAction('delete')} className="glass-btn danger">🗑️ حذف نهائي</button>
               </div>
           </div>
       )}
@@ -361,19 +339,10 @@ export default function StudentsPage() {
                   </div>
                   <div className="modal-content">
                       <div className="data-row">
-                          <div className="data-item"><label>اسم المستخدم</label><div className="val-box">{viewUser.username} <button onClick={handleUserChange}>✏️</button></div></div>
-                          <div className="data-item"><label>رقم الهاتف</label><div className="val-box ltr">{viewUser.phone} <button onClick={handlePhoneChange}>✏️</button></div></div>
+                          <div className="data-item"><label>اسم المستخدم</label><div className="val-box">{viewUser.username}</div></div>
+                          <div className="data-item"><label>رقم الهاتف</label><div className="val-box ltr">{viewUser.phone}</div></div>
                       </div>
-                      <div className="actions-row">
-                          <button onClick={() => showConfirm('إلغاء قفل الجهاز؟', () => runApiCall('reset_device', { userId: viewUser.id }))}>🔓 إلغاء قفل الجهاز</button>
-                          <button onClick={handlePassChange}>🔑 تغيير الباسورد</button>
-                          
-                          {canDeleteUser(viewUser) ? (
-                              <button className="btn-red" onClick={() => showConfirm('⚠️ تحذير: سيتم حذف الحساب وجميع بياناته نهائياً. هل أنت متأكد؟', () => runApiCall('delete_user', { userId: viewUser.id }, true))}>🗑️ حذف نهائي</button>
-                          ) : (
-                              <button className="btn-disabled" disabled title="لا يمكن حذف المشرفين">🔒 حذف (محمي)</button>
-                          )}
-                      </div>
+                      {/* تم حذف أزرار التحكم (فك قفل، تغيير باسورد، حذف) من هنا */}
                       <div className="subs-wrapper">
                           <div className="subs-header"><h4>الاشتراكات والصلاحيات</h4><button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ إضافة</button></div>
                           {loadingSubs ? <div className="loader-line"></div> : (
@@ -395,10 +364,8 @@ export default function StudentsPage() {
                   <div className="modal-head"><h3>➕ إضافة صلاحيات</h3><button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button></div>
                   <div className="modal-content scrollable">
                       {renderableGrantGroups.length > 0 ? renderableGrantGroups.map(course => {
-                          // هل الكورس نفسه متاح للمنح؟
                           const isCourseGrantable = grantTarget === 'bulk' || grantOptions.courses.some(c => c.id === course.id);
                           
-                          // ما هي المواد المتاحة في هذا الكورس؟
                           const visibleSubjects = course.subjects?.filter(s => 
                               grantTarget === 'bulk' || grantOptions.subjects.some(gs => gs.id === s.id)
                           ) || [];
@@ -448,8 +415,7 @@ export default function StudentsPage() {
       )}
 
       {/* --- Alerts --- */}
-      {confirmData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="alert-actions"><button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button><button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، احذف</button></div></div></div>}
-      {promptData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>{promptData.title}</h3><input autoFocus type="text" defaultValue={promptData.value} id="promptIn" className="prompt-input"/><div className="alert-actions"><button className="cancel-btn" onClick={()=>setPromptData({...promptData, show:false})}>إلغاء</button><button className="confirm-btn" onClick={()=>{promptData.onSubmit(document.getElementById('promptIn').value); setPromptData({...promptData,show:false})}}>حفظ</button></div></div></div>}
+      {confirmData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="alert-actions"><button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button><button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، تأكيد</button></div></div></div>}
 
       <style jsx>{`
         /* Styles remain mostly the same, updated for new elements */
