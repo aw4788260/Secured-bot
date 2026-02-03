@@ -293,8 +293,19 @@ export default function ContentManager() {
       setExamForm({ ...examForm, questions: examForm.questions.filter((_, idx) => idx !== i) });
       if (editingQIndex === i) resetCurrentQuestion();
   };
-  const submitExam = async () => {
-      if(!examForm.title || examForm.questions.length === 0) return showAlert('error', 'البيانات ناقصة');
+ const submitExam = async () => {
+      // 1. التحقق من أن الحقول ليست فارغة
+      if(!examForm.title || !examForm.startTime || !examForm.endTime || examForm.questions.length === 0) {
+          return showAlert('error', 'البيانات ناقصة: يجب تحديد العنوان، وقت البدء والانتهاء، وإضافة أسئلة.');
+      }
+
+      // 2. ✅ [جديد] التحقق المنطقي من التواريخ (النهاية بعد البداية)
+      const start = new Date(examForm.startTime);
+      const end = new Date(examForm.endTime);
+
+      if (end <= start) {
+          return showAlert('error', '⚠️ خطأ في التوقيت: وقت نهاية الامتحان يجب أن يكون بعد وقت البداية.');
+      }
       
       try {
           const res = await fetch('/api/dashboard/teacher/exams', {
@@ -309,28 +320,25 @@ export default function ContentManager() {
                   requiresName: true,
                   randQ: examForm.randQ, 
                   randO: examForm.randO,
-                  start_time: examForm.startTime || null,
-                  end_time: examForm.endTime || null,
+                  start_time: examForm.startTime,
+                  end_time: examForm.endTime,
                   questions: examForm.questions, 
                   deletedQuestionIds: deletedQIds
               })
           });
 
-          // ✅ قراءة الرد وتحليله
           const data = await res.json();
-          console.log("📌 رد السيرفر:", data); // سيظهر هذا في كونسول المتصفح (F12)
 
           if (res.ok) { 
               showAlert('success', 'تم الحفظ بنجاح'); 
               setModalType(null); 
               fetchContent(); 
           } else { 
-              // ✅ التحقق من عدة احتمالات لمكان رسالة الخطأ
-              const errorMsg = data.error || data.message || 'فشل الحفظ لسبب غير معروف';
+              const errorMsg = data.error || data.message || 'فشل الحفظ';
               showAlert('error', errorMsg); 
           }
       } catch (err) {
-          console.error("❌ خطأ في الاتصال:", err);
+          console.error(err);
           showAlert('error', 'حدث خطأ في الاتصال بالسيرفر');
       }
   };
@@ -659,30 +667,32 @@ export default function ContentManager() {
                                   <span>دقيقة</span>
                               </div>
           {/* ✅ [إضافة جديدة] حقول تحديد وقت الامتحان */}
-                              <div style={{marginTop: '15px', borderTop: '1px solid #334155', paddingTop: '10px'}}>
-                                  <label className="field-label" style={{color:'#38bdf8'}}>📅 الصلاحية الزمنية (اختياري)</label>
-                                  
-                                  <label className="field-label" style={{fontSize: '0.8rem', marginTop:'5px'}}>يبدأ في:</label>
-                                  <input 
-                                      type="datetime-local" 
-                                      className="input" 
-                                      style={{fontSize: '0.85rem', direction:'ltr'}}
-                                      value={examForm.startTime} 
-                                      onChange={e=>setExamForm({...examForm, startTime: e.target.value})} 
-                                  />
+                            <div style={{marginTop: '15px', borderTop: '1px solid #334155', paddingTop: '10px'}}>
+    {/* تغيير النص ليصبح إجباري */}
+    <label className="field-label" style={{color:'#facc15'}}>📅 الصلاحية الزمنية (إجباري)</label>
+    
+    <label className="field-label" style={{fontSize: '0.8rem', marginTop:'5px'}}>يبدأ في:</label>
+    <input 
+        type="datetime-local" 
+        required // إضافة خاصية required كإشارة
+        className="input" 
+        style={{fontSize: '0.85rem', direction:'ltr', borderColor: !examForm.startTime ? '#ef4444' : '#334155'}} // تلوين الحدود بالأحمر إذا كان فارغاً
+        value={examForm.startTime} 
+        onChange={e=>setExamForm({...examForm, startTime: e.target.value})} 
+    />
 
-                                  <label className="field-label" style={{fontSize: '0.8rem', marginTop:'10px'}}>ينتهي في:</label>
-                                  <input 
-                                      type="datetime-local" 
-                                      className="input" 
-                                      style={{fontSize: '0.85rem', direction:'ltr'}}
-                                      value={examForm.endTime} 
-                                      onChange={e=>setExamForm({...examForm, endTime: e.target.value})} 
-                                  />
-                                  <small style={{color:'#64748b', fontSize:'0.7rem', display:'block', marginTop:'5px'}}>
-                                      اتركه فارغاً ليكون متاحاً دائماً.
-                                  </small>
-                              </div>
+    <label className="field-label" style={{fontSize: '0.8rem', marginTop:'10px'}}>ينتهي في:</label>
+    <input 
+        type="datetime-local" 
+        required
+        className="input" 
+        style={{fontSize: '0.85rem', direction:'ltr', borderColor: !examForm.endTime ? '#ef4444' : '#334155'}}
+        value={examForm.endTime} 
+        onChange={e=>setExamForm({...examForm, endTime: e.target.value})} 
+    />
+    
+    {/* ❌ تم حذف رسالة "اتركه فارغاً" */}
+</div>
                               <div className="toggles-group">
                                   <div className="toggle-row"><span>عشوائية الأسئلة</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
                                   <div className="toggle-row"><span>عشوائية الاختيارات</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
