@@ -19,6 +19,7 @@ export default function RequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
+      // ✅ تحديث المسار إلى API المدرسين الجديد
       const res = await fetch('/api/dashboard/teacher/requests');
       const data = await res.json();
       if (Array.isArray(data)) setRequests(data);
@@ -45,6 +46,7 @@ export default function RequestsPage() {
     setProcessingId(requestId);
 
     try {
+      // ✅ تحديث المسار لتنفيذ الإجراء
       const res = await fetch('/api/dashboard/teacher/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -98,7 +100,9 @@ export default function RequestsPage() {
       ) : (
         <div className="requests-grid">
           {requests.map(req => {
-            const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
+            // ✅ تحديث مسار البروكسي (استخدمنا مسار السوبر مؤقتاً أو تأكد من وجود صلاحية للمدرس)
+            // ملاحظة: يُفضل نقل منطق عرض الصور إلى API عام أو خاص بالمدرس إذا لزم الأمر
+            const receiptUrl = `/api/dashboard/super/file-proxy?type=receipts&filename=${req.payment_file_path}`;
             
             return (
                 <div key={req.id} className="request-card">
