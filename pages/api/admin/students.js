@@ -1,206 +1,227 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { parse } from 'cookie';
-import bcrypt from 'bcryptjs';
+import { requireSuperAdmin } from '../../../lib/dashboardHelper';
 
-// [تصحيح] استخدام نفس المتغير الموجود في admins.js
-const PANEL_OWNER_ID = process.env.PANEL_OWNER_ID; 
+export default async function handler(req, res) {
+  // 1. الحماية: التأكد أن الطالب Super Admin
+  const authResult = await requireSuperAdmin(req, res);
+  if (authResult.error) return; // تم إرسال الرد في الدالة المساعدة
 
-export default async (req, res) => {
-  const cookies = parse(req.headers.cookie || '');
-  const sessionToken = cookies.admin_session;
-  if (!sessionToken) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { data: adminUser } = await supabase.from('users').select('id, is_admin').eq('session_token', sessionToken).single();
-  if (!adminUser || !adminUser.is_admin) return res.status(403).json({ error: 'Access Denied' });
-
-  // [تصحيح] منطق التحقق من الأدمن الرئيسي
-  const isMainAdmin = String(adminUser.id) === String(PANEL_OWNER_ID);
-
-  // ---------------------------------------------------------
-  // GET (Server-Side Pagination & Filtering)
-  // ---------------------------------------------------------
+  // ==========================================================
+  // 🟢 التعامل مع طلبات GET (جلب البيانات)
+  // ==========================================================
   if (req.method === 'GET') {
-    const { 
-        page = 1, 
-        limit = 30, 
-        search, 
-        courses_filter, 
-        subjects_filter, 
-        get_details_for_user 
-    } = req.query;
+    const { page = 1, limit = 30, search, courses_filter, subjects_filter, get_details_for_user } = req.query;
 
+    // A. جلب تفاصيل طالب محدد (الاشتراكات)
+    if (get_details_for_user) {
+      try {
+        // جلب الكورسات المشترك بها
+        const { data: userCourses } = await supabase
+          .from('student_courses')
+          .select('course_id, courses(id, title)')
+          .eq('user_id', get_details_for_user);
+
+        // جلب المواد الفردية المشترك بها
+        const { data: userSubjects } = await supabase
+          .from('student_subjects')
+          .select('subject_id, subjects(id, title)')
+          .eq('user_id', get_details_for_user);
+
+        return res.status(200).json({
+          courses: userCourses || [],
+          subjects: userSubjects || []
+        });
+      } catch (err) {
+        return res.status(500).json({ error: err.message });
+      }
+    }
+
+    // B. جلب قائمة الطلاب (مع الفلترة والبحث)
     try {
-        if (get_details_for_user) {
-            const { data: userCourses } = await supabase.from('user_course_access').select('course_id, courses(title)').eq('user_id', get_details_for_user);
-            const { data: userSubjects } = await supabase.from('user_subject_access').select('subject_id, subjects(title, course_id)').eq('user_id', get_details_for_user);
-            return res.status(200).json({ courses: userCourses || [], subjects: userSubjects || [] });
-        }
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
 
-        let query = supabase
-            .from('users')
-            .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' });
+      // بناء الاستعلام الأساسي
+      let query = supabase
+        .from('users')
+        .select('id, first_name, username, phone, role, is_blocked, device_id, created_at, is_admin', { count: 'exact' })
+        .eq('role', 'student') // نجلب الطلاب فقط
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-        // 1. تطبيق البحث
-        if (search && search.trim() !== '') {
-            const term = search.trim();
-            let orQuery = `first_name.ilike.%${term}%,username.ilike.%${term}%,phone.ilike.%${term}%`;
-            if (/^\d+$/.test(term)) {
-                orQuery += `,id.eq.${term}`;
-            }
-            query = query.or(orQuery);
-        }
+      // تطبيق البحث
+      if (search) {
+        query = query.or(`first_name.ilike.%${search}%,phone.ilike.%${search}%,username.ilike.%${search}%`);
+      }
 
-        // 2. تطبيق الفلترة
-        let targetUserIds = new Set();
-        let isFiltering = false;
-
-        if (courses_filter && courses_filter.length > 0) {
-            isFiltering = true;
-            const cIds = courses_filter.split(',');
-            const { data: subs } = await supabase.from('user_course_access').select('user_id').in('course_id', cIds);
-            subs?.forEach(s => targetUserIds.add(s.user_id));
-        }
-
-        if (subjects_filter && subjects_filter.length > 0) {
-            isFiltering = true;
-            const sIds = subjects_filter.split(',');
-            const { data: subSubs } = await supabase.from('user_subject_access').select('user_id').in('subject_id', sIds);
-            subSubs?.forEach(s => targetUserIds.add(s.user_id));
-            
-            const { data: subjectsInfo } = await supabase.from('subjects').select('course_id').in('id', sIds);
-            const parentCourseIds = subjectsInfo?.map(s => s.course_id).filter(id => id) || [];
-            
-            if (parentCourseIds.length > 0) {
-                const { data: courseSubs } = await supabase.from('user_course_access').select('user_id').in('course_id', parentCourseIds);
-                courseSubs?.forEach(s => targetUserIds.add(s.user_id));
-            }
-        }
-
-        if (isFiltering) {
-            if (targetUserIds.size > 0) {
-                query = query.in('id', Array.from(targetUserIds));
-            } else {
-                // [تصحيح] إرجاع isMainAdmin هنا أيضاً للحالات الفارغة
-                return res.status(200).json({ students: [], total: 0, isMainAdmin }); 
-            }
-        }
-
-        // 3. التقسيم (Pagination)
-        const from = (page - 1) * limit;
-        const to = from + limit - 1;
+      // تطبيق فلتر الكورسات (المشتركين في كورسات معينة)
+      if (courses_filter) {
+        // نحتاج لجلب الـ user_ids من جدول الاشتراكات أولاً
+        const courseIds = courses_filter.split(',');
+        const { data: courseUsers } = await supabase
+          .from('student_courses')
+          .select('user_id')
+          .in('course_id', courseIds);
         
-        query = query.order('is_admin', { ascending: false }).order('created_at', { ascending: false }).range(from, to);
+        const userIds = courseUsers?.map(u => u.user_id) || [];
+        // إذا لم يكن هناك مشتركين، نرجع قائمة فارغة (أو نضيف شرط مستحيل)
+        if (userIds.length > 0) {
+            query = query.in('id', userIds);
+        } else {
+            // شرط يجعل النتيجة فارغة لأن الفلتر لم يجد أحداً
+            query = query.eq('id', 0);
+        }
+      }
 
-        const { data, error, count } = await query;
-        if (error) throw error;
+      // تطبيق فلتر المواد (نفس المنطق)
+      if (subjects_filter) {
+        const subjectIds = subjects_filter.split(',');
+        const { data: subjectUsers } = await supabase
+          .from('student_subjects')
+          .select('user_id')
+          .in('subject_id', subjectIds);
 
-        const formattedData = data.map(user => ({ ...user, device_linked: user.devices && user.devices.length > 0 }));
-        
-        // [تصحيح] إرسال isMainAdmin للواجهة
-        return res.status(200).json({ students: formattedData, total: count, isMainAdmin });
+        const userIds = subjectUsers?.map(u => u.user_id) || [];
+        if (userIds.length > 0) {
+           query = query.in('id', userIds);
+        } else {
+           query = query.eq('id', 0);
+        }
+      }
 
-    } catch (err) { return res.status(500).json({ error: err.message }); }
+      const { data, count, error } = await query;
+
+      if (error) throw error;
+
+      return res.status(200).json({
+        students: data,
+        total: count
+      });
+
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'فشل جلب الطلاب' });
+    }
   }
 
-  // ---------------------------------------------------------
-  // POST
-  // ---------------------------------------------------------
+  // ==========================================================
+  // 🟠 التعامل مع طلبات POST (الإجراءات)
+  // ==========================================================
   if (req.method === 'POST') {
-    const { action, userIds, userId, newData, grantList } = req.body;
-    const targets = userIds || [userId];
+    const { action, userId, userIds, data, grantList, courseId, subjectId } = req.body;
 
     try {
-        if (action === 'delete_user') {
-            for (const targetId of targets) {
-                // أ) التحقق: هل الهدف أدمن؟
-                const { data: targetUser } = await supabase.from('users').select('is_admin').eq('id', targetId).single();
-                
-                if (targetUser && targetUser.is_admin) {
-                    if (!isMainAdmin) {
-                        return res.status(403).json({ error: `⛔ لا تملك صلاحية حذف المشرفين.` });
-                    }
-                    if (String(targetId) === String(PANEL_OWNER_ID)) {
-                        return res.status(403).json({ error: '⛔ لا يمكن حذف الحساب الرئيسي.' });
-                    }
-                }
+      switch (action) {
+        // 1. الحظر
+        case 'block_user':
+          await supabase.from('users').update({ is_blocked: true }).eq('id', userId);
+          return res.json({ message: 'تم حظر الطالب بنجاح' });
 
-                // ب) الحذف المتسلسل
-                await supabase.from('user_course_access').delete().eq('user_id', targetId);
-                await supabase.from('user_subject_access').delete().eq('user_id', targetId);
-                await supabase.from('devices').delete().eq('user_id', targetId);
-                await supabase.from('subscription_requests').delete().eq('user_id', targetId);
-                
-                const { data: attempts } = await supabase.from('user_attempts').select('id').eq('user_id', targetId);
-                if (attempts && attempts.length > 0) {
-                    const attemptIds = attempts.map(a => a.id);
-                    await supabase.from('user_answers').delete().in('attempt_id', attemptIds);
-                    await supabase.from('user_attempts').delete().eq('user_id', targetId);
-                }
+        case 'unblock_user':
+          await supabase.from('users').update({ is_blocked: false }).eq('id', userId);
+          return res.json({ message: 'تم فك الحظر بنجاح' });
 
-                // ج) أخيراً: حذف المستخدم
-                await supabase.from('users').delete().eq('id', targetId);
-            }
-            return res.status(200).json({ success: true, message: 'تم حذف الحسابات والبيانات المرتبطة نهائياً.' });
-        }
+        // 2. تصفير الجهاز
+        case 'reset_device':
+          await supabase.from('users').update({ device_id: null }).eq('id', userId);
+          return res.json({ message: 'تم تصفير جهاز الطالب' });
 
-        if (action === 'reset_device') {
-            await supabase.from('devices').delete().in('user_id', targets);
-            return res.status(200).json({ success: true, message: 'تم إلغاء قفل الأجهزة.' });
-        }
-        if (action === 'change_password') {
-            const hash = await bcrypt.hash(newData.password, 10);
-            await supabase.from('users').update({ password: hash }).eq('id', userId);
-            return res.status(200).json({ success: true, message: 'تم تغيير كلمة المرور.' });
-        }
-       // [تعديل] التحقق من تكرار اسم المستخدم قبل التحديث
-        if (action === 'change_username') {
-            const newUsername = newData.username.trim();
+        // 3. حذف مستخدم (واحد)
+        case 'delete_user':
+          // الحذف المتسلسل (Cascading) يعتمد على إعدادات قاعدة البيانات، 
+          // لكن للأمان نحذف الارتباطات يدوياً إذا لم تكن مفعلة
+          await supabase.from('student_courses').delete().eq('user_id', userId);
+          await supabase.from('student_subjects').delete().eq('user_id', userId);
+          await supabase.from('users').delete().eq('id', userId);
+          return res.json({ message: 'تم حذف الحساب نهائياً' });
 
-            // 1. التحقق: هل يوجد طالب آخر يستخدم نفس الاسم؟
-            const { data: existingUser } = await supabase
-                .from('users')
-                .select('id')
-                .eq('username', newUsername)
-                .neq('id', userId) // استثناء الطالب الحالي (في حال كتب نفس اسمه)
-                .maybeSingle();
+        // 4. حذف جماعي
+        case 'delete_user_bulk':
+          if (!userIds || !userIds.length) return res.status(400).json({ error: 'لم يتم تحديد طلاب' });
+          await supabase.from('student_courses').delete().in('user_id', userIds);
+          await supabase.from('student_subjects').delete().in('user_id', userIds);
+          await supabase.from('users').delete().in('id', userIds);
+          return res.json({ message: `تم حذف ${userIds.length} طلاب` });
 
-            if (existingUser) {
-                // إذا وجدنا تطابقاً، نوقف العملية ونرسل رسالة خطأ
-                return res.status(400).json({ error: '⚠️ عذراً، اسم المستخدم هذا مسجل بالفعل لطالب آخر. يرجى اختيار اسم مختلف.' });
-            }
+        // 5. تحديث البيانات (بروفايل)
+        case 'update_profile':
+          if (!data) return res.status(400).json({ error: 'لا توجد بيانات' });
+          const updates = { 
+             first_name: data.first_name, 
+             phone: data.phone,
+             username: data.username 
+          };
+          if (data.password && data.password.trim() !== '') {
+             updates.password = data.password; // يفضل تشفيرها إذا لم يكن النظام يفعل ذلك تلقائياً
+          }
+          const { error: updateErr } = await supabase.from('users').update(updates).eq('id', userId);
+          if (updateErr) throw updateErr;
+          return res.json({ message: 'تم تحديث البيانات بنجاح' });
 
-            // 2. إذا كان الاسم متاحاً، نقوم بالتحديث
-            const { error: updateError } = await supabase
-                .from('users')
-                .update({ username: newUsername })
-                .eq('id', userId);
+        // 6. منح صلاحيات (Grant Access) - فردي أو جماعي
+        case 'grant_access':
+          const targetUserIds = userIds || [userId]; // دعم الفردي والجماعي
+          const { courses: gCourses, subjects: gSubjects } = grantList;
 
-            if (updateError) throw updateError;
-
-            return res.status(200).json({ success: true, message: '✅ تم تغيير اسم المستخدم بنجاح.' });
-        }
-        if (action === 'change_phone') {
-            await supabase.from('users').update({ phone: newData.phone }).eq('id', userId);
-            return res.status(200).json({ success: true, message: 'تم تحديث رقم الهاتف.' });
-        }
-        if (action === 'grant_access') {
-            const { courses = [], subjects = [] } = grantList || {};
-            const courseInserts = [];
-            const subjectInserts = [];
-            targets.forEach(uid => {
-                courses.forEach(cid => courseInserts.push({ user_id: uid, course_id: cid }));
-                subjects.forEach(sid => subjectInserts.push({ user_id: uid, subject_id: sid }));
+          // إعداد صفوف الكورسات للإدراج
+          const courseInserts = [];
+          if (gCourses && gCourses.length > 0) {
+            targetUserIds.forEach(uid => {
+                gCourses.forEach(cid => {
+                    courseInserts.push({ user_id: uid, course_id: cid });
+                });
             });
-            if (courseInserts.length > 0) await supabase.from('user_course_access').upsert(courseInserts, { onConflict: 'user_id, course_id' });
-            if (subjectInserts.length > 0) await supabase.from('user_subject_access').upsert(subjectInserts, { onConflict: 'user_id, subject_id' });
-            return res.status(200).json({ success: true, message: 'تم منح الصلاحيات.' });
-        }
-        if (action === 'revoke_access') {
-            const { courseId, subjectId } = req.body;
-            if (courseId) await supabase.from('user_course_access').delete().in('user_id', targets).eq('course_id', courseId);
-            else if (subjectId) await supabase.from('user_subject_access').delete().in('user_id', targets).eq('subject_id', subjectId);
-            return res.status(200).json({ success: true, message: 'تم سحب الصلاحية.' });
-        }
-    } catch (err) { return res.status(500).json({ error: err.message }); }
+          }
+
+          // إعداد صفوف المواد للإدراج
+          const subjectInserts = [];
+          if (gSubjects && gSubjects.length > 0) {
+            targetUserIds.forEach(uid => {
+                gSubjects.forEach(sid => {
+                    subjectInserts.push({ user_id: uid, subject_id: sid });
+                });
+            });
+          }
+
+          // تنفيذ الإدراج (Upsert لتجنب الأخطاء عند التكرار)
+          if (courseInserts.length > 0) {
+              await supabase.from('student_courses').upsert(courseInserts, { onConflict: 'user_id,course_id' });
+          }
+          if (subjectInserts.length > 0) {
+              await supabase.from('student_subjects').upsert(subjectInserts, { onConflict: 'user_id,subject_id' });
+          }
+
+          return res.json({ message: 'تم منح الصلاحيات بنجاح' });
+
+        // 7. سحب صلاحية (Revoke)
+        case 'revoke_access':
+          // سحب كورس
+          if (courseId) {
+             // إذا كان جماعي (userIds) أو فردي (userId)
+             let q = supabase.from('student_courses').delete().eq('course_id', courseId);
+             if (userIds && userIds.length) q = q.in('user_id', userIds);
+             else if (userId) q = q.eq('user_id', userId);
+             await q;
+          }
+          // سحب مادة
+          if (subjectId) {
+             let q = supabase.from('student_subjects').delete().eq('subject_id', subjectId);
+             if (userIds && userIds.length) q = q.in('user_id', userIds);
+             else if (userId) q = q.eq('user_id', userId);
+             await q;
+          }
+          return res.json({ message: 'تم سحب الصلاحية' });
+
+        default:
+          return res.status(400).json({ error: 'إجراء غير معروف' });
+      }
+
+    } catch (err) {
+      console.error(`Error in action ${action}:`, err);
+      return res.status(500).json({ error: 'حدث خطأ أثناء تنفيذ الإجراء' });
+    }
   }
-};
+
+  // إذا لم يكن GET أو POST
+  return res.status(405).json({ error: 'Method not allowed' });
+}
