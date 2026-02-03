@@ -51,39 +51,42 @@ export default function StudentsPage() {
   };
 
   // --- 1. جلب البيانات ---
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-        if (allCourses.length === 0) {
-            // استخدام رابط المدرس لجلب الكورسات (المسموح له برؤيتها فقط)
-            const resCourses = await fetch('/api/dashboard/teacher/content?type=courses');
-            const coursesData = await resCourses.json();
-            // الـ API يرجع { items: [] } أو مصفوفة مباشرة حسب التنفيذ، هنا نفترض مصفوفة أو نعدل
-            const coursesList = Array.isArray(coursesData) ? coursesData : (coursesData.items || []);
-            setAllCourses(coursesList);
-        }
+  // --- 1. جلب البيانات ---
+const fetchData = async () => {
+  setLoading(true);
+  try {
+      if (allCourses.length === 0) {
+          // جلب الكورسات الخاصة بالمدرس فقط
+          const resCourses = await fetch('/api/dashboard/teacher/content');
+          const coursesData = await resCourses.json();
+          
+          // [تصحيح] قراءة المصفوفة من داخل الكائن courses
+          // البيانات تأتي { success: true, courses: [...] }
+          const coursesList = coursesData.courses || [];
+          setAllCourses(coursesList);
+      }
 
-        let url = `/api/dashboard/teacher/students?page=${currentPage}&limit=${itemsPerPage}`;
-        
-        const params = new URLSearchParams();
-        if (searchTerm) params.append('search', searchTerm);
-        if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
-        if (activeFilters.subjects.length > 0) params.append('subjects_filter', activeFilters.subjects.join(','));
-        
-        if (params.toString()) url += `&${params.toString()}`;
-        
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        if (res.ok) {
-            setStudents(data.students || []);
-            setTotalStudents(data.total || 0);
-            setIsMainAdmin(data.isMainAdmin || false);
-            setSelectedUsers([]); 
-        }
-    } catch (err) { console.error(err); } 
-    finally { setLoading(false); }
-  };
+      let url = `/api/dashboard/teacher/students?page=${currentPage}&limit=${itemsPerPage}`;
+      
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
+      if (activeFilters.subjects.length > 0) params.append('subjects_filter', activeFilters.subjects.join(','));
+      
+      if (params.toString()) url += `&${params.toString()}`;
+      
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      if (res.ok) {
+          setStudents(data.students || []);
+          setTotalStudents(data.total || 0);
+          setIsMainAdmin(data.isMainAdmin || false);
+          setSelectedUsers([]); 
+      }
+  } catch (err) { console.error(err); } 
+  finally { setLoading(false); }
+};
 
   useEffect(() => { 
       setCurrentUserId(localStorage.getItem('admin_user_id'));
