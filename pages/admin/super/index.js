@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import SuperLayout from '../../../components/SuperLayout'; // ✅ تم التحديث لاستخدام تخطيط السوبر أدمن
+import SuperLayout from '../../../components/SuperLayout';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // أيقونات SVG بسيطة
@@ -17,34 +17,22 @@ export default function SuperDashboard() {
     totalTeachers: 0,
     totalRevenue: 0,
     activeCourses: 0,
-    recentUsers: []
+    recentUsers: [],
+    chartData: [] // ✅ تهيئة مصفوفة الرسم البياني
   });
   const [loading, setLoading] = useState(true);
 
-  // ✅ بيانات الرسم البياني (ثابتة حالياً لأن الـ API لا يرسلها، يمكن تعديلها لاحقاً لربطها بـ API منفصل)
-  const chartData = [
-    { name: 'السبت', sales: 4000 },
-    { name: 'الأحد', sales: 3000 },
-    { name: 'الاثنين', sales: 2000 },
-    { name: 'الثلاثاء', sales: 2780 },
-    { name: 'الأربعاء', sales: 1890 },
-    { name: 'الخميس', sales: 2390 },
-    { name: 'الجمعة', sales: 3490 },
-  ];
+  // تم حذف const chartData الثابتة لأننا سنستخدم stats.chartData القادمة من الـ API
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // محاولة جلب البيانات الحقيقية
-        // ✅ تم التأكد من أن هذا هو المسار الجديد والصحيح للوحة تحكم السوبر أدمن
         const res = await fetch('/api/dashboard/super/stats'); 
         
         if (res.ok) {
           const data = await res.json();
           setStats(data);
         } else {
-          // ❌ تم إزالة البيانات الوهمية هنا لضمان عدم تضليل المستخدم
-          // سيتم طباعة الخطأ في الكونسول بدلاً من عرض أرقام مزيفة
           console.error("فشل جلب الإحصائيات (API Error):", res.status, res.statusText);
         }
       } catch (error) {
@@ -113,22 +101,28 @@ export default function SuperDashboard() {
               </div>
             </div>
 
-            {/* ✅ قسم الرسم البياني */}
+            {/* ✅ قسم الرسم البياني (بيانات حقيقية) */}
             <div className="chart-section">
                 <h3>📊 نمو الإيرادات (آخر 7 أيام)</h3>
                 <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                            <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
-                            <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
-                            <Tooltip 
-                                contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
-                                cursor={{fill: 'rgba(56, 189, 248, 0.1)'}}
-                            />
-                            <Bar dataKey="sales" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={40} />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    {stats.chartData && stats.chartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={stats.chartData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
+                                <Tooltip 
+                                    contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
+                                    cursor={{fill: 'rgba(56, 189, 248, 0.1)'}}
+                                />
+                                <Bar dataKey="sales" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={40} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%', color:'#64748b'}}>
+                            لا توجد بيانات مبيعات في آخر 7 أيام
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -137,7 +131,8 @@ export default function SuperDashboard() {
               <div className="panel">
                 <div className="panel-header">
                   <h3>🆕 أحدث التسجيلات</h3>
-                  <button className="btn-text">عرض الكل</button>
+                  {/* تم تفعيل زر عرض الكل */}
+                  <button className="btn-text" onClick={() => window.location.href='/admin/super/students'}>عرض الكل</button>
                 </div>
                 <div className="table-responsive">
                   <table>
