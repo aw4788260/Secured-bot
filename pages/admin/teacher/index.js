@@ -53,7 +53,7 @@ export default function TeacherDashboard() {
       <div className="stats-grid">
         
         {/* بطاقة الطلبات */}
-        <div className="stat-card clickable-card" onClick={() => router.push('/dashboard/teacher/requests')}>
+        <div className="stat-card clickable-card" onClick={() => router.push('/admin/teacher/requests')}>
             <h3>الطلبات المعلقة</h3>
             <div className="num yellow">
                 {loading ? '...' : stats.pending}
@@ -62,7 +62,7 @@ export default function TeacherDashboard() {
         </div>
 
         {/* بطاقة الطلاب */}
-        <div className="stat-card clickable-card" onClick={() => router.push('/dashboard/teacher/students')}>
+        <div className="stat-card clickable-card" onClick={() => router.push('/admin/teacher/students')}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                 <h3>إجمالي الطلاب</h3>
                 <span style={{fontSize:'12px', color:'#38bdf8'}}>عرض القائمة 👥</span>
@@ -74,7 +74,7 @@ export default function TeacherDashboard() {
         </div>
 
         {/* بطاقة الكورسات */}
-        <div className="stat-card clickable-card" onClick={() => router.push('/dashboard/teacher/content')}>
+        <div className="stat-card clickable-card" onClick={() => router.push('/admin/teacher/content')}>
             <h3>الكورسات والمحتوى</h3>
             <div className="num green">
                 {loading ? '...' : stats.courses}
