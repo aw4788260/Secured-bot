@@ -45,7 +45,7 @@ export default function ContentManager() {
 
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
-  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true,startTime: '',endTime: '', questions: [] });
+  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [] });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
@@ -56,11 +56,9 @@ export default function ContentManager() {
   const fetchContent = async () => {
       setLoading(true);
       try {
-        // [تعديل] استخدام مسار API المعلم
         const res = await fetch('/api/dashboard/teacher/content');
         const data = await res.json();
         
-        // [تعديل] التوافق مع هيكل الرد الجديد { success: true, courses: [] }
         const items = data.courses || [];
         setCourses(items);
         
@@ -106,21 +104,20 @@ export default function ContentManager() {
       else if (selectedSubject) setSelectedSubject(null);
       else if (selectedCourse) setSelectedCourse(null);
   };
-const handleSubjectClick = async (subject) => {
-      // أ) التحقق: هل التفاصيل (الامتحانات والفصول) محملة مسبقاً في الذاكرة؟
+
+  // ✅ [Lazy Loading] التعامل مع النقر على المادة
+  const handleSubjectClick = async (subject) => {
       if (subject.chapters && subject.exams) {
           setSelectedSubject(subject);
           return;
       }
 
-      // ب) إذا لم تكن محملة، نطلبها من السيرفر
       setLoading(true);
       try {
           const res = await fetch(`/api/dashboard/teacher/content?mode=subject_details&id=${subject.id}`);
           const data = await res.json();
           
           if (data.success) {
-              // تحديث الـ courses في الـ State لحفظ البيانات (Caching) وتجنب طلبها مرة أخرى
               const updatedCourses = courses.map(c => {
                   if (c.id === selectedCourse.id) {
                       return {
@@ -131,8 +128,6 @@ const handleSubjectClick = async (subject) => {
                   return c;
               });
               setCourses(updatedCourses);
-              
-              // تحديث المادة المختارة لعرض محتواها
               setSelectedSubject(data.subject);
           } else {
               showAlert('error', 'فشل تحميل محتوى المادة');
@@ -142,7 +137,6 @@ const handleSubjectClick = async (subject) => {
       }
       setLoading(false);
   };
- 
 
   // --- Drag & Drop ---
   const onDragStart = (e, index) => {
@@ -184,7 +178,6 @@ const handleSubjectClick = async (subject) => {
       const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
       
       try {
-          // [تعديل] مسار API إعادة الترتيب
           await fetch('/api/dashboard/teacher/reorder', {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
@@ -197,14 +190,12 @@ const handleSubjectClick = async (subject) => {
   };
 
   // --- API Actions ---
-  // [تعديل] تحديث الدالة لتقبل النوع (Type) وتتوافق مع API content.js
   const apiCall = async (action, type, dataPayload) => {
       setLoading(true);
       try {
           const res = await fetch('/api/dashboard/teacher/content', {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
-              // إرسال الهيكل الصحيح: action, type, data
               body: JSON.stringify({ action, type, data: dataPayload })
           });
           const data = await res.json();
@@ -214,7 +205,6 @@ const handleSubjectClick = async (subject) => {
       setLoading(false);
   };
 
-  // [تعديل] تمرير نوع العنصر للحذف
   const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
       await apiCall('delete', type, { id });
       closeConfirm();
@@ -223,7 +213,7 @@ const handleSubjectClick = async (subject) => {
   });
 
   // --- Modal Opening ---
-  const openModal = (type, data = {}) => {
+  const openModal = async (type, data = {}) => {
       setFormData({ title: '', url: '', price: 0 }); 
       
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
@@ -244,7 +234,6 @@ const handleSubjectClick = async (subject) => {
           setShowExamSidebar(false);
           
           if (data.id) {
-              // حالة التعديل: جلب الأسئلة من السيرفر (Lazy Fetching)
               setLoading(true);
               try {
                   const res = await fetch(`/api/dashboard/teacher/content?mode=exam_details&id=${data.id}`);
@@ -261,7 +250,6 @@ const handleSubjectClick = async (subject) => {
                           randO: fullExam.randomize_options,
                           startTime: formatDateForInput(fullExam.start_time),
                           endTime: formatDateForInput(fullExam.end_time),
-                          // تحويل هيكل الأسئلة للواجهة
                           questions: fullExam.questions ? fullExam.questions.map(q => ({
                               id: q.id, text: q.question_text, image: q.image_file_id,
                               options: q.options.map(o => o.option_text),
@@ -271,7 +259,7 @@ const handleSubjectClick = async (subject) => {
                   } else {
                       showAlert('error', 'فشل جلب بيانات الامتحان');
                       setLoading(false);
-                      return; // توقف في حال الفشل
+                      return;
                   }
               } catch (e) {
                   showAlert('error', 'خطأ في الاتصال');
@@ -280,7 +268,6 @@ const handleSubjectClick = async (subject) => {
               }
               setLoading(false);
           } else {
-              // حالة الإنشاء الجديد (تصفير النموذج)
               setExamForm({ 
                   id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, 
                   startTime: '', endTime: '', 
@@ -309,7 +296,6 @@ const handleSubjectClick = async (subject) => {
       const fd = new FormData();
       fd.append('file', file); fd.append('type', 'exam_image');
       try {
-          // [تعديل] مسار رفع الصور
           const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
           const data = await res.json();
           if(res.ok) setCurrentQ({...currentQ, image: data.fileName});
@@ -356,13 +342,11 @@ const handleSubjectClick = async (subject) => {
       if (editingQIndex === i) resetCurrentQuestion();
   };
 
-    const submitExam = async () => {
-      // أ) التحقق من الحقول الإجبارية
+  const submitExam = async () => {
       if(!examForm.title || !examForm.startTime || !examForm.endTime || examForm.questions.length === 0) {
           return showAlert('error', 'البيانات ناقصة: يجب تحديد العنوان، وقت البدء والانتهاء، وإضافة أسئلة.');
       }
 
-      // ب) التحقق المنطقي: وقت النهاية يجب أن يكون بعد البداية
       const start = new Date(examForm.startTime);
       const end = new Date(examForm.endTime);
       if (end <= start) {
@@ -393,7 +377,7 @@ const handleSubjectClick = async (subject) => {
           if (res.ok) { 
               showAlert('success', 'تم الحفظ بنجاح'); 
               setModalType(null); 
-              fetchContent(); // إعادة تحميل الهيكل (سيتم جلب تفاصيل المادة الجديدة عند فتحها مجدداً)
+              fetchContent(); 
           } else { 
               const errorMsg = data.error || data.message || 'فشل الحفظ';
               showAlert('error', errorMsg); 
@@ -402,10 +386,9 @@ const handleSubjectClick = async (subject) => {
           showAlert('error', 'حدث خطأ في الاتصال بالسيرفر');
       }
   };
- 
+
   const loadStats = async (examId) => {
       setLoading(true);
-      // [تعديل] مسار إحصائيات الامتحان
       const res = await fetch(`/api/dashboard/teacher/exam-stats?examId=${examId}`);
       if(res.ok) { setExamStats(await res.json()); setModalType('stats'); }
       setLoading(false);
@@ -459,13 +442,12 @@ const handleSubjectClick = async (subject) => {
       )}
 
       {/* 2. Subjects List */}
-     {selectedCourse && !selectedSubject && (
+      {selectedCourse && !selectedSubject && (
           <div className="grid-cards">
               {selectedCourse.subjects?.map((s, index) => (
                   <div 
                     key={s.id} 
                     className="card folder-card draggable-item" 
-                    // 🔴 هنا التعديل: استدعاء دالة التحميل الذكي بدلاً من setSelectedSubject
                     onClick={() => handleSubjectClick(s)} 
                     draggable 
                     onDragStart={(e) => onDragStart(e, index)} 
@@ -484,6 +466,7 @@ const handleSubjectClick = async (subject) => {
               ))}
           </div>
       )}
+
       {/* 3. Subject Details */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
@@ -593,7 +576,7 @@ const handleSubjectClick = async (subject) => {
                       />
                   </div>
               )}
-{/* ✅ [تعديل 3] إضافة حقل الوصف (يظهر فقط للكورسات) */}
+
               {['add_course', 'edit_course'].includes(modalType) && (
                   <div className="form-group">
                       <label>وصف الكورس (اختياري)</label>
@@ -608,7 +591,6 @@ const handleSubjectClick = async (subject) => {
                   </div>
               )}
 
-
               {modalType === 'add_video' && (
                   <div className="form-group">
                       <label>رابط يوتيوب</label>
@@ -618,10 +600,7 @@ const handleSubjectClick = async (subject) => {
               
               <div className="acts">
                   <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                  
-                  {/* [تعديل] ربط الأزرار بالـ API الجديد عبر المعاملات الثلاثة (create/update, type, data) */}
                   <button className="btn-primary" onClick={() => {
-                      // ✅ [تعديل 4] إرسال description عند الحفظ (للإضافة والتعديل)
                       if (modalType === 'add_course') apiCall('create', 'courses', { title: formData.title, price: formData.price, description: formData.description });
                       else if (modalType === 'edit_course') apiCall('update', 'courses', { id: selectedCourse.id, title: formData.title, price: formData.price, description: formData.description });
                       
@@ -650,7 +629,6 @@ const handleSubjectClick = async (subject) => {
                   const fd = new FormData();
                   fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
                   try {
-                      // [تعديل] مسار الرفع
                       const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
                       const data = await res.json();
                       if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
@@ -682,11 +660,7 @@ const handleSubjectClick = async (subject) => {
           <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
               <div className="stats-summary">
                   <div className="stat-card"><span>عدد الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
-                  
-                  {/* ✅ تصحيح: استخدام averagePercentage للنسبة */}
                   <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averagePercentage}%</strong></div>
-                  
-                  {/* ✅ تصحيح: استخدام averageScore للدرجات */}
                   <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{Number(examStats.averageScore).toFixed(1)}</strong></div>
               </div>
               <div className="table-wrap">
@@ -696,13 +670,8 @@ const handleSubjectClick = async (subject) => {
                           {examStats.attempts.map((a, i) => (
                               <tr key={i}>
                                   <td>{a.student_name_input || 'غير معروف'}</td>
-                                  
-                                  {/* ✅ تصحيح: عرض النسبة المئوية في عمود النسبة */}
                                   <td style={{color: a.percentage >= 50 ? '#4ade80' : '#ef4444'}}>{a.percentage}%</td>
-                                  
-                                  {/* عرض الدرجة في عمود الدرجة */}
                                   <td>{a.score}</td>
-                                  
                                   <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
                               </tr>
                           ))}
@@ -712,7 +681,7 @@ const handleSubjectClick = async (subject) => {
           </Modal>
       )}
 
-      {/* --- 4. Exam Editor --- */}
+      {/* 4. Exam Editor */}
       {modalType === 'exam_editor' && (
           <div className="editor-overlay">
               <div className="editor-container">
@@ -730,43 +699,42 @@ const handleSubjectClick = async (subject) => {
                           <div className="meta-section styled">
                               <label className="field-label">عنوان الامتحان</label>
                               <input className="input" value={examForm.title} onChange={e=>setExamForm({...examForm, title: e.target.value})} placeholder="العنوان..." />
+                              
                               <label className="field-label">المدة (بالدقائق)</label>
                               <div className="duration-input">
                                   <input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} />
                                   <span>دقيقة</span>
                               </div>
-          {/* ✅ [إضافة جديدة] حقول تحديد وقت الامتحان */}
-                            <div style={{marginTop: '15px', borderTop: '1px solid #334155', paddingTop: '10px'}}>
-    {/* تغيير النص ليصبح إجباري */}
-    <label className="field-label" style={{color:'#facc15'}}>📅 الصلاحية الزمنية (إجباري)</label>
-    
-    <label className="field-label" style={{fontSize: '0.8rem', marginTop:'5px'}}>يبدأ في:</label>
-    <input 
-        type="datetime-local" 
-        required // إضافة خاصية required كإشارة
-        className="input" 
-        style={{fontSize: '0.85rem', direction:'ltr', borderColor: !examForm.startTime ? '#ef4444' : '#334155'}} // تلوين الحدود بالأحمر إذا كان فارغاً
-        value={examForm.startTime} 
-        onChange={e=>setExamForm({...examForm, startTime: e.target.value})} 
-    />
 
-    <label className="field-label" style={{fontSize: '0.8rem', marginTop:'10px'}}>ينتهي في:</label>
-    <input 
-        type="datetime-local" 
-        required
-        className="input" 
-        style={{fontSize: '0.85rem', direction:'ltr', borderColor: !examForm.endTime ? '#ef4444' : '#334155'}}
-        value={examForm.endTime} 
-        onChange={e=>setExamForm({...examForm, endTime: e.target.value})} 
-    />
-    
-    {/* ❌ تم حذف رسالة "اتركه فارغاً" */}
-</div>
-                              <div className="toggles-group">
+                              <div style={{marginTop: '15px', borderTop: '1px solid #334155', paddingTop: '10px'}}>
+                                  <label className="field-label" style={{color:'#facc15'}}>📅 الصلاحية الزمنية (إجباري)</label>
+                                  <label className="field-label" style={{fontSize: '0.8rem', marginTop:'5px'}}>يبدأ في:</label>
+                                  <input 
+                                      type="datetime-local" 
+                                      required 
+                                      className="input" 
+                                      style={{fontSize: '0.85rem', direction:'ltr', borderColor: !examForm.startTime ? '#ef4444' : '#334155'}}
+                                      value={examForm.startTime} 
+                                      onChange={e=>setExamForm({...examForm, startTime: e.target.value})} 
+                                  />
+
+                                  <label className="field-label" style={{fontSize: '0.8rem', marginTop:'10px'}}>ينتهي في:</label>
+                                  <input 
+                                      type="datetime-local" 
+                                      required
+                                      className="input" 
+                                      style={{fontSize: '0.85rem', direction:'ltr', borderColor: !examForm.endTime ? '#ef4444' : '#334155'}}
+                                      value={examForm.endTime} 
+                                      onChange={e=>setExamForm({...examForm, endTime: e.target.value})} 
+                                  />
+                              </div>
+
+                              <div className="toggles-group" style={{marginTop:'15px'}}>
                                   <div className="toggle-row"><span>عشوائية الأسئلة</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
                                   <div className="toggle-row"><span>عشوائية الاختيارات</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
                               </div>
                           </div>
+                          
                           <div className="q-list-scroll">
                               <h4 className="list-title">قائمة الأسئلة ({examForm.questions.length})</h4>
                               {examForm.questions.map((q, i) => (
@@ -783,7 +751,6 @@ const handleSubjectClick = async (subject) => {
                           </div>
                       </div>
                       
-                      {/* Overlay for mobile sidebar */}
                       {showExamSidebar && <div className="sidebar-overlay" onClick={() => setShowExamSidebar(false)}></div>}
 
                       {/* Right: Main Editor */}
@@ -795,10 +762,7 @@ const handleSubjectClick = async (subject) => {
                                   {Icons.image} {currentQ.image ? 'تغيير الصورة' : 'إرفاق صورة'}
                                   <input type="file" hidden accept="image/*" onChange={handleImageUpload} disabled={uploadingImg} />
                               </label>
-                              
                               {uploadingImg && <span style={{marginLeft: '10px', color: '#38bdf8', fontSize: '0.9em', fontWeight: 'bold'}}>جاري رفع الصورة... ⏳</span>}
-                              
-                              {/* [تعديل] مسار عرض الصور */}
                               {currentQ.image && <img src={`/api/dashboard/teacher/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
                           </div>
                           <div className="options-section">
@@ -823,7 +787,6 @@ const handleSubjectClick = async (subject) => {
           </div>
       )}
 
-      {/* --- Confirm Modal --- */}
       {confirmData.show && (
           <div className="modal-overlay">
               <div className="modal-box">
@@ -837,7 +800,6 @@ const handleSubjectClick = async (subject) => {
           </div>
       )}
 
-      {/* Alerts */}
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
 
       <style jsx>{`
