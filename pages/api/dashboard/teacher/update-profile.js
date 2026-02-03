@@ -48,7 +48,7 @@ export default async (req, res) => {
       // ج) معالجة رابط الصورة
       let processedImage = teacher.profile_image || teacher.image; // دعم الاسمين
       
-      // استخدام BASE_URL بدلاً من الرابط الثابت
+      // استخدام BASE_URL بدلاً من الرابط الثابت لعرض الصورة عبر البروكسي
       if (processedImage && !processedImage.startsWith('http')) {
          processedImage = `${BASE_URL}/api/public/get-avatar?file=${processedImage}`;
       }
@@ -67,7 +67,7 @@ export default async (req, res) => {
           username: userData?.username || "",
           phone: userData?.phone || "",
           user_first_name: userData?.first_name || "",
-          // إضافة بيانات الدفع كما في الكود المطلوب
+          // إرجاع بيانات الدفع مفصلة للواجهة الأمامية
           payment_details: {
             cash_numbers: paymentDetails.cash_numbers || [],
             instapay_numbers: paymentDetails.instapay_numbers || [],
@@ -86,7 +86,7 @@ export default async (req, res) => {
   // ✅ 2. معالجة طلب POST: لتحديث البيانات
   // ==========================================================
   if (req.method === 'POST') {
-    // استقبال البيانات (نفس الحقول المطلوبة)
+    // استقبال البيانات (نفس الحقول التي ترسلها الواجهة الأمامية الحديثة)
     const { 
       name, 
       firstName, // دعم firstName
@@ -99,7 +99,7 @@ export default async (req, res) => {
       profileImage, 
       username,      
       phone,
-      password // إضافة دعم تغيير الباسوورد (ميزة إضافية في الداشبورد)
+      password // إضافة دعم تغيير الباسوورد
     } = req.body;
 
     // تحديد الاسم الجديد
@@ -114,7 +114,7 @@ export default async (req, res) => {
           }
       }
 
-      // تجهيز بيانات الدفع
+      // تجهيز بيانات الدفع ككائن JSON
       const paymentData = {
         cash_numbers: cashNumbersList || [],        
         instapay_numbers: instapayNumbersList || [], 
@@ -126,21 +126,20 @@ export default async (req, res) => {
       // -------------------------------------------------------
       const teacherUpdates = {
           bio: bio,
-          // التحقق من اسم العمود في قاعدتك (specialty أو subject)
-          specialty: specialty, // سنحاول التحديث بهذا الاسم أولاً
+          // سنحاول التحديث بهذا الاسم (specialty) أولاً
+          specialty: specialty, 
           whatsapp_number: whatsappNumber,
           payment_details: paymentData
       };
       
       if (newName) teacherUpdates.name = newName;
       
-      // التعامل مع الصورة
+      // التعامل مع الصورة (يتم إرسال اسم الملف فقط من الواجهة بعد الرفع)
       if (profileImage) {
           teacherUpdates.profile_image = profileImage;
-          // teacherUpdates.image = profileImage; // فك التعليق لو كان العمود اسمه image
       }
 
-      // محاولة التحديث (مع معالجة خطأ اسم العمود)
+      // محاولة التحديث (مع معالجة خطأ اختلاف أسماء الأعمدة في القاعدة)
       try {
           const { error: teacherError } = await supabase
             .from('teachers')
@@ -149,7 +148,7 @@ export default async (req, res) => {
             
           if (teacherError) throw teacherError;
       } catch (tErr) {
-          // إذا فشل بسبب اسم العمود، نحاول البدائل
+          // إذا فشل بسبب اسم العمود، نحاول البدائل الشائعة
           if (tErr.message.includes('column "specialty" does not exist')) {
               delete teacherUpdates.specialty;
               teacherUpdates.subject = specialty;
@@ -158,13 +157,13 @@ export default async (req, res) => {
               delete teacherUpdates.profile_image;
               teacherUpdates.image = profileImage;
           }
-          // إعادة المحاولة
+          // إعادة المحاولة بالأسماء البديلة
           const { error: retryError } = await supabase.from('teachers').update(teacherUpdates).eq('id', auth.teacherId);
           if (retryError) throw retryError;
       }
 
       // -------------------------------------------------------
-      // 2. تحديث جدول users
+      // 2. تحديث جدول users (البيانات الحساسة)
       // -------------------------------------------------------
       const userUpdates = {};
       if (username) userUpdates.username = username;
@@ -175,7 +174,7 @@ export default async (req, res) => {
           userUpdates.first_name = newName;
       }
 
-      // تحديث الباسوورد (إضافة الداشبورد)
+      // تحديث الباسوورد (إذا تم إرساله)
       if (password && password.trim() !== '') {
           const salt = await bcrypt.genSalt(10);
           const hashedPassword = await bcrypt.hash(password, salt);
