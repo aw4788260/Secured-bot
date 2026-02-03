@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { supabase } from '../../../lib/supabaseClient';
+import { supabase } from '../../../../lib/supabaseClient';
 import { parse } from 'cookie';
-import { checkUserAccess } from '../../../lib/authHelper'; // ✅ استيراد الحارس الأمني
+import { checkUserAccess } from '../../../../lib/authHelper'; // ✅ استيراد الحارس الأمني
 
 export default async (req, res) => {
   const { type, filename } = req.query;
