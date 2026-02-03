@@ -295,23 +295,42 @@ export default function ContentManager() {
   };
   const submitExam = async () => {
       if(!examForm.title || examForm.questions.length === 0) return showAlert('error', 'البيانات ناقصة');
-      // [تعديل] استخدام مسار الامتحانات الخاص بالمعلم
-      await fetch('/api/dashboard/teacher/exams', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-              action: 'save_exam',
-              id: examForm.id, subjectId: selectedSubject.id,
-              title: examForm.title, duration: examForm.duration,
-              requiresName: true, randQ: examForm.randQ, randO: examForm.randO,
-              start_time: examForm.startTime || null, // إرسال وقت البدء
-              end_time: examForm.endTime || null,     // إرسال وقت النهاية
-              questions: examForm.questions, deletedQuestionIds: deletedQIds
-          })
-      }).then(async (res) => {
-          if(res.ok) { showAlert('success', 'تم الحفظ'); setModalType(null); fetchContent(); }
-          else showAlert('error', 'فشل الحفظ');
-      });
+      
+      try {
+          const res = await fetch('/api/dashboard/teacher/exams', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                  action: 'save_exam',
+                  id: examForm.id, 
+                  subjectId: selectedSubject.id,
+                  title: examForm.title, 
+                  duration: examForm.duration,
+                  requiresName: true,
+                  randQ: examForm.randQ, 
+                  randO: examForm.randO,
+                  start_time: examForm.startTime || null,
+                  end_time: examForm.endTime || null,
+                  questions: examForm.questions, 
+                  deletedQuestionIds: deletedQIds
+              })
+          });
+
+          // ✅ قراءة رد السيرفر كـ JSON لاستخراج رسالة الخطأ
+          const data = await res.json();
+
+          if (res.ok) { 
+              showAlert('success', 'تم الحفظ بنجاح'); 
+              setModalType(null); 
+              fetchContent(); 
+          } else { 
+              // ✅ عرض رسالة الخطأ القادمة من الباك إند (مثل: تاريخ الانتهاء يجب أن يكون بعد البدء)
+              showAlert('error', data.error || 'فشل الحفظ'); 
+          }
+      } catch (err) {
+          console.error(err);
+          showAlert('error', 'حدث خطأ في الاتصال بالسيرفر');
+      }
   };
   const loadStats = async (examId) => {
       setLoading(true);
