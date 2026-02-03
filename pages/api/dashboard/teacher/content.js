@@ -22,66 +22,107 @@ export default async (req, res) => {
   };
 
   // ============================================================
-  // GET: جلب هيكل المحتوى بالكامل (Courses -> Subjects -> Chapters/Exams -> Content)
+  // GET: جلب البيانات بنظام (Lazy Loading) لتقليل الضغط
   // ============================================================
   if (req.method === 'GET') {
+    const { mode, id } = req.query;
+
     try {
-      // ✅ تم تعديل هذا الاستعلام ليجلب الامتحانات والأسئلة أيضاً
-      const { data: courses, error: fetchError } = await supabase
-        .from('courses')
-        .select(`
-            *,
-            subjects (
-                id, title, sort_order, price,
+      // 🟢 الحالة 1: جلب تفاصيل امتحان محدد (شاملة الأسئلة والاختيارات)
+      // يتم استدعاؤها فقط عند فتح نافذة تعديل الامتحان
+      if (mode === 'exam_details') {
+          if (!id) return res.status(400).json({ error: 'Exam ID required' });
+
+          const { data: exam, error: examError } = await supabase
+            .from('exams')
+            .select(`
+                *,
+                questions (
+                    id, question_text, image_file_id, sort_order,
+                    options ( id, option_text, is_correct, sort_order )
+                )
+            `)
+            .eq('id', id)
+            .single();
+
+          if (examError) throw examError;
+
+          // ترتيب الأسئلة والاختيارات
+          if (exam.questions) {
+             exam.questions.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+             exam.questions.forEach(q => {
+                 if(q.options) q.options.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+             });
+          }
+
+          return res.status(200).json({ success: true, exam });
+      }
+
+      // 🟡 الحالة 2: جلب تفاصيل مادة محددة (شاملة الفصول والامتحانات "بدون أسئلة")
+      // يتم استدعاؤها عند النقر على المادة
+      else if (mode === 'subject_details') {
+          if (!id) return res.status(400).json({ error: 'Subject ID required' });
+
+          const { data: subject, error: subError } = await supabase
+            .from('subjects')
+            .select(`
+                *,
                 chapters (
                     id, title, sort_order,
                     videos (*),
                     pdfs (id, title, file_path)
                 ),
                 exams (
-                    id, title, duration_minutes, 
-                    requires_student_name, randomize_questions, randomize_options,
-                    questions (
-                        id, question_text, image_file_id, sort_order,
-                        options ( id, option_text, is_correct )
-                    )
+                    id, title, duration_minutes, start_time, end_time, 
+                    requires_student_name, randomize_questions, randomize_options, 
+                    sort_order, is_active
                 )
-            )
-        `)
-        .eq('teacher_id', auth.teacherId)
-        .order('sort_order', { ascending: true });
+            `)
+            .eq('id', id)
+            .single();
 
-      if (fetchError) throw fetchError;
+          if (subError) throw subError;
 
-      // تنسيق البيانات للواجهة الأمامية
-      courses.forEach(c => {
-        if (c.subjects) {
-            c.subjects.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-            
-            c.subjects.forEach(s => {
-                // ترتيب الفصول
-                if (s.chapters) s.chapters.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-                
-                // معالجة محتوى الفصول (فيديو ومذكرات)
-                s.chapters?.forEach(ch => {
-                    if (ch.videos) {
-                        ch.videos.forEach(v => { v.url = v.youtube_video_id; }); // عرض الرابط
-                        ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-                    }
-                    if (ch.pdfs) ch.pdfs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-                });
+          // ترتيب المحتوى الداخلي للمادة
+          if (subject.chapters) {
+              subject.chapters.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+              subject.chapters.forEach(ch => {
+                  if (ch.videos) {
+                      ch.videos.forEach(v => { v.url = v.youtube_video_id; });
+                      ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                  }
+                  if (ch.pdfs) ch.pdfs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+              });
+          }
+          if (subject.exams) {
+              subject.exams.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+          }
 
-                // ✅ ترتيب الامتحانات وأسئلتها
-                if (s.exams) {
-                    s.exams.forEach(ex => {
-                        if (ex.questions) ex.questions.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-                    });
-                }
-            });
-        }
-      });
+          return res.status(200).json({ success: true, subject });
+      }
 
-      return res.status(200).json({ success: true, courses });
+      // 🔴 الحالة 3 (الافتراضية): جلب الهيكل الأساسي (كورسات ومواد فقط)
+      // يتم استدعاؤها عند فتح الصفحة لأول مرة (سريعة جداً)
+      else {
+          const { data: courses, error: fetchError } = await supabase
+            .from('courses')
+            .select(`
+                *,
+                subjects ( id, title, sort_order, price ) 
+            `)
+            .eq('teacher_id', auth.teacherId)
+            .order('sort_order', { ascending: true });
+
+          if (fetchError) throw fetchError;
+
+          // ترتيب المواد
+          courses.forEach(c => {
+              if (c.subjects) c.subjects.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+          });
+
+          return res.status(200).json({ success: true, courses });
+      }
+
     } catch (err) {
       console.error("🔥 [ContentAPI] GET Error:", err.message);
       return res.status(500).json({ error: err.message });
@@ -103,14 +144,14 @@ export default async (req, res) => {
         data = { id: req.body.id };
     }
 
-    // ✅ معالجة فيديو اليوتيوب (استخراج ID)
+    // ✅ معالجة فيديو اليوتيوب
     if (type === 'videos' && data?.url) {
       data.youtube_video_id = extractYouTubeID(data.url);
       delete data.url; 
     }
 
     // --------------------------------------------------------
-    // 🛡️ دوال التحقق الأمنية
+    // 🛡️ دوال التحقق الأمنية الداخلية
     // --------------------------------------------------------
     
     const checkCourseOwnership = async (courseId) => {
@@ -192,10 +233,9 @@ export default async (req, res) => {
            throw error;
         }
 
-        // ✅ إصلاح الصلاحيات: استخدام teacher_profile_id
+        // إضافة صلاحيات الفريق للكورسات الجديدة
         if (type === 'courses' && newItem) {
            let accessList = [{ user_id: auth.userId, course_id: newItem.id }];
-           
            try {
                const { data: teamMembers } = await supabase
                  .from('users')
