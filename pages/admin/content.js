@@ -208,7 +208,7 @@ export default function ContentManager() {
           if (data.id) {
               setExamForm({
                   id: data.id, title: data.title, duration: data.duration_minutes,
-                  requiresName: data.requires_student_name, randQ: data.randomize_questions,
+                  requiresName: true, randQ: data.randomize_questions,
                   randO: data.randomize_options,
                   startTime: formatDateForInput(data.start_time), // تحويل الصيغة
                   endTime: formatDateForInput(data.end_time),     // تحويل الصيغة
@@ -303,7 +303,7 @@ export default function ContentManager() {
               action: 'save_exam',
               id: examForm.id, subjectId: selectedSubject.id,
               title: examForm.title, duration: examForm.duration,
-              requiresName: examForm.requiresName, randQ: examForm.randQ, randO: examForm.randO,
+              requiresName: true, randQ: examForm.randQ, randO: examForm.randO,
               start_time: examForm.startTime || null, // إرسال وقت البدء
               end_time: examForm.endTime || null,     // إرسال وقت النهاية
               questions: examForm.questions, deletedQuestionIds: deletedQIds
@@ -663,7 +663,6 @@ export default function ContentManager() {
                                   </small>
                               </div>
                               <div className="toggles-group">
-                                  <div className="toggle-row"><span>طلب اسم الطالب</span><label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label></div>
                                   <div className="toggle-row"><span>عشوائية الأسئلة</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
                                   <div className="toggle-row"><span>عشوائية الاختيارات</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
                               </div>
