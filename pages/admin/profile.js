@@ -8,7 +8,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  // 1. تحديث الـ State ليشمل بيانات الدفع وكلمة المرور
+  // 1. تحديث الـ State
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -18,7 +18,7 @@ export default function ProfilePage() {
     bio: '',
     avatar: '', 
     fullAvatarUrl: '',
-    // بيانات الدفع الجديدة (مصفوفات)
+    // بيانات الدفع
     cashNumbersList: [],
     instapayNumbersList: [],
     instapayLinksList: [],
@@ -28,7 +28,7 @@ export default function ProfilePage() {
     confirmPassword: ''
   });
 
-  // حالات لإضافة رقم جديد مؤقتاً قبل إضافته للقائمة
+  // حالات الإضافة المؤقتة
   const [newCashNumber, setNewCashNumber] = useState('');
   const [newInstapayNumber, setNewInstapayNumber] = useState('');
   const [newInstapayLink, setNewInstapayLink] = useState('');
@@ -40,7 +40,7 @@ export default function ProfilePage() {
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
 
-  // 2. جلب البيانات وتعبئة الحقول
+  // 2. جلب البيانات
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -49,7 +49,7 @@ export default function ProfilePage() {
 
         if (res.ok && responseData.success) {
           const data = responseData.data;
-          const payment = data.payment_details || {}; // استخراج بيانات الدفع
+          const payment = data.payment_details || {}; 
 
           setFormData({
             name: data.name || '',
@@ -58,13 +58,11 @@ export default function ProfilePage() {
             whatsapp: data.whatsapp_number || '',
             specialty: data.specialty || '',
             bio: data.bio || '',
-            avatar: '', // اسم الملف فقط (للحفظ)
-            fullAvatarUrl: data.profile_image || '', // الرابط الكامل (للعرض)
-            // تعبئة القوائم
+            avatar: '', 
+            fullAvatarUrl: data.profile_image || '',
             cashNumbersList: payment.cash_numbers || [],
             instapayNumbersList: payment.instapay_numbers || [],
             instapayLinksList: payment.instapay_links || [],
-            // تفريغ حقول الباسورد
             oldPassword: '',
             password: '',
             confirmPassword: ''
@@ -81,15 +79,14 @@ export default function ProfilePage() {
     fetchProfile();
   }, []);
 
-  // --- دوال مساعدة لإدارة القوائم ---
-  
+  // --- دوال إدارة القوائم ---
   const addItem = (listName, value, setter) => {
       if (!value.trim()) return;
       setFormData(prev => ({
           ...prev,
           [listName]: [...prev[listName], value.trim()]
       }));
-      setter(''); // مسح الحقل المؤقت
+      setter('');
   };
 
   const removeItem = (listName, index) => {
@@ -99,7 +96,7 @@ export default function ProfilePage() {
       }));
   };
 
-  // --- دالة رفع الصورة (تم التصحيح) ---
+  // --- دالة رفع الصورة ---
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -109,7 +106,6 @@ export default function ProfilePage() {
     fd.append('file', file);
 
     try {
-      // ✅ استخدام الرابط الجديد المخصص للصور الشخصية
       const res = await fetch('/api/dashboard/teacher/upload-avatar', {
         method: 'POST',
         body: fd
@@ -117,10 +113,11 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
+        // تحديث الحالة فوراً لعرض الصورة الجديدة
         setFormData(prev => ({ 
             ...prev, 
-            avatar: data.fileId, // الاسم للحفظ في القاعدة
-            fullAvatarUrl: data.url // الرابط الكامل للعرض الفوري
+            avatar: data.fileId, // حفظ المعرف للإرسال لاحقاً
+            fullAvatarUrl: data.url // عرض الرابط الكامل فوراً
         }));
         showToast('تم رفع الصورة، اضغط حفظ لتأكيد التغيير', 'success');
       } else {
@@ -137,7 +134,6 @@ export default function ProfilePage() {
   const handleSave = async (e) => {
     e.preventDefault();
     
-    // التحقق من صحة كلمة المرور قبل الإرسال
     if (formData.password) {
         if (formData.password.length < 6) {
             return showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error');
@@ -160,13 +156,10 @@ export default function ProfilePage() {
         bio: formData.bio,
         specialty: formData.specialty,
         whatsappNumber: formData.whatsapp,
-        // إرسال القوائم الجديدة
         cashNumbersList: formData.cashNumbersList,
         instapayNumbersList: formData.instapayNumbersList,
         instapayLinksList: formData.instapayLinksList,
-        // الصورة
         ...(formData.avatar && { profileImage: formData.avatar }),
-        // الباسورد (فقط إذا تم تغييره)
         ...(formData.password && { 
             password: formData.password,
             oldPassword: formData.oldPassword
@@ -183,7 +176,6 @@ export default function ProfilePage() {
 
       if (res.ok) {
         showToast('تم حفظ التغييرات بنجاح', 'success');
-        // تفريغ حقول الباسورد بعد الحفظ للأمان
         setFormData(prev => ({
             ...prev, 
             oldPassword: '',
@@ -212,7 +204,8 @@ export default function ProfilePage() {
           <div className="loading">جاري تحميل البيانات...</div>
         ) : (
           <div className="profile-grid">
-            {/* القائمة الجانبية: الصورة والمعلومات الأساسية */}
+            
+            {/* بطاقة الصورة */}
             <div className="card avatar-card">
               <div className="avatar-wrapper">
                 {uploading ? (
@@ -233,15 +226,15 @@ export default function ProfilePage() {
                   <input type="file" accept="image/*" onChange={handleAvatarUpload} hidden />
                 </label>
               </div>
-              
               <h2 className="user-name">{formData.name}</h2>
               <p className="user-role">@{formData.username}</p>
             </div>
 
-            {/* النموذج الرئيسي */}
+            {/* النموذج */}
             <div className="card form-card">
               <h3>تعديل البيانات</h3>
               <form onSubmit={handleSave}>
+                
                 {/* 1. البيانات الشخصية */}
                 <div className="section-title">البيانات الشخصية</div>
                 <div className="form-row">
@@ -261,8 +254,8 @@ export default function ProfilePage() {
                         <input className="input" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} dir="ltr" />
                     </div>
                     <div className="form-group">
-                        <label>رقم الواتساب (للتواصل مع الطلاب)</label>
-                        <input className="input" value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} dir="ltr" placeholder="+20..." />
+                        <label>رقم الواتساب <span style={{fontSize:'0.75em', color:'#94a3b8', fontWeight:'normal'}}>(enter number with country code without '+' e.g. 201xxxxx)</span></label>
+                        <input className="input" value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} dir="ltr" placeholder="201xxxxxxxxx" />
                     </div>
                 </div>
 
@@ -276,7 +269,7 @@ export default function ProfilePage() {
                   <textarea className="input area" value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} rows="3" placeholder="اكتب نبذة مختصرة تظهر للطلاب..."></textarea>
                 </div>
 
-                {/* 2. بيانات الدفع (الجديدة) */}
+                {/* 2. بيانات الدفع */}
                 <div className="section-title" style={{marginTop: '30px'}}>بيانات الدفع (تظهر للطلاب)</div>
                 
                 {/* أرقام فودافون كاش */}
@@ -293,11 +286,18 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                {/* أرقام إنستاباي */}
+                {/* أرقام إنستاباي (تم التعديل: رقم هاتف فقط) */}
                 <div className="payment-section">
-                    <label>عناوين إنستاباي (Instapay Addresses)</label>
+                    <label>أرقام إنستاباي (Instapay Numbers)</label>
                     <div className="add-row">
-                        <input className="input small" value={newInstapayNumber} onChange={e => setNewInstapayNumber(e.target.value)} placeholder="name@instapay..." dir="ltr" />
+                        <input 
+                            className="input small" 
+                            type="number" // تم التعديل ليقبل أرقام فقط
+                            value={newInstapayNumber} 
+                            onChange={e => setNewInstapayNumber(e.target.value)} 
+                            placeholder="01xxxxxxxxx" 
+                            dir="ltr" 
+                        />
                         <button type="button" className="btn-add" onClick={() => addItem('instapayNumbersList', newInstapayNumber, setNewInstapayNumber)}>إضافة</button>
                     </div>
                     <div className="tags-container">
@@ -321,8 +321,13 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                {/* 3. الأمان (مع التحقق) */}
-                <div className="section-title" style={{marginTop: '30px', color: '#ef4444'}}>الأمان</div>
+                {/* 3. الأمان */}
+                <div className="section-title" style={{marginTop: '30px', color: '#ef4444'}}>
+                    الأمان 
+                    <span style={{fontSize:'0.7em', color:'#94a3b8', marginRight:'10px', fontWeight:'normal'}}>
+                        (هذه كلمة مرور حساب التطبيق للطالب، وليست كلمة مرور لوحة التحكم)
+                    </span>
+                </div>
                 <div className="security-box">
                     <div className="form-group">
                         <label>كلمة المرور الحالية (مطلوبة للتغيير)</label>
