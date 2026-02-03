@@ -402,8 +402,6 @@ const handleSubjectClick = async (subject) => {
           showAlert('error', 'حدث خطأ في الاتصال بالسيرفر');
       }
   };
-    return (
-    <TeacherLayout title="المحتوى">
  
   const loadStats = async (examId) => {
       setLoading(true);
