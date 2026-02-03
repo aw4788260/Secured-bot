@@ -19,7 +19,6 @@ export default async (req, res) => {
   };
 
   // التحقق من الصلاحية (Authorization) - المدرس الرئيسي فقط
-  // (في نظامنا، المدرس هو 'teacher' أو 'super_admin'، كلاهما مسموح لهما بتعديل ملفهما)
   if (auth.role !== 'teacher' && auth.role !== 'super_admin') {
        return res.status(403).json({ error: 'Only teachers can edit profile details' });
   }
@@ -99,7 +98,8 @@ export default async (req, res) => {
       profileImage, 
       username,      
       phone,
-      password // إضافة دعم تغيير الباسوورد
+      password, // كلمة المرور الجديدة
+      oldPassword // ✅ كلمة المرور القديمة (مطلوبة للتحقق)
     } = req.body;
 
     // تحديد الاسم الجديد
@@ -174,8 +174,32 @@ export default async (req, res) => {
           userUpdates.first_name = newName;
       }
 
-      // تحديث الباسوورد (إذا تم إرساله)
+      // ✅ منطق تغيير كلمة المرور الجديد مع التحقق
       if (password && password.trim() !== '') {
+          // 1. التأكد من إرسال كلمة المرور القديمة
+          if (!oldPassword) {
+              return res.status(400).json({ error: 'يرجى إدخال كلمة المرور القديمة لتأكيد التغيير.' });
+          }
+
+          // 2. جلب كلمة المرور الحالية (المشفرة) من قاعدة البيانات
+          const { data: currentUserData, error: passFetchError } = await supabase
+              .from('users')
+              .select('password')
+              .eq('id', auth.userId)
+              .single();
+
+          if (passFetchError || !currentUserData) {
+              throw new Error('فشل في استرجاع بيانات المستخدم للتحقق.');
+          }
+
+          // 3. مقارنة كلمة المرور القديمة المدخلة مع الموجودة في القاعدة
+          const isMatch = await bcrypt.compare(oldPassword, currentUserData.password);
+          
+          if (!isMatch) {
+              return res.status(400).json({ error: 'كلمة المرور القديمة غير صحيحة.' });
+          }
+
+          // 4. إذا كانت صحيحة، نقوم بتشفير الجديدة وإضافتها للتحديث
           const salt = await bcrypt.genSalt(10);
           const hashedPassword = await bcrypt.hash(password, salt);
           userUpdates.password = hashedPassword;
