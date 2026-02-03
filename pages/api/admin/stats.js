@@ -1,5 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { checkAdminSession } from '../../../lib/dashboardHelper'; // تأكد من أن الدالة موجودة في هذا المسار
+import { requireSuperAdmin } from '../../../lib/dashboardHelper'; 
 
 export default async function handler(req, res) {
   // 1. التحقق من نوع الطلب
@@ -7,12 +7,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // 2. التحقق الأمني باستخدام dashboardHelper
-  // هذه الدالة تتحقق من الكوكيز وتتأكد أن المستخدم هو Admin
-  const adminUser = await checkAdminSession(req, res);
+  // 2. التحقق الأمني باستخدام الدالة الصحيحة (requireSuperAdmin)
+  // هذه الدالة تتحقق من الكوكيز والصلاحيات وترسل الرد في حالة الخطأ
+  const authResult = await requireSuperAdmin(req, res);
   
-  // إذا لم يتم إرجاع مستخدم، فإن الدالة المساعدة قد أرسلت الرد بالخطأ بالفعل (401/403)
-  if (!adminUser) return;
+  // إذا وجد خطأ، نتوقف لأن الرد قد تم إرساله بالفعل
+  if (authResult.error) {
+      return;
+  }
 
   try {
     // 3. جلب البيانات بشكل متوازي (Parallel) لتحسين الأداء
@@ -52,11 +54,7 @@ export default async function handler(req, res) {
     // 4. حساب مجموع الأرباح يدوياً
     const totalRevenue = revenueData?.reduce((acc, curr) => acc + (curr.total_price || 0), 0) || 0;
 
-    // 5. إعداد بيانات الرسم البياني (Last 7 Days) - اختياري
-    // ملاحظة: هذا يتطلب استعلاماً معقداً، سنقوم هنا بإرسال هيكل بسيط للسرعة
-    // ويمكنك لاحقاً تطويره لاستخدام RPC function إذا كانت البيانات ضخمة.
-
-    // 6. إرجاع البيانات بنفس الأسماء التي يتوقعها الـ Frontend
+    // 5. إرجاع البيانات بنفس الأسماء التي يتوقعها الـ Frontend
     res.status(200).json({
       totalUsers: studentsCount || 0,
       totalTeachers: teachersCount || 0,
