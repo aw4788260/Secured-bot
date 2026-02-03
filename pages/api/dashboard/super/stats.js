@@ -7,10 +7,12 @@ export default async function handler(req, res) {
   if (authResult.error) return; 
 
   try {
-    // تحديد تاريخ قبل 7 أيام
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const dateLimit = sevenDaysAgo.toISOString();
+    // تحديد نطاق التاريخ (آخر 7 أيام)
+    // نقوم بتصفير الوقت (الساعة 00:00) لضمان شمولية اليوم بالكامل
+    const dateLimitObj = new Date();
+    dateLimitObj.setDate(dateLimitObj.getDate() - 7);
+    dateLimitObj.setHours(0, 0, 0, 0); 
+    const dateLimit = dateLimitObj.toISOString();
 
     // استخدام Promise.all لتنفيذ جميع الاستعلامات في نفس الوقت
     const [
@@ -19,7 +21,7 @@ export default async function handler(req, res) {
         coursesResult, 
         revenueRpcResult,
         recentUsersResult,
-        chartDataResult // ✅ استعلام جديد للرسم البياني
+        chartDataResult // ✅ استعلام الرسم البياني
     ] = await Promise.all([
       // 1. إجمالي الطلاب
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
@@ -40,12 +42,12 @@ export default async function handler(req, res) {
         .order('created_at', { ascending: false })
         .limit(5),
 
-      // 6. ✅ بيانات الرسم البياني (أرباح آخر 7 أيام)
+      // 6. ✅ بيانات الرسم البياني (أرباح الفترة المحددة)
       supabase
         .from('subscription_requests')
         .select('created_at, total_price')
         .eq('status', 'approved')
-        .gte('created_at', dateLimit)
+        .gte('created_at', dateLimit) 
     ]);
 
     // --- معالجة الأرباح الكلية ---
@@ -53,7 +55,7 @@ export default async function handler(req, res) {
     if (!revenueRpcResult.error) {
       totalRevenue = revenueRpcResult.data || 0;
     } else {
-      // Fallback calculation
+      // حساب احتياطي في حال فشل الـ RPC
       const { data: manualData } = await supabase
         .from('subscription_requests')
         .select('total_price')
@@ -62,22 +64,33 @@ export default async function handler(req, res) {
     }
 
     // --- معالجة بيانات الرسم البياني (تجميع الأرباح يومياً) ---
-    const last7Days = [];
+    // الترتيب: من اليوم الحالي (0) والرجوع للوراء 6 أيام
+    const chartDataFinal = [];
     const daysMap = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
     const rawChartData = chartDataResult.data || [];
 
-    for (let i = 6; i >= 0; i--) {
+    for (let i = 0; i < 7; i++) {
         const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0]; // صيغة YYYY-MM-DD للمقارنة
-        const dayName = daysMap[d.getDay()]; // اسم اليوم بالعربي
+        d.setDate(d.getDate() - i); // i=0 هو اليوم، i=1 هو أمس، وهكذا...
         
-        // جمع أرباح هذا اليوم
+        // تنسيق التاريخ للمقارنة (ISO Date Part Only: YYYY-MM-DD)
+        const dateStr = d.toISOString().split('T')[0];
+        const dayName = daysMap[d.getDay()]; 
+        
+        // تجميع أرباح هذا اليوم
         const dayTotal = rawChartData
-            .filter(item => item.created_at.startsWith(dateStr))
+            .filter(item => {
+                // نأخذ الجزء الخاص بالتاريخ فقط من التوقيت لضمان المطابقة
+                const itemDateStr = new Date(item.created_at).toISOString().split('T')[0];
+                return itemDateStr === dateStr;
+            })
             .reduce((sum, item) => sum + (item.total_price || 0), 0);
             
-        last7Days.push({ name: dayName, sales: dayTotal });
+        chartDataFinal.push({ 
+            name: i === 0 ? 'اليوم' : dayName, // تسمية اليوم الحالي بـ "اليوم"
+            date: dateStr, 
+            sales: dayTotal 
+        });
     }
 
     // --- تنسيق المستخدمين الجدد ---
@@ -97,7 +110,7 @@ export default async function handler(req, res) {
       activeCourses: coursesResult.count || 0,
       totalRevenue: totalRevenue,
       recentUsers: formattedRecentUsers,
-      chartData: last7Days // ✅ إرسال بيانات الرسم البياني الحقيقية
+      chartData: chartDataFinal // البيانات مرتبة: [اليوم، أمس، ...، قبل 6 أيام]
     });
 
   } catch (err) {
