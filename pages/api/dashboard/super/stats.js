@@ -23,7 +23,7 @@ export default async function handler(req, res) {
 
       // 2. إجمالي المدرسين (role = teacher)
       supabase
-        .from('users') // نعد من جدول المستخدمين لضمان الدقة
+        .from('users')
         .select('*', { count: 'exact', head: true })
         .eq('role', 'teacher'),
 
@@ -31,15 +31,15 @@ export default async function handler(req, res) {
       supabase
         .from('courses')
         .select('*', { count: 'exact', head: true }),
-        // .eq('is_published', true), // يمكنك تفعيل هذا السطر إذا كنت تريد عد الكورسات المنشورة فقط
+        // .eq('is_published', true), // قم بتفعيله إذا أردت حساب الكورسات المنشورة فقط
 
-      // 4. إجمالي المبيعات (RPC)
+      // 4. إجمالي المبيعات (RPC Call)
       supabase.rpc('get_total_revenue'),
 
       // 5. أحدث المسجلين (للعرض في الجدول)
       supabase
         .from('users')
-        .select('id, first_name, role, created_at')
+        .select('id, first_name, username, role, created_at')
         .order('created_at', { ascending: false })
         .limit(5)
     ]);
@@ -63,10 +63,11 @@ export default async function handler(req, res) {
     }
 
     // --- تنسيق بيانات المستخدمين الجدد ---
+    // نقوم بتعيين الحقول لتناسب ما يتوقعه الجدول في الواجهة الأمامية (name, role, date)
     const formattedRecentUsers = recentUsersResult.data 
         ? recentUsersResult.data.map(u => ({
             id: u.id,
-            name: u.first_name || 'مستخدم جديد',
+            name: u.first_name || u.username || 'مستخدم جديد',
             role: u.role,
             date: u.created_at
           })) 
@@ -74,6 +75,7 @@ export default async function handler(req, res) {
 
     // --- إرسال الاستجابة بنفس مسميات الـ Frontend ---
     return res.status(200).json({
+      success: true,
       totalUsers: studentsResult.count || 0,
       totalTeachers: teachersResult.count || 0,
       activeCourses: coursesResult.count || 0,
