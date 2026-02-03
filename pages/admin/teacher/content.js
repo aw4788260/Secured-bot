@@ -1,4 +1,4 @@
-import TeacherLayout from '../../components/TeacherLayout';
+import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect, useRef } from 'react';
 
 // --- أيقونات SVG (نسخة مطابقة) ---
