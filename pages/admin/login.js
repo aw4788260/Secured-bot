@@ -25,9 +25,9 @@ export default function AdminLogin() {
           });
           
           if (res.ok) {
-             // التوجيه للمسار المحفوظ سابقاً أو الافتراضي
+             // التوجيه للمسار المحفوظ سابقاً أو الافتراضي (تم تحديث الافتراضي هنا أيضاً)
              const savedRedirect = localStorage.getItem('admin_redirect');
-             router.replace(savedRedirect || '/admin/dashboard');
+             router.replace(savedRedirect || '/admin/teacher');
           }
         } catch(e) { }
       }
@@ -62,11 +62,11 @@ export default function AdminLogin() {
         if (data.name) localStorage.setItem('admin_name', data.name);
         
         // ✅ 3. تحديد مسار التوجيه بناءً على الدور القادم من السيرفر
-        // هذا هو التعديل الأهم لضمان دخول السوبر أدمن لصفحته والمدرس لصفحته
-        let targetPath = '/admin'; // المسار الافتراضي للمدرس
+        // [تعديل] المسار الافتراضي أصبح /admin/teacher لأن الملفات انتقلت هناك
+        let targetPath = '/admin/teacher'; 
         
         if (data.role === 'super_admin') {
-            targetPath = '/admin/super'; // مسار السوبر أدمن
+            targetPath = '/admin/super'; // مسار السوبر أدمن كما هو
         }
 
         // حفظ المسار للمستقبل
