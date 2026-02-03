@@ -63,10 +63,10 @@ export default function AdminLogin() {
         
         // ✅ 3. تحديد مسار التوجيه بناءً على الدور القادم من السيرفر
         // هذا هو التعديل الأهم لضمان دخول السوبر أدمن لصفحته والمدرس لصفحته
-        let targetPath = '/admin/dashboard'; // المسار الافتراضي للمدرس
+        let targetPath = '/admin'; // المسار الافتراضي للمدرس
         
         if (data.role === 'super_admin') {
-            targetPath = '/admin/super/dashboard'; // مسار السوبر أدمن
+            targetPath = '/admin/super'; // مسار السوبر أدمن
         }
 
         // حفظ المسار للمستقبل
