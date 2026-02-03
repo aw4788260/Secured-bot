@@ -76,11 +76,15 @@ export default function SuperLayout({ children, title }) {
     router.replace('/admin/login');
   };
 
-  // ✅ القائمة المخصصة للسوبر أدمن
+  // ✅ القائمة المخصصة للسوبر أدمن (تم التحديث)
   const menuItems = [
     { name: '🏠 لوحة القيادة', path: '/admin/super' },
     { name: '👨‍🏫 إدارة المدرسين', path: '/admin/super/teachers' },
-    // يمكن إضافة المزيد هنا مستقبلاً (مثل الإعدادات العامة)
+    { name: '👨‍🎓 إدارة الطلاب', path: '/admin/super/students' },
+    { name: '📥 كل طلبات الاشتراك', path: '/admin/super/requests' },
+    { name: '💰 التقارير المالية', path: '/admin/super/finance' },
+    { name: '⚙️ إعدادات المنصة', path: '/admin/super/settings' },
+    { name: '🛡️ مشرفي النظام', path: '/admin/super/admins' }
   ];
 
   if (isChecking) {
