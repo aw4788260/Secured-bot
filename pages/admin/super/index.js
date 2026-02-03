@@ -21,7 +21,7 @@ export default function SuperDashboard() {
   });
   const [loading, setLoading] = useState(true);
 
-  // ✅ بيانات الرسم البياني (ثابتة حالياً لأن الـ API لا يرسلها، يمكن تعديلها لاحقاً)
+  // ✅ بيانات الرسم البياني (ثابتة حالياً لأن الـ API لا يرسلها، يمكن تعديلها لاحقاً لربطها بـ API منفصل)
   const chartData = [
     { name: 'السبت', sales: 4000 },
     { name: 'الأحد', sales: 3000 },
@@ -36,13 +36,14 @@ export default function SuperDashboard() {
     const fetchStats = async () => {
       try {
         // محاولة جلب البيانات الحقيقية
-        const res = await fetch('/api/dashboard/super/stats'); // ✅ المسار الصحيح
+        // ✅ تم التأكد من أن هذا هو المسار الجديد والصحيح للوحة تحكم السوبر أدمن
+        const res = await fetch('/api/dashboard/super/stats'); 
         
         if (res.ok) {
           const data = await res.json();
           setStats(data);
         } else {
-          // ❌ تم إزالة البيانات الوهمية هنا
+          // ❌ تم إزالة البيانات الوهمية هنا لضمان عدم تضليل المستخدم
           // سيتم طباعة الخطأ في الكونسول بدلاً من عرض أرقام مزيفة
           console.error("فشل جلب الإحصائيات (API Error):", res.status, res.statusText);
         }
