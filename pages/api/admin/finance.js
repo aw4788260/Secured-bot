@@ -1,5 +1,5 @@
-import { supabase } from '../../../../lib/supabaseClient';
-import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { supabase } from '../../../lib/supabaseClient';
+import { requireSuperAdmin } from '../../../lib/dashboardHelper';
 
 export default async function handler(req, res) {
   // 1. التحقق من الصلاحية (سوبر أدمن فقط)
