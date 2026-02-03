@@ -23,8 +23,8 @@ export default function SuperRequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // جلب الطلبات بناءً على الفلتر المختار
-      const res = await fetch(`/api/admin/requests?status=${filter}`);
+      // ✅ تحديث المسار لجلب الطلبات
+      const res = await fetch(`/api/dashboard/super/requests?status=${filter}`);
       const data = await res.json();
       if (Array.isArray(data)) setRequests(data);
     } catch (err) {
@@ -50,7 +50,8 @@ export default function SuperRequestsPage() {
     setProcessingId(requestId);
 
     try {
-      const res = await fetch('/api/admin/requests', {
+      // ✅ تحديث المسار لتنفيذ الإجراء (تفعيل/رفض)
+      const res = await fetch('/api/dashboard/super/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -127,7 +128,8 @@ export default function SuperRequestsPage() {
       ) : (
         <div className="requests-grid">
           {requests.map(req => {
-            const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
+            // ✅ تحديث مسار البروكسي لعرض الإيصالات
+            const receiptUrl = `/api/dashboard/super/file-proxy?type=receipts&filename=${req.payment_file_path}`;
             
             return (
                 <div key={req.id} className={`request-card ${req.status}`}>
