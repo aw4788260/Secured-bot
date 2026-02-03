@@ -32,20 +32,19 @@ export default function SuperTeachers() {
   const fetchTeachers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/super/teachers'); 
+      // ✅ تم تصحيح المسار ليتطابق مع ملف الـ API الموجود في مشروعك
+      const res = await fetch('/api/dashboard/super/teachers'); 
       if (res.ok) {
         const data = await res.json();
         setTeachers(data);
       } else {
-        // Mock Data Fallback
-        setTeachers([
-          { id: 1, name: 'أ. محمد أحمد', username: 'mohamed_phy', specialty: 'فيزياء', students: 120, balance: 5400, phone: '01000000001' },
-          { id: 2, name: 'د. سارة علي', username: 'sara_bio', specialty: 'أحياء', students: 85, balance: 3200, phone: '01200000002' },
-          { id: 3, name: 'أ. محمود حسن', username: 'mahmoud_ar', specialty: 'لغة عربية', students: 200, balance: 8900, phone: '01100000003' },
-        ]);
+        // ❌ حذفنا البيانات الوهمية هنا
+        console.error("فشل جلب المدرسين:", res.status);
+        // يمكنك إظهار تنبيه للمستخدم إذا رغبت
+        // alert("حدث خطأ أثناء جلب البيانات");
       }
     } catch (error) {
-      console.error(error);
+      console.error("خطأ في الاتصال:", error);
     } finally {
       setLoading(false);
     }
@@ -83,7 +82,7 @@ export default function SuperTeachers() {
       setEditingId(teacher.id);
       setFormData({ 
         name: teacher.name, 
-        username: teacher.username, 
+        username: teacher.username || '', // التأكد من وجود قيمة
         password: '', 
         specialty: teacher.specialty, 
         phone: teacher.phone 
@@ -97,28 +96,52 @@ export default function SuperTeachers() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    console.log('Saving:', formData);
     
-    // Refresh List (Mock)
-    if (!editingId) {
-        setTeachers([...teachers, { ...formData, id: Date.now(), students: 0, balance: 0 }]);
-    } else {
-        setTeachers(teachers.map(t => t.id === editingId ? { ...t, ...formData } : t));
+    // إرسال البيانات للـ API بدلاً من التحديث المحلي فقط
+    try {
+      const url = '/api/dashboard/super/teachers'; // استخدم نفس مسار الـ API للإضافة
+      const method = editingId ? 'PUT' : 'POST'; // افتراض وجود PUT للتعديل (إذا لم يوجد ستحتاج لإضافته في الـ API)
+      
+      // ملاحظة: كود الـ API الحالي يدعم POST فقط للإضافة، لذا سنستخدم POST للإضافة
+      // وللتعديل سنكتفي بالـ Log حالياً أو يمكنك تحديث الـ API لاحقاً لدعم التعديل
+      
+      if (!editingId) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+        
+        if (res.ok) {
+            fetchTeachers(); // تحديث القائمة من السيرفر
+            setModalOpen(false);
+        } else {
+            const errorData = await res.json();
+            alert('فشل الحفظ: ' + (errorData.error || 'خطأ غير معروف'));
+        }
+      } else {
+        // منطق التعديل (يحتاج لتحديث الـ API لدعم PUT/PATCH)
+        alert("تعديل البيانات غير مدعوم حالياً في الـ API، يرجى التواصل مع المطور.");
+      }
+
+    } catch (error) {
+        console.error("Save error:", error);
+        alert("حدث خطأ أثناء الحفظ");
     }
-    
-    setModalOpen(false);
   };
 
   const handleDelete = async (id) => {
-    if (confirm('هل أنت متأكد من حذف هذا المدرس؟ سيتم حذف جميع الكورسات المرتبطة به.')) {
-        setTeachers(teachers.filter(t => t.id !== id));
+    if (confirm('هل أنت متأكد من حذف هذا المدرس؟')) {
+        // يحتاج الـ API لدعم الحذف (DELETE method)
+        // حالياً سنقوم بالحذف من الواجهة فقط كإجراء مؤقت حتى تحديث الـ API
+        console.log("Delete functionality pending API update");
     }
   };
 
   const filteredTeachers = teachers.filter(t => 
-    t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.phone.includes(searchQuery)
+    (t.name && t.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (t.specialty && t.specialty.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (t.phone && t.phone.includes(searchQuery))
   );
 
   return (
@@ -173,7 +196,7 @@ export default function SuperTeachers() {
                   <tr key={teacher.id}>
                     <td>
                       <div className="user-info">
-                        <div className="avatar">{teacher.name[0]}</div>
+                        <div className="avatar">{teacher.name ? teacher.name[0] : '?'}</div>
                         <span className="name">{teacher.name}</span>
                       </div>
                     </td>
@@ -181,20 +204,27 @@ export default function SuperTeachers() {
                     <td>
                         <div style={{display:'flex', flexDirection:'column', fontSize:'0.85rem'}}>
                             <span>📞 {teacher.phone}</span>
-                            <span style={{color:'#64748b'}}>@{teacher.username}</span>
+                            {/* التأكد من وجود users[0] لأن الـ API يرجعها كمصفوفة */}
+                            <span style={{color:'#64748b'}}>@{teacher.users && teacher.users[0] ? teacher.users[0].admin_username : teacher.username}</span>
                         </div>
                     </td>
-                    <td style={{textAlign:'center'}}>{teacher.students}</td>
+                    {/* استخدام القيم الافتراضية 0 لتجنب الأخطاء */}
+                    <td style={{textAlign:'center'}}>{teacher.students_count || 0}</td>
                     <td>
                         <div className="balance">
                             {Icons.wallet}
-                            {teacher.balance.toLocaleString()} ج.م
+                            {(teacher.balance || 0).toLocaleString()} ج.م
                         </div>
                     </td>
                     <td>
                       <div className="actions">
-                        {/* ✅ زر الدخول كمدرس */}
-                        <button className="btn-icon login" onClick={() => handleLoginAs(teacher.username)} title="الدخول كـ مدرس">
+                        {/* ✅ زر الدخول كمدرس - نستخدم اسم المستخدم من جدول المستخدمين المرتبط */}
+                        <button 
+                            className="btn-icon login" 
+                            onClick={() => handleLoginAs(teacher.users && teacher.users[0] ? teacher.users[0].admin_username : '')} 
+                            title="الدخول كـ مدرس"
+                            disabled={!teacher.users || !teacher.users[0]} // تعطيل الزر إذا لم يكن هناك مستخدم مرتبط
+                        >
                           {Icons.key}
                         </button>
                         
@@ -326,9 +356,10 @@ export default function SuperTeachers() {
 
         .actions { display: flex; gap: 8px; }
         .btn-icon { width: 32px; height: 32px; border-radius: 8px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+        .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .btn-icon.login { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
-        .btn-icon.login:hover { background: rgba(168, 85, 247, 0.2); }
+        .btn-icon.login:hover:not(:disabled) { background: rgba(168, 85, 247, 0.2); }
 
         .btn-icon.edit { background: rgba(250, 204, 21, 0.1); color: #facc15; }
         .btn-icon.edit:hover { background: rgba(250, 204, 21, 0.2); }
