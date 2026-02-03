@@ -21,7 +21,7 @@ export default function SuperDashboard() {
   });
   const [loading, setLoading] = useState(true);
 
-  // ✅ بيانات وهمية للرسم البياني (يمكن ربطها بالـ API لاحقاً)
+  // ✅ بيانات الرسم البياني (ثابتة حالياً لأن الـ API لا يرسلها، يمكن تعديلها لاحقاً)
   const chartData = [
     { name: 'السبت', sales: 4000 },
     { name: 'الأحد', sales: 3000 },
@@ -36,26 +36,18 @@ export default function SuperDashboard() {
     const fetchStats = async () => {
       try {
         // محاولة جلب البيانات الحقيقية
-        const res = await fetch('/api/dashboard/super/stats'); // ✅ تم تصحيح المسار ليتطابق مع ملفاتك
+        const res = await fetch('/api/dashboard/super/stats'); // ✅ المسار الصحيح
+        
         if (res.ok) {
           const data = await res.json();
           setStats(data);
         } else {
-          // بيانات افتراضية في حال عدم جاهزية الـ API
-          setStats({
-            totalUsers: 150,
-            totalTeachers: 5,
-            totalRevenue: 12500,
-            activeCourses: 12,
-            recentUsers: [
-              { id: 1, name: 'أحمد محمد', role: 'student', date: '2024-02-01' },
-              { id: 2, name: 'سارة علي', role: 'student', date: '2024-02-01' },
-              { id: 3, name: 'أ. محمود حسن', role: 'teacher', date: '2024-01-30' },
-            ]
-          });
+          // ❌ تم إزالة البيانات الوهمية هنا
+          // سيتم طباعة الخطأ في الكونسول بدلاً من عرض أرقام مزيفة
+          console.error("فشل جلب الإحصائيات (API Error):", res.status, res.statusText);
         }
       } catch (error) {
-        console.error("Failed to load stats", error);
+        console.error("Failed to load stats (Network Error)", error);
       } finally {
         setLoading(false);
       }
@@ -120,7 +112,7 @@ export default function SuperDashboard() {
               </div>
             </div>
 
-            {/* ✅ قسم الرسم البياني الجديد */}
+            {/* ✅ قسم الرسم البياني */}
             <div className="chart-section">
                 <h3>📊 نمو الإيرادات (آخر 7 أيام)</h3>
                 <div className="chart-wrapper">
