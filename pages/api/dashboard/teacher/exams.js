@@ -74,6 +74,15 @@ export default async (req, res) => {
         randomizeOptions 
       } = examData;
 
+      // 🛑 [جديد] التحقق من منطقية التواريخ (البداية والنهاية)
+      if (start_time && end_time) {
+          const start = new Date(start_time);
+          const end = new Date(end_time);
+          if (end <= start) {
+              return res.status(400).json({ error: 'تاريخ انتهاء الامتحان يجب أن يكون بعد تاريخ البدء.' });
+          }
+      }
+
       try {
         let targetExamId = examId;
 
