@@ -56,14 +56,16 @@ export default function SuperStudentsPage() {
     try {
         // جلب كل الكورسات في النظام لأغراض الفلترة والمنح
         if (allCourses.length === 0) {
-            const resCourses = await fetch('/api/admin/manage-content?type=all'); // تأكد من وجود API يجلب كل المحتوى
+            // ✅ تم تحديث المسار لجلب المحتوى
+            const resCourses = await fetch('/api/dashboard/super/content?type=all'); 
             if (resCourses.ok) {
                 const coursesData = await resCourses.json();
                 setAllCourses(coursesData.courses || []);
             }
         }
 
-        let url = `/api/admin/students?page=${currentPage}&limit=${itemsPerPage}`;
+        // ✅ تم تحديث المسار لجلب الطلاب
+        let url = `/api/dashboard/super/students?page=${currentPage}&limit=${itemsPerPage}`;
         
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
@@ -108,8 +110,8 @@ export default function SuperStudentsPage() {
       
       setLoadingSubs(true);
       try {
-          // جلب تفاصيل الطالب (الاشتراكات)
-          const res = await fetch(`/api/admin/students?get_details_for_user=${user.id}`);
+          // ✅ تم تحديث المسار لجلب تفاصيل الطالب
+          const res = await fetch(`/api/dashboard/super/students?get_details_for_user=${user.id}`);
           const data = await res.json();
           setUserSubs(data);
       } catch (e) {}
@@ -119,7 +121,8 @@ export default function SuperStudentsPage() {
   // --- 3. تنفيذ الإجراءات العامة (API) ---
   const runApiCall = async (action, payload, autoCloseProfile = false) => {
       try {
-          const res = await fetch('/api/admin/students', {
+          // ✅ تم تحديث المسار لتنفيذ الإجراءات
+          const res = await fetch('/api/dashboard/super/students', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action, ...payload })
@@ -140,7 +143,7 @@ export default function SuperStudentsPage() {
                       }
                       // إعادة جلب الاشتراكات
                       if (['grant_access', 'revoke_access'].includes(action)) {
-                           const subRes = await fetch(`/api/admin/students?get_details_for_user=${viewUser.id}`);
+                           const subRes = await fetch(`/api/dashboard/super/students?get_details_for_user=${viewUser.id}`);
                            const subData = await subRes.json();
                            setUserSubs(subData);
                       }
