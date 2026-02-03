@@ -239,8 +239,20 @@ export default async (req, res) => {
 
           // -- هـ) تغيير الهاتف --
           if (action === 'change_phone') {
+             // التحقق من وجود الرقم مسبقاً لمستخدم آخر
+             const { data: existingPhone } = await supabase
+                 .from('users')
+                 .select('id')
+                 .eq('phone', newData.phone)
+                 .neq('id', userId) // استثناء المستخدم الحالي من الفحص
+                 .maybeSingle();
+
+             if (existingPhone) {
+                 return res.status(400).json({ error: 'رقم الهاتف مستخدم بالفعل لحساب آخر.' });
+             }
+
              await supabase.from('users').update({ phone: newData.phone }).eq('id', userId);
-             return res.status(200).json({ success: true, message: 'تم التحديث.' });
+             return res.status(200).json({ success: true, message: 'تم تحديث رقم الهاتف بنجاح.' });
           }
 
           // -- و) منح صلاحيات (Grant) --
