@@ -1,14 +1,11 @@
-import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper'; // ✅ استخدام حماية الداشبورد
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 
-// إعداد Multer باستخدام الذاكرة (نفس منطق api user upload avatar)
+// إعداد Multer (نفس منطق تطبيق المستخدم بالضبط)
 const storage = multer.memoryStorage();
-const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 30 * 1024 * 1024 } // حد أقصى 5 ميجا للصورة
-});
+const upload = multer({ storage: storage });
 
 export const config = {
   api: {
@@ -28,10 +25,10 @@ function runMiddleware(req, res, fn) {
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  // 1. التحقق من الصلاحية (استخدام حماية الداشبورد بدلاً من حماية التطبيق)
+  // 1. التحقق من الصلاحية (تم استبدال verifyTeacher بـ requireTeacherOrAdmin)
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) {
-      // الرد بالخطأ تم إرساله مسبقاً
+      // الدالة المساعدة أرسلت الرد بالفعل في حالة الخطأ
       return; 
   }
 
@@ -51,7 +48,7 @@ export default async (req, res) => {
         return res.status(400).json({ error: 'Only images are allowed' });
     }
 
-    // تحديد المجلد (storage/avatars) ليتوافق مع باقي النظام
+    // تحديد المجلد (نفس هيكلة التطبيق: storage/avatars)
     const uploadDir = path.join(process.cwd(), 'storage', 'avatars');
     
     // إنشاء المجلد إذا لم يكن موجوداً
@@ -68,7 +65,7 @@ export default async (req, res) => {
 
     console.log(`✅ Dashboard Avatar uploaded: ${fileName}`);
 
-    // إرجاع اسم الملف فقط ليتم استخدامه في تحديث البروفايل
+    // إرجاع اسم الملف فقط (وليس الرابط الكامل) ليتوافق مع قاعدة البيانات
     return res.status(200).json({ 
         success: true, 
         url: fileName, 
