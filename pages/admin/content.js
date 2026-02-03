@@ -17,6 +17,13 @@ const Icons = {
     drag: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
 };
 
+const formatDateForInput = (isoString) => {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+  return localDate.toISOString().slice(0, 16);
+};
+
 export default function ContentManager() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +45,7 @@ export default function ContentManager() {
 
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
-  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
+  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true,startTime: '',endTime: '', questions: [] });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
@@ -203,6 +210,8 @@ export default function ContentManager() {
                   id: data.id, title: data.title, duration: data.duration_minutes,
                   requiresName: data.requires_student_name, randQ: data.randomize_questions,
                   randO: data.randomize_options,
+                  startTime: formatDateForInput(data.start_time), // تحويل الصيغة
+                  endTime: formatDateForInput(data.end_time),     // تحويل الصيغة
                   questions: data.questions ? data.questions.map(q => ({
                       id: q.id, text: q.question_text, image: q.image_file_id,
                       options: q.options.map(o => o.option_text),
@@ -210,7 +219,11 @@ export default function ContentManager() {
                   })) : []
               });
           } else {
-              setExamForm({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, questions: [] });
+              setExamForm({ 
+                  id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, 
+                  startTime: '', endTime: '', 
+                  questions: [] 
+              });
           }
           setDeletedQIds([]); setEditingQIndex(-1); 
           setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
@@ -291,6 +304,8 @@ export default function ContentManager() {
               id: examForm.id, subjectId: selectedSubject.id,
               title: examForm.title, duration: examForm.duration,
               requiresName: examForm.requiresName, randQ: examForm.randQ, randO: examForm.randO,
+              start_time: examForm.startTime || null, // إرسال وقت البدء
+              end_time: examForm.endTime || null,     // إرسال وقت النهاية
               questions: examForm.questions, deletedQuestionIds: deletedQIds
           })
       }).then(async (res) => {
@@ -621,6 +636,31 @@ export default function ContentManager() {
                               <div className="duration-input">
                                   <input type="number" value={examForm.duration} onChange={e=>setExamForm({...examForm, duration: e.target.value})} />
                                   <span>دقيقة</span>
+                              </div>
+          {/* ✅ [إضافة جديدة] حقول تحديد وقت الامتحان */}
+                              <div style={{marginTop: '15px', borderTop: '1px solid #334155', paddingTop: '10px'}}>
+                                  <label className="field-label" style={{color:'#38bdf8'}}>📅 الصلاحية الزمنية (اختياري)</label>
+                                  
+                                  <label className="field-label" style={{fontSize: '0.8rem', marginTop:'5px'}}>يبدأ في:</label>
+                                  <input 
+                                      type="datetime-local" 
+                                      className="input" 
+                                      style={{fontSize: '0.85rem', direction:'ltr'}}
+                                      value={examForm.startTime} 
+                                      onChange={e=>setExamForm({...examForm, startTime: e.target.value})} 
+                                  />
+
+                                  <label className="field-label" style={{fontSize: '0.8rem', marginTop:'10px'}}>ينتهي في:</label>
+                                  <input 
+                                      type="datetime-local" 
+                                      className="input" 
+                                      style={{fontSize: '0.85rem', direction:'ltr'}}
+                                      value={examForm.endTime} 
+                                      onChange={e=>setExamForm({...examForm, endTime: e.target.value})} 
+                                  />
+                                  <small style={{color:'#64748b', fontSize:'0.7rem', display:'block', marginTop:'5px'}}>
+                                      اتركه فارغاً ليكون متاحاً دائماً.
+                                  </small>
                               </div>
                               <div className="toggles-group">
                                   <div className="toggle-row"><span>طلب اسم الطالب</span><label className="switch"><input type="checkbox" checked={examForm.requiresName} onChange={e=>setExamForm({...examForm, requiresName: e.target.checked})} /><span className="slider round"></span></label></div>
