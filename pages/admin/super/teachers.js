@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import AdminLayout from '../../../components/AdminLayout';
+import SuperLayout from '../../../components/SuperLayout'; // ✅ استخدام تخطيط السوبر أدمن
 
 const Icons = {
   add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
@@ -8,7 +8,8 @@ const Icons = {
   edit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
   trash: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
   close: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
-  wallet: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+  wallet: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>,
+  key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
 };
 
 export default function SuperTeachers() {
@@ -21,9 +22,9 @@ export default function SuperTeachers() {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    username: '', // Login username
+    username: '', 
     password: '',
-    specialty: '', // e.g. Physics
+    specialty: '', 
     phone: ''
   });
 
@@ -31,12 +32,12 @@ export default function SuperTeachers() {
   const fetchTeachers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/super/teachers'); // Ensure this API exists
+      const res = await fetch('/api/admin/super/teachers'); 
       if (res.ok) {
         const data = await res.json();
         setTeachers(data);
       } else {
-        // Fallback Mock Data for UI Testing
+        // Mock Data Fallback
         setTeachers([
           { id: 1, name: 'أ. محمد أحمد', username: 'mohamed_phy', specialty: 'فيزياء', students: 120, balance: 5400, phone: '01000000001' },
           { id: 2, name: 'د. سارة علي', username: 'sara_bio', specialty: 'أحياء', students: 85, balance: 3200, phone: '01200000002' },
@@ -54,14 +55,36 @@ export default function SuperTeachers() {
     fetchTeachers();
   }, []);
 
-  // Handlers
+  // ✅ دالة الدخول كـ مدرس
+  const handleLoginAs = async (username) => {
+    if (!confirm(`⚠️ تحذير أمني:\nهل أنت متأكد من رغبتك في الدخول إلى لوحة التحكم الخاصة بالمدرس (${username})؟`)) return;
+
+    try {
+        const res = await fetch('/api/auth/super-login-as', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+
+        if (res.ok) {
+            // فتح لوحة التحكم في تبويب جديد
+            window.open('/admin', '_blank');
+        } else {
+            alert('فشل الدخول، تأكد من صحة البيانات أو الصلاحيات.');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('حدث خطأ في الاتصال بالسيرفر');
+    }
+  };
+
   const handleOpenModal = (teacher = null) => {
     if (teacher) {
       setEditingId(teacher.id);
       setFormData({ 
         name: teacher.name, 
         username: teacher.username, 
-        password: '', // Don't show old password
+        password: '', 
         specialty: teacher.specialty, 
         phone: teacher.phone 
       });
@@ -74,7 +97,6 @@ export default function SuperTeachers() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    // Simulate API Call
     console.log('Saving:', formData);
     
     // Refresh List (Mock)
@@ -89,12 +111,10 @@ export default function SuperTeachers() {
 
   const handleDelete = async (id) => {
     if (confirm('هل أنت متأكد من حذف هذا المدرس؟ سيتم حذف جميع الكورسات المرتبطة به.')) {
-        // API Call here
         setTeachers(teachers.filter(t => t.id !== id));
     }
   };
 
-  // Filter Logic
   const filteredTeachers = teachers.filter(t => 
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     t.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -102,7 +122,7 @@ export default function SuperTeachers() {
   );
 
   return (
-    <AdminLayout>
+    <SuperLayout>
       <Head>
         <title>إدارة المدرسين | Super Admin</title>
       </Head>
@@ -173,6 +193,11 @@ export default function SuperTeachers() {
                     </td>
                     <td>
                       <div className="actions">
+                        {/* ✅ زر الدخول كمدرس */}
+                        <button className="btn-icon login" onClick={() => handleLoginAs(teacher.username)} title="الدخول كـ مدرس">
+                          {Icons.key}
+                        </button>
+                        
                         <button className="btn-icon edit" onClick={() => handleOpenModal(teacher)} title="تعديل">
                           {Icons.edit}
                         </button>
@@ -301,8 +326,13 @@ export default function SuperTeachers() {
 
         .actions { display: flex; gap: 8px; }
         .btn-icon { width: 32px; height: 32px; border-radius: 8px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+        
+        .btn-icon.login { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+        .btn-icon.login:hover { background: rgba(168, 85, 247, 0.2); }
+
         .btn-icon.edit { background: rgba(250, 204, 21, 0.1); color: #facc15; }
         .btn-icon.edit:hover { background: rgba(250, 204, 21, 0.2); }
+        
         .btn-icon.delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
         .btn-icon.delete:hover { background: rgba(239, 68, 68, 0.2); }
 
@@ -334,6 +364,6 @@ export default function SuperTeachers() {
             .btn-primary { width: 100%; justify-content: center; }
         }
       `}</style>
-    </AdminLayout>
+    </SuperLayout>
   );
 }
