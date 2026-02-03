@@ -52,36 +52,58 @@ export default function ContentManager() {
   const [uploadingImg, setUploadingImg] = useState(false);
   const [examStats, setExamStats] = useState(null);
 
-  // --- Initial Fetch ---
-  const fetchContent = async () => {
-      setLoading(true);
+ const refreshView = async () => {
+      // لا نعرض loading هنا لكي لا تكون التجربة مزعجة عند كل تحديث صغير
       try {
-        const res = await fetch('/api/dashboard/teacher/content');
-        const data = await res.json();
-        
-        const items = data.courses || [];
-        setCourses(items);
-        
-        // Refresh Current View
-        if (selectedCourse) {
-            const updatedC = items.find(c => c.id === selectedCourse.id);
-            setSelectedCourse(updatedC);
-            if (selectedSubject && updatedC) {
-                const updatedS = updatedC.subjects?.find(s => s.id === selectedSubject.id);
-                setSelectedSubject(updatedS);
-                if (selectedChapter && updatedS) {
-                    const updatedCh = updatedS.chapters?.find(ch => ch.id === selectedChapter.id);
-                    setSelectedChapter(updatedCh);
-                }
-            }
-        }
-      } catch (err) { showAlert('error', 'فشل الاتصال بالسيرفر'); }
-      setLoading(false);
+          // 1. جلب الهيكل الأساسي (كورسات + مواد سطحية)
+          const res = await fetch('/api/dashboard/teacher/content');
+          const data = await res.json();
+          let newCourses = data.courses || [];
+
+          // 2. هام جداً: إذا كنا داخل مادة، نعيد جلب تفاصيلها العميقة (فصول، امتحانات)
+          if (selectedSubject) {
+              const subRes = await fetch(`/api/dashboard/teacher/content?mode=subject_details&id=${selectedSubject.id}`);
+              const subData = await subRes.json();
+              
+              if (subData.success) {
+                  // دمج التفاصيل الجديدة في قائمة الكورسات
+                  newCourses = newCourses.map(c => {
+                      if (c.id === selectedCourse?.id) {
+                          return {
+                              ...c,
+                              subjects: c.subjects.map(s => s.id === selectedSubject.id ? subData.subject : s)
+                          };
+                      }
+                      return c;
+                  });
+
+                  // تحديث المادة المختارة لضمان ظهور العناصر الجديدة (فيديو/امتحان/ملف)
+                  setSelectedSubject(subData.subject);
+
+                  // إذا كنا داخل فصل، نحدثه أيضاً
+                  if (selectedChapter) {
+                      const updatedCh = subData.subject.chapters?.find(ch => ch.id === selectedChapter.id);
+                      setSelectedChapter(updatedCh || null);
+                  }
+              }
+          }
+          // 3. تحديث الكورس المختار
+          if (selectedCourse) {
+              const updatedC = newCourses.find(c => c.id === selectedCourse.id);
+              setSelectedCourse(updatedC || null);
+          }
+
+          // 4. تحديث الحالة العامة
+          setCourses(newCourses);
+      } catch (err) {
+          console.error("Refresh Error:", err);
+      }
   };
 
+  // استبدال fetchContent القديمة بـ refreshView عند التحميل
   useEffect(() => { 
       window.scrollTo(0, 0);
-      fetchContent(); 
+      refreshView(); 
   }, []);
 
   // --- Helpers ---
@@ -98,8 +120,7 @@ export default function ContentManager() {
       setConfirmData({ show: false, msg: '', onConfirm: null });
   };
 
-  const handleBack = async () => {
-      await fetchContent(); 
+  const handleBack = () => {
       if (selectedChapter) setSelectedChapter(null);
       else if (selectedSubject) setSelectedSubject(null);
       else if (selectedCourse) setSelectedCourse(null);
@@ -199,7 +220,11 @@ export default function ContentManager() {
               body: JSON.stringify({ action, type, data: dataPayload })
           });
           const data = await res.json();
-          if (res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تمت العملية بنجاح'); }
+          if (res.ok) { 
+              showAlert('success', 'تمت العملية بنجاح'); 
+              setModalType(null); 
+              await refreshView(); // ✅ استخدام الدالة الذكية هنا
+          }
           else { showAlert('error', data.error || 'حدث خطأ'); }
       } catch (e) { showAlert('error', 'خطأ في الاتصال'); }
       setLoading(false);
@@ -342,7 +367,7 @@ export default function ContentManager() {
       if (editingQIndex === i) resetCurrentQuestion();
   };
 
-  const submitExam = async () => {
+ const submitExam = async () => {
       if(!examForm.title || !examForm.startTime || !examForm.endTime || examForm.questions.length === 0) {
           return showAlert('error', 'البيانات ناقصة: يجب تحديد العنوان، وقت البدء والانتهاء، وإضافة أسئلة.');
       }
@@ -353,6 +378,7 @@ export default function ContentManager() {
           return showAlert('error', '⚠️ خطأ في التوقيت: وقت نهاية الامتحان يجب أن يكون بعد وقت البداية.');
       }
       
+      setLoading(true); 
       try {
           const res = await fetch('/api/dashboard/teacher/exams', {
               method: 'POST',
@@ -377,7 +403,7 @@ export default function ContentManager() {
           if (res.ok) { 
               showAlert('success', 'تم الحفظ بنجاح'); 
               setModalType(null); 
-              fetchContent(); 
+              await refreshView(); // ✅ استخدام الدالة الذكية هنا
           } else { 
               const errorMsg = data.error || data.message || 'فشل الحفظ';
               showAlert('error', errorMsg); 
@@ -385,8 +411,9 @@ export default function ContentManager() {
       } catch (err) {
           showAlert('error', 'حدث خطأ في الاتصال بالسيرفر');
       }
+      setLoading(false);
   };
-
+    
   const loadStats = async (examId) => {
       setLoading(true);
       const res = await fetch(`/api/dashboard/teacher/exam-stats?examId=${examId}`);
