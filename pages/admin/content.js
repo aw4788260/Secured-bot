@@ -106,6 +106,43 @@ export default function ContentManager() {
       else if (selectedSubject) setSelectedSubject(null);
       else if (selectedCourse) setSelectedCourse(null);
   };
+const handleSubjectClick = async (subject) => {
+      // أ) التحقق: هل التفاصيل (الامتحانات والفصول) محملة مسبقاً في الذاكرة؟
+      if (subject.chapters && subject.exams) {
+          setSelectedSubject(subject);
+          return;
+      }
+
+      // ب) إذا لم تكن محملة، نطلبها من السيرفر
+      setLoading(true);
+      try {
+          const res = await fetch(`/api/dashboard/teacher/content?mode=subject_details&id=${subject.id}`);
+          const data = await res.json();
+          
+          if (data.success) {
+              // تحديث الـ courses في الـ State لحفظ البيانات (Caching) وتجنب طلبها مرة أخرى
+              const updatedCourses = courses.map(c => {
+                  if (c.id === selectedCourse.id) {
+                      return {
+                          ...c,
+                          subjects: c.subjects.map(s => s.id === subject.id ? data.subject : s)
+                      };
+                  }
+                  return c;
+              });
+              setCourses(updatedCourses);
+              
+              // تحديث المادة المختارة لعرض محتواها
+              setSelectedSubject(data.subject);
+          } else {
+              showAlert('error', 'فشل تحميل محتوى المادة');
+          }
+      } catch (err) {
+          showAlert('error', 'حدث خطأ أثناء تحميل المادة');
+      }
+      setLoading(false);
+  };
+ 
 
   // --- Drag & Drop ---
   const onDragStart = (e, index) => {
@@ -205,20 +242,45 @@ export default function ContentManager() {
           }
 
           setShowExamSidebar(false);
+          
           if (data.id) {
-              setExamForm({
-                  id: data.id, title: data.title, duration: data.duration_minutes,
-                  requiresName: true, randQ: data.randomize_questions,
-                  randO: data.randomize_options,
-                  startTime: formatDateForInput(data.start_time), // تحويل الصيغة
-                  endTime: formatDateForInput(data.end_time),     // تحويل الصيغة
-                  questions: data.questions ? data.questions.map(q => ({
-                      id: q.id, text: q.question_text, image: q.image_file_id,
-                      options: q.options.map(o => o.option_text),
-                      correctIndex: q.options.findIndex(o => o.is_correct)
-                  })) : []
-              });
+              // حالة التعديل: جلب الأسئلة من السيرفر (Lazy Fetching)
+              setLoading(true);
+              try {
+                  const res = await fetch(`/api/dashboard/teacher/content?mode=exam_details&id=${data.id}`);
+                  const resData = await res.json();
+                  
+                  if (resData.success && resData.exam) {
+                      const fullExam = resData.exam;
+                      setExamForm({
+                          id: fullExam.id, 
+                          title: fullExam.title, 
+                          duration: fullExam.duration_minutes,
+                          requiresName: true, 
+                          randQ: fullExam.randomize_questions,
+                          randO: fullExam.randomize_options,
+                          startTime: formatDateForInput(fullExam.start_time),
+                          endTime: formatDateForInput(fullExam.end_time),
+                          // تحويل هيكل الأسئلة للواجهة
+                          questions: fullExam.questions ? fullExam.questions.map(q => ({
+                              id: q.id, text: q.question_text, image: q.image_file_id,
+                              options: q.options.map(o => o.option_text),
+                              correctIndex: q.options.findIndex(o => o.is_correct)
+                          })) : []
+                      });
+                  } else {
+                      showAlert('error', 'فشل جلب بيانات الامتحان');
+                      setLoading(false);
+                      return; // توقف في حال الفشل
+                  }
+              } catch (e) {
+                  showAlert('error', 'خطأ في الاتصال');
+                  setLoading(false);
+                  return;
+              }
+              setLoading(false);
           } else {
+              // حالة الإنشاء الجديد (تصفير النموذج)
               setExamForm({ 
                   id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, 
                   startTime: '', endTime: '', 
@@ -293,16 +355,16 @@ export default function ContentManager() {
       setExamForm({ ...examForm, questions: examForm.questions.filter((_, idx) => idx !== i) });
       if (editingQIndex === i) resetCurrentQuestion();
   };
- const submitExam = async () => {
-      // 1. التحقق من أن الحقول ليست فارغة
+
+    const submitExam = async () => {
+      // أ) التحقق من الحقول الإجبارية
       if(!examForm.title || !examForm.startTime || !examForm.endTime || examForm.questions.length === 0) {
           return showAlert('error', 'البيانات ناقصة: يجب تحديد العنوان، وقت البدء والانتهاء، وإضافة أسئلة.');
       }
 
-      // 2. ✅ [جديد] التحقق المنطقي من التواريخ (النهاية بعد البداية)
+      // ب) التحقق المنطقي: وقت النهاية يجب أن يكون بعد البداية
       const start = new Date(examForm.startTime);
       const end = new Date(examForm.endTime);
-
       if (end <= start) {
           return showAlert('error', '⚠️ خطأ في التوقيت: وقت نهاية الامتحان يجب أن يكون بعد وقت البداية.');
       }
@@ -328,20 +390,21 @@ export default function ContentManager() {
           });
 
           const data = await res.json();
-
           if (res.ok) { 
               showAlert('success', 'تم الحفظ بنجاح'); 
               setModalType(null); 
-              fetchContent(); 
+              fetchContent(); // إعادة تحميل الهيكل (سيتم جلب تفاصيل المادة الجديدة عند فتحها مجدداً)
           } else { 
               const errorMsg = data.error || data.message || 'فشل الحفظ';
               showAlert('error', errorMsg); 
           }
       } catch (err) {
-          console.error(err);
           showAlert('error', 'حدث خطأ في الاتصال بالسيرفر');
       }
   };
+    return (
+    <TeacherLayout title="المحتوى">
+ 
   const loadStats = async (examId) => {
       setLoading(true);
       // [تعديل] مسار إحصائيات الامتحان
@@ -398,10 +461,19 @@ export default function ContentManager() {
       )}
 
       {/* 2. Subjects List */}
-      {selectedCourse && !selectedSubject && (
+     {selectedCourse && !selectedSubject && (
           <div className="grid-cards">
               {selectedCourse.subjects?.map((s, index) => (
-                  <div key={s.id} className="card folder-card draggable-item" onClick={() => setSelectedSubject(s)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'subjects')}>
+                  <div 
+                    key={s.id} 
+                    className="card folder-card draggable-item" 
+                    // 🔴 هنا التعديل: استدعاء دالة التحميل الذكي بدلاً من setSelectedSubject
+                    onClick={() => handleSubjectClick(s)} 
+                    draggable 
+                    onDragStart={(e) => onDragStart(e, index)} 
+                    onDragEnter={(e) => onDragEnter(e, index)} 
+                    onDragEnd={(e) => onDragEnd(e, 'subjects')}
+                  >
                       <div className="card-actions-abs">
                           <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('subjects', s.id)}}>{Icons.trash}</button>
                           <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
@@ -414,7 +486,6 @@ export default function ContentManager() {
               ))}
           </div>
       )}
-
       {/* 3. Subject Details */}
       {selectedSubject && !selectedChapter && (
           <div className="content-layout">
