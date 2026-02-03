@@ -96,10 +96,17 @@ export default function ProfilePage() {
       }));
   };
 
-  // --- دالة رفع الصورة ---
+  // --- دالة رفع الصورة (مع العرض الفوري - Instant Preview) ---
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // ✅ خطوة 1: عرض الصورة فوراً محلياً (قبل الرفع للسيرفر)
+    const localPreviewUrl = URL.createObjectURL(file);
+    setFormData(prev => ({ 
+        ...prev, 
+        fullAvatarUrl: localPreviewUrl 
+    }));
 
     setUploading(true);
     const fd = new FormData();
@@ -113,15 +120,14 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // تحديث الحالة فوراً لعرض الصورة الجديدة
+        // ✅ خطوة 2: تحديث معرف الصورة للحفظ (دون تغيير الرابط المعروض حالياً لعدم الوميض)
         setFormData(prev => ({ 
             ...prev, 
-            avatar: data.fileId, // حفظ المعرف للإرسال لاحقاً
-            fullAvatarUrl: data.url // عرض الرابط الكامل فوراً
+            avatar: data.fileId 
         }));
-        showToast('تم رفع الصورة، اضغط حفظ لتأكيد التغيير', 'success');
+        showToast('تم اختيار الصورة، اضغط "حفظ" لاعتمادها', 'success');
       } else {
-        showToast('فشل رفع الصورة', 'error');
+        showToast('فشل رفع الصورة للسيرفر', 'error');
       }
     } catch (err) {
       showToast('خطأ في الاتصال', 'error');
@@ -208,9 +214,8 @@ export default function ProfilePage() {
             {/* بطاقة الصورة */}
             <div className="card avatar-card">
               <div className="avatar-wrapper">
-                {uploading ? (
-                    <div className="avatar-placeholder spinner">⏳</div>
-                ) : formData.fullAvatarUrl ? (
+                {/* عرض الصورة: إذا كانت هناك صورة معروضة (سواء من السيرفر أو معاينة محلية) */}
+                {formData.fullAvatarUrl ? (
                     <img 
                         src={formData.fullAvatarUrl} 
                         alt="Profile" 
@@ -221,6 +226,9 @@ export default function ProfilePage() {
                     <div className="avatar-placeholder">{formData.name?.[0] || 'T'}</div>
                 )}
                 
+                {/* سبينر صغير فوق الصورة أثناء الرفع في الخلفية */}
+                {uploading && <div className="upload-spinner-overlay">⏳</div>}
+
                 <label className="upload-btn">
                   📷
                   <input type="file" accept="image/*" onChange={handleAvatarUpload} hidden />
@@ -254,7 +262,12 @@ export default function ProfilePage() {
                         <input className="input" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} dir="ltr" />
                     </div>
                     <div className="form-group">
-                        <label>رقم الواتساب <span style={{fontSize:'0.75em', color:'#94a3b8', fontWeight:'normal'}}>(enter number with country code without '+' e.g. 201xxxxx)</span></label>
+                        <label>
+                            رقم الواتساب 
+                            <span style={{display:'block', fontSize:'0.75em', color:'#94a3b8', fontWeight:'normal', marginTop:'3px', direction:'ltr'}}>
+                                (enter number with country code without '+' e.g. 201xxxxx)
+                            </span>
+                        </label>
                         <input className="input" value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} dir="ltr" placeholder="201xxxxxxxxx" />
                     </div>
                 </div>
@@ -286,13 +299,13 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                {/* أرقام إنستاباي (تم التعديل: رقم هاتف فقط) */}
+                {/* أرقام إنستاباي */}
                 <div className="payment-section">
                     <label>أرقام إنستاباي (Instapay Numbers)</label>
                     <div className="add-row">
                         <input 
                             className="input small" 
-                            type="number" // تم التعديل ليقبل أرقام فقط
+                            type="number" // ✅ إجبار الحقل على قبول الأرقام فقط
                             value={newInstapayNumber} 
                             onChange={e => setNewInstapayNumber(e.target.value)} 
                             placeholder="01xxxxxxxxx" 
@@ -323,12 +336,14 @@ export default function ProfilePage() {
 
                 {/* 3. الأمان */}
                 <div className="section-title" style={{marginTop: '30px', color: '#ef4444'}}>
-                    الأمان 
-                    <span style={{fontSize:'0.7em', color:'#94a3b8', marginRight:'10px', fontWeight:'normal'}}>
-                        (هذه كلمة مرور حساب التطبيق للطالب، وليست كلمة مرور لوحة التحكم)
-                    </span>
+                    إعدادات الأمان
                 </div>
                 <div className="security-box">
+                    <p style={{color:'#94a3b8', fontSize:'0.9em', marginBottom:'15px'}}>
+                        ⚠️ <strong>تنبيه هام:</strong> كلمة المرور التي يتم تغييرها هنا هي الخاصة 
+                        <span style={{color: '#38bdf8'}}> بتسجيل الدخول إلى تطبيق الطلاب </span> 
+                        (Student App)، وليست كلمة مرور لوحة التحكم هذه.
+                    </p>
                     <div className="form-group">
                         <label>كلمة المرور الحالية (مطلوبة للتغيير)</label>
                         <input className="input" type="password" value={formData.oldPassword} onChange={e => setFormData({...formData, oldPassword: e.target.value})} placeholder="******" dir="ltr" />
@@ -366,6 +381,9 @@ export default function ProfilePage() {
         .avatar-wrapper { position: relative; width: 140px; height: 140px; margin-bottom: 15px; }
         .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #38bdf8; }
         .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #334155; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold; border: 3px solid #38bdf8; }
+        
+        .upload-spinner-overlay { position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:2rem; }
+
         .upload-btn { position: absolute; bottom: 5px; right: 5px; background: #38bdf8; color: #0f172a; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px solid #1e293b; transition: transform 0.2s; }
         .upload-btn:hover { transform: scale(1.1); }
         .user-name { margin: 10px 0 5px; color: white; font-size: 1.4rem; }
