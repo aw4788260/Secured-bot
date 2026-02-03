@@ -1,4 +1,4 @@
-import TeacherLayout from '../../components/TeacherLayout';
+import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 
 export default function StudentsPage() {
