@@ -80,14 +80,14 @@ export default function TeacherLayout({ children, title }) {
     router.replace('/admin/login');
   };
 
-  // ✅ القائمة المخصصة للمدرس
+  // ✅ القائمة المخصصة للمدرس (تم تحديث المسارات هنا)
   const menuItems = [
-    { name: '📊 الرئيسية', path: '/admin' },
-    { name: '📚 إدارة المحتوى', path: '/admin/content' },
-    { name: '👨‍🎓 إدارة الطلاب', path: '/admin/students' },
-    { name: '📩 طلبات الاشتراك', path: '/admin/requests' },
-    { name: '👥 فريق العمل', path: '/admin/team' },
-    { name: '⚙️ الملف الشخصي', path: '/admin/profile' },
+    { name: '📊 الرئيسية', path: '/admin/teacher' },
+    { name: '📚 إدارة المحتوى', path: '/admin/teacher/content' },
+    { name: '👨‍🎓 إدارة الطلاب', path: '/admin/teacher/students' },
+    { name: '📩 طلبات الاشتراك', path: '/admin/teacher/requests' },
+    { name: '👥 فريق العمل', path: '/admin/teacher/team' },
+    { name: '⚙️ الملف الشخصي', path: '/admin/teacher/profile' },
   ];
 
   if (isChecking) {
