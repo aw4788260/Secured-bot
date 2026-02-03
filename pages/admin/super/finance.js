@@ -23,13 +23,17 @@ export default function SuperFinance() {
     try {
       // بناء رابط الـ API مع الفلاتر
       const query = new URLSearchParams(dateRange).toString();
-      const res = await fetch(`/api/admin/super/finance?${query}`);
+      
+      // ✅ تم تحديث المسار هنا
+      const res = await fetch(`/api/dashboard/super/finance?${query}`); 
       
       if (res.ok) {
         const data = await res.json();
         setFinancials(data);
       } else {
-        // بيانات وهمية للعرض في حالة عدم جاهزية الـ API
+        // بيانات وهمية للعرض في حالة فشل الـ API (Fallback)
+        // يمكن إزالة هذا الجزء لاحقاً عند التأكد من استقرار الـ Backend
+        console.warn("API request failed, loading fallback data");
         setFinancials({
           total_revenue: 150000,
           platform_profit: 15000, // مثلاً 10%
@@ -42,7 +46,7 @@ export default function SuperFinance() {
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error("Finance Fetch Error:", err);
     } finally {
       setLoading(false);
     }
