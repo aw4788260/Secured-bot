@@ -9,32 +9,27 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 1. الفحص التلقائي (الذكي)
+  // 1. الفحص التلقائي
   useEffect(() => {
     const checkExistingSession = async () => {
-      // نبحث عن بيانات الأدمن الخاصة فقط
       const adminId = localStorage.getItem('admin_user_id');
-      const isAdmin = localStorage.getItem('is_admin_session');
+      const isAdminSession = localStorage.getItem('is_admin_session');
 
-      // إذا وجدت البيانات، نتحقق من صحتها في السيرفر
-      if (adminId && isAdmin) {
+      if (adminId && isAdminSession) {
         try {
+          // نتحقق من صحة الجلسة
           const res = await fetch('/api/auth/check-session', { 
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
-             // نرسل نوع الجلسة admin لكي يفهم السيرفر أي كوكي يفحص
              body: JSON.stringify({ userId: adminId, type: 'admin' }) 
           });
-          const data = await res.json();
           
-          if (res.ok && data.valid) {
-             // 🆕 توجيه ذكي حسب الدور المحفوظ
-             const redirectUrl = localStorage.getItem('admin_redirect') || '/admin';
-             router.replace(redirectUrl);
+          if (res.ok) {
+             // التوجيه للمسار المحفوظ سابقاً أو الافتراضي
+             const savedRedirect = localStorage.getItem('admin_redirect');
+             router.replace(savedRedirect || '/admin/dashboard');
           }
-        } catch(e) { 
-           // في حالة الخطأ لا نفعل شيئاً (نبقى في صفحة الدخول)
-        }
+        } catch(e) { }
       }
     };
 
@@ -55,24 +50,30 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (data.success) {
-        // ✅ تنظيف أي بيانات قديمة
+        // ✅ 1. تنظيف البيانات القديمة
         localStorage.removeItem('admin_user_id');
         localStorage.removeItem('is_admin_session');
         localStorage.removeItem('admin_name');
         localStorage.removeItem('admin_redirect');
 
-        // ✅ تخزين البيانات الجديدة
+        // ✅ 2. تخزين البيانات الجديدة
         localStorage.setItem('admin_user_id', data.userId);
         localStorage.setItem('is_admin_session', 'true');
-        
         if (data.name) localStorage.setItem('admin_name', data.name);
         
-        // 🆕 تخزين مسار التوجيه للزيارات المستقبلية
-        const redirectUrl = data.redirectUrl || '/admin';
-        localStorage.setItem('admin_redirect', redirectUrl);
+        // ✅ 3. تحديد مسار التوجيه بناءً على الدور القادم من السيرفر
+        // هذا هو التعديل الأهم لضمان دخول السوبر أدمن لصفحته والمدرس لصفحته
+        let targetPath = '/admin/dashboard'; // المسار الافتراضي للمدرس
+        
+        if (data.role === 'super_admin') {
+            targetPath = '/admin/super/dashboard'; // مسار السوبر أدمن
+        }
+
+        // حفظ المسار للمستقبل
+        localStorage.setItem('admin_redirect', targetPath);
 
         // التوجيه
-        router.replace(redirectUrl);
+        router.replace(targetPath);
       } else {
         setError(data.message || 'بيانات غير صحيحة');
       }
