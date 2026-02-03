@@ -8,7 +8,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  // 1. تحديث الـ State ليشمل بيانات الدفع
+  // 1. تحديث الـ State ليشمل بيانات الدفع وكلمة المرور
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -22,8 +22,10 @@ export default function ProfilePage() {
     cashNumbersList: [],
     instapayNumbersList: [],
     instapayLinksList: [],
-    // حقل كلمة المرور (اختياري)
-    password: ''
+    // حقول كلمة المرور
+    oldPassword: '',
+    password: '',
+    confirmPassword: ''
   });
 
   // حالات لإضافة رقم جديد مؤقتاً قبل إضافته للقائمة
@@ -38,7 +40,7 @@ export default function ProfilePage() {
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
 
-  // 2. جلب البيانات وتعبئة الحقول الجديدة
+  // 2. جلب البيانات وتعبئة الحقول
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -56,13 +58,16 @@ export default function ProfilePage() {
             whatsapp: data.whatsapp_number || '',
             specialty: data.specialty || '',
             bio: data.bio || '',
-            avatar: '', 
-            fullAvatarUrl: data.profile_image || '',
+            avatar: '', // اسم الملف فقط (للحفظ)
+            fullAvatarUrl: data.profile_image || '', // الرابط الكامل (للعرض)
             // تعبئة القوائم
             cashNumbersList: payment.cash_numbers || [],
             instapayNumbersList: payment.instapay_numbers || [],
             instapayLinksList: payment.instapay_links || [],
-            password: ''
+            // تفريغ حقول الباسورد
+            oldPassword: '',
+            password: '',
+            confirmPassword: ''
           });
         }
       } catch (err) {
@@ -94,7 +99,7 @@ export default function ProfilePage() {
       }));
   };
 
-  // --- دالة رفع الصورة ---
+  // --- دالة رفع الصورة (تم التصحيح) ---
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -104,18 +109,18 @@ export default function ProfilePage() {
     fd.append('file', file);
 
     try {
-      const res = await fetch('/api/dashboard/teacher/upload', {
+      // ✅ استخدام الرابط الجديد المخصص للصور الشخصية
+      const res = await fetch('/api/dashboard/teacher/upload-avatar', {
         method: 'POST',
         body: fd
       });
       const data = await res.json();
 
       if (res.ok && data.success) {
-        const newFileName = data.url;
         setFormData(prev => ({ 
             ...prev, 
-            avatar: newFileName, 
-            fullAvatarUrl: `/api/public/get-avatar?file=${newFileName}` 
+            avatar: data.fileId, // الاسم للحفظ في القاعدة
+            fullAvatarUrl: data.url // الرابط الكامل للعرض الفوري
         }));
         showToast('تم رفع الصورة، اضغط حفظ لتأكيد التغيير', 'success');
       } else {
@@ -131,6 +136,20 @@ export default function ProfilePage() {
   // --- دالة الحفظ ---
   const handleSave = async (e) => {
     e.preventDefault();
+    
+    // التحقق من صحة كلمة المرور قبل الإرسال
+    if (formData.password) {
+        if (formData.password.length < 6) {
+            return showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error');
+        }
+        if (formData.password !== formData.confirmPassword) {
+            return showToast('كلمة المرور الجديدة غير متطابقة', 'error');
+        }
+        if (!formData.oldPassword) {
+            return showToast('يجب إدخال كلمة المرور القديمة لتأكيد التغيير', 'error');
+        }
+    }
+
     setSaving(true);
 
     try {
@@ -145,9 +164,13 @@ export default function ProfilePage() {
         cashNumbersList: formData.cashNumbersList,
         instapayNumbersList: formData.instapayNumbersList,
         instapayLinksList: formData.instapayLinksList,
-        // الصورة والباسورد
+        // الصورة
         ...(formData.avatar && { profileImage: formData.avatar }),
-        ...(formData.password && { password: formData.password })
+        // الباسورد (فقط إذا تم تغييره)
+        ...(formData.password && { 
+            password: formData.password,
+            oldPassword: formData.oldPassword
+        })
       };
 
       const res = await fetch('/api/dashboard/teacher/update-profile', {
@@ -160,8 +183,13 @@ export default function ProfilePage() {
 
       if (res.ok) {
         showToast('تم حفظ التغييرات بنجاح', 'success');
-        // تفريغ حقل الباسورد بعد الحفظ للأمان
-        setFormData(prev => ({...prev, password: ''}));
+        // تفريغ حقول الباسورد بعد الحفظ للأمان
+        setFormData(prev => ({
+            ...prev, 
+            oldPassword: '',
+            password: '',
+            confirmPassword: ''
+        }));
         setTimeout(() => router.reload(), 1500);
       } else {
         showToast(data.error || 'فشل الحفظ', 'error');
@@ -293,11 +321,23 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                {/* 3. الأمان */}
+                {/* 3. الأمان (مع التحقق) */}
                 <div className="section-title" style={{marginTop: '30px', color: '#ef4444'}}>الأمان</div>
-                <div className="form-group">
-                    <label>تغيير كلمة المرور (اتركه فارغاً لعدم التغيير)</label>
-                    <input className="input" type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="******" dir="ltr" />
+                <div className="security-box">
+                    <div className="form-group">
+                        <label>كلمة المرور الحالية (مطلوبة للتغيير)</label>
+                        <input className="input" type="password" value={formData.oldPassword} onChange={e => setFormData({...formData, oldPassword: e.target.value})} placeholder="******" dir="ltr" />
+                    </div>
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label>كلمة المرور الجديدة (6+ حروف)</label>
+                            <input className="input" type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="******" dir="ltr" />
+                        </div>
+                        <div className="form-group">
+                            <label>تأكيد الجديدة</label>
+                            <input className="input" type="password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} placeholder="******" dir="ltr" />
+                        </div>
+                    </div>
                 </div>
 
                 <button type="submit" className="save-btn" disabled={saving}>
@@ -348,6 +388,9 @@ export default function ProfilePage() {
         .tag.link { background: rgba(168, 85, 247, 0.1); border-color: #a855f7; color: #a855f7; }
         .tag button { background: none; border: none; color: #ef4444; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; }
         
+        /* Security Box */
+        .security-box { background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.3); padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+
         .save-btn { width: 100%; background: #22c55e; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 10px; }
         .save-btn:hover { background: #16a34a; }
         .save-btn:disabled { opacity: 0.7; cursor: not-allowed; }
