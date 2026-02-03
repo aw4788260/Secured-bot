@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
-import AdminLayout from '../../../components/AdminLayout'; // تأكد من مسار الـ Layout الصحيح
+import SuperLayout from '../../../components/SuperLayout'; // ✅ تم التحديث لاستخدام تخطيط السوبر أدمن
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // أيقونات SVG بسيطة
 const Icons = {
@@ -20,11 +21,22 @@ export default function SuperDashboard() {
   });
   const [loading, setLoading] = useState(true);
 
+  // ✅ بيانات وهمية للرسم البياني (يمكن ربطها بالـ API لاحقاً)
+  const chartData = [
+    { name: 'السبت', sales: 4000 },
+    { name: 'الأحد', sales: 3000 },
+    { name: 'الاثنين', sales: 2000 },
+    { name: 'الثلاثاء', sales: 2780 },
+    { name: 'الأربعاء', sales: 1890 },
+    { name: 'الخميس', sales: 2390 },
+    { name: 'الجمعة', sales: 3490 },
+  ];
+
   useEffect(() => {
     const fetchStats = async () => {
       try {
         // محاولة جلب البيانات الحقيقية
-        const res = await fetch('/api/admin/super/stats');
+        const res = await fetch('/api/dashboard/super/stats'); // ✅ تم تصحيح المسار ليتطابق مع ملفاتك
         if (res.ok) {
           const data = await res.json();
           setStats(data);
@@ -53,7 +65,7 @@ export default function SuperDashboard() {
   }, []);
 
   return (
-    <AdminLayout>
+    <SuperLayout>
       <Head>
         <title>لوحة التحكم الرئيسية | Super Admin</title>
       </Head>
@@ -79,7 +91,7 @@ export default function SuperDashboard() {
                 <div className="icon">{Icons.users}</div>
                 <div className="info">
                   <h3>الطلاب المسجلين</h3>
-                  <p>{stats.totalUsers}</p>
+                  <p>{stats.totalUsers || 0}</p>
                 </div>
               </div>
 
@@ -87,7 +99,7 @@ export default function SuperDashboard() {
                 <div className="icon">{Icons.money}</div>
                 <div className="info">
                   <h3>إجمالي الدخل</h3>
-                  <p>{stats.totalRevenue.toLocaleString()} ج.م</p>
+                  <p>{(stats.totalRevenue || 0).toLocaleString()} ج.م</p>
                 </div>
               </div>
 
@@ -95,7 +107,7 @@ export default function SuperDashboard() {
                 <div className="icon">{Icons.course}</div>
                 <div className="info">
                   <h3>الكورسات النشطة</h3>
-                  <p>{stats.activeCourses}</p>
+                  <p>{stats.activeCourses || 0}</p>
                 </div>
               </div>
 
@@ -103,9 +115,28 @@ export default function SuperDashboard() {
                 <div className="icon">{Icons.users}</div>
                 <div className="info">
                   <h3>عدد المدرسين</h3>
-                  <p>{stats.totalTeachers}</p>
+                  <p>{stats.totalTeachers || 0}</p>
                 </div>
               </div>
+            </div>
+
+            {/* ✅ قسم الرسم البياني الجديد */}
+            <div className="chart-section">
+                <h3>📊 نمو الإيرادات (آخر 7 أيام)</h3>
+                <div className="chart-wrapper">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
+                            <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
+                            <Tooltip 
+                                contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
+                                cursor={{fill: 'rgba(56, 189, 248, 0.1)'}}
+                            />
+                            <Bar dataKey="sales" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={40} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
 
             {/* القسم السفلي: جدول وجراف */}
@@ -126,11 +157,11 @@ export default function SuperDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {stats.recentUsers.map((user, index) => (
+                      {stats.recentUsers && stats.recentUsers.length > 0 ? stats.recentUsers.map((user, index) => (
                         <tr key={index}>
                           <td>
                             <div className="user-cell">
-                              <div className="avatar-circle">{user.name[0]}</div>
+                              <div className="avatar-circle">{user.name ? user.name[0] : '?'}</div>
                               <span>{user.name}</span>
                             </div>
                           </td>
@@ -139,10 +170,12 @@ export default function SuperDashboard() {
                               {user.role === 'teacher' ? 'مدرس' : 'طالب'}
                             </span>
                           </td>
-                          <td>{new Date(user.date).toLocaleDateString('ar-EG')}</td>
+                          <td>{user.date ? new Date(user.date).toLocaleDateString('ar-EG') : '-'}</td>
                           <td><span className="status-dot active"></span> نشط</td>
                         </tr>
-                      ))}
+                      )) : (
+                        <tr><td colSpan="4" style={{textAlign:'center', padding:'20px', color:'#64748b'}}>لا توجد بيانات حديثة</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -153,15 +186,15 @@ export default function SuperDashboard() {
                   <h3>⚡ إجراءات سريعة</h3>
                 </div>
                 <div className="quick-actions">
-                  <button className="action-btn">
+                  <button className="action-btn" onClick={() => window.location.href='/admin/super/teachers'}>
                     <span>{Icons.users}</span>
                     إضافة مدرس جديد
                   </button>
-                  <button className="action-btn">
+                  <button className="action-btn" onClick={() => window.location.href='/admin/super/requests'}>
                     <span>{Icons.activity}</span>
                     مراجعة الطلبات
                   </button>
-                  <button className="action-btn">
+                  <button className="action-btn" onClick={() => window.location.href='/admin/super/finance'}>
                     <span>{Icons.money}</span>
                     تقارير مالية
                   </button>
@@ -192,6 +225,10 @@ export default function SuperDashboard() {
         .stat-card.green .icon { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
         .stat-card.purple .icon { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
         .stat-card.orange .icon { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+
+        .chart-section { background: #1e293b; padding: 20px; border-radius: 16px; border: 1px solid #334155; margin-bottom: 30px; }
+        .chart-section h3 { margin: 0 0 20px 0; color: #f8fafc; font-size: 1.1rem; }
+        .chart-wrapper { height: 300px; width: 100%; }
 
         .content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
         .panel { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; display: flex; flex-direction: column; }
@@ -228,6 +265,6 @@ export default function SuperDashboard() {
           .stats-grid { grid-template-columns: 1fr; }
         }
       `}</style>
-    </AdminLayout>
+    </SuperLayout>
   );
 }
