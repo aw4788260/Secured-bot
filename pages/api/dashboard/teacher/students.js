@@ -1,6 +1,5 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
-import bcrypt from 'bcryptjs';
 
 export default async (req, res) => {
   // 1. التحقق من الصلاحية وجلب بيانات المدرس
@@ -50,7 +49,7 @@ export default async (req, res) => {
   };
 
   // ---------------------------------------------------------
-  // 2. معالجة طلبات GET (جلب البيانات)
+  // 2. معالجة طلبات GET (جلب البيانات - لم يتغير لعرض البيانات فقط)
   // ---------------------------------------------------------
   if (req.method === 'GET') {
     const { 
@@ -71,11 +70,10 @@ export default async (req, res) => {
 
             // تحويل الكل لنصوص للمقارنة الآمنة
             if (!validStudentIds.map(String).includes(targetIdStr)) {
-                 // إرجاع مصفوفات فارغة لضمان عدم حدوث خطأ في الواجهة
                  return res.status(200).json({ courses: [], subjects: [], available_courses: [], available_subjects: [] });
             }
 
-            // 1. جلب الاشتراكات الحالية للطالب (فقط الخاصة بهذا المدرس)
+            // 1. جلب الاشتراكات الحالية للطالب
             const { data: userCourses } = await supabase
                 .from('user_course_access')
                 .select('course_id, courses(title)')
@@ -92,11 +90,10 @@ export default async (req, res) => {
             const ownedCourseIds = userCourses?.map(uc => uc.course_id) || [];
             const ownedSubjectIds = userSubjects?.map(us => us.subject_id) || [];
 
-            // 2. حساب الكورسات المتاحة للإضافة (التي لا يملكها)
+            // 2. حساب الكورسات المتاحة للإضافة
             const availableCourses = myCourses.filter(c => !ownedCourseIds.includes(c.id));
 
             // 3. حساب المواد المتاحة للإضافة
-            // الشروط: الطالب لا يملك المادة AND الطالب لا يملك الكورس الكامل التابعة له المادة
             const availableSubjects = mySubjects.filter(s => {
                 const isOwned = ownedSubjectIds.includes(s.id);
                 const isParentCourseOwned = ownedCourseIds.includes(s.course_id);
@@ -106,47 +103,30 @@ export default async (req, res) => {
             return res.status(200).json({ 
                 courses: userCourses || [], 
                 subjects: userSubjects || [],
-                available_courses: availableCourses, // <--- القائمة المفلترة للكورسات
-                available_subjects: availableSubjects // <--- القائمة المفلترة للمواد
+                available_courses: availableCourses,
+                available_subjects: availableSubjects
             });
         }
 
         // --- الحالة 2: الجدول والبحث ---
-        
-        // 1. نبدأ بكل طلاب المدرس
         let targetStudentIds = await getMyStudentIds();
 
-        // 2. تطبيق فلتر الكورسات (إذا تم تحديده)
+        // 2. تطبيق فلتر الكورسات
         if (courses_filter) {
             const filterCourseIds = courses_filter.split(',');
-            
-            // جلب الطلاب المشتركين في هذه الكورسات المحددة فقط
-            const { data: filteredByCourse } = await supabase
-                .from('user_course_access')
-                .select('user_id')
-                .in('course_id', filterCourseIds);
-            
+            const { data: filteredByCourse } = await supabase.from('user_course_access').select('user_id').in('course_id', filterCourseIds);
             const usersInCourses = filteredByCourse?.map(x => x.user_id) || [];
-            
-            // الاحتفاظ فقط بالطلاب الموجودين في القائمة الأساسية AND في الفلتر
             targetStudentIds = targetStudentIds.filter(id => usersInCourses.includes(id));
         }
 
-        // 3. تطبيق فلتر المواد (إذا تم تحديده)
+        // 3. تطبيق فلتر المواد
         if (subjects_filter) {
             const filterSubjectIds = subjects_filter.split(',');
-            
-            const { data: filteredBySubject } = await supabase
-                .from('user_subject_access')
-                .select('user_id')
-                .in('subject_id', filterSubjectIds);
-            
+            const { data: filteredBySubject } = await supabase.from('user_subject_access').select('user_id').in('subject_id', filterSubjectIds);
             const usersInSubjects = filteredBySubject?.map(x => x.user_id) || [];
-            
             targetStudentIds = targetStudentIds.filter(id => usersInSubjects.includes(id));
         }
 
-        // إذا أصبحت القائمة فارغة بعد الفلترة، نرجع نتيجة فارغة فوراً
         if (targetStudentIds.length === 0) {
             return res.status(200).json({ students: [], total: 0 });
         }
@@ -155,9 +135,9 @@ export default async (req, res) => {
         let query = supabase
             .from('users')
             .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' })
-            .in('id', targetStudentIds); // <--- الفلتر الأساسي: القائمة المفلترة
+            .in('id', targetStudentIds);
 
-        // تطبيق البحث (داخل القائمة المفلترة)
+        // تطبيق البحث
         if (search && search.trim() !== '') {
             const term = search.trim();
             let orQuery = `first_name.ilike.%${term}%,username.ilike.%${term}%,phone.ilike.%${term}%`;
@@ -190,76 +170,32 @@ export default async (req, res) => {
   }
 
   // ---------------------------------------------------------
-  // 3. معالجة طلبات POST (الإجراءات)
+  // 3. معالجة طلبات POST (الإجراءات - منح وسحب فقط)
   // ---------------------------------------------------------
   if (req.method === 'POST') {
-      const { action, userIds, userId, newData, grantList } = req.body;
+      const { action, userIds, userId, grantList } = req.body;
       const targetIds = userIds || (userId ? [userId] : []);
 
       // حماية: التأكد من أن جميع المستهدفين هم طلاب هذا المدرس
       const myStudentIds = await getMyStudentIds();
       const safeMyIds = myStudentIds.map(String);
       
-      // السماح بـ grant_access لأي طالب، وغير ذلك لطلابي فقط
       const isAuthorized = targetIds.every(id => safeMyIds.includes(String(id)) || action === 'grant_access'); 
 
       if (!isAuthorized && action !== 'grant_access') {
           return res.status(403).json({ error: 'عذراً، هذا الإجراء مسموح فقط على طلابك.' });
       }
 
+      // [جديد] حظر أي إجراء غير المنح والسحب
+      if (action !== 'grant_access' && action !== 'revoke_access') {
+          return res.status(403).json({ error: 'عذراً، غير مصرح لك بتعديل بيانات الطلاب أو حذفهم.' });
+      }
+
       try {
-          // -- أ) حذف الطالب (إلغاء اشتراك) --
-          if (action === 'delete_user') {
-              await supabase.from('user_course_access').delete().in('user_id', targetIds).in('course_id', myCourseIds);
-              await supabase.from('user_subject_access').delete().in('user_id', targetIds).in('subject_id', mySubjectIds);
-              
-              return res.status(200).json({ success: true, message: 'تم إلغاء اشتراك الطلاب من كورساتك.' });
-          }
-
-          // -- ب) فك قفل الجهاز --
-          if (action === 'reset_device') {
-              await supabase.from('devices').delete().in('user_id', targetIds);
-              return res.status(200).json({ success: true, message: 'تم إلغاء قفل الأجهزة.' });
-          }
-
-          // -- ج) تغيير الباسورد --
-          if (action === 'change_password') {
-              const hash = await bcrypt.hash(newData.password, 10);
-              await supabase.from('users').update({ password: hash }).eq('id', userId);
-              return res.status(200).json({ success: true, message: 'تم تغيير كلمة المرور.' });
-          }
-
-          // -- د) تغيير اسم المستخدم --
-          if (action === 'change_username') {
-             const { data: existing } = await supabase.from('users').select('id').eq('username', newData.username).neq('id', userId).maybeSingle();
-             if (existing) return res.status(400).json({ error: 'الاسم مستخدم بالفعل.' });
-             await supabase.from('users').update({ username: newData.username }).eq('id', userId);
-             return res.status(200).json({ success: true, message: 'تم التحديث.' });
-          }
-
-          // -- هـ) تغيير الهاتف --
-          if (action === 'change_phone') {
-             // التحقق من وجود الرقم مسبقاً لمستخدم آخر
-             const { data: existingPhone } = await supabase
-                 .from('users')
-                 .select('id')
-                 .eq('phone', newData.phone)
-                 .neq('id', userId) // استثناء المستخدم الحالي من الفحص
-                 .maybeSingle();
-
-             if (existingPhone) {
-                 return res.status(400).json({ error: 'رقم الهاتف مستخدم بالفعل لحساب آخر.' });
-             }
-
-             await supabase.from('users').update({ phone: newData.phone }).eq('id', userId);
-             return res.status(200).json({ success: true, message: 'تم تحديث رقم الهاتف بنجاح.' });
-          }
-
-          // -- و) منح صلاحيات (Grant) --
+          // -- أ) منح صلاحيات (Grant) --
           if (action === 'grant_access') {
               const { courses = [], subjects = [] } = grantList || {};
               
-              // حماية: التأكد أن المدرس يمنح صلاحية لكورساته هو فقط
               const safeCourses = courses.filter(id => myCourseIds.includes(Number(id)) || myCourseIds.includes(String(id)));
               const safeSubjects = subjects.filter(id => mySubjectIds.includes(Number(id)) || mySubjectIds.includes(String(id)));
 
@@ -277,7 +213,7 @@ export default async (req, res) => {
               return res.status(200).json({ success: true, message: 'تم منح الصلاحيات.' });
           }
 
-          // -- ز) سحب صلاحيات (Revoke) --
+          // -- ب) سحب صلاحيات (Revoke) --
           if (action === 'revoke_access') {
               const { courseId, subjectId } = req.body;
               
