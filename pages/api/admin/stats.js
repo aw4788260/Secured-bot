@@ -1,5 +1,5 @@
-import { supabase } from '../../../../lib/supabaseClient';
-import { checkAdminSession } from '../../../../lib/dashboardHelper'; // تأكد من أن الدالة موجودة في هذا المسار
+import { supabase } from '../../../lib/supabaseClient';
+import { checkAdminSession } from '../../../lib/dashboardHelper'; // تأكد من أن الدالة موجودة في هذا المسار
 
 export default async function handler(req, res) {
   // 1. التحقق من نوع الطلب
