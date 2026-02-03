@@ -30,7 +30,7 @@ export default function StudentsPage() {
   const [userSubs, setUserSubs] = useState({ courses: [], subjects: [] });
   const [loadingSubs, setLoadingSubs] = useState(false);
 
-  // [جديد] متغير لتخزين الكورسات والمواد المتاحة للمنح (التي لا يملكها الطالب)
+  // متغير لتخزين الكورسات والمواد المتاحة للمنح
   const [grantOptions, setGrantOptions] = useState({ courses: [], subjects: [] }); 
 
   const [showGrantModal, setShowGrantModal] = useState(false);
@@ -57,7 +57,6 @@ export default function StudentsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-        // تحميل قائمة الكورسات للفلتر الرئيسي (كل كورسات المدرس)
         if (allCourses.length === 0) {
             const resCourses = await fetch('/api/dashboard/teacher/content');
             const coursesData = await resCourses.json();
@@ -123,14 +122,12 @@ export default function StudentsPage() {
   const openUserProfile = async (user) => {
       setViewUser(user);
       setLoadingSubs(true);
-      // تفريغ الخيارات القديمة
       setGrantOptions({ courses: [], subjects: [] });
       try {
           const res = await fetch(`/api/dashboard/teacher/students?get_details_for_user=${user.id}`);
           const data = await res.json();
           setUserSubs(data);
           
-          // [تعديل] حفظ الخيارات المتاحة للمنح (المفلترة من الباك اند)
           setGrantOptions({
               courses: data.available_courses || [],
               subjects: data.available_subjects || []
@@ -155,7 +152,7 @@ export default function StudentsPage() {
               if (viewUser && ['grant_access','revoke_access','change_username','change_phone'].includes(action)) {
                   if (action === 'change_username') setViewUser({...viewUser, username: payload.newData.username});
                   if (action === 'change_phone') setViewUser({...viewUser, phone: payload.newData.phone});
-                  openUserProfile(viewUser); // إعادة تحميل بيانات المستخدم لتحديث القوائم
+                  openUserProfile(viewUser);
                   fetchData();
               } else {
                   fetchData();
@@ -193,9 +190,7 @@ export default function StudentsPage() {
   const handleBulkAction = (actionType) => {
       if (!selectedUsers.length) return;
       if (actionType === 'grant') {
-        // في حالة المنح الجماعي، نستخدم كل الكورسات لأننا لا نعرف تقاطع ما يملكونه
-        // لذا سنملأ grantOptions بكل الكورسات مؤقتاً
-        setGrantOptions({ courses: allCourses, subjects: [] }); // ملاحظة: المواد الفردية صعبة في الجماعي، يفضل الاكتفاء بالكورسات أو تركها فارغة ليختار من الكل
+        setGrantOptions({ courses: allCourses, subjects: [] }); 
         openGrantModal('bulk');
       }
       else if (actionType === 'reset_device') showConfirm('إلغاء قفل الأجهزة للمحددين؟', () => runApiCall('reset_device', { userIds: selectedUsers }));
@@ -215,16 +210,27 @@ export default function StudentsPage() {
       }
   };
 
-  // دالة مساعدة للتحقق من إمكانية الحذف
   const canDeleteUser = (user) => {
       if (String(user.id) === String(currentUserId)) return false;
-      // المدرس يستطيع حذف الطالب العادي، لكن لا يحذف المشرف
       if (!user.is_admin) return true; 
-      return false; // المشرف محمي من الحذف عبر هذه الصفحة (يتم حذفه من صفحة الفريق)
+      return false; 
   };
   
   const totalPages = Math.ceil(totalStudents / itemsPerPage);
   const hasActiveFilters = activeFilters.courses.length > 0 || activeFilters.subjects.length > 0;
+
+  // --- دالة مساعدة لتجهيز قائمة المنح ---
+  // نستخدم allCourses لأنها تحتوي على تفاصيل المواد، ونفلترها بناءً على المتاح للطالب
+  const getRenderableGrantGroups = () => {
+    return allCourses.filter(course => {
+        if (grantTarget === 'bulk') return true;
+        // نعرض المجموعة إذا كان الكورس متاحاً أو إذا كان لديه مواد متاحة
+        const isCourseAvailable = grantOptions.courses.some(c => c.id === course.id);
+        const hasSubjectsAvailable = course.subjects?.some(s => grantOptions.subjects.some(gs => gs.id === s.id));
+        return isCourseAvailable || hasSubjectsAvailable;
+    });
+  };
+  const renderableGrantGroups = getRenderableGrantGroups();
 
   return (
     <TeacherLayout title="إدارة الطلاب">
@@ -388,42 +394,51 @@ export default function StudentsPage() {
               <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
                   <div className="modal-head"><h3>➕ إضافة صلاحيات</h3><button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button></div>
                   <div className="modal-content scrollable">
-                      {/* [تعديل هام] هنا يتم استخدام grantOptions التي تم فلترتها، بدلاً من allCourses */}
-                      {(grantTarget === 'bulk' ? allCourses : grantOptions.courses).map(course => (
-                          <div key={course.id} className="course-group">
-                              <label className="checkbox-row main"><input type="checkbox" checked={selectedGrantItems.courses.includes(course.id)} onChange={() => toggleGrantItem('courses', course.id)} /><span>📦 {course.title} (كامل)</span></label>
-                              <div className="filter-subs">
-                                    {/* عرض المواد فقط إذا كان الكورس نفسه معروضاً كمتاح للمواد، 
-                                        أو إذا كان كورس جديد بالكامل ونحن نعرض مواده للاختيار الجزئي. 
-                                        ولكن بما أن grantOptions.subjects تحتوي فقط المواد المتاحة (التي لا يملك الطالب الكورس الكامل لها)،
-                                        فإننا نحتاج منطق عرض ذكي هنا.
-                                    */}
-                                    {/* الحل الأبسط والفعال: نعرض مواد الكورس ونفلترها بناءً على وجودها في grantOptions.subjects */}
-                                    {course.subjects?.filter(s => 
-                                        grantTarget === 'bulk' || // في حالة الجماعي نعرض كل شيء
-                                        grantOptions.subjects.some(gs => gs.id === s.id) // في حالة الفردي نعرض المتاح فقط
-                                    ).map(subject => (
-                                        <label key={subject.id} className="checkbox-row sub">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedGrantItems.subjects.includes(subject.id)} 
-                                                onChange={() => toggleGrantItem('subjects', subject.id)} 
-                                                // تعطيل اختيار المادة إذا تم اختيار الكورس الكامل
-                                                disabled={selectedGrantItems.courses.includes(course.id)} 
-                                            />
-                                            <span>{subject.title}</span>
-                                        </label>
-                                    ))}
+                      {renderableGrantGroups.length > 0 ? renderableGrantGroups.map(course => {
+                          // هل الكورس نفسه متاح للمنح؟
+                          const isCourseGrantable = grantTarget === 'bulk' || grantOptions.courses.some(c => c.id === course.id);
+                          
+                          // ما هي المواد المتاحة في هذا الكورس؟
+                          const visibleSubjects = course.subjects?.filter(s => 
+                              grantTarget === 'bulk' || grantOptions.subjects.some(gs => gs.id === s.id)
+                          ) || [];
+
+                          return (
+                              <div key={course.id} className="course-group">
+                                  {isCourseGrantable ? (
+                                      <label className="checkbox-row main">
+                                          <input 
+                                              type="checkbox" 
+                                              checked={selectedGrantItems.courses.includes(course.id)} 
+                                              onChange={() => toggleGrantItem('courses', course.id)} 
+                                          />
+                                          <span>📦 {course.title} (كامل)</span>
+                                      </label>
+                                  ) : (
+                                      <div className="checkbox-row main" style={{cursor: 'default', opacity: 0.7}}>
+                                          <span>📦 {course.title} (مملوك مسبقاً)</span>
+                                      </div>
+                                  )}
+
+                                  <div className="filter-subs">
+                                      {visibleSubjects.map(subject => (
+                                          <label key={subject.id} className="checkbox-row sub">
+                                              <input 
+                                                  type="checkbox" 
+                                                  checked={selectedGrantItems.subjects.includes(subject.id)} 
+                                                  onChange={() => toggleGrantItem('subjects', subject.id)}
+                                                  disabled={selectedGrantItems.courses.includes(course.id)}
+                                              />
+                                              <span>{subject.title}</span>
+                                          </label>
+                                      ))}
+                                      {visibleSubjects.length === 0 && !isCourseGrantable && <span style={{fontSize:'0.8em', color:'#64748b', marginRight:'20px'}}>جميع المواد مملوكة</span>}
+                                  </div>
                               </div>
-                              {/* إذا كان الكورس موجوداً ولكن لا توجد مواد متاحة للعرض تحته (لأنه يملك بعضها)، 
-                                  يمكننا إخفاء القائمة الفرعية أو تركها فارغة، الكود أعلاه سيتعامل مع ذلك تلقائياً */}
-                          </div>
-                      ))}
-                      
-                      {/* رسالة في حالة عدم وجود خيارات */}
-                      {grantTarget !== 'bulk' && grantOptions.courses.length === 0 && grantOptions.subjects.length === 0 && (
-                          <div style={{textAlign: 'center', padding: '20px', color: '#94a3b8'}}>
-                              هذا الطالب يمتلك بالفعل جميع الكورسات والمواد المتاحة لك.
+                          );
+                      }) : (
+                          <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>
+                              لا توجد صلاحيات جديدة يمكن إضافتها لهذا الطالب.
                           </div>
                       )}
                   </div>
