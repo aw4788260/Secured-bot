@@ -9,7 +9,7 @@ export default async (req, res) => {
 
   const teacherId = user.teacherId;
 
-  // -- خطوة أ: جلب معرفات المحتوى الخاص بالمدرس (للتأكد من الملكية) --
+  // -- خطوة أ: جلب معرفات المحتوى الخاص بالمدرس (للتأكد من الملكية وللقوائم) --
   // 1. جلب كورسات المدرس
   const { data: myCourses } = await supabase
     .from('courses')
@@ -67,12 +67,15 @@ export default async (req, res) => {
         if (get_details_for_user) {
             // تحقق: هل هذا الطالب من طلابي؟
             const validStudentIds = await getMyStudentIds();
+            const targetIdStr = String(get_details_for_user);
+
             // تحويل الكل لنصوص للمقارنة الآمنة
-            if (!validStudentIds.map(String).includes(String(get_details_for_user))) {
-                 return res.status(200).json({ courses: [], subjects: [] }); // ليس طالبك
+            if (!validStudentIds.map(String).includes(targetIdStr)) {
+                 // إرجاع مصفوفات فارغة لضمان عدم حدوث خطأ في الواجهة
+                 return res.status(200).json({ courses: [], subjects: [], available_courses: [], available_subjects: [] });
             }
 
-            // جلب الاشتراكات (فقط الخاصة بهذا المدرس)
+            // 1. جلب الاشتراكات الحالية للطالب (فقط الخاصة بهذا المدرس)
             const { data: userCourses } = await supabase
                 .from('user_course_access')
                 .select('course_id, courses(title)')
@@ -85,9 +88,26 @@ export default async (req, res) => {
                 .eq('user_id', get_details_for_user)
                 .in('subject_id', mySubjectIds);
 
+            // استخراج IDs التي يملكها الطالب حالياً
+            const ownedCourseIds = userCourses?.map(uc => uc.course_id) || [];
+            const ownedSubjectIds = userSubjects?.map(us => us.subject_id) || [];
+
+            // 2. حساب الكورسات المتاحة للإضافة (التي لا يملكها)
+            const availableCourses = myCourses.filter(c => !ownedCourseIds.includes(c.id));
+
+            // 3. حساب المواد المتاحة للإضافة
+            // الشروط: الطالب لا يملك المادة AND الطالب لا يملك الكورس الكامل التابعة له المادة
+            const availableSubjects = mySubjects.filter(s => {
+                const isOwned = ownedSubjectIds.includes(s.id);
+                const isParentCourseOwned = ownedCourseIds.includes(s.course_id);
+                return !isOwned && !isParentCourseOwned;
+            });
+
             return res.status(200).json({ 
                 courses: userCourses || [], 
-                subjects: userSubjects || [] 
+                subjects: userSubjects || [],
+                available_courses: availableCourses, // <--- القائمة المفلترة للكورسات
+                available_subjects: availableSubjects // <--- القائمة المفلترة للمواد
             });
         }
 
@@ -227,6 +247,7 @@ export default async (req, res) => {
           if (action === 'grant_access') {
               const { courses = [], subjects = [] } = grantList || {};
               
+              // حماية: التأكد أن المدرس يمنح صلاحية لكورساته هو فقط
               const safeCourses = courses.filter(id => myCourseIds.includes(Number(id)) || myCourseIds.includes(String(id)));
               const safeSubjects = subjects.filter(id => mySubjectIds.includes(Number(id)) || mySubjectIds.includes(String(id)));
 
