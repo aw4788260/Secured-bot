@@ -236,9 +236,22 @@ const executeLogin = async () => {
       });
 
       if (res.ok) {
-          window.open('/admin/teacher', '_blank');
+          const data = await res.json();
+          
+          // ✅ الخطوة الحاسمة: تحديث الذاكرة المحلية ببيانات المدرس
+          localStorage.setItem('admin_user_id', data.user.id);
+          localStorage.setItem('admin_name', data.user.name);
+          // لا نغير الـ Redirect path هنا لأن صفحة الدخول ستوجهك تلقائياً بناءً على الدور
+          
           showToast(`تم الدخول لحساب ${teacherToLogin.name} بنجاح`, 'success');
           setLoginModalOpen(false);
+
+          // فتح لوحة التحكم في تبويب جديد
+          // نستخدم setTimeout لضمان حفظ الـ localStorage قبل الفتح
+          setTimeout(() => {
+              window.open('/admin/teacher', '_blank');
+          }, 100);
+          
       } else {
           showToast('فشل الدخول، تأكد من البيانات', 'error');
       }
@@ -247,7 +260,7 @@ const executeLogin = async () => {
       showToast('خطأ في الاتصال', 'error');
   }
 };
-
+  
   const filteredTeachers = teachers.filter(t => 
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     t.dashboard_username?.includes(searchQuery) ||
