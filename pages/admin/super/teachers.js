@@ -21,20 +21,25 @@ export default function SuperTeachers() {
   // Modals States
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false); // ✅ مودال الحذف الجديد
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   
   const [selectedStats, setSelectedStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   
   const [editingId, setEditingId] = useState(null);
-  const [teacherToDelete, setTeacherToDelete] = useState(null); // ✅ لتخزين المدرس المراد حذفه
+  const [teacherToDelete, setTeacherToDelete] = useState(null);
 
+  // تحديث حالة الفورم لتشمل البيانات الجديدة
   const [formData, setFormData] = useState({
     name: '', 
     phone: '', 
     specialty: '',
-    dashboard_username: '', dashboard_password: '', // بيانات الداشبورد
-    app_username: '', app_password: '' // بيانات التطبيق
+    bio: '',              // جديد: النبذة
+    whatsapp_number: '',  // جديد: واتساب
+    cash_numbers: '',     // جديد: أرقام الكاش (نص)
+    instapay_numbers: '', // جديد: أرقام انستا (نص)
+    dashboard_username: '', dashboard_password: '', 
+    app_username: '', app_password: ''
   });
 
   const fetchTeachers = async () => {
@@ -48,16 +53,14 @@ export default function SuperTeachers() {
 
   useEffect(() => { fetchTeachers(); }, []);
 
-  // --- دوال عرض التفاصيل ---
+  // --- 1. دوال عرض التفاصيل والإحصائيات ---
   const handleViewStats = async (teacher) => {
     setStatsModalOpen(true);
     setLoadingStats(true);
-    // عرض البيانات الأساسية فوراً
     setSelectedStats({ ...teacher }); 
     try {
       const res = await fetch(`/api/dashboard/super/teacher-stats?id=${teacher.id}`);
       if (res.ok) {
-        // ✅ التصحيح هنا: استخراج البيانات أولاً ثم التحديث
         const statsData = await res.json();
         setSelectedStats(prev => ({ ...prev, ...statsData }));
       }
@@ -65,21 +68,34 @@ export default function SuperTeachers() {
     finally { setLoadingStats(false); }
   };
 
-  // --- دوال النموذج (إضافة/تعديل) ---
+  // --- 2. دوال النموذج (إضافة/تعديل) ---
   const handleOpenForm = (teacher = null) => {
     if (teacher) {
       setEditingId(teacher.id);
+      
+      // تحويل مصفوفات الدفع إلى نصوص مفصولة بفاصلة للعرض في الـ input
+      const pd = teacher.payment_details || {};
+      const cashStr = Array.isArray(pd.cash_numbers) ? pd.cash_numbers.join(', ') : '';
+      const instaStr = Array.isArray(pd.instapay_numbers) ? pd.instapay_numbers.join(', ') : '';
+
       setFormData({ 
         name: teacher.name, 
         phone: teacher.phone,
         specialty: teacher.specialty,
-        dashboard_username: teacher.dashboard_username, dashboard_password: '', 
-        app_username: teacher.app_username, app_password: ''
+        bio: teacher.bio || '',
+        whatsapp_number: teacher.whatsapp_number || '',
+        cash_numbers: cashStr,
+        instapay_numbers: instaStr,
+        dashboard_username: teacher.dashboard_username || '', 
+        dashboard_password: '', 
+        app_username: teacher.app_username || '', 
+        app_password: ''
       });
     } else {
       setEditingId(null);
       setFormData({ 
-        name: '', phone: '', specialty: '',
+        name: '', phone: '', specialty: '', bio: '', whatsapp_number: '',
+        cash_numbers: '', instapay_numbers: '',
         dashboard_username: '', dashboard_password: '',
         app_username: '', app_password: ''
       });
@@ -92,7 +108,19 @@ export default function SuperTeachers() {
     try {
       const url = '/api/dashboard/super/teachers';
       const method = editingId ? 'PUT' : 'POST';
-      const bodyData = editingId ? { ...formData, id: editingId } : formData;
+
+      // تحويل نصوص الدفع إلى مصفوفات JSON
+      const payment_details = {
+          cash_numbers: formData.cash_numbers.split(',').map(s => s.trim()).filter(Boolean),
+          instapay_numbers: formData.instapay_numbers.split(',').map(s => s.trim()).filter(Boolean),
+          instapay_links: [] // يمكن إضافته لاحقاً
+      };
+
+      const bodyData = { 
+          ...formData, 
+          payment_details, // إرفاق كائن الدفع
+          id: editingId 
+      };
 
       const res = await fetch(url, {
           method,
@@ -110,7 +138,7 @@ export default function SuperTeachers() {
     } catch (error) { alert("حدث خطأ أثناء الاتصال"); }
   };
 
-  // --- دوال الحذف (الأنيقة) ---
+  // --- 3. دوال الحذف ---
   const confirmDelete = (teacher) => {
     setTeacherToDelete(teacher);
     setDeleteModalOpen(true);
@@ -156,7 +184,7 @@ export default function SuperTeachers() {
         <div className="top-bar">
           <div>
             <h1>👨‍🏫 إدارة المدرسين</h1>
-            <p>إدارة الحسابات (التطبيق ولوحة التحكم) ومتابعة الإحصائيات.</p>
+            <p>إدارة الحسابات، التفاصيل المالية، وبيانات الدخول.</p>
           </div>
           <button className="btn-primary" onClick={() => handleOpenForm()}>
             {Icons.add} مدرس جديد
@@ -192,7 +220,6 @@ export default function SuperTeachers() {
                       </div>
                     </td>
                     <td>
-                        {/* عرض مزدوج لبيانات الدخول */}
                         <div className="credentials-cell">
                             <div className="cred-row">
                                 <span className="lbl">Dash:</span>
@@ -225,7 +252,7 @@ export default function SuperTeachers() {
         </div>
       </div>
 
-      {/* --- مودال الإضافة / التعديل (شامل البيانات المزدوجة) --- */}
+      {/* --- نافذة الإضافة / التعديل المحسنة --- */}
       {formModalOpen && (
         <div className="modal-overlay">
           <div className="modal form-modal">
@@ -234,9 +261,10 @@ export default function SuperTeachers() {
               <button onClick={() => setFormModalOpen(false)}>{Icons.close}</button>
             </div>
             <form onSubmit={handleSave}>
-              {/* القسم الأول: البيانات الشخصية */}
+              
+              {/* 1. البيانات الشخصية */}
               <div className="form-section">
-                <h4>1. البيانات الشخصية</h4>
+                <h4>1. البيانات الأساسية والاتصال</h4>
                 <div className="form-group">
                     <label>الاسم بالكامل</label>
                     <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="مثال: أ. محمد أحمد"/>
@@ -247,18 +275,43 @@ export default function SuperTeachers() {
                         <input type="text" required value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}/>
                     </div>
                     <div className="form-group">
-                        <label>الهاتف</label>
+                        <label>هاتف الهاتف (للدخول)</label>
                         <input type="text" required dir="ltr" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})}/>
+                    </div>
+                </div>
+                <div className="form-row">
+                    <div className="form-group">
+                        <label>رقم واتساب (اختياري)</label>
+                        <input type="text" dir="ltr" value={formData.whatsapp_number} onChange={e => setFormData({...formData, whatsapp_number: e.target.value})} placeholder="مثال: 01xxxxxxxxx"/>
+                    </div>
+                    <div className="form-group">
+                        <label>نبذة مختصرة (Bio)</label>
+                        <input type="text" value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} placeholder="مدرس أول في..."/>
                     </div>
                 </div>
               </div>
 
-              {/* القسم الثاني: بيانات لوحة التحكم */}
+              {/* 2. البيانات المالية */}
               <div className="form-section">
-                <h4>2. بيانات دخول لوحة التحكم (للمدرس)</h4>
+                <h4>2. بيانات الدفع (Payment Details)</h4>
                 <div className="form-row">
                     <div className="form-group">
-                        <label>اسم المستخدم (لوحة التحكم)</label>
+                        <label>أرقام فودافون كاش (افصل بفاصلة)</label>
+                        <input type="text" dir="ltr" value={formData.cash_numbers} onChange={e => setFormData({...formData, cash_numbers: e.target.value})} placeholder="010xxxx, 012xxxx"/>
+                    </div>
+                    <div className="form-group">
+                        <label>أرقام إنستا باي (افصل بفاصلة)</label>
+                        <input type="text" dir="ltr" value={formData.instapay_numbers} onChange={e => setFormData({...formData, instapay_numbers: e.target.value})} placeholder="username@instapay, 01xxxx"/>
+                    </div>
+                </div>
+              </div>
+
+              {/* 3. بيانات لوحة التحكم */}
+              <div className="form-section">
+                <h4>3. دخول لوحة التحكم (للمدرس)</h4>
+                <div className="form-row">
+                    <div className="form-group">
+                        <label>اسم المستخدم (Dashboard)</label>
                         <input type="text" required dir="ltr" className="input-dash" value={formData.dashboard_username} onChange={e => setFormData({...formData, dashboard_username: e.target.value})}/>
                     </div>
                     <div className="form-group">
@@ -268,12 +321,12 @@ export default function SuperTeachers() {
                 </div>
               </div>
 
-              {/* القسم الثالث: بيانات التطبيق */}
+              {/* 4. بيانات التطبيق */}
               <div className="form-section">
-                <h4>3. بيانات دخول التطبيق (للطلاب)</h4>
+                <h4>4. دخول التطبيق (للطلاب)</h4>
                 <div className="form-row">
                     <div className="form-group">
-                        <label>اسم المستخدم (للتطبيق)</label>
+                        <label>اسم المستخدم (App)</label>
                         <input type="text" required dir="ltr" className="input-app" value={formData.app_username} onChange={e => setFormData({...formData, app_username: e.target.value})}/>
                     </div>
                     <div className="form-group">
@@ -292,7 +345,7 @@ export default function SuperTeachers() {
         </div>
       )}
 
-      {/* --- مودال الحذف الأنيق (الجديد) --- */}
+      {/* --- نافذة الحذف الأنيقة --- */}
       {deleteModalOpen && teacherToDelete && (
         <div className="modal-overlay">
             <div className="modal delete-modal">
@@ -311,7 +364,7 @@ export default function SuperTeachers() {
         </div>
       )}
 
-      {/* --- مودال الإحصائيات --- */}
+      {/* --- نافذة الإحصائيات --- */}
       {statsModalOpen && selectedStats && (
         <div className="modal-overlay">
           <div className="modal stats-modal">
