@@ -317,7 +317,7 @@ const executeLogin = async () => {
                       <div className="actions">
                         <button className="btn-icon view" onClick={() => handleViewStats(t)} title="التفاصيل والمشرفين">{Icons.eye}</button>
                         <button className="btn-icon edit" onClick={() => handleOpenForm(t)} title="تعديل">{Icons.edit}</button>
-                        <button className="btn-icon login" onClick={() => confirmLogin(teacher)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
+                        <button className="btn-icon login" onClick={() => confirmLogin(t)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
                         <button className="btn-icon delete" onClick={() => confirmDelete(t)} title="حذف">{Icons.trash}</button>
                       </div>
                     </td>
