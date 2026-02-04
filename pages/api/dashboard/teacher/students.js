@@ -49,7 +49,7 @@ export default async (req, res) => {
   };
 
   // ---------------------------------------------------------
-  // 2. معالجة طلبات GET (جلب البيانات - لم يتغير لعرض البيانات فقط)
+  // 2. معالجة طلبات GET (جلب البيانات - لم يتغير)
   // ---------------------------------------------------------
   if (req.method === 'GET') {
     const { 
@@ -64,16 +64,13 @@ export default async (req, res) => {
     try {
         // --- الحالة 1: طلب تفاصيل طالب معين (للمودال) ---
         if (get_details_for_user) {
-            // تحقق: هل هذا الطالب من طلابي؟
             const validStudentIds = await getMyStudentIds();
             const targetIdStr = String(get_details_for_user);
 
-            // تحويل الكل لنصوص للمقارنة الآمنة
             if (!validStudentIds.map(String).includes(targetIdStr)) {
                  return res.status(200).json({ courses: [], subjects: [], available_courses: [], available_subjects: [] });
             }
 
-            // 1. جلب الاشتراكات الحالية للطالب
             const { data: userCourses } = await supabase
                 .from('user_course_access')
                 .select('course_id, courses(title)')
@@ -86,14 +83,11 @@ export default async (req, res) => {
                 .eq('user_id', get_details_for_user)
                 .in('subject_id', mySubjectIds);
 
-            // استخراج IDs التي يملكها الطالب حالياً
             const ownedCourseIds = userCourses?.map(uc => uc.course_id) || [];
             const ownedSubjectIds = userSubjects?.map(us => us.subject_id) || [];
 
-            // 2. حساب الكورسات المتاحة للإضافة
             const availableCourses = myCourses.filter(c => !ownedCourseIds.includes(c.id));
 
-            // 3. حساب المواد المتاحة للإضافة
             const availableSubjects = mySubjects.filter(s => {
                 const isOwned = ownedSubjectIds.includes(s.id);
                 const isParentCourseOwned = ownedCourseIds.includes(s.course_id);
@@ -111,7 +105,6 @@ export default async (req, res) => {
         // --- الحالة 2: الجدول والبحث ---
         let targetStudentIds = await getMyStudentIds();
 
-        // 2. تطبيق فلتر الكورسات
         if (courses_filter) {
             const filterCourseIds = courses_filter.split(',');
             const { data: filteredByCourse } = await supabase.from('user_course_access').select('user_id').in('course_id', filterCourseIds);
@@ -119,7 +112,6 @@ export default async (req, res) => {
             targetStudentIds = targetStudentIds.filter(id => usersInCourses.includes(id));
         }
 
-        // 3. تطبيق فلتر المواد
         if (subjects_filter) {
             const filterSubjectIds = subjects_filter.split(',');
             const { data: filteredBySubject } = await supabase.from('user_subject_access').select('user_id').in('subject_id', filterSubjectIds);
@@ -131,13 +123,11 @@ export default async (req, res) => {
             return res.status(200).json({ students: [], total: 0 });
         }
 
-        // 4. بناء الاستعلام النهائي
         let query = supabase
             .from('users')
             .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' })
             .in('id', targetStudentIds);
 
-        // تطبيق البحث
         if (search && search.trim() !== '') {
             const term = search.trim();
             let orQuery = `first_name.ilike.%${term}%,username.ilike.%${term}%,phone.ilike.%${term}%`;
@@ -145,7 +135,6 @@ export default async (req, res) => {
             query = query.or(orQuery);
         }
 
-        // Pagination
         const from = (page - 1) * limit;
         const to = from + limit - 1;
         query = query.order('created_at', { ascending: false }).range(from, to);
@@ -170,50 +159,125 @@ export default async (req, res) => {
   }
 
   // ---------------------------------------------------------
-  // 3. معالجة طلبات POST (الإجراءات - منح وسحب فقط)
+  // 3. معالجة طلبات POST (الإجراءات - التعديل هنا)
   // ---------------------------------------------------------
   if (req.method === 'POST') {
       const { action, userIds, userId, grantList } = req.body;
       const targetIds = userIds || (userId ? [userId] : []);
 
-      // حماية: التأكد من أن جميع المستهدفين هم طلاب هذا المدرس
       const myStudentIds = await getMyStudentIds();
       const safeMyIds = myStudentIds.map(String);
       
+      // السماح بـ grant_access لأي مستخدم (لإضافته لأول مرة)، لكن تقييد الباقي للطلاب الحاليين
       const isAuthorized = targetIds.every(id => safeMyIds.includes(String(id)) || action === 'grant_access'); 
 
       if (!isAuthorized && action !== 'grant_access') {
           return res.status(403).json({ error: 'عذراً، هذا الإجراء مسموح فقط على طلابك.' });
       }
 
-      // [جديد] حظر أي إجراء غير المنح والسحب
       if (action !== 'grant_access' && action !== 'revoke_access') {
           return res.status(403).json({ error: 'عذراً، غير مصرح لك بتعديل بيانات الطلاب أو حذفهم.' });
       }
 
       try {
-          // -- أ) منح صلاحيات (Grant) --
+          // -- أ) منح صلاحيات (Grant) مع تسجيل مالي --
           if (action === 'grant_access') {
               const { courses = [], subjects = [] } = grantList || {};
               
+              // التحقق من الملكية
               const safeCourses = courses.filter(id => myCourseIds.includes(Number(id)) || myCourseIds.includes(String(id)));
               const safeSubjects = subjects.filter(id => mySubjectIds.includes(Number(id)) || mySubjectIds.includes(String(id)));
 
-              const cInserts = [];
-              const sInserts = [];
+              // ✅ خطوة 1: جلب تفاصيل المحتوى (للسعر والعنوان)
+              let courseInfos = [];
+              if (safeCourses.length > 0) {
+                  const { data } = await supabase.from('courses').select('id, title, price').in('id', safeCourses);
+                  courseInfos = data || [];
+              }
+
+              let subjectInfos = [];
+              if (safeSubjects.length > 0) {
+                  const { data } = await supabase.from('subjects').select('id, title, price, courses(title)').in('id', safeSubjects);
+                  subjectInfos = data || [];
+              }
+
+              // ✅ خطوة 2: جلب بيانات الطلاب المستهدفين (للسجل)
+              const { data: usersData } = await supabase.from('users').select('id, username, first_name, phone').in('id', targetIds);
+
+              const reqInserts = []; // سجلات الطلبات المالية
+              const cInserts = [];   // سجلات صلاحيات الكورسات
+              const sInserts = [];   // سجلات صلاحيات المواد
               
               targetIds.forEach(uid => {
-                  safeCourses.forEach(cid => cInserts.push({ user_id: uid, course_id: cid }));
-                  safeSubjects.forEach(sid => sInserts.push({ user_id: uid, subject_id: sid }));
+                  const user = usersData?.find(u => u.id == uid);
+                  if (!user) return;
+
+                  // معالجة الكورسات
+                  safeCourses.forEach(cid => {
+                      const cInfo = courseInfos.find(c => c.id == cid);
+                      if (cInfo) {
+                          // تسجيل مالي
+                          reqInserts.push({
+                              user_id: uid,
+                              teacher_id: teacherId,
+                              status: 'approved',
+                              total_price: cInfo.price || 0,
+                              user_name: user.first_name,
+                              user_username: user.username,
+                              phone: user.phone,
+                              course_title: cInfo.title,
+                              requested_data: [{
+                                  id: cid,
+                                  type: 'course',
+                                  title: cInfo.title,
+                                  price: cInfo.price || 0
+                              }],
+                              user_note: 'تم التفعيل يدوياً من قائمة الطلاب'
+                          });
+                      }
+                      cInserts.push({ user_id: uid, course_id: cid });
+                  });
+
+                  // معالجة المواد
+                  safeSubjects.forEach(sid => {
+                      const sInfo = subjectInfos.find(s => s.id == sid);
+                      if (sInfo) {
+                           const title = `${sInfo.title} (${sInfo.courses?.title})`;
+                           // تسجيل مالي
+                           reqInserts.push({
+                              user_id: uid,
+                              teacher_id: teacherId,
+                              status: 'approved',
+                              total_price: sInfo.price || 0,
+                              user_name: user.first_name,
+                              user_username: user.username,
+                              phone: user.phone,
+                              course_title: title,
+                              requested_data: [{
+                                  id: sid,
+                                  type: 'subject',
+                                  title: title,
+                                  price: sInfo.price || 0
+                              }],
+                              user_note: 'تم التفعيل يدوياً من قائمة الطلاب'
+                          });
+                      }
+                      sInserts.push({ user_id: uid, subject_id: sid });
+                  });
               });
+
+              // ✅ التنفيذ دفعة واحدة (Bulk Insert)
+              if (reqInserts.length > 0) {
+                  await supabase.from('subscription_requests').insert(reqInserts);
+              }
 
               if (cInserts.length) await supabase.from('user_course_access').upsert(cInserts, { onConflict: 'user_id, course_id' });
               if (sInserts.length) await supabase.from('user_subject_access').upsert(sInserts, { onConflict: 'user_id, subject_id' });
               
-              return res.status(200).json({ success: true, message: 'تم منح الصلاحيات.' });
+              return res.status(200).json({ success: true, message: 'تم منح الصلاحيات وتسجيل العمليات بنجاح.' });
           }
 
-          // -- ب) سحب صلاحيات (Revoke) --
+          // -- ب) سحب صلاحيات (Revoke) - لم يتغير --
           if (action === 'revoke_access') {
               const { courseId, subjectId } = req.body;
               
@@ -229,6 +293,7 @@ export default async (req, res) => {
           }
 
       } catch (err) {
+          console.error("Student Action Error:", err);
           return res.status(500).json({ error: err.message });
       }
   }
