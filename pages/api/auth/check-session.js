@@ -12,23 +12,25 @@ export default async (req, res) => {
 
   try {
     // 2. البحث عن المستخدم صاحب هذا التوكن
-    // [تصحيح] إضافة first_name للاستعلام
+    // ✅ تم إضافة role للتحقق من نوع المستخدم
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, session_token, is_admin, first_name')
+      .select('id, session_token, is_admin, first_name, role') 
       .eq('session_token', sessionToken)
       .single();
 
     // 3. التحقق من التطابق والصلاحية
-    if (error || !user || !user.is_admin) {
+    // ✅ التعديل هنا: السماح بالدخول إذا كان أدمن أو مدرس
+    if (error || !user || (!user.is_admin && user.role !== 'teacher')) {
       return res.status(401).json({ valid: false });
     }
 
-    // [تصحيح] إرجاع الاسم في الرد
+    // إرجاع البيانات
     return res.status(200).json({ 
         valid: true, 
         userId: user.id,
-        name: user.first_name // هذا ما ينتظره AdminLayout
+        name: user.first_name,
+        role: user.role
     });
 
   } catch (err) {
