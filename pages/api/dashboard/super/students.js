@@ -13,15 +13,15 @@ export default async function handler(req, res) {
     const { page = 1, limit = 30, search, courses_filter, subjects_filter, get_details_for_user } = req.query;
 
     // ---------------------------------------------------------
-    // A. جلب تفاصيل طالب محدد (للمودال - عرض الاشتراكات + القوائم المتاحة)
+    // A. جلب تفاصيل مستخدم محدد (للمودال - عرض الاشتراكات + قوائم المنح)
     // ---------------------------------------------------------
     if (get_details_for_user) {
       try {
-        // 1. جلب كل الكورسات والمواد الموجودة في النظام (للمقارنة)
+        // 1. جلب كل الكورسات والمواد في النظام (للقوائم المنسدلة)
         const { data: allCourses } = await supabase.from('courses').select('id, title');
         const { data: allSubjects } = await supabase.from('subjects').select('id, title, course_id');
 
-        // 2. جلب اشتراكات الطالب الحالية
+        // 2. جلب اشتراكات المستخدم الحالية
         const { data: userCourses } = await supabase
           .from('user_course_access')
           .select('course_id, courses(id, title)')
@@ -32,12 +32,11 @@ export default async function handler(req, res) {
           .select('subject_id, subjects(id, title, course_id)')
           .eq('user_id', get_details_for_user);
 
-        // استخراج IDs التي يملكها الطالب حالياً
+        // استخراج IDs التي يملكها المستخدم حالياً
         const ownedCourseIds = userCourses?.map(uc => uc.course_id) || [];
         const ownedSubjectIds = userSubjects?.map(us => us.subject_id) || [];
 
         // 3. حساب الكورسات المتاحة للإضافة (الكل - المملوك)
-        // استخدام (|| []) يمنع الخطأ إذا فشل الاتصال بقاعدة البيانات
         const safeAllCourses = allCourses || [];
         const availableCourses = safeAllCourses.filter(c => !ownedCourseIds.includes(c.id));
 
@@ -45,7 +44,7 @@ export default async function handler(req, res) {
         const safeAllSubjects = allSubjects || [];
         const availableSubjects = safeAllSubjects.filter(s => {
             const isOwned = ownedSubjectIds.includes(s.id);
-            // إذا كان الطالب يملك الكورس بالكامل، لا داعي لإظهار مواده الفردية
+            // إذا كان الطالب يملك الكورس، فهو يملك مواده تلقائياً
             const isParentCourseOwned = s.course_id ? ownedCourseIds.includes(s.course_id) : false;
             return !isOwned && !isParentCourseOwned;
         });
@@ -53,7 +52,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
           courses: userCourses || [],
           subjects: userSubjects || [],
-          available_courses: availableCourses, // القائمة التي ستظهر في الـ Select
+          available_courses: availableCourses, // القائمة المتوافقة مع الـ Select في الفرونت
           available_subjects: availableSubjects
         });
 
@@ -64,18 +63,18 @@ export default async function handler(req, res) {
     }
 
     // ---------------------------------------------------------
-    // B. جلب قائمة الطلاب (للجدول الرئيسي)
+    // B. جلب قائمة المستخدمين (للجدول الرئيسي)
     // ---------------------------------------------------------
     try {
       const from = (page - 1) * limit;
       const to = from + limit - 1;
 
       // بناء الاستعلام الأساسي
-      // نستخدم neq('is_admin', true) لضمان ظهور الجميع حتى لو كان الـ role فارغاً
+      // ✅ التعديل: جلب الطلاب والمشرفين (student + moderator)
       let query = supabase
         .from('users')
         .select('id, first_name, username, phone, role, is_blocked, created_at, is_admin, devices(id, fingerprint)', { count: 'exact' })
-        .neq('is_admin', true) 
+        .in('role', ['student', 'moderator']) // يسمح بظهور الطلاب والمشرفين
         .order('created_at', { ascending: false })
         .range(from, to);
 
@@ -97,7 +96,7 @@ export default async function handler(req, res) {
         
         const userIds = courseUsers?.map(u => u.user_id) || [];
         if (userIds.length > 0) query = query.in('id', userIds);
-        else query = query.eq('id', 0); // لا نتائج
+        else query = query.eq('id', 0);
       }
 
       // تطبيق فلتر المواد
@@ -126,19 +125,19 @@ export default async function handler(req, res) {
           return {
             ...user,
             device_linked: hasDevice,
-            // نرسل الـ fingerprint كـ device_id لكي تظهر في الفرونت اند
             device_id: mainDevice ? mainDevice.fingerprint : null 
           };
       });
 
       return res.status(200).json({
         students: formattedData,
-        total: count
+        total: count,
+        isMainAdmin: true // ✅ إضافة هذا العلم ليتمكن الفرونت إند من عرض الأزرار الإضافية (مثل الحذف النهائي)
       });
 
     } catch (err) {
       console.error(err);
-      return res.status(500).json({ error: 'فشل جلب الطلاب' });
+      return res.status(500).json({ error: 'فشل جلب المستخدمين' });
     }
   }
 
@@ -150,31 +149,35 @@ export default async function handler(req, res) {
     const targetIds = userIds || (userId ? [userId] : []);
 
     try {
+      // متغير لتخزين رسالة النجاح
+      let successMessage = '';
+
       switch (action) {
         // 1. الحظر
         case 'block_user':
           await supabase.from('users').update({ is_blocked: true }).in('id', targetIds);
-          return res.json({ message: 'تم حظر الطالب/الطلاب بنجاح' });
+          successMessage = 'تم حظر المستخدم/المستخدمين بنجاح';
+          break;
 
         case 'unblock_user':
           await supabase.from('users').update({ is_blocked: false }).in('id', targetIds);
-          return res.json({ message: 'تم فك الحظر بنجاح' });
+          successMessage = 'تم فك الحظر بنجاح';
+          break;
 
         // 2. تصفير الجهاز
         case 'reset_device':
-          // حذف السجلات من جدول devices
           const { error: resetErr } = await supabase
              .from('devices')
              .delete()
              .in('user_id', targetIds);
-          
           if (resetErr) throw resetErr;
-          return res.json({ message: 'تم تصفير الأجهزة المرتبطة' });
+          successMessage = 'تم تصفير الأجهزة المرتبطة';
+          break;
 
         // 3. حذف مستخدم
         case 'delete_user':
         case 'delete_user_bulk':
-          if (!targetIds.length) return res.status(400).json({ error: 'لم يتم تحديد طلاب' });
+          if (!targetIds.length) return res.status(400).json({ error: 'لم يتم تحديد مستخدمين' });
           
           // الحذف اليدوي لضمان النظافة
           await supabase.from('user_course_access').delete().in('user_id', targetIds);
@@ -184,7 +187,8 @@ export default async function handler(req, res) {
           const { error: delErr } = await supabase.from('users').delete().in('id', targetIds);
           if (delErr) throw delErr;
 
-          return res.json({ message: `تم حذف ${targetIds.length} حسابات نهائياً` });
+          successMessage = `تم حذف ${targetIds.length} حسابات نهائياً`;
+          break;
 
         // 4. تحديث البيانات
         case 'update_profile':
@@ -199,7 +203,8 @@ export default async function handler(req, res) {
           }
           const { error: updateErr } = await supabase.from('users').update(updates).eq('id', userId);
           if (updateErr) throw updateErr;
-          return res.json({ message: 'تم تحديث البيانات بنجاح' });
+          successMessage = 'تم تحديث البيانات بنجاح';
+          break;
 
         // 5. منح صلاحيات (Grant Access)
         case 'grant_access':
@@ -230,7 +235,8 @@ export default async function handler(req, res) {
               await supabase.from('user_subject_access').upsert(subjectInserts, { onConflict: 'user_id,subject_id' });
           }
 
-          return res.json({ message: 'تم منح الصلاحيات بنجاح' });
+          successMessage = 'تم منح الصلاحيات بنجاح';
+          break;
 
         // 6. سحب صلاحية (Revoke)
         case 'revoke_access':
@@ -240,15 +246,19 @@ export default async function handler(req, res) {
           if (subjectId) {
              await supabase.from('user_subject_access').delete().in('user_id', targetIds).eq('subject_id', subjectId);
           }
-          return res.json({ message: 'تم سحب الصلاحية' });
+          successMessage = 'تم سحب الصلاحية';
+          break;
 
         default:
           return res.status(400).json({ error: 'إجراء غير معروف' });
       }
 
+      // ✅ الرد الموحد المتوافق مع الفرونت إند (بإضافة success: true)
+      return res.json({ success: true, message: successMessage });
+
     } catch (err) {
       console.error(`Error in action ${action}:`, err);
-      return res.status(500).json({ error: 'حدث خطأ أثناء تنفيذ الإجراء: ' + err.message });
+      return res.status(500).json({ success: false, error: 'حدث خطأ: ' + err.message });
     }
   }
 
