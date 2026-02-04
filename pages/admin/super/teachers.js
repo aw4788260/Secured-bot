@@ -74,6 +74,9 @@ export default function SuperTeachers() {
     dashboard_username: '', dashboard_password: '', 
     app_username: '', app_password: ''
   });
+  // حالة مودال تسجيل الدخول
+const [loginModalOpen, setLoginModalOpen] = useState(false);
+const [teacherToLogin, setTeacherToLogin] = useState(null);
 
   const fetchTeachers = async () => {
     setLoading(true);
@@ -215,23 +218,35 @@ export default function SuperTeachers() {
     }
   };
 
-  const handleLoginAs = async (username) => {
-    if (!username || !confirm(`⚠️ هل أنت متأكد من الدخول لحساب المدرس (${username})؟`)) return;
-    try {
-        const res = await fetch('/api/auth/super-login-as', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username })
-        });
-        if (res.ok) {
-            window.open('/admin/teacher', '_blank');
-            showToast('تم تسجيل الدخول بنجاح', 'success');
-        }
-        else {
-            showToast('فشل الدخول، تأكد من صحة البيانات', 'error');
-        }
-    } catch (err) { console.error(err); }
-  };
+  // 1. فتح نافذة التأكيد
+const confirmLogin = (teacher) => {
+  setTeacherToLogin(teacher);
+  setLoginModalOpen(true);
+};
+
+// 2. تنفيذ الدخول الفعلي
+const executeLogin = async () => {
+  if (!teacherToLogin) return;
+  
+  try {
+      const res = await fetch('/api/auth/super-login-as', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: teacherToLogin.dashboard_username })
+      });
+
+      if (res.ok) {
+          window.open('/admin/teacher', '_blank');
+          showToast(`تم الدخول لحساب ${teacherToLogin.name} بنجاح`, 'success');
+          setLoginModalOpen(false);
+      } else {
+          showToast('فشل الدخول، تأكد من البيانات', 'error');
+      }
+  } catch (err) { 
+      console.error(err);
+      showToast('خطأ في الاتصال', 'error');
+  }
+};
 
   const filteredTeachers = teachers.filter(t => 
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -302,7 +317,7 @@ export default function SuperTeachers() {
                       <div className="actions">
                         <button className="btn-icon view" onClick={() => handleViewStats(t)} title="التفاصيل والمشرفين">{Icons.eye}</button>
                         <button className="btn-icon edit" onClick={() => handleOpenForm(t)} title="تعديل">{Icons.edit}</button>
-                        <button className="btn-icon login" onClick={() => handleLoginAs(t.dashboard_username)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
+                        <button className="btn-icon login" onClick={() => confirmLogin(teacher)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
                         <button className="btn-icon delete" onClick={() => confirmDelete(t)} title="حذف">{Icons.trash}</button>
                       </div>
                     </td>
@@ -486,6 +501,25 @@ export default function SuperTeachers() {
         </div>
       )}
 
+        {/* --- نافذة تأكيد الدخول الأنيقة --- */}
+{loginModalOpen && teacherToLogin && (
+  <div className="modal-overlay">
+      <div className="modal login-modal">
+          <div className="login-icon-box">
+              {Icons.key}
+          </div>
+          <h3>تأكيد الدخول</h3>
+          <p>هل أنت متأكد من الدخول إلى لوحة تحكم المدرس <strong>{teacherToLogin.name}</strong>؟</p>
+          <p className="info-text">سيتم فتح لوحة التحكم الخاصة به في تبويب جديد بصلاحيات كاملة.</p>
+          
+          <div className="modal-actions centered">
+              <button className="btn-cancel" onClick={() => setLoginModalOpen(false)}>إلغاء</button>
+              <button className="btn-confirm" onClick={executeLogin}>نعم، دخول</button>
+          </div>
+      </div>
+  </div>
+)}
+  
       <style jsx>{`
         /* Styles */
         .page-container { padding-bottom: 50px; }
@@ -570,6 +604,37 @@ export default function SuperTeachers() {
         .blue .val { color: #38bdf8; } .green .val { color: #4ade80; }
         .yellow .val { color: #facc15; } .purple .val { color: #c084fc; }
         .full { width: 100%; }
+
+         /* تنسيقات مودال الدخول */
+.login-modal { max-width: 400px; text-align: center; border: 1px solid #a855f7; }
+.login-icon-box { 
+    background: rgba(168, 85, 247, 0.1); 
+    width: 60px; height: 60px; 
+    border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; 
+    margin: 0 auto 15px auto; 
+    color: #a855f7;
+}
+.info-text { 
+    color: #a855f7; 
+    font-size: 0.85rem; 
+    background: rgba(168, 85, 247, 0.05); 
+    padding: 10px; 
+    border-radius: 8px; 
+    margin-top: 10px; 
+    border: 1px dashed rgba(168, 85, 247, 0.3);
+}
+.btn-confirm { 
+    background: #a855f7; 
+    border: none; 
+    color: white; 
+    padding: 8px 25px; 
+    border-radius: 8px; 
+    font-weight: bold; 
+    cursor: pointer; 
+    transition: 0.2s;
+}
+.btn-confirm:hover { background: #9333ea; }
 
         .moderators-section { margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px; }
         .moderators-section h4 { color: #cbd5e1; font-size: 0.95rem; margin-bottom: 10px; }
