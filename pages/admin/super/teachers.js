@@ -21,13 +21,13 @@ export default function SuperTeachers() {
   // Modals States
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false); // مودال الحذف الجديد
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false); // ✅ مودال الحذف الجديد
   
   const [selectedStats, setSelectedStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   
   const [editingId, setEditingId] = useState(null);
-  const [teacherToDelete, setTeacherToDelete] = useState(null);
+  const [teacherToDelete, setTeacherToDelete] = useState(null); // ✅ لتخزين المدرس المراد حذفه
 
   const [formData, setFormData] = useState({
     name: '', 
@@ -52,10 +52,15 @@ export default function SuperTeachers() {
   const handleViewStats = async (teacher) => {
     setStatsModalOpen(true);
     setLoadingStats(true);
+    // عرض البيانات الأساسية فوراً
     setSelectedStats({ ...teacher }); 
     try {
       const res = await fetch(`/api/dashboard/super/teacher-stats?id=${teacher.id}`);
-      if (res.ok) setSelectedStats(prev => ({ ...prev, ...(await res.json()) }));
+      if (res.ok) {
+        // ✅ التصحيح هنا: استخراج البيانات أولاً ثم التحديث
+        const statsData = await res.json();
+        setSelectedStats(prev => ({ ...prev, ...statsData }));
+      }
     } catch (err) { console.error(err); } 
     finally { setLoadingStats(false); }
   };
@@ -68,8 +73,8 @@ export default function SuperTeachers() {
         name: teacher.name, 
         phone: teacher.phone,
         specialty: teacher.specialty,
-        dashboard_username: teacher.dashboard_username || '', dashboard_password: '', 
-        app_username: teacher.app_username || '', app_password: ''
+        dashboard_username: teacher.dashboard_username, dashboard_password: '', 
+        app_username: teacher.app_username, app_password: ''
       });
     } else {
       setEditingId(null);
