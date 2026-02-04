@@ -226,6 +226,8 @@ const confirmLogin = (teacher) => {
 
 // 2. تنفيذ الدخول الفعلي
 // استبدل دالة executeLogin القديمة بهذه النسخة المحسنة
+// ... داخل Teachers.js
+
 const executeLogin = async () => {
   if (!teacherToLogin) return;
   
@@ -239,7 +241,7 @@ const executeLogin = async () => {
       if (res.ok) {
           const data = await res.json();
           
-          // 1. تنظيف بيانات السوبر أدمن القديمة من الذاكرة لضمان عدم التضارب
+          // 1. تنظيف بيانات السوبر أدمن القديمة
           localStorage.removeItem('admin_user_id');
           localStorage.removeItem('admin_name');
           localStorage.removeItem('is_admin_session');
@@ -252,10 +254,9 @@ const executeLogin = async () => {
           showToast(`تم الدخول لحساب ${teacherToLogin.name} بنجاح`, 'success');
           setLoginModalOpen(false);
 
-          // 3. تأخير بسيط جداً قبل الفتح لضمان حفظ الكوكيز والذاكرة
+          // 3. التوجيه في نفس الصفحة (أكثر استقراراً للكوكيز)
           setTimeout(() => {
-              // التوجيه المباشر للوحة المدرس
-              window.open('/admin/teacher', '_blank');
+              window.location.href = '/admin/teacher';
           }, 500);
           
       } else {
