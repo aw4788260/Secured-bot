@@ -6,26 +6,22 @@ export default async function handler(req, res) {
   const authResult = await requireSuperAdmin(req, res);
   if (authResult.error) return; 
 
-  // -- تحضير البيانات: جلب كل المحتوى في النظام (لحساب القوائم المتاحة للمنح) --
-  // السوبر أدمن يرى جميع الكورسات والمواد
-  const { data: allCourses } = await supabase
-    .from('courses')
-    .select('id, title');
-    
-  const { data: allSubjects } = await supabase
-    .from('subjects')
-    .select('id, title, course_id');
-
   // ==========================================================
   // 🟢 التعامل مع طلبات GET (جلب البيانات)
   // ==========================================================
   if (req.method === 'GET') {
     const { page = 1, limit = 30, search, courses_filter, subjects_filter, get_details_for_user } = req.query;
 
-    // A. جلب تفاصيل طالب محدد (الاشتراكات + ما يمكن إضافته)
+    // ---------------------------------------------------------
+    // A. جلب تفاصيل طالب محدد (للمودال - عرض الاشتراكات + القوائم المتاحة)
+    // ---------------------------------------------------------
     if (get_details_for_user) {
       try {
-        // 1. جلب الاشتراكات الحالية
+        // 1. جلب كل الكورسات والمواد الموجودة في النظام (للمقارنة)
+        const { data: allCourses } = await supabase.from('courses').select('id, title');
+        const { data: allSubjects } = await supabase.from('subjects').select('id, title, course_id');
+
+        // 2. جلب اشتراكات الطالب الحالية
         const { data: userCourses } = await supabase
           .from('user_course_access')
           .select('course_id, courses(id, title)')
@@ -40,38 +36,46 @@ export default async function handler(req, res) {
         const ownedCourseIds = userCourses?.map(uc => uc.course_id) || [];
         const ownedSubjectIds = userSubjects?.map(us => us.subject_id) || [];
 
-        // 2. حساب الكورسات المتاحة للإضافة (الكل - المملوك)
-        const availableCourses = allCourses?.filter(c => !ownedCourseIds.includes(c.id)) || [];
+        // 3. حساب الكورسات المتاحة للإضافة (الكل - المملوك)
+        // استخدام (|| []) يمنع الخطأ إذا فشل الاتصال بقاعدة البيانات
+        const safeAllCourses = allCourses || [];
+        const availableCourses = safeAllCourses.filter(c => !ownedCourseIds.includes(c.id));
 
-        // 3. حساب المواد المتاحة للإضافة (الكل - المملوك - مواد الكورسات المملوكة)
-        const availableSubjects = allSubjects?.filter(s => {
+        // 4. حساب المواد المتاحة للإضافة (الكل - المملوك - مواد الكورسات المملوكة)
+        const safeAllSubjects = allSubjects || [];
+        const availableSubjects = safeAllSubjects.filter(s => {
             const isOwned = ownedSubjectIds.includes(s.id);
-            const isParentCourseOwned = ownedCourseIds.includes(s.course_id);
+            // إذا كان الطالب يملك الكورس بالكامل، لا داعي لإظهار مواده الفردية
+            const isParentCourseOwned = s.course_id ? ownedCourseIds.includes(s.course_id) : false;
             return !isOwned && !isParentCourseOwned;
-        }) || [];
+        });
 
         return res.status(200).json({
           courses: userCourses || [],
           subjects: userSubjects || [],
-          available_courses: availableCourses,
+          available_courses: availableCourses, // القائمة التي ستظهر في الـ Select
           available_subjects: availableSubjects
         });
+
       } catch (err) {
+        console.error("Error fetching details:", err);
         return res.status(500).json({ error: err.message });
       }
     }
 
-    // B. جلب قائمة الطلاب (مع الفلترة والبحث)
+    // ---------------------------------------------------------
+    // B. جلب قائمة الطلاب (للجدول الرئيسي)
+    // ---------------------------------------------------------
     try {
       const from = (page - 1) * limit;
       const to = from + limit - 1;
 
       // بناء الاستعلام الأساسي
-      // ملاحظة: جدول devices مرتبط بـ user_id، لذا نستخدم devices(fingerprint)
+      // نستخدم neq('is_admin', true) لضمان ظهور الجميع حتى لو كان الـ role فارغاً
       let query = supabase
         .from('users')
-        .select('id, first_name, username, phone, role, is_blocked, created_at, is_admin, devices(fingerprint)', { count: 'exact' })
-        .eq('role', 'student') // حسب السكيما role text default 'student'
+        .select('id, first_name, username, phone, role, is_blocked, created_at, is_admin, devices(id, fingerprint)', { count: 'exact' })
+        .neq('is_admin', true) 
         .order('created_at', { ascending: false })
         .range(from, to);
 
@@ -79,7 +83,6 @@ export default async function handler(req, res) {
       if (search) {
         const term = search.trim();
         let orQuery = `first_name.ilike.%${term}%,phone.ilike.%${term}%,username.ilike.%${term}%`;
-        // إذا كان البحث رقمياً قد يكون ID
         if (/^\d+$/.test(term)) orQuery += `,id.eq.${term}`;
         query = query.or(orQuery);
       }
@@ -93,12 +96,8 @@ export default async function handler(req, res) {
           .in('course_id', courseIds);
         
         const userIds = courseUsers?.map(u => u.user_id) || [];
-        
-        if (userIds.length > 0) {
-            query = query.in('id', userIds);
-        } else {
-            query = query.eq('id', 0); // لا نتائج
-        }
+        if (userIds.length > 0) query = query.in('id', userIds);
+        else query = query.eq('id', 0); // لا نتائج
       }
 
       // تطبيق فلتر المواد
@@ -110,22 +109,27 @@ export default async function handler(req, res) {
           .in('subject_id', subjectIds);
 
         const userIds = subjectUsers?.map(u => u.user_id) || [];
-        if (userIds.length > 0) {
-           query = query.in('id', userIds);
-        } else {
-           query = query.eq('id', 0);
-        }
+        if (userIds.length > 0) query = query.in('id', userIds);
+        else query = query.eq('id', 0);
       }
 
       const { data, count, error } = await query;
 
       if (error) throw error;
 
-      // تنسيق البيانات لتوضيح هل يوجد جهاز مرتبط
-      const formattedData = data.map(user => ({
-          ...user,
-          device_linked: user.devices && user.devices.length > 0
-      }));
+      // تنسيق البيانات
+      const formattedData = data.map(user => {
+          // التعامل مع مصفوفة الأجهزة
+          const hasDevice = user.devices && Array.isArray(user.devices) && user.devices.length > 0;
+          const mainDevice = hasDevice ? user.devices[0] : null;
+
+          return {
+            ...user,
+            device_linked: hasDevice,
+            // نرسل الـ fingerprint كـ device_id لكي تظهر في الفرونت اند
+            device_id: mainDevice ? mainDevice.fingerprint : null 
+          };
+      });
 
       return res.status(200).json({
         students: formattedData,
@@ -156,9 +160,9 @@ export default async function handler(req, res) {
           await supabase.from('users').update({ is_blocked: false }).in('id', targetIds);
           return res.json({ message: 'تم فك الحظر بنجاح' });
 
-        // 2. تصفير الجهاز (تصحيح حسب السكيما)
+        // 2. تصفير الجهاز
         case 'reset_device':
-          // ✅ السكيما: جدول devices منفصل، لذا نحذف السجلات المرتبطة بالمستخدم
+          // حذف السجلات من جدول devices
           const { error: resetErr } = await supabase
              .from('devices')
              .delete()
@@ -172,10 +176,10 @@ export default async function handler(req, res) {
         case 'delete_user_bulk':
           if (!targetIds.length) return res.status(400).json({ error: 'لم يتم تحديد طلاب' });
           
-          // على الرغم من وجود ON DELETE CASCADE، الحذف الصريح آمن
+          // الحذف اليدوي لضمان النظافة
           await supabase.from('user_course_access').delete().in('user_id', targetIds);
           await supabase.from('user_subject_access').delete().in('user_id', targetIds);
-          await supabase.from('devices').delete().in('user_id', targetIds); // حذف الأجهزة
+          await supabase.from('devices').delete().in('user_id', targetIds);
           
           const { error: delErr } = await supabase.from('users').delete().in('id', targetIds);
           if (delErr) throw delErr;
@@ -187,10 +191,9 @@ export default async function handler(req, res) {
           if (!data) return res.status(400).json({ error: 'لا توجد بيانات' });
           const updates = { 
              first_name: data.first_name, 
-             phone: data.phone,
+             phone: data.phone, 
              username: data.username 
           };
-          // تشفير الباسورد أو تحديثه
           if (data.password && data.password.trim() !== '') {
              updates.password = data.password; 
           }
