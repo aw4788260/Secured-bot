@@ -1,6 +1,13 @@
 import SuperLayout from '../../../components/SuperLayout';
 import { useState, useEffect } from 'react';
 
+// أيقونة سهم احترافية (Chevron)
+const ChevronIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>
+);
+
 export default function SuperStudentsPage() {
   const [students, setStudents] = useState([]);
   const [allCourses, setAllCourses] = useState([]); 
@@ -120,7 +127,7 @@ export default function SuperStudentsPage() {
       try {
           const res = await fetch(`/api/dashboard/super/students?get_details_for_user=${user.id}`);
           const data = await res.json();
-          // data يحتوي على: courses (المملوكة), subjects (المملوكة), available_courses, available_subjects
+          // data يحتوي على: courses (المملوكة), subjects (المملوكة)
           setUserSubs(data);
       } catch (e) {}
       setLoadingSubs(false);
@@ -351,7 +358,7 @@ export default function SuperStudentsPage() {
           </div>
       )}
 
-      {/* --- Filter Modal --- */}
+      {/* --- Filter Modal (Modern & Sleek) --- */}
       {showFilterModal && (
           <div className="modal-overlay" onClick={() => setShowFilterModal(false)}>
               <div className="modal-box filter-modal" onClick={e => e.stopPropagation()}>
@@ -359,30 +366,41 @@ export default function SuperStudentsPage() {
                       <h3>🌪️ تصفية الطلاب</h3>
                       <button className="close-icon" onClick={() => setShowFilterModal(false)}>✕</button>
                   </div>
-                  <div className="modal-content scrollable">
+                  <div className="modal-content scrollable custom-scrollbar">
                       {allCourses.map(course => (
-                          <div key={course.id} className="expandable-group">
+                          <div key={course.id} className={`expandable-group ${expandedFilters[course.id] ? 'open' : ''}`}>
                               <div className="group-header">
-                                  <button className="expand-btn" onClick={() => toggleExpand(course.id, setExpandedFilters)}>
-                                      {expandedFilters[course.id] ? '▼' : '◀'}
+                                  <button 
+                                      className={`expand-btn ${expandedFilters[course.id] ? 'rotated' : ''}`} 
+                                      onClick={() => toggleExpand(course.id, setExpandedFilters)}
+                                  >
+                                      <ChevronIcon />
                                   </button>
+                                  
                                   <label className="checkbox-row main">
-                                      <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
-                                      <span>📦 {course.title}</span>
+                                      <input 
+                                          type="checkbox" 
+                                          checked={tempFilters.courses.includes(String(course.id))} 
+                                          onChange={() => toggleTempFilter('courses', String(course.id))} 
+                                      />
+                                      <span className="label-text">📦 {course.title}</span>
                                   </label>
                               </div>
                               
-                              {/* القائمة المنسدلة للمواد */}
-                              {expandedFilters[course.id] && (
-                                  <div className="group-body fade-in">
-                                      {course.subjects?.length > 0 ? course.subjects.map(subject => (
-                                          <label key={subject.id} className="checkbox-row sub">
-                                              <input type="checkbox" checked={tempFilters.subjects.includes(String(subject.id))} onChange={() => toggleTempFilter('subjects', String(subject.id))} />
-                                              <span>📄 {subject.title}</span>
-                                          </label>
-                                      )) : <div className="empty-sub">لا توجد مواد</div>}
-                                  </div>
-                              )}
+                              {/* القائمة المنسدلة */}
+                              <div className={`group-body ${expandedFilters[course.id] ? 'show' : ''}`}>
+                                  {course.subjects?.length > 0 ? course.subjects.map(subject => (
+                                      <label key={subject.id} className="checkbox-row sub">
+                                          <div className="tree-line"></div>
+                                          <input 
+                                              type="checkbox" 
+                                              checked={tempFilters.subjects.includes(String(subject.id))} 
+                                              onChange={() => toggleTempFilter('subjects', String(subject.id))} 
+                                          />
+                                          <span className="label-text">{subject.title}</span>
+                                      </label>
+                                  )) : <div className="empty-sub">لا توجد مواد</div>}
+                              </div>
                           </div>
                       ))}
                   </div>
@@ -510,15 +528,21 @@ export default function SuperStudentsPage() {
           <div className="modal-overlay" onClick={() => setShowGrantModal(false)}>
               <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
                   <div className="modal-head"><h3>➕ إضافة صلاحيات {grantTarget === 'bulk' ? 'جماعية' : ''}</h3><button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button></div>
-                  <div className="modal-content scrollable">
+                  <div className="modal-content scrollable custom-scrollbar">
                       {allCourses.map(course => {
                           const courseOwned = isOwned('course', course.id);
+                          const isOpen = expandedGrants[course.id];
+                          
                           return (
-                              <div key={course.id} className={`expandable-group ${courseOwned ? 'owned' : ''}`}>
+                              <div key={course.id} className={`expandable-group ${isOpen ? 'open' : ''} ${courseOwned ? 'owned' : ''}`}>
                                   <div className="group-header">
-                                      <button className="expand-btn" onClick={() => toggleExpand(course.id, setExpandedGrants)}>
-                                          {expandedGrants[course.id] ? '▼' : '◀'}
+                                      <button 
+                                          className={`expand-btn ${isOpen ? 'rotated' : ''}`} 
+                                          onClick={() => toggleExpand(course.id, setExpandedGrants)}
+                                      >
+                                          <ChevronIcon />
                                       </button>
+                                      
                                       <label className="checkbox-row main">
                                           <input 
                                               type="checkbox" 
@@ -526,28 +550,33 @@ export default function SuperStudentsPage() {
                                               onChange={() => toggleGrantItem('courses', course.id)} 
                                               disabled={courseOwned}
                                           />
-                                          <span>📦 {course.title} {courseOwned && <span className="owned-tag">(مملوك)</span>}</span>
+                                          <span className="label-text">
+                                              📦 {course.title} 
+                                              {courseOwned && <span className="owned-badge">مملوك</span>}
+                                          </span>
                                       </label>
                                   </div>
                                   
-                                  {expandedGrants[course.id] && (
-                                      <div className="group-body fade-in">
-                                          {course.subjects?.length > 0 ? course.subjects.map(subject => {
-                                              const subjectOwned = isOwned('subject', subject.id) || selectedGrantItems.courses.includes(course.id);
-                                              return (
-                                                  <label key={subject.id} className="checkbox-row sub">
-                                                      <input 
-                                                          type="checkbox" 
-                                                          checked={selectedGrantItems.subjects.includes(subject.id)} 
-                                                          onChange={() => toggleGrantItem('subjects', subject.id)} 
-                                                          disabled={subjectOwned || courseOwned} 
-                                                      />
-                                                      <span>📄 {subject.title} {isOwned('subject', subject.id) && <span className="owned-tag-sm">✔</span>}</span>
-                                                  </label>
-                                              );
-                                          }) : <div className="empty-sub">لا توجد مواد داخلية</div>}
-                                      </div>
-                                  )}
+                                  <div className={`group-body ${isOpen ? 'show' : ''}`}>
+                                      {course.subjects?.length > 0 ? course.subjects.map(subject => {
+                                          const subjectOwned = isOwned('subject', subject.id) || selectedGrantItems.courses.includes(course.id);
+                                          return (
+                                              <label key={subject.id} className="checkbox-row sub">
+                                                  <div className="tree-line"></div>
+                                                  <input 
+                                                      type="checkbox" 
+                                                      checked={selectedGrantItems.subjects.includes(subject.id)} 
+                                                      onChange={() => toggleGrantItem('subjects', subject.id)} 
+                                                      disabled={subjectOwned || courseOwned} 
+                                                  />
+                                                  <span className="label-text">
+                                                      {subject.title}
+                                                      {isOwned('subject', subject.id) && <span className="check-icon">✔</span>}
+                                                  </span>
+                                              </label>
+                                          );
+                                      }) : <div className="empty-sub">لا توجد مواد داخلية</div>}
+                                  </div>
                               </div>
                           );
                       })}
@@ -613,23 +642,39 @@ export default function SuperStudentsPage() {
         .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
         .modal-footer { padding: 15px 25px; background: #0f172a; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #334155; }
 
-        /* Expandable List Styles (For Filter & Grant) */
-        .expandable-group { background: #0f172a; border-radius: 8px; margin-bottom: 10px; border: 1px solid #334155; overflow: hidden; }
-        .expandable-group.owned { opacity: 0.7; border-color: #1e293b; }
-        .group-header { display: flex; align-items: center; padding: 8px 12px; background: #1e293b; }
-        .expand-btn { background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; margin-left: 8px; transition: 0.2s; }
-        .expand-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        /* Modern Expandable List Styles */
+        .expandable-group { background: #0f172a; border-radius: 10px; margin-bottom: 8px; border: 1px solid #334155; overflow: hidden; transition: border-color 0.2s, background-color 0.2s; }
+        .expandable-group:hover { border-color: #475569; }
+        .expandable-group.open { border-color: #38bdf8; background: #152033; }
+        .expandable-group.owned { opacity: 0.6; border-color: #1e293b; pointer-events: none; }
+        .expandable-group.owned .expand-btn { pointer-events: auto; }
+
+        .group-header { display: flex; align-items: center; padding: 10px; background: transparent; cursor: pointer; }
         
-        .group-body { background: #0f172a; padding: 10px 10px 10px 40px; border-top: 1px solid #334155; }
-        .checkbox-row { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-        .checkbox-row.main { font-weight: bold; color: white; flex: 1; }
-        .checkbox-row.sub { margin-bottom: 8px; color: #cbd5e1; font-size: 0.9em; padding: 4px 0; }
-        .checkbox-row input:disabled + span { color: #64748b; text-decoration: line-through; }
+        .expand-btn { background: rgba(255, 255, 255, 0.05); border: none; color: #94a3b8; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; margin-left: 10px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; }
+        .expand-btn:hover { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+        .expand-btn.rotated { transform: rotate(180deg); background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
+
+        .group-body { max-height: 0; opacity: 0; overflow: hidden; background: #0b1221; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .group-body.show { max-height: 500px; opacity: 1; padding: 5px 0 10px 0; border-top: 1px solid #1e293b; }
+
+        .checkbox-row { display: flex; align-items: center; cursor: pointer; position: relative; user-select: none; }
+        .checkbox-row.main { flex: 1; gap: 10px; }
+        .checkbox-row.sub { padding: 8px 15px 8px 0; margin-right: 24px; border-radius: 6px; transition: background 0.2s; color: #cbd5e1; }
+        .checkbox-row.sub:hover { background: rgba(255, 255, 255, 0.03); }
+
+        /* Tree Line Effect */
+        .tree-line { position: absolute; right: -14px; top: -15px; bottom: 50%; width: 2px; background: #334155; border-bottom-left-radius: 4px; }
+        .checkbox-row.sub::before { content: ''; position: absolute; right: -14px; top: 50%; width: 10px; height: 2px; background: #334155; }
+
+        .label-text { font-size: 0.95rem; font-weight: 500; }
         
-        .owned-tag { font-size: 0.7em; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-right: 8px; }
-        .owned-tag-sm { color: #10b981; margin-right: 5px; font-weight: bold; }
-        .empty-sub { font-size: 0.8em; color: #64748b; font-style: italic; }
-        .fade-in { animation: fadeIn 0.2s ease-in; }
+        input[type="checkbox"] { accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer; }
+        input:disabled + span { color: #64748b; text-decoration: line-through; }
+        
+        .owned-badge { font-size: 0.7em; background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 2px 8px; border-radius: 4px; margin-right: 8px; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .check-icon { color: #34d399; font-weight: bold; margin-right: 8px; }
+        .empty-sub { padding: 15px; text-align: center; color: #475569; font-size: 0.85em; font-style: italic; }
 
         /* Other Styles */
         .user-avatar-placeholder { width: 50px; height: 50px; background: #38bdf8; color: #0f172a; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.5em; font-weight: bold; }
@@ -662,7 +707,6 @@ export default function SuperStudentsPage() {
 
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </SuperLayout>
   );
