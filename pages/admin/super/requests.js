@@ -6,6 +6,11 @@ export default function SuperRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   
+  // ✅ 1. حالات Pagination الجديدة
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 10; // عدد العناصر في كل صفحة
+
   // حالات النوافذ والتنبيهات
   const [modalImage, setModalImage] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
@@ -23,10 +28,22 @@ export default function SuperRequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // ✅ تحديث المسار لجلب الطلبات
-      const res = await fetch(`/api/dashboard/super/requests?status=${filter}`);
-      const data = await res.json();
-      if (Array.isArray(data)) setRequests(data);
+      // ✅ 2. تحديث المسار لإرسال رقم الصفحة والحد الأقصى
+      const res = await fetch(`/api/dashboard/super/requests?status=${filter}&page=${page}&limit=${pageSize}`);
+      const result = await res.json();
+      
+      // ✅ 3. معالجة الاستجابة الجديدة { data, count }
+      if (result.data) {
+          setRequests(result.data);
+          setTotalCount(result.count || 0);
+      } else if (Array.isArray(result)) {
+          // احتياطي في حال كانت الاستجابة مصفوفة مباشرة (للتوافق القديم)
+          setRequests(result);
+          setTotalCount(result.length);
+      } else {
+          setRequests([]);
+          setTotalCount(0);
+      }
     } catch (err) {
       console.error(err);
       showToast('فشل جلب البيانات', 'error');
@@ -35,9 +52,15 @@ export default function SuperRequestsPage() {
     }
   };
 
+  // ✅ 4. إعادة تعيين الصفحة إلى 1 عند تغيير الفلتر
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  // ✅ 5. جلب البيانات عند تغيير الفلتر أو الصفحة
   useEffect(() => {
     fetchRequests();
-  }, [filter]); // إعادة الجلب عند تغيير الفلتر
+  }, [filter, page]);
 
   const initiateAction = (requestId, action) => {
       setRejectionReason('');
@@ -50,7 +73,6 @@ export default function SuperRequestsPage() {
     setProcessingId(requestId);
 
     try {
-      // ✅ تحديث المسار لتنفيذ الإجراء (تفعيل/رفض)
       const res = await fetch('/api/dashboard/super/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,8 +87,10 @@ export default function SuperRequestsPage() {
       
       if (res.ok) {
         showToast(result.message || 'تم تنفيذ العملية بنجاح', 'success');
-        // إزالة الطلب من القائمة الحالية (لأنه لم يعد يطابق الفلتر 'pending' مثلاً)
+        // إزالة الطلب من القائمة الحالية محلياً
         setRequests(requests.filter(r => r.id !== requestId));
+        // تقليل العدد الكلي محلياً للحفاظ على دقة العداد
+        setTotalCount(prev => Math.max(0, prev - 1));
       } else {
         showToast(result.error, 'error');
       }
@@ -76,6 +100,9 @@ export default function SuperRequestsPage() {
       setProcessingId(null);
     }
   };
+
+  // حساب عدد الصفحات الكلي
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
     <SuperLayout title="كل طلبات الاشتراك">
@@ -126,93 +153,113 @@ export default function SuperRequestsPage() {
             <p>جميع الطلبات تمت معالجتها أو لا يوجد بيانات للعرض.</p>
         </div>
       ) : (
-        <div className="requests-grid">
-          {requests.map(req => {
-            // ✅ تحديث مسار البروكسي لعرض الإيصالات
-            const receiptUrl = `/api/dashboard/super/file-proxy?type=receipts&filename=${req.payment_file_path}`;
-            
-            return (
-                <div key={req.id} className={`request-card ${req.status}`}>
-                    <div className="card-header">
-                        <div className="req-meta">
-                            <span className="req-id">#{req.id}</span>
-                            <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
-                        </div>
-                        {req.teachers && (
-                             <span className="teacher-badge">👨‍🏫 {req.teachers.name}</span>
-                        )}
-                    </div>
-
-                    <div className="card-body">
-                        <div className="info-row">
-                            <div className="info-col">
-                                <span className="label">👤 اسم الطالب</span>
-                                <span className="value">{req.user_name}</span>
+        <>
+            <div className="requests-grid">
+            {requests.map(req => {
+                const receiptUrl = `/api/dashboard/super/file-proxy?type=receipts&filename=${req.payment_file_path}`;
+                
+                return (
+                    <div key={req.id} className={`request-card ${req.status}`}>
+                        <div className="card-header">
+                            <div className="req-meta">
+                                <span className="req-id">#{req.id}</span>
+                                <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
                             </div>
-                            <div className="info-col right">
-                                <span className="label">📱 هاتف الطالب</span>
-                                <span className="value ltr">{req.phone}</span>
-                            </div>
-                        </div>
-                        
-                        <div className="price-box">
-                            <span className="label">المبلغ المدفوع</span>
-                            <span className="price-value">{req.total_price} ج.م</span>
-                        </div>
-                        
-                        <div className="details-box">
-                            <span className="label">🛒 المحتوى المطلوب</span>
-                            <p className="details-text">{req.course_title || 'محتوى غير محدد'}</p>
+                            {req.teachers && (
+                                <span className="teacher-badge">👨‍🏫 {req.teachers.name}</span>
+                            )}
                         </div>
 
-                        {req.payment_file_path && (
-                            <div className="receipt-section">
-                                <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع</p>
-                                <div 
-                                    className="receipt-thumbnail-wrapper"
-                                    onClick={() => setModalImage(receiptUrl)}
-                                >
-                                    <img 
-                                        src={receiptUrl} 
-                                        alt="Receipt" 
-                                        className="receipt-thumbnail" 
-                                        loading="lazy"
-                                        onError={(e) => {e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';}}
-                                    />
-                                    <div className="zoom-hint">🔍</div>
+                        <div className="card-body">
+                            <div className="info-row">
+                                <div className="info-col">
+                                    <span className="label">👤 اسم الطالب</span>
+                                    <span className="value">{req.user_name}</span>
+                                </div>
+                                <div className="info-col right">
+                                    <span className="label">📱 هاتف الطالب</span>
+                                    <span className="value ltr">{req.phone}</span>
                                 </div>
                             </div>
+                            
+                            <div className="price-box">
+                                <span className="label">المبلغ المدفوع</span>
+                                <span className="price-value">{req.total_price} ج.م</span>
+                            </div>
+                            
+                            <div className="details-box">
+                                <span className="label">🛒 المحتوى المطلوب</span>
+                                <p className="details-text">{req.course_title || 'محتوى غير محدد'}</p>
+                            </div>
+
+                            {req.payment_file_path && (
+                                <div className="receipt-section">
+                                    <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع</p>
+                                    <div 
+                                        className="receipt-thumbnail-wrapper"
+                                        onClick={() => setModalImage(receiptUrl)}
+                                    >
+                                        <img 
+                                            src={receiptUrl} 
+                                            alt="Receipt" 
+                                            className="receipt-thumbnail" 
+                                            loading="lazy"
+                                            onError={(e) => {e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';}}
+                                        />
+                                        <div className="zoom-hint">🔍</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {filter === 'pending' && (
+                            <div className="card-actions">
+                                <button 
+                                    onClick={() => initiateAction(req.id, 'approve')} 
+                                    disabled={processingId === req.id}
+                                    className="btn approve"
+                                >
+                                    {processingId === req.id ? '...' : '✅ تفعيل'}
+                                </button>
+                                <button 
+                                    onClick={() => initiateAction(req.id, 'reject')} 
+                                    disabled={processingId === req.id}
+                                    className="btn reject"
+                                >
+                                    {processingId === req.id ? '...' : '❌ رفض'}
+                                </button>
+                            </div>
+                        )}
+                        
+                        {filter === 'rejected' && req.rejection_reason && (
+                            <div className="rejection-note">
+                                <strong>سبب الرفض:</strong> {req.rejection_reason}
+                            </div>
                         )}
                     </div>
+                );
+            })}
+            </div>
 
-                    {filter === 'pending' && (
-                        <div className="card-actions">
-                            <button 
-                                onClick={() => initiateAction(req.id, 'approve')} 
-                                disabled={processingId === req.id}
-                                className="btn approve"
-                            >
-                                {processingId === req.id ? '...' : '✅ تفعيل'}
-                            </button>
-                            <button 
-                                onClick={() => initiateAction(req.id, 'reject')} 
-                                disabled={processingId === req.id}
-                                className="btn reject"
-                            >
-                                {processingId === req.id ? '...' : '❌ رفض'}
-                            </button>
-                        </div>
-                    )}
-                    
-                    {filter === 'rejected' && req.rejection_reason && (
-                        <div className="rejection-note">
-                            <strong>سبب الرفض:</strong> {req.rejection_reason}
-                        </div>
-                    )}
-                </div>
-            );
-          })}
-        </div>
+            {/* ✅ 6. أزرار التنقل بين الصفحات */}
+            <div className="pagination-controls">
+                <button 
+                    disabled={page === 1} 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    className="page-btn"
+                >
+                    ➡️ السابق
+                </button>
+                <span className="page-info">صفحة {page} من {totalPages || 1}</span>
+                <button 
+                    disabled={page >= totalPages} 
+                    onClick={() => setPage(p => p + 1)}
+                    className="page-btn"
+                >
+                    التالي ⬅️
+                </button>
+            </div>
+        </>
       )}
 
       {/* نافذة عرض الصورة */}
@@ -344,6 +391,13 @@ export default function SuperRequestsPage() {
         .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* ✅ 7. ستايلات أزرار التنقل */
+        .pagination-controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #334155; }
+        .page-btn { background: #1e293b; color: #38bdf8; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-weight: bold; }
+        .page-btn:hover:not(:disabled) { background: #334155; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; color: #64748b; }
+        .page-info { color: #94a3b8; font-family: monospace; }
       `}</style>
     </SuperLayout>
   );
