@@ -14,6 +14,8 @@ export default function SuperStudentsPage() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeFilters, setActiveFilters] = useState({ courses: [], subjects: [] });
   const [tempFilters, setTempFilters] = useState({ courses: [], subjects: [] });
+  // حالة القوائم المنسدلة للفلتر
+  const [expandedFilters, setExpandedFilters] = useState({});
 
   // التصفح (Pagination)
   const [currentPage, setCurrentPage] = useState(1);
@@ -32,8 +34,10 @@ export default function SuperStudentsPage() {
 
   // للمنح
   const [showGrantModal, setShowGrantModal] = useState(false);
-  const [grantTarget, setGrantTarget] = useState(null);
+  const [grantTarget, setGrantTarget] = useState(null); // 'bulk' OR user object
   const [selectedGrantItems, setSelectedGrantItems] = useState({ courses: [], subjects: [] });
+  // حالة القوائم المنسدلة للمنح
+  const [expandedGrants, setExpandedGrants] = useState({});
 
   const [confirmData, setConfirmData] = useState({ show: false, message: '', onConfirm: null });
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
@@ -50,13 +54,16 @@ export default function SuperStudentsPage() {
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
+  const toggleExpand = (id, stateSetter) => {
+      stateSetter(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
     try {
         // جلب كل الكورسات في النظام لأغراض الفلترة والمنح
         if (allCourses.length === 0) {
-            // ✅ تم تحديث المسار لجلب المحتوى
             const resCourses = await fetch('/api/dashboard/super/content?type=all'); 
             if (resCourses.ok) {
                 const coursesData = await resCourses.json();
@@ -64,11 +71,12 @@ export default function SuperStudentsPage() {
             }
         }
 
-        // ✅ تم تحديث المسار لجلب الطلاب
+        // بناء رابط الـ API مع الفلاتر
         let url = `/api/dashboard/super/students?page=${currentPage}&limit=${itemsPerPage}`;
         
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
+        // إرسال الفلاتر بنفس صيغة الباك اند
         if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
         if (activeFilters.subjects.length > 0) params.append('subjects_filter', activeFilters.subjects.join(','));
         
@@ -105,14 +113,14 @@ export default function SuperStudentsPage() {
           first_name: user.first_name,
           username: user.username,
           phone: user.phone,
-          password: '' // كلمة المرور فارغة افتراضياً
+          password: '' 
       });
       
       setLoadingSubs(true);
       try {
-          // ✅ تم تحديث المسار لجلب تفاصيل الطالب
           const res = await fetch(`/api/dashboard/super/students?get_details_for_user=${user.id}`);
           const data = await res.json();
+          // data يحتوي على: courses (المملوكة), subjects (المملوكة), available_courses, available_subjects
           setUserSubs(data);
       } catch (e) {}
       setLoadingSubs(false);
@@ -121,7 +129,6 @@ export default function SuperStudentsPage() {
   // --- 3. تنفيذ الإجراءات العامة (API) ---
   const runApiCall = async (action, payload, autoCloseProfile = false) => {
       try {
-          // ✅ تم تحديث المسار لتنفيذ الإجراءات
           const res = await fetch('/api/dashboard/super/students', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -135,35 +142,30 @@ export default function SuperStudentsPage() {
                   setViewUser(null);
                   fetchData();
               } else {
-                  // تحديث البيانات دون إغلاق النافذة إذا لم يُطلب ذلك
                   if (viewUser) {
-                      // إذا كان التعديل على بيانات المستخدم، نحدث الواجهة
                       if (action === 'update_profile') {
                           setViewUser({ ...viewUser, ...payload.data });
                       }
-                      // إعادة جلب الاشتراكات
+                      // إعادة جلب الاشتراكات لتحديث القائمة
                       if (['grant_access', 'revoke_access'].includes(action)) {
                            const subRes = await fetch(`/api/dashboard/super/students?get_details_for_user=${viewUser.id}`);
                            const subData = await subRes.json();
                            setUserSubs(subData);
                       }
                   }
-                  fetchData(); // تحديث الجدول الخلفي دائماً
+                  fetchData(); 
               }
-          } else { showToast(resData.error, 'error'); }
+          } else { showToast(resData.error || 'حدث خطأ', 'error'); }
       } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   };
 
   // --- إجراءات الأدمن الخاصة ---
-  
-  // 1. تصفير الجهاز
   const handleResetDevice = () => {
-      showConfirm('هل أنت متأكد من تصفير بصمة الجهاز لهذا الطالب؟ سيتمكن من الدخول من جهاز جديد.', () => {
+      showConfirm('هل أنت متأكد من تصفير بصمة الجهاز لهذا الطالب؟', () => {
           runApiCall('reset_device', { userId: viewUser.id });
       });
   };
 
-  // 2. الحظر / فك الحظر
   const handleToggleBlock = () => {
       const action = viewUser.is_blocked ? 'unblock_user' : 'block_user';
       const msg = viewUser.is_blocked ? 'فك الحظر عن هذا الطالب؟' : 'حظر هذا الطالب ومنعه من الدخول؟';
@@ -172,16 +174,13 @@ export default function SuperStudentsPage() {
       });
   };
 
-  // 3. حذف الحساب نهائياً
   const handleDeleteUser = () => {
-      showConfirm('⚠️ تحذير: هل أنت متأكد تماماً من حذف هذا الحساب؟ سيتم مسح جميع بياناته واشتراكاته ولا يمكن التراجع.', () => {
+      showConfirm('⚠️ تحذير: هل أنت متأكد تماماً من حذف هذا الحساب؟', () => {
           runApiCall('delete_user', { userId: viewUser.id }, true);
       });
   };
 
-  // 4. حفظ تعديلات البيانات
   const handleSaveChanges = () => {
-      // التحقق من البيانات
       if (!editFormData.first_name || !editFormData.phone) return showToast('الاسم والهاتف مطلوبان', 'error');
       
       const payload = {
@@ -190,10 +189,9 @@ export default function SuperStudentsPage() {
               first_name: editFormData.first_name,
               phone: editFormData.phone,
               username: editFormData.username,
-              ...(editFormData.password ? { password: editFormData.password } : {}) // إرسال الباسورد فقط لو تم تغييره
+              ...(editFormData.password ? { password: editFormData.password } : {}) 
           }
       };
-
       runApiCall('update_profile', payload);
       setIsEditing(false);
   };
@@ -202,18 +200,46 @@ export default function SuperStudentsPage() {
   const openGrantModal = (target) => {
       setGrantTarget(target);
       setSelectedGrantItems({ courses: [], subjects: [] });
+      setExpandedGrants({}); // تصفير التوسيع
       setShowGrantModal(true);
   };
+
   const toggleGrantItem = (type, id) => {
       const list = selectedGrantItems[type];
       const newList = list.includes(id) ? list.filter(x => x !== id) : [...list, id];
       setSelectedGrantItems({ ...selectedGrantItems, [type]: newList });
   };
+
   const submitGrant = () => {
       if (!selectedGrantItems.courses.length && !selectedGrantItems.subjects.length) return showToast("اختر شيئاً واحداً على الأقل", 'error');
       const isBulk = grantTarget === 'bulk';
       runApiCall('grant_access', { userIds: isBulk ? selectedUsers : [grantTarget.id], grantList: selectedGrantItems }, false);
       setShowGrantModal(false);
+  };
+
+  // التحقق مما إذا كان العنصر مملوكاً بالفعل (للتعطيل في المودال)
+  const isOwned = (type, id) => {
+      if (grantTarget === 'bulk') return false; // في الجماعي لا نعطل شيئاً
+      if (!userSubs || !userSubs.courses) return false;
+
+      if (type === 'course') {
+          return userSubs.courses.some(c => c.course_id === id);
+      }
+      if (type === 'subject') {
+          // المادة مملوكة إذا كانت في قائمة المواد أو إذا كان الكورس الأب مملوكاً
+          const subjectOwned = userSubs.subjects.some(s => s.subject_id === id);
+          // نحتاج معرفة الكورس الأب للمادة، يمكن استخراجه من allCourses
+          let parentCourseId = null;
+          for (let c of allCourses) {
+              if (c.subjects?.some(s => s.id === id)) {
+                  parentCourseId = c.id;
+                  break;
+              }
+          }
+          const parentOwned = parentCourseId ? userSubs.courses.some(c => c.course_id === parentCourseId) : false;
+          return subjectOwned || parentOwned;
+      }
+      return false;
   };
 
   // --- منطق الفلترة ---
@@ -258,7 +284,7 @@ export default function SuperStudentsPage() {
             onKeyDown={handleSearchKey}
           />
           
-          <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => { setTempFilters(activeFilters); setShowFilterModal(true); }}>
+          <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => { setTempFilters(activeFilters); setExpandedFilters({}); setShowFilterModal(true); }}>
               🌪️ فلترة
           </button>
 
@@ -296,7 +322,7 @@ export default function SuperStudentsPage() {
                             <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{std.id}</td>
                             <td style={{fontWeight:'600'}}>
                                 {std.first_name}
-                                {std.role === 'admin' && <span className="admin-tag">مشرف</span>}
+                                {['admin', 'moderator'].includes(std.role) && <span className="admin-tag">{std.role === 'admin' ? 'مدير' : 'مشرف'}</span>}
                             </td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#38bdf8'}}>{std.username}</td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace'}}>{std.phone}</td>
@@ -335,19 +361,28 @@ export default function SuperStudentsPage() {
                   </div>
                   <div className="modal-content scrollable">
                       {allCourses.map(course => (
-                          <div key={course.id} className="filter-group">
-                              <label className="checkbox-row main">
-                                  <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
-                                  <span>📦 {course.title}</span>
-                              </label>
-                              <div className="filter-subs">
-                                  {course.subjects?.map(subject => (
-                                      <label key={subject.id} className="checkbox-row sub">
-                                          <input type="checkbox" checked={tempFilters.subjects.includes(String(subject.id))} onChange={() => toggleTempFilter('subjects', String(subject.id))} />
-                                          <span>{subject.title}</span>
-                                      </label>
-                                  ))}
+                          <div key={course.id} className="expandable-group">
+                              <div className="group-header">
+                                  <button className="expand-btn" onClick={() => toggleExpand(course.id, setExpandedFilters)}>
+                                      {expandedFilters[course.id] ? '▼' : '◀'}
+                                  </button>
+                                  <label className="checkbox-row main">
+                                      <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
+                                      <span>📦 {course.title}</span>
+                                  </label>
                               </div>
+                              
+                              {/* القائمة المنسدلة للمواد */}
+                              {expandedFilters[course.id] && (
+                                  <div className="group-body fade-in">
+                                      {course.subjects?.length > 0 ? course.subjects.map(subject => (
+                                          <label key={subject.id} className="checkbox-row sub">
+                                              <input type="checkbox" checked={tempFilters.subjects.includes(String(subject.id))} onChange={() => toggleTempFilter('subjects', String(subject.id))} />
+                                              <span>📄 {subject.title}</span>
+                                          </label>
+                                      )) : <div className="empty-sub">لا توجد مواد</div>}
+                                  </div>
+                              )}
                           </div>
                       ))}
                   </div>
@@ -380,7 +415,6 @@ export default function SuperStudentsPage() {
                   </div>
                   
                   <div className="modal-content">
-                      {/* بيانات المستخدم / نموذج التعديل */}
                       <div className="data-form">
                           <div className="data-row">
                               <div className="data-item">
@@ -416,7 +450,7 @@ export default function SuperStudentsPage() {
                                       <input className="input-field ltr" type="password" placeholder="اتركها فارغة لعدم التغيير" value={editFormData.password} onChange={e => setEditFormData({...editFormData, password: e.target.value})} />
                                   ) : (
                                       <div className="val-box">
-                                          {viewUser.device_id ? <span style={{color:'#facc15'}}>مرتبط بجهاز (ID: {viewUser.device_id.substring(0,6)}...)</span> : <span style={{color:'#4ade80'}}>غير مرتبط</span>}
+                                          {viewUser.device_id ? <span style={{color:'#facc15'}}>مرتبط بجهاز</span> : <span style={{color:'#4ade80'}}>غير مرتبط</span>}
                                       </div>
                                   )}
                               </div>
@@ -431,24 +465,16 @@ export default function SuperStudentsPage() {
 
                       <hr className="divider" />
 
-                      {/* أزرار التحكم الخطيرة */}
                       <div className="admin-actions-grid">
-                          <button className="admin-btn yellow" onClick={handleResetDevice}>
-                             🔓 تصفير البصمة (Device Reset)
-                          </button>
-                          
+                          <button className="admin-btn yellow" onClick={handleResetDevice}>🔓 تصفير البصمة</button>
                           <button className={`admin-btn ${viewUser.is_blocked ? 'green' : 'orange'}`} onClick={handleToggleBlock}>
-                             {viewUser.is_blocked ? '✅ فك الحظر (Unblock)' : '🚫 حظر الطالب (Block)'}
+                             {viewUser.is_blocked ? '✅ فك الحظر' : '🚫 حظر الطالب'}
                           </button>
-
-                          <button className="admin-btn red" onClick={handleDeleteUser}>
-                             🗑️ حذف الحساب نهائياً
-                          </button>
+                          <button className="admin-btn red" onClick={handleDeleteUser}>🗑️ حذف الحساب</button>
                       </div>
 
                       <hr className="divider" />
 
-                      {/* الاشتراكات */}
                       <div className="subs-wrapper">
                           <div className="subs-header"><h4>الاشتراكات الحالية</h4><button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ منح صلاحية</button></div>
                           {loadingSubs ? <div className="loader-line"></div> : (
@@ -479,28 +505,52 @@ export default function SuperStudentsPage() {
           </div>
       )}
 
-      {/* --- Grant Modal --- */}
+      {/* --- Grant Modal (Updated with Dropdowns) --- */}
       {showGrantModal && (
           <div className="modal-overlay" onClick={() => setShowGrantModal(false)}>
               <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
                   <div className="modal-head"><h3>➕ إضافة صلاحيات {grantTarget === 'bulk' ? 'جماعية' : ''}</h3><button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button></div>
                   <div className="modal-content scrollable">
-                      {allCourses.map(course => (
-                          <div key={course.id} className="course-group">
-                              <label className="checkbox-row main">
-                                  <input type="checkbox" checked={selectedGrantItems.courses.includes(course.id)} onChange={() => toggleGrantItem('courses', course.id)} />
-                                  <span>📦 {course.title} (كامل)</span>
-                              </label>
-                              <div className="filter-subs">
-                                  {course.subjects?.map(subject => (
-                                      <label key={subject.id} className="checkbox-row sub">
-                                          <input type="checkbox" checked={selectedGrantItems.subjects.includes(subject.id)} onChange={() => toggleGrantItem('subjects', subject.id)} disabled={selectedGrantItems.courses.includes(course.id)} />
-                                          <span>{subject.title}</span>
+                      {allCourses.map(course => {
+                          const courseOwned = isOwned('course', course.id);
+                          return (
+                              <div key={course.id} className={`expandable-group ${courseOwned ? 'owned' : ''}`}>
+                                  <div className="group-header">
+                                      <button className="expand-btn" onClick={() => toggleExpand(course.id, setExpandedGrants)}>
+                                          {expandedGrants[course.id] ? '▼' : '◀'}
+                                      </button>
+                                      <label className="checkbox-row main">
+                                          <input 
+                                              type="checkbox" 
+                                              checked={selectedGrantItems.courses.includes(course.id)} 
+                                              onChange={() => toggleGrantItem('courses', course.id)} 
+                                              disabled={courseOwned}
+                                          />
+                                          <span>📦 {course.title} {courseOwned && <span className="owned-tag">(مملوك)</span>}</span>
                                       </label>
-                                  ))}
+                                  </div>
+                                  
+                                  {expandedGrants[course.id] && (
+                                      <div className="group-body fade-in">
+                                          {course.subjects?.length > 0 ? course.subjects.map(subject => {
+                                              const subjectOwned = isOwned('subject', subject.id) || selectedGrantItems.courses.includes(course.id);
+                                              return (
+                                                  <label key={subject.id} className="checkbox-row sub">
+                                                      <input 
+                                                          type="checkbox" 
+                                                          checked={selectedGrantItems.subjects.includes(subject.id)} 
+                                                          onChange={() => toggleGrantItem('subjects', subject.id)} 
+                                                          disabled={subjectOwned || courseOwned} 
+                                                      />
+                                                      <span>📄 {subject.title} {isOwned('subject', subject.id) && <span className="owned-tag-sm">✔</span>}</span>
+                                                  </label>
+                                              );
+                                          }) : <div className="empty-sub">لا توجد مواد داخلية</div>}
+                                      </div>
+                                  )}
                               </div>
-                          </div>
-                      ))}
+                          );
+                      })}
                   </div>
                   <div className="modal-footer"><button className="cancel-btn" onClick={() => setShowGrantModal(false)}>إلغاء</button><button className="confirm-btn" onClick={submitGrant}>تأكيد ✅</button></div>
               </div>
@@ -511,6 +561,7 @@ export default function SuperStudentsPage() {
       {confirmData.show && <div className="modal-overlay alert-overlay"><div className="alert-box"><h3>تأكيد</h3><p>{confirmData.message}</p><div className="alert-actions"><button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button><button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، تأكيد</button></div></div></div>}
 
       <style jsx>{`
+        /* Global & Layout Styles */
         .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; transform: translateX(150%); transition: transform 0.3s; z-index: 99999999; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .toast.show { transform: translateX(0); } .toast.success { background: #22c55e; } .toast.error { background: #ef4444; }
 
@@ -534,11 +585,9 @@ export default function SuperStudentsPage() {
         .clickable:hover { background: rgba(56, 189, 248, 0.05); cursor: pointer; }
         
         .admin-tag { background: #f59e0b; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 0.7em; margin-right: 8px; font-weight: bold; }
-        
         .status-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
         .status-badge.active { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
         .status-badge.blocked { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-
         .device-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
         .device-badge.used { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .device-badge.free { color: #64748b; }
@@ -546,14 +595,13 @@ export default function SuperStudentsPage() {
         .pagination { display: flex; justify-content: center; gap: 15px; margin-top: 25px; color: #94a3b8; padding-bottom: 50px; align-items: center; }
         .pagination button { padding: 8px 16px; background: #334155; color: white; border: none; border-radius: 6px; cursor: pointer; }
         .pagination button:disabled { opacity: 0.5; }
-        
         .loading-state { padding: 40px; text-align: center; color: #38bdf8; font-weight: bold; }
 
+        /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
         .modal-box { background: #1e293b; width: 90%; border-radius: 16px; border: 1px solid #475569; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 25px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .profile-modal { max-width: 650px; max-height: 90vh; }
-        .grant-modal { max-width: 700px; max-height: 80vh; }
-        .filter-modal { max-width: 500px; max-height: 80vh; }
+        .grant-modal, .filter-modal { max-width: 500px; max-height: 80vh; }
         .alert-box { max-width: 400px; padding: 25px; } 
         .alert-box h3 { margin-top:0; color: #38bdf8; }
 
@@ -562,12 +610,29 @@ export default function SuperStudentsPage() {
         .close-icon { margin-right: auto; background: none; border: none; color: #cbd5e1; font-size: 20px; cursor: pointer; }
         .edit-btn-icon { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 0.85em; cursor: pointer; margin-left: 10px; }
         .edit-btn-icon.cancel { background: transparent; border-color: #64748b; color: #94a3b8; }
-
         .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
         .modal-footer { padding: 15px 25px; background: #0f172a; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #334155; }
 
-        .user-avatar-placeholder { width: 50px; height: 50px; background: #38bdf8; color: #0f172a; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.5em; font-weight: bold; }
+        /* Expandable List Styles (For Filter & Grant) */
+        .expandable-group { background: #0f172a; border-radius: 8px; margin-bottom: 10px; border: 1px solid #334155; overflow: hidden; }
+        .expandable-group.owned { opacity: 0.7; border-color: #1e293b; }
+        .group-header { display: flex; align-items: center; padding: 8px 12px; background: #1e293b; }
+        .expand-btn { background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; margin-left: 8px; transition: 0.2s; }
+        .expand-btn:hover { background: rgba(255,255,255,0.1); color: white; }
         
+        .group-body { background: #0f172a; padding: 10px 10px 10px 40px; border-top: 1px solid #334155; }
+        .checkbox-row { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+        .checkbox-row.main { font-weight: bold; color: white; flex: 1; }
+        .checkbox-row.sub { margin-bottom: 8px; color: #cbd5e1; font-size: 0.9em; padding: 4px 0; }
+        .checkbox-row input:disabled + span { color: #64748b; text-decoration: line-through; }
+        
+        .owned-tag { font-size: 0.7em; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; margin-right: 8px; }
+        .owned-tag-sm { color: #10b981; margin-right: 5px; font-weight: bold; }
+        .empty-sub { font-size: 0.8em; color: #64748b; font-style: italic; }
+        .fade-in { animation: fadeIn 0.2s ease-in; }
+
+        /* Other Styles */
+        .user-avatar-placeholder { width: 50px; height: 50px; background: #38bdf8; color: #0f172a; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.5em; font-weight: bold; }
         .data-form { margin-bottom: 20px; }
         .data-row { display: flex; gap: 20px; margin-bottom: 15px; } .data-item { flex: 1; }
         .data-item label { display: block; color: #94a3b8; font-size: 0.9em; margin-bottom: 5px; }
@@ -576,7 +641,6 @@ export default function SuperStudentsPage() {
         .input-field { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #38bdf8; color: white; border-radius: 6px; outline: none; }
         .input-field.ltr { direction: ltr; font-family: monospace; }
         .full-width { width: 100%; margin-top: 10px; }
-        
         .admin-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
         .admin-btn { padding: 12px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.9em; }
         .admin-btn:hover { opacity: 0.9; transform: translateY(-2px); }
@@ -584,29 +648,21 @@ export default function SuperStudentsPage() {
         .admin-btn.orange { background: #f97316; }
         .admin-btn.green { background: #22c55e; }
         .admin-btn.red { background: #ef4444; }
-        
         .divider { border: 0; border-top: 1px solid #334155; margin: 20px 0; }
-
         .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; }
         .add-sub-btn { background: #38bdf8; color: #0f172a; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em; }
         .subs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .sub-chip { background: #0f172a; border: 1px solid #334155; padding: 8px 12px; border-radius: 20px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
         .sub-chip button { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; }
         .empty-text { color: #64748b; font-size: 0.9em; text-align: center; font-style: italic; }
-
         .confirm-btn { background: #22c55e; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         .confirm-btn.red { background: #ef4444; }
         .cancel-btn { background: transparent; color: #cbd5e1; border: 1px solid #475569; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
         .danger-text { color: #ef4444; border-color: #ef4444; }
 
-        .filter-group, .course-group { margin-bottom: 15px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-        .checkbox-row { display: flex; align-items: center; gap: 10px; padding: 5px; cursor: pointer; }
-        .checkbox-row.main { font-weight: bold; color: white; border-bottom: 1px solid #1e293b; padding-bottom: 8px; margin-bottom: 8px; }
-        .checkbox-row.sub { margin-right: 20px; font-size: 0.95em; color: #cbd5e1; }
-        .filter-subs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
-
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </SuperLayout>
   );
