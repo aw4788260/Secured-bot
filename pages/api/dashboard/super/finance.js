@@ -1,9 +1,8 @@
-import { supabase } from '../../../../lib/supabaseClient'; // ✅ تم تعديل المسار (4 مستويات للخلف)
-import { requireSuperAdmin } from '../../../../lib/dashboardHelper'; // ✅ تم تعديل المسار
+import { supabase } from '../../../../lib/supabaseClient';
+import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 
 export default async function handler(req, res) {
   // 1. التحقق من الصلاحية (سوبر أدمن فقط)
-  // الدالة requireSuperAdmin تقوم بإرسال الرد في حالة الخطأ، لذا نتحقق فقط من وجود error
   const authResult = await requireSuperAdmin(req, res);
   if (authResult?.error) return; 
 
@@ -13,42 +12,46 @@ export default async function handler(req, res) {
 
   const { startDate, endDate } = req.query;
 
-  // نسبة المنصة (يمكن جعلها ديناميكية لاحقاً وجلبها من جدول الإعدادات)
-  const PLATFORM_PERCENTAGE = 0.10; // 10%
+  // تجهيز التواريخ بتنسيق مناسب للدالة (ISO String) مع ضبط التوقيت
+  const formattedStartDate = startDate ? `${startDate}T00:00:00` : null;
+  const formattedEndDate = endDate ? `${endDate}T23:59:59` : null;
 
   try {
-    // 2. إعداد استعلام جلب العمليات (Subscription Requests)
-    // نبدأ ببناء الاستعلام الأساسي
-    let query = supabase
-      .from('subscription_requests')
-      .select(`
-        id,
-        total_price,
-        created_at,
-        course_id,
-        status,
-        courses (
-          id,
-          title,
-          teacher_id
-        )
-      `)
-      .eq('status', 'approved'); // نحسب فقط العمليات المكتملة
+    // ============================================================
+    // 🆕 1. جلب نسبة المنصة من جدول الإعدادات
+    // ============================================================
+    let PLATFORM_PERCENTAGE = 0.10; // القيمة الافتراضية (10%)
 
-    // إضافة فلترة التاريخ إذا وجدت
-    if (startDate) {
-        query = query.gte('created_at', `${startDate}T00:00:00`);
-    }
-    if (endDate) {
-        query = query.lte('created_at', `${endDate}T23:59:59`);
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'platform_percentage')
+      .maybeSingle();
+
+    if (!settingsError && settingsData) {
+      const val = parseFloat(settingsData.value);
+      if (!isNaN(val)) {
+        // تحويل الرقم: إذا كان > 1 (مثل 15) نقسمه على 100، وإلا نستخدمه كما هو
+        PLATFORM_PERCENTAGE = val > 1 ? val / 100 : val;
+      }
     }
 
-    // تنفيذ الاستعلام
-    const { data: transactions, error: txError } = await query;
+    // ============================================================
+    // 🆕 2. حساب الإجمالي الكلي باستخدام RPC (الدالة المعدلة)
+    // ============================================================
+    const { data: totalRevenueRPC, error: rpcError } = await supabase
+      .rpc('get_total_revenue', { 
+        start_date: formattedStartDate, 
+        end_date: formattedEndDate 
+      });
 
-    if (txError) throw txError;
+    if (rpcError) throw rpcError;
 
-    // 3. جلب قائمة المدرسين لربط الأسماء
+    const totalRevenue = totalRevenueRPC || 0;
+
+    // ============================================================
+    // 3. جلب قائمة المدرسين وحساب أرباح كل مدرس
+    // ============================================================
     const { data: teachersList, error: teacherError } = await supabase
       .from('users')
       .select('id, first_name, admin_username')
@@ -56,66 +59,59 @@ export default async function handler(req, res) {
 
     if (teacherError) throw teacherError;
 
-    // تحويل قائمة المدرسين لسهولة الوصول (Map/Object Lookup)
-    // المفتاح هو الـ ID والقيمة هي كائن البيانات
-    const teachersMap = {};
-    teachersList.forEach(t => {
-      teachersMap[t.id] = { 
-        name: t.first_name || t.admin_username || 'مدرس غير معروف', 
-        sales: 0, 
-        transaction_count: 0 
+    // استخدام Promise.all لتنفيذ حسابات المدرسين بشكل متوازي لزيادة السرعة
+    const teachersDataPromises = teachersList.map(async (teacher) => {
+      // استدعاء دالة RPC لحساب أرباح المدرس في الفترة المحددة
+      const { data: teacherSales } = await supabase
+        .rpc('get_teacher_revenue', { 
+            teacher_id_arg: teacher.id,
+            start_date: formattedStartDate, 
+            end_date: formattedEndDate
+        });
+
+      const sales = teacherSales || 0;
+      
+      // حساب النسب
+      const platformFee = sales * PLATFORM_PERCENTAGE;
+      const netProfit = sales - platformFee;
+
+      // حساب عدد العمليات (اختياري، يتم جلبه فقط إذا كان هناك مبيعات لتوفير الموارد)
+      let transactionCount = 0;
+      if (sales > 0) {
+         const { count } = await supabase
+           .from('subscription_requests')
+           .select('id', { count: 'exact', head: true })
+           .eq('teacher_id', teacher.id)
+           .eq('status', 'approved')
+           // نستخدم فلترة التاريخ هنا أيضاً لضمان تطابق العدد مع المبلغ
+           .gte('created_at', formattedStartDate || '1970-01-01')
+           .lte('created_at', formattedEndDate || new Date().toISOString());
+         transactionCount = count || 0;
+      }
+
+      return {
+        id: teacher.id,
+        name: teacher.first_name || teacher.admin_username || 'مدرس غير معروف',
+        sales: sales,
+        transaction_count: transactionCount,
+        platform_fee: platformFee,
+        net_profit: netProfit
       };
     });
 
-    // 4. معالجة العمليات الحسابية
-    let totalRevenue = 0;
-
-    if (transactions && transactions.length > 0) {
-        transactions.forEach(tx => {
-            const price = parseFloat(tx.total_price) || 0;
-            totalRevenue += price;
-
-            // تحديد المدرس صاحب الكورس
-            // نستخدم Optional Chaining (?.) للتأكد من وجود بيانات الكورس
-            const teacherId = tx.courses?.teacher_id;
-            
-            // إذا وجدنا المدرس في القائمة، نقوم بتحديث أرقامه
-            if (teacherId && teachersMap[teacherId]) {
-                teachersMap[teacherId].sales += price;
-                teachersMap[teacherId].transaction_count += 1;
-            }
-        });
-    }
-
-    // 5. تجهيز القائمة النهائية للمدرسين مع حساب النسب
-    const finalTeachersList = Object.keys(teachersMap).map(tId => {
-      const teacher = teachersMap[tId];
-      
-      // لا نعرض المدرسين الذين ليس لديهم مبيعات في الفترة المحددة (اختياري)
-      // if (teacher.sales === 0) return null;
-
-      const platformFee = teacher.sales * PLATFORM_PERCENTAGE;
-      const netProfit = teacher.sales - platformFee;
-
-      return {
-        id: tId,
-        name: teacher.name,
-        sales: teacher.sales,
-        transaction_count: teacher.transaction_count,
-        platform_fee: platformFee, // حصة المنصة
-        net_profit: netProfit      // صافي ربح المدرس
-      };
-    }).filter(item => item !== null); // تصفية القيم الفارغة إذا قمنا بتفعيل شرط المبيعات الصفرية
-
+    // انتظار اكتمال جميع الحسابات وتصفية النتائج
+    const processedTeachersList = await Promise.all(teachersDataPromises);
+    
     // ترتيب القائمة حسب الأكثر مبيعاً (تنازلياً)
-    finalTeachersList.sort((a, b) => b.sales - a.sales);
+    const finalTeachersList = processedTeachersList.sort((a, b) => b.sales - a.sales);
 
-    // 6. تجميع الإحصائيات العامة للمنصة
+    // 4. تجميع الإحصائيات العامة للمنصة
     const platformProfitTotal = totalRevenue * PLATFORM_PERCENTAGE;
     const teachersDueTotal = totalRevenue - platformProfitTotal;
 
     // إرسال الرد النهائي
     return res.status(200).json({
+      percentage_used: (PLATFORM_PERCENTAGE * 100) + '%', // توضيح النسبة المستخدمة
       total_revenue: totalRevenue,
       platform_profit: platformProfitTotal,
       teachers_due: teachersDueTotal,
