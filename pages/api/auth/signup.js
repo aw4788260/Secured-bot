@@ -6,12 +6,16 @@ export default async (req, res) => {
 
   const { firstName, username, password, phone } = req.body;
 
-  // 1. التحقق من وجود البيانات
-  if (!firstName || !username || !password || !phone) {
-    return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة' });
+  // ✅ تعديل 1: معالجة رقم الهاتف ليكون null حقيقي إذا لم يتم إدخاله
+  // نعالج الحالة إذا كان "null" كنص، أو نص فارغ، أو undefined
+  const phoneToSave = (phone && phone !== 'null' && phone.trim() !== '') ? phone : null;
+
+  // ✅ تعديل 2: إزالة phone من شرط التحقق من وجود البيانات
+  if (!firstName || !username || !password) {
+    return res.status(400).json({ success: false, message: 'الاسم واسم المستخدم وكلمة المرور حقول مطلوبة' });
   }
 
-  // 2. التحقق من الصيغ
+  // 3. التحقق من الصيغ
   const usernameRegex = /^[a-zA-Z0-9]+$/;
   if (!usernameRegex.test(username)) {
     return res.status(400).json({ success: false, message: 'اسم المستخدم يجب أن يحتوي على حروف إنجليزية وأرقام فقط.' });
@@ -33,15 +37,17 @@ export default async (req, res) => {
       return res.status(400).json({ success: false, message: 'اسم المستخدم مسجل بالفعل، اختر اسماً آخر.' });
     }
 
-    // ✅ 5. التحقق من عدم تكرار رقم الهاتف (التحسين الجديد)
-    const { data: existingPhone } = await supabase
-      .from('users')
-      .select('id')
-      .eq('phone', phone)
-      .maybeSingle();
+    // ✅ تعديل 3: التحقق من تكرار الهاتف فقط إذا كانت القيمة ليست null
+    if (phoneToSave) {
+      const { data: existingPhone } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', phoneToSave) // نستخدم القيمة المعالجة
+        .maybeSingle();
 
-    if (existingPhone) {
-      return res.status(400).json({ success: false, message: 'رقم الهاتف مسجل مسبقاً. حاول تسجيل الدخول.' });
+      if (existingPhone) {
+        return res.status(400).json({ success: false, message: 'رقم الهاتف مسجل مسبقاً. حاول تسجيل الدخول.' });
+      }
     }
 
     // 6. تشفير كلمة المرور وإنشاء الحساب
@@ -53,7 +59,7 @@ export default async (req, res) => {
         first_name: firstName,
         username: username,
         password: hashedPassword,
-        phone: phone,
+        phone: phoneToSave, // ✅ تعديل 4: حفظ القيمة المعالجة (رقم أو null)
         is_admin: false,
         is_blocked: false
       });
