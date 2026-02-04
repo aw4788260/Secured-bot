@@ -1,4 +1,3 @@
-// pages/api/dashboard/super/teachers.js
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 import bcrypt from 'bcryptjs';
@@ -7,7 +6,7 @@ export default async (req, res) => {
   const adminUser = await requireSuperAdmin(req, res);
   if (!adminUser) return;
 
-  // --- GET: جلب القائمة الأساسية (خفيف وسريع) ---
+  // --- GET: جلب البيانات ---
   if (req.method === 'GET') {
     try {
       const { data, error } = await supabase
@@ -16,6 +15,7 @@ export default async (req, res) => {
           *,
           users!teacher_profile_id (
             admin_username, 
+            username,
             phone,
             is_blocked
           )
@@ -24,12 +24,14 @@ export default async (req, res) => {
 
       if (error) throw error;
 
-      // تنسيق بسيط للبيانات للعرض في الجدول
+      // تنسيق البيانات لتشمل بيانات الدخول للاثنين
       const formatted = data.map(t => ({
         ...t,
-        username: t.users?.[0]?.admin_username || '',
+        // بيانات لوحة التحكم
+        dashboard_username: t.users?.[0]?.admin_username || '',
+        // بيانات التطبيق
+        app_username: t.users?.[0]?.username || '',
         phone: t.users?.[0]?.phone || t.phone || '',
-        // لن نحسب الطلاب والأرباح هنا لتخفيف الضغط
       }));
 
       return res.status(200).json(formatted);
@@ -38,14 +40,19 @@ export default async (req, res) => {
     }
   }
 
-  // --- POST: إضافة مدرس وحسابه ---
+  // --- POST: إضافة مدرس ---
   if (req.method === 'POST') {
-    const { name, username, password, phone, specialty } = req.body;
+    const { 
+        name, specialty, phone, 
+        dashboard_username, dashboard_password, 
+        app_username, app_password 
+    } = req.body;
 
-    if (!name || !username || !password) return res.status(400).json({ error: 'البيانات ناقصة' });
+    if (!name || !dashboard_username || !dashboard_password || !app_username || !app_password) {
+        return res.status(400).json({ error: 'الرجاء تعبئة كافة بيانات الدخول (للوحة وللتطبيق)' });
+    }
 
     try {
-      // 1. إنشاء المدرس
       const { data: teacher, error: tError } = await supabase
         .from('teachers')
         .insert({ name, specialty, payment_details: {} })
@@ -54,13 +61,19 @@ export default async (req, res) => {
       
       if (tError) throw tError;
 
-      // 2. إنشاء المستخدم (Admin Login)
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // تشفير كلمات المرور
+      const hashedAdminPass = await bcrypt.hash(dashboard_password, 10);
+      const hashedAppPass = await bcrypt.hash(app_password, 10);
+
       const { error: uError } = await supabase.from('users').insert({
         first_name: name,
-        admin_username: username,
-        admin_password: hashedPassword,
-        username: `teacher_${Date.now()}_${Math.floor(Math.random() * 100)}`, // اسم مستخدم فريد
+        // بيانات لوحة التحكم
+        admin_username: dashboard_username,
+        admin_password: hashedAdminPass,
+        // بيانات التطبيق
+        username: app_username,
+        password: hashedAppPass,
+        
         role: 'teacher',
         teacher_profile_id: teacher.id,
         phone: phone,
@@ -68,7 +81,6 @@ export default async (req, res) => {
       });
 
       if (uError) {
-        // تراجع: حذف المدرس إذا فشل إنشاء المستخدم
         await supabase.from('teachers').delete().eq('id', teacher.id);
         throw uError;
       }
@@ -79,35 +91,39 @@ export default async (req, res) => {
     }
   }
 
-  // --- PUT: تعديل البيانات (شاملة الدخول) ---
+  // --- PUT: تعديل البيانات ---
   if (req.method === 'PUT') {
-    const { id, name, specialty, phone, password, username } = req.body;
+    const { 
+        id, name, specialty, phone, 
+        dashboard_username, dashboard_password, 
+        app_username, app_password 
+    } = req.body;
     
     try {
-      // 1. تحديث جدول teachers
-      const { error: tError } = await supabase
-        .from('teachers')
-        .update({ name, specialty })
-        .eq('id', id);
+      await supabase.from('teachers').update({ name, specialty }).eq('id', id);
 
-      if (tError) throw tError;
-
-      // 2. تحديث جدول users
+      // تجهيز تحديثات المستخدم
       const userUpdates = { 
         first_name: name,
         phone: phone,
-        admin_username: username 
+        admin_username: dashboard_username,
+        username: app_username
       };
 
-      // تحديث كلمة المرور فقط إذا كتبت
-      if (password && password.trim() !== "") {
-        userUpdates.admin_password = await bcrypt.hash(password, 10);
+      // تحديث كلمة مرور الداشبورد فقط إذا تم إدخالها
+      if (dashboard_password && dashboard_password.trim() !== "") {
+        userUpdates.admin_password = await bcrypt.hash(dashboard_password, 10);
+      }
+
+      // تحديث كلمة مرور التطبيق فقط إذا تم إدخالها
+      if (app_password && app_password.trim() !== "") {
+        userUpdates.password = await bcrypt.hash(app_password, 10);
       }
 
       const { error: uError } = await supabase
         .from('users')
         .update(userUpdates)
-        .eq('teacher_profile_id', id); // الربط عبر teacher_profile_id
+        .eq('teacher_profile_id', id);
 
       if (uError) throw uError;
 
@@ -117,16 +133,12 @@ export default async (req, res) => {
     }
   }
 
-  // --- DELETE: حذف كامل ---
+  // --- DELETE: حذف ---
   if (req.method === 'DELETE') {
     const { id } = req.query;
     try {
-      // حذف المستخدم المرتبط أولاً
       await supabase.from('users').delete().eq('teacher_profile_id', id);
-      // حذف المدرس
-      const { error } = await supabase.from('teachers').delete().eq('id', id);
-      
-      if (error) throw error;
+      await supabase.from('teachers').delete().eq('id', id);
       return res.status(200).json({ success: true });
     } catch (err) {
       return res.status(500).json({ error: err.message });
