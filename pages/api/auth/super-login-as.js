@@ -1,7 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../lib/dashboardHelper';
 import { serialize } from 'cookie';
-// لم نعد بحاجة لـ crypto لتوليد توكن جديد
+import crypto from 'crypto';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   // 1. حماية الـ API: التأكد أن الطالب هو Super Admin
   const { user: adminUser, error } = await requireSuperAdmin(req, res);
-  if (error) return; 
+  if (error) return; // تم إرسال الرد في الدالة المساعدة
 
   const { username } = req.body;
 
@@ -19,10 +19,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 2. البحث عن المدرس وجلب التوكن الحالي (session_token)
+    // 2. البحث عن المستخدم المستهدف (المدرس)
+    // نستخدم admin_username لأن الدخول يتم للوحة التحكم
     const { data: targetUser, error: findError } = await supabase
       .from('users')
-      .select('id, role, username, admin_username, session_token') // ✅ جلبنا التوكن الحالي
+      .select('id, role, username, admin_username, session_token')
       .eq('admin_username', username)
       .single();
 
@@ -30,24 +31,25 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'المستخدم غير موجود أو بيانات الدخول غير متطابقة' });
     }
 
-    // ✅ التحقق: هل يوجد توكن أصلاً؟
-    // إذا لم يكن المدرس قد سجل دخولاً من قبل، لن يكون لديه توكن.
-    // في هذه الحالة فقط نضطر لتوليد واحد جديد، لكن هذا لن يضر لأنه أصلاً غير متصل.
+    // 3. تحديد التوكن المستخدم (للحفاظ على جلسة المدرس)
     let tokenToUse = targetUser.session_token;
 
+    // إذا لم يكن لدى المدرس جلسة نشطة (التوكن فارغ)، ننشئ واحداً جديداً
     if (!tokenToUse) {
-        // توليد توكن جديد فقط إذا كان الحقل فارغاً
-        const crypto = require('crypto');
-        tokenToUse = crypto.randomBytes(32).toString('hex');
-        
-        await supabase
-          .from('users')
-          .update({ session_token: tokenToUse })
-          .eq('id', targetUser.id);
+      tokenToUse = crypto.randomBytes(32).toString('hex');
+      
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ session_token: tokenToUse })
+        .eq('id', targetUser.id);
+
+      if (updateError) {
+        return res.status(500).json({ error: 'فشل إنشاء جلسة جديدة' });
+      }
     }
 
-    // 3. ضبط الكوكيز في متصفح السوبر أدمن باستخدام التوكن الحالي للمدرس
-    // هذا لن يؤثر على جلسة المدرس الأصلية
+    // 4. ضبط الكوكيز في متصفح السوبر أدمن
+    // يتم استخدام نفس التوكن، مما يعني أن المدرس لن يخرج من حسابه إذا كان متصلاً
     res.setHeader('Set-Cookie', serialize('admin_session', tokenToUse, {
       httpOnly: true,
       secure: process.env.NODE_ENV !== 'development',
@@ -56,7 +58,8 @@ export default async function handler(req, res) {
       path: '/',
     }));
 
-    console.log(`[Security] Super Admin logged in as Teacher (Shared Session): ${targetUser.admin_username}`);
+    // 5. تسجيل العملية (Logs)
+    console.log(`[Security] Super Admin (${adminUser.admin_username}) logged in as Teacher (${targetUser.admin_username}) using shared session.`);
 
     return res.status(200).json({ success: true, message: 'تم الدخول بنجاح' });
 
