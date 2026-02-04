@@ -7,10 +7,17 @@ export default async function handler(req, res) {
   if (authResult.error) return; 
 
   // ==========================================================
-  // 🟢 التعامل مع طلبات GET (جلب الطلبات)
+  // 🟢 التعامل مع طلبات GET (جلب الطلبات مع Pagination)
   // ==========================================================
   if (req.method === 'GET') {
-    const { status } = req.query; // pending, approved, rejected
+    // ✅ نستقبل رقم الصفحة والحد الأقصى من الرابط، ونضع قيم افتراضية
+    const { status, page = 1, limit = 10 } = req.query;
+
+    // تحويل القيم إلى أرقام لحساب النطاق
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const start = (pageNum - 1) * limitNum;
+    const end = start + limitNum - 1;
 
     try {
       // بناء الاستعلام
@@ -19,19 +26,22 @@ export default async function handler(req, res) {
         .select(`
             *,
             teachers (name) 
-        `) // ✅ جلب اسم المدرس (Relation) للعرض في الكارت كما تتوقع الواجهة الأمامية
-        .order('created_at', { ascending: false });
+        `, { count: 'exact' }) // ✅ طلب العدد الإجمالي للصفوف (مهم للـ Pagination)
+        .order('created_at', { ascending: false })
+        .range(start, end); // ✅ تحديد النطاق المطلوب (من .. إلى)
 
       // تطبيق الفلتر إذا وجد
       if (status) {
         query = query.eq('status', status);
       }
 
-      const { data, error } = await query;
+      // ✅ نستقبل البيانات + العدد الكلي (count)
+      const { data, count, error } = await query;
 
       if (error) throw error;
 
-      return res.status(200).json(data);
+      // ✅ نرجع كائن يحتوي على المصفوفة والعدد الكلي
+      return res.status(200).json({ data, count });
 
     } catch (err) {
       console.error("Fetch Error:", err);
@@ -87,12 +97,11 @@ export default async function handler(req, res) {
              targetUserId = existingUser.id;
            } else {
              // إنشاء مستخدم جديد إذا لم يكن موجوداً
-             // ملاحظة: الجدول subscription_requests ليس به عمود password، لذا نضع قيمة افتراضية
              const { data: newUser, error: createError } = await supabase
                .from('users')
                .insert({
                    username: request.user_username,
-                   password: '123456', // ⚠️ كلمة مرور افتراضية (يمكنك تغييرها أو توليدها عشوائياً)
+                   password: '123456', // ⚠️ كلمة مرور افتراضية
                    first_name: request.user_name,
                    phone: request.phone,
                    role: 'student',
@@ -107,7 +116,7 @@ export default async function handler(req, res) {
         }
 
         // ب) منح الصلاحيات (Loop through requested items)
-        const items = request.requested_data || []; // المصفوفة التي تحتوي الكورسات/المواد المطلوبة [ {type: 'course', id: 1}, ... ]
+        const items = request.requested_data || []; 
         const courseInserts = [];
         const subjectInserts = [];
 
