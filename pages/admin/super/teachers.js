@@ -224,7 +224,7 @@ export default function SuperTeachers() {
             body: JSON.stringify({ username })
         });
         if (res.ok) {
-            window.open('/admin', '_blank');
+            window.open('/admin/teacher', '_blank');
             showToast('تم تسجيل الدخول بنجاح', 'success');
         }
         else {
