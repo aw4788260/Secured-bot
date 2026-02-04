@@ -1,5 +1,5 @@
-import { supabase } from '../../../lib/supabaseClient';
-import { requireSuperAdmin } from '../../../lib/dashboardHelper';
+import { supabase } from '../../lib/supabaseClient';
+import { requireSuperAdmin } from '../../lib/dashboardHelper';
 import { serialize } from 'cookie';
 import crypto from 'crypto';
 
