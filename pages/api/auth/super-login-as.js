@@ -21,9 +21,10 @@ export default async function handler(req, res) {
   try {
     // 2. البحث عن المستخدم المستهدف (المدرس)
     // نستخدم admin_username لأن الدخول يتم للوحة التحكم
+    // ✅ تم إضافة first_name لجلب اسم المدرس
     const { data: targetUser, error: findError } = await supabase
       .from('users')
-      .select('id, role, username, admin_username, session_token')
+      .select('id, role, username, admin_username, session_token, first_name')
       .eq('admin_username', username)
       .single();
 
@@ -61,7 +62,16 @@ export default async function handler(req, res) {
     // 5. تسجيل العملية (Logs)
     console.log(`[Security] Super Admin (${adminUser.admin_username}) logged in as Teacher (${targetUser.admin_username}) using shared session.`);
 
-    return res.status(200).json({ success: true, message: 'تم الدخول بنجاح' });
+    // 6. ✅ إرجاع بيانات المدرس ليقوم الفرونت اند بتحديث الـ localStorage
+    return res.status(200).json({ 
+        success: true, 
+        message: 'تم الدخول بنجاح',
+        user: {
+            id: targetUser.id,
+            name: targetUser.first_name || targetUser.admin_username,
+            role: 'teacher' // نحدد الدور بوضوح
+        }
+    });
 
   } catch (err) {
     console.error(err);
