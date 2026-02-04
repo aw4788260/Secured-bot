@@ -2,107 +2,219 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 import bcrypt from 'bcryptjs';
 
-export default async (req, res) => {
-  const adminUser = await requireSuperAdmin(req, res);
-  if (!adminUser) return;
+// --- دالة مساعدة للتحقق من التكرار (Validation) ---
+async function checkUniqueness(phone, dashboard_username, app_username, excludeUserId = null) {
+  const errors = [];
 
-  // --- GET: جلب البيانات ---
+  // 1. التحقق من رقم الهاتف
+  if (phone) {
+    let query = supabase.from('users').select('id').eq('phone', phone);
+    if (excludeUserId) query = query.neq('id', excludeUserId);
+    const { data } = await query;
+    if (data && data.length > 0) errors.push('رقم الهاتف مسجل بالفعل لمستخدم آخر.');
+  }
+
+  // 2. التحقق من يوزرنيم الداشبورد (admin_username)
+  if (dashboard_username) {
+    let query = supabase.from('users').select('id').eq('admin_username', dashboard_username);
+    if (excludeUserId) query = query.neq('id', excludeUserId);
+    const { data } = await query;
+    if (data && data.length > 0) errors.push('اسم مستخدم لوحة التحكم (Dashboard) مسجل مسبقاً.');
+  }
+
+  // 3. التحقق من يوزرنيم التطبيق (username)
+  if (app_username) {
+    let query = supabase.from('users').select('id').eq('username', app_username);
+    if (excludeUserId) query = query.neq('id', excludeUserId);
+    const { data } = await query;
+    if (data && data.length > 0) errors.push('اسم مستخدم التطبيق (App) مسجل مسبقاً.');
+  }
+
+  return errors;
+}
+
+export default async (req, res) => {
+  // التحقق من الصلاحية (Super Admin)
+  const { error } = await requireSuperAdmin(req, res);
+  if (error) return;
+
+  // ============================================================
+  // GET: جلب المدرسين + حساباتهم + المشرفين
+  // ============================================================
   if (req.method === 'GET') {
     try {
-      const { data, error } = await supabase
+      // نجلب بيانات المدرسين وكافة المستخدمين المرتبطين بهم
+      const { data, error: fetchError } = await supabase
         .from('teachers')
         .select(`
           *,
           users!teacher_profile_id (
-            admin_username, 
+            id,
+            first_name,
             username,
+            admin_username,
             phone,
-            is_blocked
+            role,
+            is_blocked,
+            created_at
           )
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
 
-      // تنسيق البيانات لتشمل بيانات الدخول للاثنين
-      const formatted = data.map(t => ({
-        ...t,
-        // بيانات لوحة التحكم
-        dashboard_username: t.users?.[0]?.admin_username || '',
-        // بيانات التطبيق
-        app_username: t.users?.[0]?.username || '',
-        phone: t.users?.[0]?.phone || t.phone || '',
-      }));
+      // تنسيق البيانات
+      const formatted = data.map(t => {
+        // 1. استخراج حساب المدرس الرئيسي (role = teacher)
+        const mainAccount = t.users?.find(u => u.role === 'teacher') || {};
+        
+        // 2. استخراج المشرفين المساعدين (role = moderator)
+        const moderators = t.users?.filter(u => u.role === 'moderator') || [];
+
+        return {
+          ...t,
+          // بيانات المدرس الأساسية (من جدول users)
+          user_id: mainAccount.id, // مهم للتعديل
+          dashboard_username: mainAccount.admin_username || '',
+          app_username: mainAccount.username || '',
+          phone: mainAccount.phone || t.phone || '', // الأولوية للهاتف في حساب المستخدم
+          is_blocked: mainAccount.is_blocked,
+          
+          // قائمة المشرفين
+          moderators: moderators
+        };
+      });
 
       return res.status(200).json(formatted);
     } catch (err) {
+      console.error(err);
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // --- POST: إضافة مدرس ---
+  // ============================================================
+  // POST: إضافة مدرس جديد
+  // ============================================================
   if (req.method === 'POST') {
     const { 
-        name, specialty, phone, 
+        name, specialty, bio, whatsapp_number, phone, payment_details,
         dashboard_username, dashboard_password, 
         app_username, app_password 
     } = req.body;
 
-    if (!name || !dashboard_username || !dashboard_password || !app_username || !app_password) {
-        return res.status(400).json({ error: 'الرجاء تعبئة كافة بيانات الدخول (للوحة وللتطبيق)' });
+    // 1. التحقق من الحقول الإجبارية
+    if (!name || !phone || !dashboard_username || !dashboard_password || !app_username || !app_password) {
+        return res.status(400).json({ error: 'الرجاء تعبئة كافة الحقول المطلوبة (الاسم، الهاتف، وبيانات الدخول)' });
+    }
+
+    // 2. فحص التكرار (Uniqueness)
+    const uniqueErrors = await checkUniqueness(phone, dashboard_username, app_username);
+    if (uniqueErrors.length > 0) {
+        return res.status(400).json({ error: uniqueErrors.join(' - ') });
     }
 
     try {
+      // 3. إنشاء البروفايل في جدول teachers (بدون الصورة)
       const { data: teacher, error: tError } = await supabase
         .from('teachers')
-        .insert({ name, specialty, payment_details: {} })
+        .insert({ 
+            name, 
+            specialty, 
+            bio, 
+            whatsapp_number,
+            // القيمة الافتراضية للدفع إذا لم تُرسل
+            payment_details: payment_details || { "cash_numbers": [], "instapay_links": [], "instapay_numbers": [] }
+        })
         .select('id')
         .single();
       
       if (tError) throw tError;
 
-      // تشفير كلمات المرور
+      // 4. تشفير كلمات المرور
       const hashedAdminPass = await bcrypt.hash(dashboard_password, 10);
       const hashedAppPass = await bcrypt.hash(app_password, 10);
 
+      // 5. إنشاء حساب المستخدم الرئيسي
       const { error: uError } = await supabase.from('users').insert({
         first_name: name,
-        // بيانات لوحة التحكم
+        phone: phone,
+        
+        // بيانات الداشبورد
         admin_username: dashboard_username,
         admin_password: hashedAdminPass,
+        
         // بيانات التطبيق
         username: app_username,
         password: hashedAppPass,
         
         role: 'teacher',
         teacher_profile_id: teacher.id,
-        phone: phone,
-        is_admin: false
+        is_admin: false,
+        is_blocked: false
       });
 
       if (uError) {
+        // تراجع: حذف البروفايل في حال فشل إنشاء المستخدم
         await supabase.from('teachers').delete().eq('id', teacher.id);
         throw uError;
       }
 
       return res.status(200).json({ success: true });
+
     } catch (err) {
+      // التعامل مع أخطاء القيود (Constraints) كطبقة حماية إضافية
+      if (err.code === '23505') {
+          return res.status(400).json({ error: 'بيانات مكررة (هاتف أو اسم مستخدم) موجودة بالفعل.' });
+      }
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // --- PUT: تعديل البيانات ---
+  // ============================================================
+  // PUT: تعديل بيانات مدرس كاملة
+  // ============================================================
   if (req.method === 'PUT') {
     const { 
-        id, name, specialty, phone, 
+        id, // Teacher Profile ID
+        user_id, // User ID (مهم لاستثنائه من فحص التكرار)
+        name, specialty, bio, whatsapp_number, phone, payment_details,
         dashboard_username, dashboard_password, 
         app_username, app_password 
     } = req.body;
     
-    try {
-      await supabase.from('teachers').update({ name, specialty }).eq('id', id);
+    // محاولة جلب user_id إذا لم يُرسل من الفرونت (احتياطي)
+    let targetUserId = user_id;
+    if (!targetUserId) {
+        const { data: u } = await supabase.from('users')
+            .select('id')
+            .eq('teacher_profile_id', id)
+            .eq('role', 'teacher')
+            .single();
+        targetUserId = u?.id;
+    }
 
-      // تجهيز تحديثات المستخدم
+    // 1. فحص التكرار (مع استثناء المستخدم الحالي)
+    const uniqueErrors = await checkUniqueness(phone, dashboard_username, app_username, targetUserId);
+    if (uniqueErrors.length > 0) {
+        return res.status(400).json({ error: uniqueErrors.join(' - ') });
+    }
+
+    try {
+      // 2. تحديث جدول teachers (جميع الحقول ما عدا الصورة)
+      const { error: tError } = await supabase
+        .from('teachers')
+        .update({ 
+            name, 
+            specialty, 
+            bio, 
+            whatsapp_number, 
+            payment_details 
+        })
+        .eq('id', id);
+
+      if (tError) throw tError;
+
+      // 3. تجهيز تحديثات جدول users
       const userUpdates = { 
         first_name: name,
         phone: phone,
@@ -110,35 +222,48 @@ export default async (req, res) => {
         username: app_username
       };
 
-      // تحديث كلمة مرور الداشبورد فقط إذا تم إدخالها
+      // تحديث كلمات المرور فقط إذا تم إرسالها
       if (dashboard_password && dashboard_password.trim() !== "") {
         userUpdates.admin_password = await bcrypt.hash(dashboard_password, 10);
       }
 
-      // تحديث كلمة مرور التطبيق فقط إذا تم إدخالها
       if (app_password && app_password.trim() !== "") {
         userUpdates.password = await bcrypt.hash(app_password, 10);
       }
 
+      // 4. تنفيذ التحديث على المستخدم المرتبط
       const { error: uError } = await supabase
         .from('users')
         .update(userUpdates)
-        .eq('teacher_profile_id', id);
+        .eq('teacher_profile_id', id)
+        .eq('role', 'teacher'); // ضمان عدم تحديث المشرفين بالخطأ
 
       if (uError) throw uError;
 
       return res.status(200).json({ success: true });
+
     } catch (err) {
+      if (err.code === '23505') {
+          return res.status(400).json({ error: 'بيانات مكررة (هاتف أو اسم مستخدم) موجودة بالفعل.' });
+      }
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // --- DELETE: حذف ---
+  // ============================================================
+  // DELETE: حذف مدرس
+  // ============================================================
   if (req.method === 'DELETE') {
     const { id } = req.query;
     try {
+      // 1. حذف جميع المستخدمين المرتبطين (المدرس + المشرفين)
       await supabase.from('users').delete().eq('teacher_profile_id', id);
-      await supabase.from('teachers').delete().eq('id', id);
+      
+      // 2. حذف بروفايل المدرس
+      const { error } = await supabase.from('teachers').delete().eq('id', id);
+      
+      if (error) throw error;
+
       return res.status(200).json({ success: true });
     } catch (err) {
       return res.status(500).json({ error: err.message });
