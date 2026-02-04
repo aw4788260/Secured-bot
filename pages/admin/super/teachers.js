@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import SuperLayout from '../../../components/SuperLayout';
 
+// --- مكونات الأيقونات ---
 const Icons = {
   add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
   search: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
@@ -10,7 +11,38 @@ const Icons = {
   close: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
   eye: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
   key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>,
-  warn: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+  warn: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>,
+  check: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
+  user: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+};
+
+// --- مكون Toast للإشعارات ---
+const Toast = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className={`toast ${type}`}>
+      <div className="icon">{type === 'success' ? Icons.check : Icons.warn}</div>
+      <span>{message}</span>
+      <style jsx>{`
+        .toast {
+          position: fixed; top: 20px; left: 20px; z-index: 2000;
+          background: #1e293b; color: white; padding: 12px 20px;
+          border-radius: 12px; display: flex; align-items: center; gap: 12px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+          animation: slideIn 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+          border: 1px solid #334155; min-width: 300px;
+        }
+        .toast.success { border-right: 4px solid #22c55e; }
+        .toast.error { border-right: 4px solid #ef4444; }
+        .toast.error .icon { stroke: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+      `}</style>
+    </div>
+  );
 };
 
 export default function SuperTeachers() {
@@ -29,15 +61,16 @@ export default function SuperTeachers() {
   const [editingId, setEditingId] = useState(null);
   const [teacherToDelete, setTeacherToDelete] = useState(null);
 
-  // تحديث حالة الفورم لتشمل البيانات الجديدة
+  // حالة الإشعارات (Toast)
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'success') => setToast({ message, type });
+
+  // حالة الأخطاء داخل الفورم
+  const [formError, setFormError] = useState('');
+
   const [formData, setFormData] = useState({
-    name: '', 
-    phone: '', 
-    specialty: '',
-    bio: '',              // جديد: النبذة
-    whatsapp_number: '',  // جديد: واتساب
-    cash_numbers: '',     // جديد: أرقام الكاش (نص)
-    instapay_numbers: '', // جديد: أرقام انستا (نص)
+    name: '', phone: '', specialty: '', bio: '', whatsapp_number: '',
+    cash_numbers: '', instapay_numbers: '', instapay_links: '', // إضافة حقل الروابط
     dashboard_username: '', dashboard_password: '', 
     app_username: '', app_password: ''
   });
@@ -46,19 +79,30 @@ export default function SuperTeachers() {
     setLoading(true);
     try {
       const res = await fetch('/api/dashboard/super/teachers'); 
-      if (res.ok) setTeachers(await res.json());
-    } catch (error) { console.error(error); } 
-    finally { setLoading(false); }
+      if (res.ok) {
+        setTeachers(await res.json());
+      } else {
+        showToast('فشل جلب البيانات', 'error');
+      }
+    } catch (error) { 
+      console.error(error);
+      showToast('خطأ في الاتصال بالسيرفر', 'error');
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchTeachers(); }, []);
 
-  // --- 1. دوال عرض التفاصيل والإحصائيات ---
+  // --- دوال عرض التفاصيل والإحصائيات والمشرفين ---
   const handleViewStats = async (teacher) => {
     setStatsModalOpen(true);
     setLoadingStats(true);
+    // دمج البيانات الأساسية فوراً (بما فيها قائمة المشرفين الموجودة أصلاً في الرد الرئيسي)
     setSelectedStats({ ...teacher }); 
+    
     try {
+      // جلب الإحصائيات المالية والطلاب
       const res = await fetch(`/api/dashboard/super/teacher-stats?id=${teacher.id}`);
       if (res.ok) {
         const statsData = await res.json();
@@ -68,15 +112,17 @@ export default function SuperTeachers() {
     finally { setLoadingStats(false); }
   };
 
-  // --- 2. دوال النموذج (إضافة/تعديل) ---
+  // --- دوال النموذج (إضافة/تعديل) ---
   const handleOpenForm = (teacher = null) => {
+    setFormError('');
     if (teacher) {
       setEditingId(teacher.id);
-      
-      // تحويل مصفوفات الدفع إلى نصوص مفصولة بفاصلة للعرض في الـ input
       const pd = teacher.payment_details || {};
+      
+      // تحويل المصفوفات لنصوص للعرض
       const cashStr = Array.isArray(pd.cash_numbers) ? pd.cash_numbers.join(', ') : '';
-      const instaStr = Array.isArray(pd.instapay_numbers) ? pd.instapay_numbers.join(', ') : '';
+      const instaNumStr = Array.isArray(pd.instapay_numbers) ? pd.instapay_numbers.join(', ') : '';
+      const instaLinkStr = Array.isArray(pd.instapay_links) ? pd.instapay_links.join(', ') : '';
 
       setFormData({ 
         name: teacher.name, 
@@ -85,7 +131,8 @@ export default function SuperTeachers() {
         bio: teacher.bio || '',
         whatsapp_number: teacher.whatsapp_number || '',
         cash_numbers: cashStr,
-        instapay_numbers: instaStr,
+        instapay_numbers: instaNumStr,
+        instapay_links: instaLinkStr, // تعبئة الروابط
         dashboard_username: teacher.dashboard_username || '', 
         dashboard_password: '', 
         app_username: teacher.app_username || '', 
@@ -95,7 +142,7 @@ export default function SuperTeachers() {
       setEditingId(null);
       setFormData({ 
         name: '', phone: '', specialty: '', bio: '', whatsapp_number: '',
-        cash_numbers: '', instapay_numbers: '',
+        cash_numbers: '', instapay_numbers: '', instapay_links: '',
         dashboard_username: '', dashboard_password: '',
         app_username: '', app_password: ''
       });
@@ -105,20 +152,22 @@ export default function SuperTeachers() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    setFormError('');
+    
     try {
       const url = '/api/dashboard/super/teachers';
       const method = editingId ? 'PUT' : 'POST';
 
-      // تحويل نصوص الدفع إلى مصفوفات JSON
+      // تحويل النصوص إلى مصفوفات نظيفة
       const payment_details = {
           cash_numbers: formData.cash_numbers.split(',').map(s => s.trim()).filter(Boolean),
           instapay_numbers: formData.instapay_numbers.split(',').map(s => s.trim()).filter(Boolean),
-          instapay_links: [] // يمكن إضافته لاحقاً
+          instapay_links: formData.instapay_links.split(',').map(s => s.trim()).filter(Boolean)
       };
 
       const bodyData = { 
           ...formData, 
-          payment_details, // إرفاق كائن الدفع
+          payment_details, 
           id: editingId 
       };
 
@@ -128,17 +177,22 @@ export default function SuperTeachers() {
           body: JSON.stringify(bodyData)
       });
       
+      const data = await res.json();
+
       if (res.ok) {
           await fetchTeachers(); 
           setFormModalOpen(false);
+          showToast(editingId ? 'تم تعديل البيانات بنجاح' : 'تم إضافة المدرس بنجاح', 'success');
       } else {
-          const d = await res.json();
-          alert('خطأ: ' + (d.error || 'حدث خطأ ما'));
+          setFormError(data.error || 'حدث خطأ غير معروف');
+          // لا نغلق المودال ليتمكن المستخدم من تصحيح الخطأ
       }
-    } catch (error) { alert("حدث خطأ أثناء الاتصال"); }
+    } catch (error) { 
+      setFormError('خطأ في الاتصال بالشبكة');
+    }
   };
 
-  // --- 3. دوال الحذف ---
+  // --- دوال الحذف ---
   const confirmDelete = (teacher) => {
     setTeacherToDelete(teacher);
     setDeleteModalOpen(true);
@@ -152,39 +206,50 @@ export default function SuperTeachers() {
             setTeachers(prev => prev.filter(t => t.id !== teacherToDelete.id));
             setDeleteModalOpen(false);
             setTeacherToDelete(null);
+            showToast('تم حذف المدرس وجميع بياناته بنجاح', 'success');
         } else {
-            alert("فشل الحذف");
+            showToast('فشل الحذف، حاول مرة أخرى', 'error');
         }
-    } catch (err) { alert("خطأ في الاتصال"); }
+    } catch (err) { 
+        showToast('خطأ في الاتصال', 'error');
+    }
   };
 
   const handleLoginAs = async (username) => {
-    if (!username || !confirm(`الدخول كـ ${username}؟`)) return;
+    if (!username || !confirm(`⚠️ هل أنت متأكد من الدخول لحساب المدرس (${username})؟`)) return;
     try {
         const res = await fetch('/api/auth/super-login-as', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username })
         });
-        if (res.ok) window.open('/admin', '_blank');
-        else alert('فشل الدخول');
+        if (res.ok) {
+            window.open('/admin', '_blank');
+            showToast('تم تسجيل الدخول بنجاح', 'success');
+        }
+        else {
+            showToast('فشل الدخول، تأكد من صحة البيانات', 'error');
+        }
     } catch (err) { console.error(err); }
   };
 
   const filteredTeachers = teachers.filter(t => 
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.dashboard_username?.includes(searchQuery)
+    t.dashboard_username?.includes(searchQuery) ||
+    t.specialty?.includes(searchQuery)
   );
 
   return (
     <SuperLayout>
-      <Head><title>إدارة المدرسين</title></Head>
+      <Head><title>إدارة المدرسين | Super Admin</title></Head>
+
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="page-container">
         <div className="top-bar">
           <div>
             <h1>👨‍🏫 إدارة المدرسين</h1>
-            <p>إدارة الحسابات، التفاصيل المالية، وبيانات الدخول.</p>
+            <p>إدارة الحسابات، المشرفين، والبيانات المالية.</p>
           </div>
           <button className="btn-primary" onClick={() => handleOpenForm()}>
             {Icons.add} مدرس جديد
@@ -194,7 +259,7 @@ export default function SuperTeachers() {
         <div className="search-bar">
           <div className="search-input">
             {Icons.search}
-            <input type="text" placeholder="بحث بالاسم أو اسم المستخدم..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            <input type="text" placeholder="بحث بالاسم، التخصص، أو اسم المستخدم..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
         </div>
 
@@ -235,7 +300,7 @@ export default function SuperTeachers() {
                     <td dir="ltr" style={{color:'#cbd5e1', fontSize:'0.9rem'}}>{t.phone}</td>
                     <td>
                       <div className="actions">
-                        <button className="btn-icon view" onClick={() => handleViewStats(t)} title="الإحصائيات">{Icons.eye}</button>
+                        <button className="btn-icon view" onClick={() => handleViewStats(t)} title="التفاصيل والمشرفين">{Icons.eye}</button>
                         <button className="btn-icon edit" onClick={() => handleOpenForm(t)} title="تعديل">{Icons.edit}</button>
                         <button className="btn-icon login" onClick={() => handleLoginAs(t.dashboard_username)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
                         <button className="btn-icon delete" onClick={() => confirmDelete(t)} title="حذف">{Icons.trash}</button>
@@ -260,6 +325,14 @@ export default function SuperTeachers() {
               <h3>{editingId ? 'تعديل بيانات مدرس' : 'إضافة مدرس جديد'}</h3>
               <button onClick={() => setFormModalOpen(false)}>{Icons.close}</button>
             </div>
+            
+            {/* عرض الخطأ داخل المودال */}
+            {formError && (
+                <div className="error-banner">
+                    ⚠️ {formError}
+                </div>
+            )}
+
             <form onSubmit={handleSave}>
               
               {/* 1. البيانات الشخصية */}
@@ -291,17 +364,21 @@ export default function SuperTeachers() {
                 </div>
               </div>
 
-              {/* 2. البيانات المالية */}
+              {/* 2. البيانات المالية - تم فصل الأرقام عن الروابط */}
               <div className="form-section">
                 <h4>2. بيانات الدفع (Payment Details)</h4>
+                <div className="form-group">
+                    <label>أرقام فودافون كاش (افصل بفاصلة)</label>
+                    <input type="text" dir="ltr" value={formData.cash_numbers} onChange={e => setFormData({...formData, cash_numbers: e.target.value})} placeholder="010xxxx, 012xxxx"/>
+                </div>
                 <div className="form-row">
                     <div className="form-group">
-                        <label>أرقام فودافون كاش (افصل بفاصلة)</label>
-                        <input type="text" dir="ltr" value={formData.cash_numbers} onChange={e => setFormData({...formData, cash_numbers: e.target.value})} placeholder="010xxxx, 012xxxx"/>
+                        <label>أرقام إنستا باي (IPN)</label>
+                        <input type="text" dir="ltr" value={formData.instapay_numbers} onChange={e => setFormData({...formData, instapay_numbers: e.target.value})} placeholder="01xxxx, 012xxx"/>
                     </div>
                     <div className="form-group">
-                        <label>أرقام إنستا باي (افصل بفاصلة)</label>
-                        <input type="text" dir="ltr" value={formData.instapay_numbers} onChange={e => setFormData({...formData, instapay_numbers: e.target.value})} placeholder="username@instapay, 01xxxx"/>
+                        <label>روابط/يوزرنيم إنستا باي (Links)</label>
+                        <input type="text" dir="ltr" value={formData.instapay_links} onChange={e => setFormData({...formData, instapay_links: e.target.value})} placeholder="name@instapay, url..."/>
                     </div>
                 </div>
               </div>
@@ -364,21 +441,45 @@ export default function SuperTeachers() {
         </div>
       )}
 
-      {/* --- نافذة الإحصائيات --- */}
+      {/* --- نافذة الإحصائيات والتفاصيل والمشرفين --- */}
       {statsModalOpen && selectedStats && (
         <div className="modal-overlay">
           <div className="modal stats-modal">
             <div className="modal-header">
-              <h3>📊 إحصائيات: {selectedStats.name}</h3>
+              <h3>📊 تفاصيل: {selectedStats.name}</h3>
               <button onClick={() => setStatsModalOpen(false)}>{Icons.close}</button>
             </div>
-            {loadingStats ? <div className="loading">جاري الحساب...</div> : (
+            
+            {loadingStats ? <div className="loading">جاري التحميل...</div> : (
+               <>
                <div className="stats-grid-modal">
                  <div className="stat-box blue"><h4>👨‍🎓 طلاب</h4><span className="val">{selectedStats.students_count || 0}</span></div>
                  <div className="stat-box green"><h4>💰 أرباح</h4><span className="val">{(selectedStats.balance || 0).toLocaleString()}</span></div>
                  <div className="stat-box yellow"><h4>⏳ طلبات</h4><span className="val">{selectedStats.pending_requests || 0}</span></div>
                  <div className="stat-box purple"><h4>📚 كورسات</h4><span className="val">{selectedStats.courses_count || 0}</span></div>
                </div>
+
+               {/* قسم المشرفين المساعدين */}
+               <div className="moderators-section">
+                  <h4>👥 فريق العمل والمشرفين</h4>
+                  {selectedStats.moderators && selectedStats.moderators.length > 0 ? (
+                      <div className="mods-list">
+                          {selectedStats.moderators.map((mod, i) => (
+                              <div key={i} className="mod-item">
+                                  <div className="mod-icon">{Icons.user}</div>
+                                  <div className="mod-info">
+                                      <span className="mod-name">{mod.first_name}</span>
+                                      <span className="mod-user">@{mod.admin_username}</span>
+                                  </div>
+                                  <span className="mod-role">مشرف</span>
+                              </div>
+                          ))}
+                      </div>
+                  ) : (
+                      <p className="no-mods">لا يوجد مشرفين مساعدين لهذا المدرس.</p>
+                  )}
+               </div>
+               </>
             )}
             <div className="modal-actions"><button className="btn-cancel full" onClick={() => setStatsModalOpen(false)}>إغلاق</button></div>
           </div>
@@ -386,7 +487,7 @@ export default function SuperTeachers() {
       )}
 
       <style jsx>{`
-        /* General Layout */
+        /* Styles */
         .page-container { padding-bottom: 50px; }
         .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 20px; }
         .top-bar h1 { margin: 0 0 5px 0; color: #f8fafc; font-size: 1.6rem; }
@@ -399,7 +500,6 @@ export default function SuperTeachers() {
         .search-input { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px 15px; display: flex; align-items: center; gap: 10px; color: #94a3b8; }
         .search-input input { background: transparent; border: none; color: white; font-size: 1rem; width: 100%; outline: none; }
 
-        /* Table Styles */
         .table-wrapper { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; }
         table { width: 100%; border-collapse: collapse; }
         thead { background: #0f172a; }
@@ -428,16 +528,14 @@ export default function SuperTeachers() {
         .delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
         .btn-icon:hover { transform: scale(1.1); filter: brightness(1.2); }
 
-        /* Modal Base */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
         .modal { background: #1e293b; border: 1px solid #334155; width: 90%; border-radius: 16px; padding: 25px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); animation: popIn 0.2s ease-out; }
-        .form-modal { max-width: 600px; max-height: 90vh; overflow-y: auto; }
+        .form-modal { max-width: 650px; max-height: 90vh; overflow-y: auto; }
         
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .modal-header h3 { margin: 0; color: white; font-size: 1.1rem; }
         .modal-header button { background: none; border: none; color: #94a3b8; cursor: pointer; }
 
-        /* Form Styling */
         .form-section { margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .form-section:last-child { border-bottom: none; }
         .form-section h4 { margin: 0 0 15px 0; color: #94a3b8; font-size: 0.9rem; font-weight: normal; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -453,25 +551,36 @@ export default function SuperTeachers() {
         .input-app { border-color: rgba(56, 189, 248, 0.3); }
         .input-app:focus { border-color: #38bdf8; }
 
+        .error-banner { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; }
+
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .modal-actions.centered { justify-content: center; margin-top: 20px; }
         .btn-cancel { background: transparent; border: 1px solid #475569; color: #cbd5e1; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
         .btn-submit { background: #22c55e; border: none; color: #0f172a; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-danger { background: #ef4444; border: none; color: white; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
-        /* Delete Modal Specifics */
         .delete-modal { max-width: 400px; text-align: center; border: 1px solid #ef4444; }
         .delete-icon { background: rgba(239, 68, 68, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto; }
         .warning-text { color: #f87171; font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px; }
 
-        /* Stats Modal */
-        .stats-grid-modal { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .stats-grid-modal { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
         .stat-box { background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155; text-align: center; }
         .stat-box h4 { margin: 0 0 5px 0; color: #94a3b8; font-size: 0.85rem; font-weight: normal; }
         .stat-box .val { font-size: 1.5rem; font-weight: bold; display: block; }
         .blue .val { color: #38bdf8; } .green .val { color: #4ade80; }
         .yellow .val { color: #facc15; } .purple .val { color: #c084fc; }
         .full { width: 100%; }
+
+        .moderators-section { margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px; }
+        .moderators-section h4 { color: #cbd5e1; font-size: 0.95rem; margin-bottom: 10px; }
+        .mods-list { display: grid; grid-template-columns: 1fr; gap: 10px; max-height: 150px; overflow-y: auto; }
+        .mod-item { display: flex; align-items: center; gap: 10px; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
+        .mod-icon { color: #64748b; }
+        .mod-info { flex: 1; display: flex; flex-direction: column; }
+        .mod-name { color: #e2e8f0; font-size: 0.9rem; font-weight: 500; }
+        .mod-user { color: #64748b; font-size: 0.8rem; font-family: monospace; }
+        .mod-role { background: rgba(56, 189, 248, 0.1); color: #38bdf8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; }
+        .no-mods { color: #64748b; font-size: 0.85rem; text-align: center; padding: 10px; font-style: italic; }
         
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         
@@ -480,6 +589,7 @@ export default function SuperTeachers() {
             td, th { padding: 12px 10px; font-size: 0.85rem; }
             .top-bar { flex-direction: column; align-items: flex-start; gap: 15px; }
             .btn-primary { width: 100%; justify-content: center; }
+            .stats-grid-modal { grid-template-columns: 1fr; }
         }
       `}</style>
     </SuperLayout>
