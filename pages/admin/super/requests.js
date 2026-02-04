@@ -6,7 +6,7 @@ export default function SuperRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   
-  // ✅ 1. حالات Pagination الجديدة
+  // ✅ 1. حالات Pagination
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 10; // عدد العناصر في كل صفحة
@@ -28,16 +28,15 @@ export default function SuperRequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // ✅ 2. تحديث المسار لإرسال رقم الصفحة والحد الأقصى
+      // ✅ 2. إرسال رقم الصفحة والحد الأقصى
       const res = await fetch(`/api/dashboard/super/requests?status=${filter}&page=${page}&limit=${pageSize}`);
       const result = await res.json();
       
-      // ✅ 3. معالجة الاستجابة الجديدة { data, count }
+      // ✅ 3. معالجة الاستجابة
       if (result.data) {
           setRequests(result.data);
           setTotalCount(result.count || 0);
       } else if (Array.isArray(result)) {
-          // احتياطي في حال كانت الاستجابة مصفوفة مباشرة (للتوافق القديم)
           setRequests(result);
           setTotalCount(result.length);
       } else {
@@ -52,12 +51,12 @@ export default function SuperRequestsPage() {
     }
   };
 
-  // ✅ 4. إعادة تعيين الصفحة إلى 1 عند تغيير الفلتر
+  // ✅ 4. إعادة تعيين الصفحة عند تغيير الفلتر
   useEffect(() => {
     setPage(1);
   }, [filter]);
 
-  // ✅ 5. جلب البيانات عند تغيير الفلتر أو الصفحة
+  // ✅ 5. جلب البيانات
   useEffect(() => {
     fetchRequests();
   }, [filter, page]);
@@ -87,9 +86,7 @@ export default function SuperRequestsPage() {
       
       if (res.ok) {
         showToast(result.message || 'تم تنفيذ العملية بنجاح', 'success');
-        // إزالة الطلب من القائمة الحالية محلياً
         setRequests(requests.filter(r => r.id !== requestId));
-        // تقليل العدد الكلي محلياً للحفاظ على دقة العداد
         setTotalCount(prev => Math.max(0, prev - 1));
       } else {
         showToast(result.error, 'error');
@@ -191,6 +188,14 @@ export default function SuperRequestsPage() {
                                 <span className="label">🛒 المحتوى المطلوب</span>
                                 <p className="details-text">{req.course_title || 'محتوى غير محدد'}</p>
                             </div>
+
+                            {/* ✅ إضافة: عرض ملاحظة الطالب إذا وجدت */}
+                            {req.user_note && (
+                                <div className="note-box">
+                                    <span className="label">📝 ملاحظات الطالب</span>
+                                    <p className="note-text">{req.user_note}</p>
+                                </div>
+                            )}
 
                             {req.payment_file_path && (
                                 <div className="receipt-section">
@@ -345,6 +350,10 @@ export default function SuperRequestsPage() {
 
         .details-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
         .details-text { color: #cbd5e1; margin: 0; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
+
+        /* ✅ ستايلات ملاحظات الطالب */
+        .note-box { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 15px; }
+        .note-text { color: #fbbf24; margin: 0; font-size: 0.95em; line-height: 1.4; white-space: pre-wrap; }
 
         .receipt-section { margin-top: 15px; text-align: center; }
         .receipt-thumbnail-wrapper { position: relative; height: 160px; width: 100%; background: #0f172a; border-radius: 10px; overflow: hidden; cursor: zoom-in; border: 1px solid #334155; transition: border-color 0.2s; }
