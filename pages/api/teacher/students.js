@@ -24,7 +24,7 @@ export default async (req, res) => {
             title, 
             subjects (id, title)
           `)
-          .eq('teacher_id', teacherId); // شرط مهم: كورسات هذا المعلم فقط
+          .eq('teacher_id', teacherId);
 
         if (error) throw error;
         return res.status(200).json(content);
@@ -56,7 +56,7 @@ export default async (req, res) => {
 
         if (reqError) throw reqError;
 
-        // ج) فلترة الطلبات في الذاكرة (لأن الهيكل JSONB)
+        // ج) فلترة الطلبات في الذاكرة
         const teacherRequests = allRequests.filter(req => {
             const items = req.requested_data || [];
             return items.some(item => {
@@ -79,31 +79,29 @@ export default async (req, res) => {
         const { data: student, error: userError } = await supabase
           .from('users')
           .select('id, first_name, username, phone, created_at, is_blocked')
-          .eq('role', 'student') // ✅✅ التعديل هنا: قصر البحث على الطلاب فقط
+          .eq('role', 'student')
           .or(`username.eq.${query},phone.eq.${query}`)
           .maybeSingle();
         
         if (userError) throw userError;
         
-        // إذا لم يتم العثور على طالب (أو كان المستخدم موجوداً لكنه ليس طالباً)
         if (!student) return res.status(404).json({ error: 'Student not found' });
 
-        // ب) جلب صلاحيات الكورسات (التابعة للمعلم)
+        // ب) جلب صلاحيات الكورسات
         const { data: coursesAccess } = await supabase
           .from('user_course_access')
           .select('course_id, courses!inner(id, title, teacher_id)')
           .eq('user_id', student.id)
           .eq('courses.teacher_id', teacherId);
 
-        // ج) جلب صلاحيات المواد (التابعة للمعلم) مع اسم الكورس الأب
+        // ج) جلب صلاحيات المواد
         const { data: subjectsAccess } = await supabase
           .from('user_subject_access')
-          // ✅ تم التعديل لجلب subjects -> courses -> title
           .select('subject_id, subjects!inner(id, title, courses!inner(id, title, teacher_id))')
           .eq('user_id', student.id)
           .eq('subjects.courses.teacher_id', teacherId);
 
-        // تنسيق البيانات للواجهة
+        // تنسيق البيانات
         const formattedAccess = [
             ...(coursesAccess || []).map(c => ({
                 id: c.course_id,
@@ -115,7 +113,7 @@ export default async (req, res) => {
                 id: s.subject_id,
                 title: s.subjects.title,
                 type: 'subject',
-                subtitle: `مادة في: ${s.subjects.courses.title}` // ✅ عرض اسم الكورس
+                subtitle: `مادة في: ${s.subjects.courses.title}`
             }))
         ];
 
@@ -140,11 +138,10 @@ export default async (req, res) => {
     const { action, payload } = req.body; 
 
     try {
-      // 1️⃣ معالجة طلبات الاشتراك (Handle Request)
+      // 1️⃣ معالجة طلبات الاشتراك (Handle Request) - (لم يتم تغييره)
       if (action === 'handle_request') {
          const { requestId, decision, rejectionReason } = payload;
          
-         // جلب البيانات للتحقق
          const { data: reqData, error: fetchErr } = await supabase
             .from('subscription_requests')
             .select('*')
@@ -153,7 +150,6 @@ export default async (req, res) => {
          
          if (fetchErr || !reqData) return res.status(404).json({ error: 'Request not found' });
 
-         // التحقق من الملكية
          const { data: myCourses } = await supabase.from('courses').select('id').eq('teacher_id', teacherId);
          const myCourseIds = myCourses?.map(c => c.id) || [];
          const { data: mySubjects } = await supabase.from('subjects').select('id').in('course_id', myCourseIds);
@@ -180,7 +176,6 @@ export default async (req, res) => {
          if (decision === 'approve') {
              let targetUserId = reqData.user_id;
              if (!targetUserId) {
-                 // منطق إنشاء أو جلب المستخدم (كما في الكود الأصلي)
                  const { data: existingUser } = await supabase.from('users').select('id').eq('username', reqData.user_username).maybeSingle();
                  if (existingUser) targetUserId = existingUser.id;
                  else {
@@ -192,7 +187,6 @@ export default async (req, res) => {
                  }
              }
 
-             // منح الصلاحيات
              for (const item of items) {
                  if (item.type === 'course') {
                      await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id }, { onConflict: 'user_id, course_id' });
@@ -206,32 +200,84 @@ export default async (req, res) => {
          }
       }
 
-      // 2️⃣ التحكم المباشر (Manage Access) - إضافة / حذف
+      // 2️⃣ التحكم المباشر (Manage Access) - ✅ هنا التعديل الرئيسي
       if (action === 'manage_access') {
          const { studentId, type, itemId, allow } = payload;
          
-         // أ) التحقق من الملكية
+         // أ) التحقق من الملكية وجلب تفاصيل السعر والعنوان
          let isOwner = false;
+         let contentTitle = '';
+         let contentPrice = 0;
+
          if (type === 'course') {
-             const { data } = await supabase.from('courses').select('teacher_id').eq('id', itemId).single();
-             isOwner = (data && data.teacher_id === teacherId);
+             const { data } = await supabase
+                .from('courses')
+                .select('teacher_id, title, price') // ✅ جلب السعر والعنوان
+                .eq('id', itemId)
+                .single();
+             
+             if (data && data.teacher_id === teacherId) {
+                isOwner = true;
+                contentTitle = data.title;
+                contentPrice = data.price || 0;
+             }
+
          } else if (type === 'subject') {
-             const { data } = await supabase.from('subjects').select('courses(teacher_id)').eq('id', itemId).single();
-             isOwner = (data && data.courses && data.courses.teacher_id === teacherId);
+             const { data } = await supabase
+                .from('subjects')
+                .select('title, price, courses(teacher_id, title)') // ✅ جلب السعر والعنوان
+                .eq('id', itemId)
+                .single();
+             
+             if (data && data.courses && data.courses.teacher_id === teacherId) {
+                isOwner = true;
+                contentTitle = `${data.title} (${data.courses.title})`;
+                contentPrice = data.price || 0;
+             }
          }
 
          if (!isOwner) return res.status(403).json({ error: '⛔ لا تملك هذا المحتوى' });
 
-         // ب) التنفيذ (إضافة أو حذف)
+         // ب) التنفيذ
          if (allow) {
-           await supabase.from(type === 'course' ? 'user_course_access' : 'user_subject_access')
-              .upsert({ user_id: studentId, [`${type}_id`]: itemId }, { onConflict: `user_id, ${type}_id` });
+            // ✅ خطوة 1: جلب بيانات الطالب لإنشاء السجل
+            const { data: studentUser } = await supabase
+                .from('users')
+                .select('username, first_name, phone')
+                .eq('id', studentId)
+                .single();
+
+            if (studentUser) {
+                // ✅ خطوة 2: تسجيل العملية مالياً في subscription_requests
+                await supabase.from('subscription_requests').insert({
+                    user_id: studentId,
+                    teacher_id: teacherId,
+                    status: 'approved', // مقبول فوراً
+                    total_price: contentPrice, // السعر لحساب الأرباح
+                    user_name: studentUser.first_name,
+                    user_username: studentUser.username,
+                    phone: studentUser.phone,
+                    course_title: contentTitle, // اسم المحتوى
+                    requested_data: [{ // تخزين تفاصيل المحتوى
+                        id: itemId,
+                        type: type,
+                        title: contentTitle,
+                        price: contentPrice
+                    }],
+                    user_note: 'تم التفعيل يدوياً بواسطة المعلم من لوحة التحكم'
+                });
+            }
+
+            // ✅ خطوة 3: منح الصلاحية فعلياً
+            await supabase.from(type === 'course' ? 'user_course_access' : 'user_subject_access')
+               .upsert({ user_id: studentId, [`${type}_id`]: itemId }, { onConflict: `user_id, ${type}_id` });
+
          } else {
-           // ✅ إصلاح الحذف: استخدام المفتاح الديناميكي الصحيح (course_id أو subject_id)
-           await supabase.from(type === 'course' ? 'user_course_access' : 'user_subject_access')
-              .delete()
-              .eq('user_id', studentId)
-              .eq(`${type}_id`, itemId);
+            // حالة الحذف (إلغاء الصلاحية)
+            await supabase.from(type === 'course' ? 'user_course_access' : 'user_subject_access')
+               .delete()
+               .eq('user_id', studentId)
+               .eq(`${type}_id`, itemId);
          }
          return res.status(200).json({ success: true });
       }
