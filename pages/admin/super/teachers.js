@@ -225,6 +225,7 @@ const confirmLogin = (teacher) => {
 };
 
 // 2. تنفيذ الدخول الفعلي
+// استبدل دالة executeLogin القديمة بهذه النسخة المحسنة
 const executeLogin = async () => {
   if (!teacherToLogin) return;
   
@@ -238,26 +239,32 @@ const executeLogin = async () => {
       if (res.ok) {
           const data = await res.json();
           
-          // ✅ الخطوة الحاسمة: تحديث الذاكرة المحلية ببيانات المدرس
+          // 1. تنظيف بيانات السوبر أدمن القديمة من الذاكرة لضمان عدم التضارب
+          localStorage.removeItem('admin_user_id');
+          localStorage.removeItem('admin_name');
+          localStorage.removeItem('is_admin_session');
+
+          // 2. تخزين بيانات المدرس الجديدة
           localStorage.setItem('admin_user_id', data.user.id);
           localStorage.setItem('admin_name', data.user.name);
-          // لا نغير الـ Redirect path هنا لأن صفحة الدخول ستوجهك تلقائياً بناءً على الدور
+          localStorage.setItem('is_admin_session', 'true');
           
           showToast(`تم الدخول لحساب ${teacherToLogin.name} بنجاح`, 'success');
           setLoginModalOpen(false);
 
-          // فتح لوحة التحكم في تبويب جديد
-          // نستخدم setTimeout لضمان حفظ الـ localStorage قبل الفتح
+          // 3. تأخير بسيط جداً قبل الفتح لضمان حفظ الكوكيز والذاكرة
           setTimeout(() => {
+              // التوجيه المباشر للوحة المدرس
               window.open('/admin/teacher', '_blank');
-          }, 100);
+          }, 500);
           
       } else {
-          showToast('فشل الدخول، تأكد من البيانات', 'error');
+          const errData = await res.json();
+          showToast(errData.error || 'فشل الدخول، تأكد من البيانات', 'error');
       }
   } catch (err) { 
       console.error(err);
-      showToast('خطأ في الاتصال', 'error');
+      showToast('خطأ في الاتصال بالسيرفر', 'error');
   }
 };
   
