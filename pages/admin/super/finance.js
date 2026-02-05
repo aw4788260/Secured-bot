@@ -116,7 +116,7 @@ export default function SuperFinance() {
     printWindow.document.close();
   };
 
-  // ✅ دالة طباعة تقرير المدرس التفصيلي
+  // ✅ دالة طباعة تقرير المدرس التفصيلي (تم التعديل هنا)
   const handleTeacherReport = async (teacherId) => {
     setReportLoading(teacherId);
     try {
@@ -131,12 +131,17 @@ export default function SuperFinance() {
         
         const data = await res.json();
         
+        // 🛠️ تعديل: استخدام النسبة القادمة من الـ API أو استخدام 10% كقيمة افتراضية
+        const percentage = data.platformPercentage !== undefined ? data.platformPercentage : 0.10;
+        
+        // تنسيق النسبة للعرض (إزالة الأصفار الزائدة، مثلاً 15.00 تصبح 15)
+        const percentageDisplay = (percentage * 100).toFixed(0).replace(/\.0+$/, '');
+
         const totalSales = data.summary.total_approved_amount;
-        const platformShare = totalSales * 0.10; 
+        const platformShare = totalSales * percentage; 
         const netProfit = totalSales - platformShare;
 
-        // ✅ إنشاء اسم الملف الديناميكي (اسم المدرس + التاريخ)
-        // نقوم باستبدال المسافات بشرطة سفلية ليكون الاسم منسقاً
+        // ✅ إنشاء اسم الملف الديناميكي
         const safeName = data.teacherName.replace(/\s+/g, '_');
         const fileName = `تقرير_${safeName}_${dateRange.startDate}_${dateRange.endDate}`;
 
@@ -205,7 +210,7 @@ export default function SuperFinance() {
                 </div>
 
                 <div class="summary-col border">
-                    <div class="info-row">حصة المنصة (10%)</div>
+                    <div class="info-row">حصة المنصة (${percentageDisplay}%)</div>
                     <span class="val red">${platformShare.toLocaleString()} ج.م</span>
                 </div>
 
