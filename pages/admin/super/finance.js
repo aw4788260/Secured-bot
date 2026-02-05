@@ -4,7 +4,7 @@ import Head from 'next/head';
 
 export default function SuperFinance() {
   const [loading, setLoading] = useState(true);
-  const [reportLoading, setReportLoading] = useState(null); // لتحديد الزر الذي يتم تحميله حالياً
+  const [reportLoading, setReportLoading] = useState(null);
   
   const [financials, setFinancials] = useState({
     total_revenue: 0,
@@ -60,13 +60,10 @@ export default function SuperFinance() {
             h1, h2 { text-align: center; color: #333; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-            th { background-color: #f2f2f2; }
-            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border: 1px solid #eee; }
+            th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
+            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border: 1px solid #eee; -webkit-print-color-adjust: exact; }
             .stat { text-align: center; }
             .stat-val { font-weight: bold; font-size: 18px; color: #2563eb; }
-            @media print {
-               .no-print { display: none; }
-            }
           </style>
         </head>
         <body>
@@ -111,7 +108,7 @@ export default function SuperFinance() {
     printWindow.document.close();
   };
 
-  // ✅ دالة طباعة تقرير المدرس التفصيلي
+  // ✅ دالة طباعة تقرير المدرس التفصيلي (تم التعديل لإظهار الألوان والحسابات)
   const handleTeacherReport = async (teacherId) => {
     setReportLoading(teacherId);
     try {
@@ -126,6 +123,11 @@ export default function SuperFinance() {
         
         const data = await res.json();
         
+        // 1. حساب النسب المالية محلياً للعرض
+        const totalSales = data.summary.total_approved_amount;
+        const platformShare = totalSales * 0.10; // نسبة 10% (يمكن تغييرها إذا كانت ديناميكية)
+        const netProfit = totalSales - platformShare;
+
         // إنشاء نافذة التقرير
         const printWindow = window.open('', '_blank');
         const htmlContent = `
@@ -136,12 +138,29 @@ export default function SuperFinance() {
                 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
                 h2 { text-align: center; color: #333; margin-bottom: 5px; }
                 p.meta { text-align: center; color: #666; margin-top: 0; }
+                
                 table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
                 th, td { border: 1px solid #ccc; padding: 6px; text-align: right; }
-                th { background-color: #f2f2f2; }
-                .approved { background-color: #dcfce7 !important; } /* أخضر فاتح */
-                .rejected { background-color: #fee2e2 !important; } /* أحمر فاتح */
-                .summary { margin: 20px 0; padding: 15px; border: 2px solid #333; }
+                th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
+                
+                /* ✅ فرض طباعة الألوان */
+                .approved { background-color: #dcfce7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+                .rejected { background-color: #fee2e2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                
+                .summary { 
+                    margin: 20px 0; 
+                    padding: 20px; 
+                    border: 1px solid #333; 
+                    background-color: #f8fafc;
+                    display: flex;
+                    justify-content: space-between;
+                    -webkit-print-color-adjust: exact;
+                }
+                .summary-col { flex: 1; }
+                .val { font-weight: bold; font-size: 1.1em; }
+                .green { color: #16a34a; }
+                .blue { color: #2563eb; }
+                .red { color: #dc2626; }
               </style>
             </head>
             <body>
@@ -149,9 +168,18 @@ export default function SuperFinance() {
               <p class="meta">الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</p>
 
               <div class="summary">
-                <strong>ملخص الفترة:</strong><br/>
-                ✅ إجمالي المقبول: ${data.summary.total_approved_amount.toLocaleString()} ج.م (عدد: ${data.summary.total_approved_count})<br/>
-                ❌ إجمالي المرفوض: ${data.summary.total_rejected_count} عملية
+                <div class="summary-col">
+                    <strong>📊 ملخص العمليات:</strong><br/>
+                    ✅ عدد المقبول: ${data.summary.total_approved_count}<br/>
+                    ❌ عدد المرفوض: ${data.summary.total_rejected_count}
+                </div>
+                <div class="summary-col" style="border-right: 1px solid #ccc; padding-right: 20px;">
+                    <strong>💰 الملخص المالي:</strong><br/>
+                    إجمالي المبيعات: <span class="val green">${totalSales.toLocaleString()} ج.م</span><br/>
+                    حصة المنصة (10%): <span class="val red">${platformShare.toLocaleString()} ج.م</span><br/>
+                    ---------------------------<br/>
+                    <strong>صافي المستحق: <span class="val blue">${netProfit.toLocaleString()} ج.م</span></strong>
+                </div>
               </div>
 
               <table>
@@ -179,6 +207,7 @@ export default function SuperFinance() {
                 </tbody>
               </table>
               <script>
+                // طباعة تلقائية عند التحميل
                 window.onload = function() { window.print(); }
               </script>
             </body>
@@ -224,7 +253,6 @@ export default function SuperFinance() {
                   className="date-input"
                 />
              </div>
-             {/* ✅ استبدال زر CSV بزر PDF */}
              <button 
                 onClick={handleGlobalExportPDF} 
                 className="export-btn"
@@ -296,7 +324,6 @@ export default function SuperFinance() {
                          <td style={{color:'#facc15'}}>{teacher.platform_fee.toLocaleString()} ج.م</td>
                          <td style={{color:'#38bdf8', fontWeight:'bold'}}>{teacher.net_profit.toLocaleString()} ج.م</td>
                          <td>
-                            {/* ✅ استبدال زر التفاصيل بزر تصدير تقرير المدرس */}
                             <button 
                                 className="btn-details" 
                                 onClick={() => handleTeacherReport(teacher.id)}
