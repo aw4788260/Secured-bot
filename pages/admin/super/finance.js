@@ -4,8 +4,8 @@ import Head from 'next/head';
 
 export default function SuperFinance() {
   const [loading, setLoading] = useState(true);
+  const [reportLoading, setReportLoading] = useState(null); // لتحديد الزر الذي يتم تحميله حالياً
   
-  // الحالة الافتراضية (أصفار)
   const [financials, setFinancials] = useState({
     total_revenue: 0,
     platform_profit: 0,
@@ -13,27 +13,21 @@ export default function SuperFinance() {
     teachers_list: []
   });
 
-  // فلاتر التاريخ (الافتراضي: آخر 30 يوم)
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
 
-  // جلب البيانات
   const fetchFinanceData = async () => {
     setLoading(true);
     try {
-      // بناء رابط الـ API مع الفلاتر
       const query = new URLSearchParams(dateRange).toString();
-      
       const res = await fetch(`/api/dashboard/super/finance?${query}`); 
       
       if (res.ok) {
         const data = await res.json();
         setFinancials(data);
       } else {
-        console.error("فشل جلب البيانات المالية");
-        // عند الفشل، نعيد تصفير البيانات بدلاً من عرض بيانات وهمية
         setFinancials({
           total_revenue: 0,
           platform_profit: 0,
@@ -50,23 +44,155 @@ export default function SuperFinance() {
 
   useEffect(() => {
     fetchFinanceData();
-  }, [dateRange]); // إعادة الجلب عند تغيير التاريخ
+  }, [dateRange]);
 
-  // تصدير لـ CSV
-  const handleExportCSV = () => {
+  // ✅ دالة الطباعة العامة (توليد PDF للقائمة الرئيسية)
+  const handleGlobalExportPDF = () => {
     if (financials.teachers_list.length === 0) return;
 
-    const headers = ['المدرس,المبيعات,نسبة المنصة,صافي الربح,عدد العمليات'];
-    const rows = financials.teachers_list.map(t => 
-      `${t.name},${t.sales},${t.platform_fee},${t.net_profit},${t.transaction_count}`
-    );
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers, ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `financial_report_${dateRange.startDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
+    const printWindow = window.open('', '_blank');
+    const htmlContent = `
+      <html>
+        <head>
+          <title>التقرير المالي العام</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
+            h1, h2 { text-align: center; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+            th { background-color: #f2f2f2; }
+            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border: 1px solid #eee; }
+            .stat { text-align: center; }
+            .stat-val { font-weight: bold; font-size: 18px; color: #2563eb; }
+            @media print {
+               .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>التقرير المالي الشامل</h1>
+          <p style="text-align: center;">الفترة من: ${dateRange.startDate} إلى: ${dateRange.endDate}</p>
+          
+          <div class="summary-box">
+            <div class="stat">إجمالي المبيعات<div class="stat-val">${financials.total_revenue.toLocaleString()} ج.م</div></div>
+            <div class="stat">ربح المنصة<div class="stat-val">${financials.platform_profit.toLocaleString()} ج.م</div></div>
+            <div class="stat">مستحقات المدرسين<div class="stat-val">${financials.teachers_due.toLocaleString()} ج.م</div></div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>المدرس</th>
+                <th>عدد العمليات</th>
+                <th>المبيعات</th>
+                <th>حصة المنصة</th>
+                <th>صافي الربح</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${financials.teachers_list.map(t => `
+                <tr>
+                  <td>${t.name}</td>
+                  <td>${t.transaction_count}</td>
+                  <td>${t.sales.toLocaleString()}</td>
+                  <td>${t.platform_fee.toLocaleString()}</td>
+                  <td>${t.net_profit.toLocaleString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
+  // ✅ دالة طباعة تقرير المدرس التفصيلي
+  const handleTeacherReport = async (teacherId) => {
+    setReportLoading(teacherId);
+    try {
+        const query = new URLSearchParams({ 
+            teacherId, 
+            startDate: dateRange.startDate, 
+            endDate: dateRange.endDate 
+        }).toString();
+
+        const res = await fetch(`/api/dashboard/super/teacher-report?${query}`);
+        if (!res.ok) throw new Error('Failed to fetch report');
+        
+        const data = await res.json();
+        
+        // إنشاء نافذة التقرير
+        const printWindow = window.open('', '_blank');
+        const htmlContent = `
+          <html>
+            <head>
+              <title>تقرير مدرس: ${data.teacherName}</title>
+              <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
+                h2 { text-align: center; color: #333; margin-bottom: 5px; }
+                p.meta { text-align: center; color: #666; margin-top: 0; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th, td { border: 1px solid #ccc; padding: 6px; text-align: right; }
+                th { background-color: #f2f2f2; }
+                .approved { background-color: #dcfce7 !important; } /* أخضر فاتح */
+                .rejected { background-color: #fee2e2 !important; } /* أحمر فاتح */
+                .summary { margin: 20px 0; padding: 15px; border: 2px solid #333; }
+              </style>
+            </head>
+            <body>
+              <h2>تقرير تفصيلي للمدرس: ${data.teacherName}</h2>
+              <p class="meta">الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</p>
+
+              <div class="summary">
+                <strong>ملخص الفترة:</strong><br/>
+                ✅ إجمالي المقبول: ${data.summary.total_approved_amount.toLocaleString()} ج.م (عدد: ${data.summary.total_approved_count})<br/>
+                ❌ إجمالي المرفوض: ${data.summary.total_rejected_count} عملية
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>التاريخ</th>
+                    <th>اسم الطالب</th>
+                    <th>المحتوى</th>
+                    <th>المبلغ</th>
+                    <th>الحالة</th>
+                    <th>ملاحظات / سبب الرفض</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${data.requests.map(req => `
+                    <tr class="${req.status}">
+                      <td>${new Date(req.created_at).toLocaleDateString('ar-EG')}</td>
+                      <td>${req.user_name || req.user_username}</td>
+                      <td>${req.course_title}</td>
+                      <td>${req.total_price} ج.م</td>
+                      <td>${req.status === 'approved' ? 'مقبول' : 'مرفوض'}</td>
+                      <td>${req.rejection_reason || req.user_note || '-'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              <script>
+                window.onload = function() { window.print(); }
+              </script>
+            </body>
+          </html>
+        `;
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+
+    } catch (err) {
+        console.error(err);
+        alert('حدث خطأ أثناء جلب التقرير');
+    } finally {
+        setReportLoading(null);
+    }
   };
 
   return (
@@ -76,7 +202,6 @@ export default function SuperFinance() {
       </Head>
 
       <div className="finance-container">
-        {/* Header Section */}
         <div className="header-section">
           <div>
             <h1>💰 التقارير المالية</h1>
@@ -99,17 +224,17 @@ export default function SuperFinance() {
                   className="date-input"
                 />
              </div>
+             {/* ✅ استبدال زر CSV بزر PDF */}
              <button 
-                onClick={handleExportCSV} 
+                onClick={handleGlobalExportPDF} 
                 className="export-btn"
                 disabled={financials.teachers_list.length === 0}
              >
-                📄 تصدير CSV
+                📄 تصدير PDF
              </button>
           </div>
         </div>
 
-        {/* Cards Section */}
         <div className="cards-grid">
            <div className="stat-card total">
               <div className="icon">💵</div>
@@ -138,7 +263,6 @@ export default function SuperFinance() {
            </div>
         </div>
 
-        {/* Table Section */}
         <div className="table-container">
            <div className="table-header">
               <h3>تفاصيل المدرسين</h3>
@@ -172,7 +296,14 @@ export default function SuperFinance() {
                          <td style={{color:'#facc15'}}>{teacher.platform_fee.toLocaleString()} ج.م</td>
                          <td style={{color:'#38bdf8', fontWeight:'bold'}}>{teacher.net_profit.toLocaleString()} ج.م</td>
                          <td>
-                            <button className="btn-details" onClick={() => alert(`تفاصيل مدرس ${teacher.name} (قريباً)`)}>تفاصيل</button>
+                            {/* ✅ استبدال زر التفاصيل بزر تصدير تقرير المدرس */}
+                            <button 
+                                className="btn-details" 
+                                onClick={() => handleTeacherReport(teacher.id)}
+                                disabled={reportLoading === teacher.id}
+                            >
+                                {reportLoading === teacher.id ? 'جاري التحميل...' : '📄 تقرير PDF'}
+                            </button>
                          </td>
                        </tr>
                      ))
@@ -226,8 +357,9 @@ export default function SuperFinance() {
         td { padding: 15px 20px; border-top: 1px solid #334155; color: #e2e8f0; vertical-align: middle; white-space: nowrap; }
         tr:hover td { background: rgba(255,255,255,0.02); }
 
-        .btn-details { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; transition: 0.2s; }
-        .btn-details:hover { border-color: #38bdf8; color: #38bdf8; }
+        .btn-details { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; transition: 0.2s; white-space: nowrap; }
+        .btn-details:hover:not(:disabled) { border-color: #38bdf8; color: #38bdf8; }
+        .btn-details:disabled { opacity: 0.5; cursor: wait; }
 
         .loading { text-align: center; padding: 50px; color: #38bdf8; }
         .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
