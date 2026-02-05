@@ -182,6 +182,7 @@ export default async (req, res) => {
                 return subject?.course_id;
              }
           }
+          // Handle videos and PDFs
           if (itemType === 'videos' || itemType === 'pdfs') {
              let chapterId = itemData.chapter_id;
              if (isUpdateOrDelete) {
@@ -273,6 +274,15 @@ export default async (req, res) => {
          if (type === 'courses') {
             const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
             if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
+         } else if (type === 'exams') {
+             // 🛠️ إضافة التحقق للامتحانات في التعديل
+             const { data: exam } = await supabase
+                .from('exams')
+                .select('subjects(courses(teacher_id))')
+                .eq('id', id)
+                .single();
+            const teacherId = exam?.subjects?.courses?.teacher_id;
+            if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
          } else {
             const targetCourseId = await getParentCourseId(type, { id }, true);
             if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
@@ -293,6 +303,17 @@ export default async (req, res) => {
          if (type === 'courses') {
             const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
             if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
+         } else if (type === 'exams') {
+             // 🛠️ FIX: إضافة التحقق للامتحانات في الحذف
+             const { data: exam } = await supabase
+                .from('exams')
+                .select('subjects(courses(teacher_id))')
+                .eq('id', id)
+                .single();
+            
+             const teacherId = exam?.subjects?.courses?.teacher_id;
+             if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
+
          } else {
             const targetCourseId = await getParentCourseId(type, { id }, true);
             if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
