@@ -57,7 +57,9 @@ export default function SuperFinance() {
           <title>التقرير المالي العام</title>
           <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
-            h1, h2 { text-align: center; color: #333; }
+            .header-container { text-align: center; margin-bottom: 20px; }
+            .logo { max-height: 80px; margin-bottom: 10px; }
+            h1, h2 { text-align: center; color: #333; margin: 5px 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
             th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
@@ -67,8 +69,11 @@ export default function SuperFinance() {
           </style>
         </head>
         <body>
-          <h1>التقرير المالي الشامل</h1>
-          <p style="text-align: center;">الفترة من: ${dateRange.startDate} إلى: ${dateRange.endDate}</p>
+          <div class="header-container">
+             <img src="/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'" />
+             <h1>التقرير المالي الشامل</h1>
+             <p>الفترة من: ${dateRange.startDate} إلى: ${dateRange.endDate}</p>
+          </div>
           
           <div class="summary-box">
             <div class="stat">إجمالي المبيعات<div class="stat-val">${financials.total_revenue.toLocaleString()} ج.م</div></div>
@@ -108,7 +113,7 @@ export default function SuperFinance() {
     printWindow.document.close();
   };
 
-  // ✅ دالة طباعة تقرير المدرس التفصيلي (تم التعديل لإظهار الألوان والحسابات)
+  // ✅ دالة طباعة تقرير المدرس التفصيلي (تم التعديل لإضافة الأعمدة المطلوبة)
   const handleTeacherReport = async (teacherId) => {
     setReportLoading(teacherId);
     try {
@@ -123,9 +128,9 @@ export default function SuperFinance() {
         
         const data = await res.json();
         
-        // 1. حساب النسب المالية محلياً للعرض
+        // حساب النسب المالية محلياً للعرض
         const totalSales = data.summary.total_approved_amount;
-        const platformShare = totalSales * 0.10; // نسبة 10% (يمكن تغييرها إذا كانت ديناميكية)
+        const platformShare = totalSales * 0.10; 
         const netProfit = totalSales - platformShare;
 
         // إنشاء نافذة التقرير
@@ -136,14 +141,15 @@ export default function SuperFinance() {
               <title>تقرير مدرس: ${data.teacherName}</title>
               <style>
                 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
-                h2 { text-align: center; color: #333; margin-bottom: 5px; }
+                .header-container { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
+                .logo { max-height: 80px; margin-bottom: 10px; }
+                h2 { text-align: center; color: #333; margin-bottom: 5px; margin-top: 0; }
                 p.meta { text-align: center; color: #666; margin-top: 0; }
                 
                 table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th, td { border: 1px solid #ccc; padding: 6px; text-align: right; }
+                th, td { border: 1px solid #ccc; padding: 8px; text-align: right; vertical-align: middle; }
                 th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
                 
-                /* ✅ فرض طباعة الألوان */
                 .approved { background-color: #dcfce7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
                 .rejected { background-color: #fee2e2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                 
@@ -155,59 +161,90 @@ export default function SuperFinance() {
                     display: flex;
                     justify-content: space-between;
                     -webkit-print-color-adjust: exact;
+                    border-radius: 8px;
                 }
-                .summary-col { flex: 1; }
-                .val { font-weight: bold; font-size: 1.1em; }
+                .summary-col { flex: 1; text-align: center; }
+                .summary-col.border { border-left: 1px solid #ccc; } 
+                
+                .val { font-weight: bold; font-size: 1.1em; display: block; margin-top: 5px; }
                 .green { color: #16a34a; }
                 .blue { color: #2563eb; }
                 .red { color: #dc2626; }
+                
+                .info-row { margin-bottom: 5px; font-size: 14px; }
+                
+                .user-info { font-weight: bold; }
+                .username { font-size: 0.85em; color: #555; display: block; }
               </style>
             </head>
             <body>
-              <h2>تقرير تفصيلي للمدرس: ${data.teacherName}</h2>
-              <p class="meta">الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</p>
+              <div class="header-container">
+                 <img src="/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'" />
+                 <h2>تقرير حسابات مدرس</h2>
+                 <h3 style="margin:5px 0; color:#2563eb">${data.teacherName}</h3>
+                 <p class="meta">الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</p>
+              </div>
 
               <div class="summary">
-                <div class="summary-col">
-                    <strong>📊 ملخص العمليات:</strong><br/>
-                    ✅ عدد المقبول: ${data.summary.total_approved_count}<br/>
-                    ❌ عدد المرفوض: ${data.summary.total_rejected_count}
+                <div class="summary-col border">
+                    <div class="info-row">عدد العمليات المقبولة</div>
+                    <span class="val green">${data.summary.total_approved_count}</span>
+                    <hr style="width:50%; opacity:0.3"/>
+                    <div class="info-row">عدد العمليات المرفوضة</div>
+                    <span class="val red">${data.summary.total_rejected_count}</span>
                 </div>
-                <div class="summary-col" style="border-right: 1px solid #ccc; padding-right: 20px;">
-                    <strong>💰 الملخص المالي:</strong><br/>
-                    إجمالي المبيعات: <span class="val green">${totalSales.toLocaleString()} ج.م</span><br/>
-                    حصة المنصة (10%): <span class="val red">${platformShare.toLocaleString()} ج.م</span><br/>
-                    ---------------------------<br/>
-                    <strong>صافي المستحق: <span class="val blue">${netProfit.toLocaleString()} ج.م</span></strong>
+                
+                <div class="summary-col border">
+                    <div class="info-row">إجمالي المبيعات</div>
+                    <span class="val green">${totalSales.toLocaleString()} ج.م</span>
+                </div>
+
+                <div class="summary-col border">
+                    <div class="info-row">حصة المنصة (10%)</div>
+                    <span class="val red">${platformShare.toLocaleString()} ج.م</span>
+                </div>
+
+                <div class="summary-col">
+                    <div class="info-row">صافي المستحق للمدرس</div>
+                    <span class="val blue" style="font-size:1.3em">${netProfit.toLocaleString()} ج.م</span>
                 </div>
               </div>
 
               <table>
                 <thead>
                   <tr>
-                    <th>التاريخ</th>
-                    <th>اسم الطالب</th>
+                    <th style="width: 100px;">التاريخ</th>
+                    <th>بيانات الطالب</th>
                     <th>المحتوى</th>
                     <th>المبلغ</th>
                     <th>الحالة</th>
-                    <th>ملاحظات / سبب الرفض</th>
+                    <th>ملاحظة الطالب</th>
+                    <th>سبب الرفض</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${data.requests.map(req => `
                     <tr class="${req.status}">
                       <td>${new Date(req.created_at).toLocaleDateString('ar-EG')}</td>
-                      <td>${req.user_name || req.user_username}</td>
+                      <td>
+                        <span class="user-info">${req.user_name || 'بدون اسم'}</span>
+                        <span class="username">${req.user_username ? `(${req.user_username})` : ''}</span>
+                      </td>
                       <td>${req.course_title}</td>
                       <td>${req.total_price} ج.م</td>
-                      <td>${req.status === 'approved' ? 'مقبول' : 'مرفوض'}</td>
-                      <td>${req.rejection_reason || req.user_note || '-'}</td>
+                      <td>${req.status === 'approved' ? '✅ مقبول' : '❌ مرفوض'}</td>
+                      <td>${req.user_note || '-'}</td>
+                      <td style="color: #dc2626;">${req.rejection_reason || '-'}</td>
                     </tr>
                   `).join('')}
                 </tbody>
               </table>
+              
+              <div style="margin-top: 30px; text-align: center; font-size: 12px; color: #777;">
+                تم استخراج هذا التقرير بتاريخ: ${new Date().toLocaleDateString('ar-EG')}
+              </div>
+
               <script>
-                // طباعة تلقائية عند التحميل
                 window.onload = function() { window.print(); }
               </script>
             </body>
@@ -258,7 +295,7 @@ export default function SuperFinance() {
                 className="export-btn"
                 disabled={financials.teachers_list.length === 0}
              >
-                📄 تصدير PDF
+                📄 تصدير PDF (الكل)
              </button>
           </div>
         </div>
@@ -329,7 +366,7 @@ export default function SuperFinance() {
                                 onClick={() => handleTeacherReport(teacher.id)}
                                 disabled={reportLoading === teacher.id}
                             >
-                                {reportLoading === teacher.id ? 'جاري التحميل...' : '📄 تقرير PDF'}
+                                {reportLoading === teacher.id ? 'جاري التحميل...' : '📄 كشف حساب PDF'}
                             </button>
                          </td>
                        </tr>
