@@ -4,52 +4,71 @@ import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 export default async function handler(req, res) {
   // 1. التحقق من الصلاحية (سوبر أدمن فقط)
   const authResult = await requireSuperAdmin(req, res);
-  if (authResult.error) return; 
+  if (authResult?.error) return; 
 
-  // 2. معالجة طلب حفظ الإعدادات (POST)
-  if (req.method === 'POST') {
-      const { vodafone, instapayNumber, instapayLink } = req.body;
-      
-      const updates = [
-          { key: 'vodafone_cash_number', value: vodafone },
-          { key: 'instapay_number', value: instapayNumber },
-          { key: 'instapay_link', value: instapayLink }
-      ];
+  // المفاتيح التي نتعامل معها
+  const TARGET_KEYS = ['platform_percentage', 'support_telegram', 'support_whatsapp'];
 
-      // استخدام onConflict للتأكد من التحديث بناءً على المفتاح 'key'
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert(updates, { onConflict: 'key' });
-      
-      if (error) {
-        console.error('Error saving settings:', error);
-        return res.status(500).json({ error: 'فشل حفظ الإعدادات' });
-      }
-
-      return res.status(200).json({ success: true });
-  }
-  
-  // 3. معالجة طلب جلب الإعدادات (GET)
+  // --------------------------------------------------------
+  // GET: جلب الإعدادات
+  // --------------------------------------------------------
   if (req.method === 'GET') {
+    try {
       const { data, error } = await supabase
         .from('app_settings')
-        .select('*');
+        .select('key, value')
+        .in('key', TARGET_KEYS);
 
-      if (error) {
-        console.error('Error fetching settings:', error);
-        return res.status(500).json({ error: 'فشل جلب الإعدادات' });
+      if (error) throw error;
+
+      // تحويل المصفوفة إلى كائن لسهولة الاستخدام في الواجهة
+      // مثال: { platform_percentage: "10", support_telegram: "..." }
+      const settings = {};
+      
+      // تعيين قيم افتراضية فارغة
+      TARGET_KEYS.forEach(key => settings[key] = '');
+
+      // ملء القيم الموجودة في قاعدة البيانات
+      if (data) {
+        data.forEach(item => {
+          settings[item.key] = item.value;
+        });
       }
 
-      // تحويل مصفوفة البيانات إلى كائن (Object) ليسهل التعامل معه في الواجهة
-      const settings = {};
-      data?.forEach(item => {
-          settings[item.key] = item.value;
-      });
-
       return res.status(200).json(settings);
+
+    } catch (err) {
+      console.error("Fetch Settings Error:", err);
+      return res.status(500).json({ error: 'فشل جلب الإعدادات' });
+    }
   }
 
-  // في حال كان الطلب غير مدعوم
-  res.setHeader('Allow', ['GET', 'POST']);
-  return res.status(405).end(`Method ${req.method} Not Allowed`);
+  // --------------------------------------------------------
+  // POST: حفظ الإعدادات
+  // --------------------------------------------------------
+  if (req.method === 'POST') {
+    try {
+      const updates = req.body; // نتوقع كائن يحتوي على المفاتيح والقيم
+
+      // تجهيز البيانات للإدخال (Upsert)
+      const rowsToUpsert = TARGET_KEYS.map(key => ({
+        key: key,
+        value: String(updates[key] || '') // تحويل القيمة لنص وتجنب null
+      }));
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(rowsToUpsert, { onConflict: 'key' });
+
+      if (error) throw error;
+
+      return res.status(200).json({ success: true, message: 'تم حفظ الإعدادات بنجاح' });
+
+    } catch (err) {
+      console.error("Save Settings Error:", err);
+      return res.status(500).json({ error: 'فشل حفظ الإعدادات' });
+    }
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
 }
