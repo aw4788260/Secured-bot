@@ -46,15 +46,18 @@ export default function SuperFinance() {
     fetchFinanceData();
   }, [dateRange]);
 
-  // ✅ دالة الطباعة العامة (توليد PDF للقائمة الرئيسية)
+  // ✅ دالة الطباعة العامة
   const handleGlobalExportPDF = () => {
     if (financials.teachers_list.length === 0) return;
+
+    // اسم الملف للتقرير العام
+    const fileName = `التقرير_المالي_الشامل_${dateRange.startDate}_${dateRange.endDate}`;
 
     const printWindow = window.open('', '_blank');
     const htmlContent = `
       <html>
         <head>
-          <title>التقرير المالي العام</title>
+          <title>${fileName}</title>
           <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
             .header-container { text-align: center; margin-bottom: 20px; }
@@ -113,7 +116,7 @@ export default function SuperFinance() {
     printWindow.document.close();
   };
 
-  // ✅ دالة طباعة تقرير المدرس التفصيلي (تم التعديل لإضافة الأعمدة المطلوبة)
+  // ✅ دالة طباعة تقرير المدرس التفصيلي
   const handleTeacherReport = async (teacherId) => {
     setReportLoading(teacherId);
     try {
@@ -128,18 +131,20 @@ export default function SuperFinance() {
         
         const data = await res.json();
         
-        // حساب النسب المالية محلياً للعرض
         const totalSales = data.summary.total_approved_amount;
         const platformShare = totalSales * 0.10; 
         const netProfit = totalSales - platformShare;
 
-        // إنشاء نافذة التقرير
+        // ✅ إنشاء اسم الملف الديناميكي (اسم المدرس + التاريخ)
+        // نقوم باستبدال المسافات بشرطة سفلية ليكون الاسم منسقاً
+        const safeName = data.teacherName.replace(/\s+/g, '_');
+        const fileName = `تقرير_${safeName}_${dateRange.startDate}_${dateRange.endDate}`;
+
         const printWindow = window.open('', '_blank');
         const htmlContent = `
           <html>
             <head>
-              <title>تقرير مدرس: ${data.teacherName}</title>
-              <style>
+              <title>${fileName}</title> <style>
                 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
                 .header-container { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
                 .logo { max-height: 80px; margin-bottom: 10px; }
