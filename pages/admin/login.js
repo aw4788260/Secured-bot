@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link'; // ✅ تم إضافة استيراد مكون الرابط
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function AdminLogin() {
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ userId: adminId, type: 'admin' }) 
           });
-          
+           
           if (res.ok) {
              // التوجيه للمسار المحفوظ سابقاً أو الافتراضي (تم تحديث الافتراضي هنا أيضاً)
              const savedRedirect = localStorage.getItem('admin_redirect');
@@ -60,11 +61,11 @@ export default function AdminLogin() {
         localStorage.setItem('admin_user_id', data.userId);
         localStorage.setItem('is_admin_session', 'true');
         if (data.name) localStorage.setItem('admin_name', data.name);
-        
+         
         // ✅ 3. تحديد مسار التوجيه بناءً على الدور القادم من السيرفر
         // [تعديل] المسار الافتراضي أصبح /admin/teacher لأن الملفات انتقلت هناك
         let targetPath = '/admin/teacher'; 
-        
+         
         if (data.role === 'super_admin') {
             targetPath = '/admin/super'; // مسار السوبر أدمن كما هو
         }
@@ -85,8 +86,9 @@ export default function AdminLogin() {
   };
 
   return (
-    <div style={{minHeight:'100vh', background:'#0f172a', display:'flex', justifyContent:'center', alignItems:'center', color:'white'}}>
+    <div style={{minHeight:'100vh', background:'#0f172a', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', color:'white'}}>
       <Head><title>دخول الإدارة (Secure)</title></Head>
+      
       <div style={{background:'#1e293b', padding:'40px', borderRadius:'15px', width:'100%', maxWidth:'400px', border:'1px solid #334155', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
         <h2 style={{textAlign:'center', color:'#38bdf8', marginBottom:'30px'}}>🛡️ لوحة التحكم</h2>
         
@@ -119,6 +121,14 @@ export default function AdminLogin() {
           </button>
         </form>
       </div>
+
+      {/* ✅ رابط سياسة الخصوصية لتحسين الامتثال لـ GDPR */}
+      <div style={{marginTop: '20px'}}>
+         <Link href="/privacy-policy" style={{color: '#64748b', fontSize: '0.9rem', textDecoration: 'none', borderBottom: '1px dashed #64748b'}}>
+           سياسة الخصوصية (Privacy Policy)
+         </Link>
+      </div>
+
     </div>
   );
 }
