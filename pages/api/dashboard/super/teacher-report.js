@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // جلب بيانات المدرس
+    // 1. جلب بيانات المدرس
     const { data: teacher, error: tError } = await supabase
         .from('users')
         .select('first_name, admin_username')
@@ -26,12 +26,27 @@ export default async function handler(req, res) {
     
     if (tError) throw tError;
 
-    // إعداد استعلام العمليات
+    // 2. جلب نسبة المنصة من الإعدادات (تعديل جديد)
+    let platformPercentage = 0.10; // القيمة الافتراضية
+    const { data: settingsData } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'platform_percentage')
+      .maybeSingle();
+
+    if (settingsData && settingsData.value) {
+      const val = parseFloat(settingsData.value);
+      if (!isNaN(val)) {
+        platformPercentage = val > 1 ? val / 100 : val;
+      }
+    }
+
+    // 3. إعداد استعلام العمليات
     let query = supabase
       .from('subscription_requests')
       .select('*')
       .eq('teacher_id', teacherId)
-      .in('status', ['approved', 'rejected']) // المقبول والمرفوض فقط
+      .in('status', ['approved', 'rejected'])
       .order('created_at', { ascending: false });
 
     // فلترة التاريخ
@@ -65,7 +80,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
         teacherName: teacher.first_name || teacher.admin_username,
         requests,
-        summary
+        summary,
+        platformPercentage // إرسال النسبة للواجهة الأمامية
     });
 
   } catch (err) {
