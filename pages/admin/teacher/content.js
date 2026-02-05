@@ -206,7 +206,7 @@ export default function ContentManager() {
           });
       } catch (err) {
           showAlert('error', 'فشل حفظ الترتيب');
-          fetchContent();
+          refreshView();
       }
   };
 
@@ -658,7 +658,7 @@ export default function ContentManager() {
                   try {
                       const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
                       const data = await res.json();
-                      if(res.ok) { fetchContent(); setModalType(null); showAlert('success', 'تم الرفع'); }
+                      if(res.ok) { refreshView(); setModalType(null); showAlert('success', 'تم الرفع'); }
                       else showAlert('error', 'فشل الرفع');
                   } catch(e) { showAlert('error', 'خطأ في الاتصال'); }
                   
