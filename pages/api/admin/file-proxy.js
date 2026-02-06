@@ -1,31 +1,41 @@
 import fs from 'fs';
 import path from 'path';
-import { supabase } from '../../../../lib/supabaseClient';
+import { supabase } from '../../../lib/supabaseClient';
 import { parse } from 'cookie';
-import { checkUserAccess } from '../../../../lib/authHelper'; // ✅ استيراد الحارس الأمني
+import { checkUserAccess } from '../../../lib/authHelper';
 
 export default async (req, res) => {
   const { type, filename } = req.query;
 
   let isAuthorized = false;
 
-  // 1. المحاولة الأولى: التحقق عبر الكوكيز (للوحة تحكم الأدمن ويب)
+  // قراءة الكوكيز
   const cookies = parse(req.headers.cookie || '');
+  
+  // ✅ 1. التحقق عبر الكوكيز (للوحة التحكم - أدمن ومدرسين)
+  // بما أن كود الدخول يحفظ الجميع تحت اسم 'admin_session'
   const sessionToken = cookies.admin_session;
 
   if (sessionToken) {
       const { data: user } = await supabase
           .from('users')
-          .select('is_admin')
+          // ✅ قمنا بإضافة role و teacher_profile_id للتحقق
+          .select('is_admin, role, teacher_profile_id') 
           .eq('session_token', sessionToken)
           .single();
       
-      if (user && user.is_admin) {
-          isAuthorized = true;
+      if (user) {
+          // ✅ السماح بالدخول إذا كان أدمن أوعندما يكون دوره مدرس
+          const isSuperAdmin = user.is_admin === true;
+          const isTeacher = user.role === 'teacher' || user.teacher_profile_id !== null;
+
+          if (isSuperAdmin || isTeacher) {
+              isAuthorized = true;
+          }
       }
   }
 
-  // 2. المحاولة الثانية: التحقق عبر التوكن (لتطبيق المعلم)
+  // 2. المحاولة الثانية: التحقق عبر التوكن (لتطبيقات الموبايل)
   if (!isAuthorized) {
       // نستخدم الحارس الأمني للتحقق من التوكن وبصمة الجهاز
       const hasAppAccess = await checkUserAccess(req);
