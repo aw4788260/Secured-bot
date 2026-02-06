@@ -153,7 +153,7 @@ export default function SuperRequestsPage() {
         <>
             <div className="requests-grid">
             {requests.map(req => {
-                const receiptUrl = `/api/dashboard/super/file-proxy?type=receipts&filename=${req.payment_file_path}`;
+                const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
                 
                 return (
                     <div key={req.id} className={`request-card ${req.status}`}>
