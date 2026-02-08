@@ -6,9 +6,7 @@ export default async (req, res) => {
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) return; 
 
-  // ⚠️ هام: نستخدم teacher_profile_id أولاً لأنه هو المربوط بالأموال في جدول العمليات
-  // إذا لم يوجد، نستخدم teacherId (معرف المستخدم)
-  const teacherId = user.teacher_profile_id || user.teacherId;
+  const teacherId = user.teacherId;
 
   try {
     // =========================================================
@@ -30,28 +28,21 @@ export default async (req, res) => {
         .eq('teacher_id', teacherId)
         .eq('status', 'pending'),
 
-      // ج. حساب الأرباح (عبر دالة قاعدة البيانات)
-      // ✅ التعديل هنا: نرسل التواريخ null لتتوافق مع توقيع الدالة (signature)
-      supabase.rpc('get_teacher_revenue', { 
-          teacher_id_arg: teacherId,
-          start_date: null,
-          end_date: null
-      })
+      // ج. حساب الأرباح (عبر دالة قاعدة البيانات الجديدة)
+      // نستخدم اسم المتغير "teacher_id_arg" ليتطابق مع تعريف دالة SQL
+      supabase.rpc('get_teacher_revenue', { teacher_id_arg: teacherId })
     ]);
 
-    // التحقق من الأخطاء في البيانات الأساسية (الكورسات ضرورية)
+    // التحقق من الأخطاء في البيانات الأساسية
     if (coursesResult.error) throw coursesResult.error;
 
-    // معالجة الأرباح (Fallback Logic & Error Handling)
+    // معالجة الأرباح (Fallback Logic)
     let totalEarnings = 0;
-    
     if (!revenueResult.error) {
-        // النجاح: نأخذ القيمة من الدالة مباشرة
         totalEarnings = revenueResult.data || 0;
     } else {
-        // الفشل: نطبع تحذير ونقوم بالحساب اليدوي كاحتياطي
         console.warn("⚠️ RPC Failed, falling back to manual calculation:", revenueResult.error.message);
-        
+        // الحساب اليدوي كاحتياطي
         const { data: manualData } = await supabase
             .from('subscription_requests')
             .select('total_price')
@@ -93,9 +84,10 @@ export default async (req, res) => {
         courseIds.length > 0 ? 
             supabase
             .from('user_course_access')
+            // users!inner تجبر الاستعلام على التحقق من جدول المستخدمين
             .select('course_id, user_id, users!inner(role)') 
             .in('course_id', courseIds)
-            .eq('users.role', 'student') // 👈 استثناء المدرسين والمشرفين
+            .eq('users.role', 'student') // 👈 هذا السطر يستثني المدرس والمشرفين
             : { data: [] },
 
         // ب. مشتركو المواد (فقط من لديهم دور student)
@@ -104,7 +96,7 @@ export default async (req, res) => {
             .from('user_subject_access')
             .select('subject_id, user_id, users!inner(role)') 
             .in('subject_id', subjectIds)
-            .eq('users.role', 'student') // 👈 استثناء المدرسين والمشرفين
+            .eq('users.role', 'student') // 👈 هذا السطر يستثني المدرس والمشرفين
             : { data: [] }
     ]);
 
@@ -132,7 +124,7 @@ export default async (req, res) => {
        count: subjectAccess.filter(a => a.subject_id === subject.id).length
     }));
 
-    // إجمالي الطلاب الفريدين (Unique Students)
+    // إجمالي الطلاب الفريدين
     const allStudentIds = new Set([
       ...courseAccess.map(a => a.user_id),
       ...subjectAccess.map(a => a.user_id)
@@ -141,7 +133,7 @@ export default async (req, res) => {
     return res.status(200).json({
       success: true,
       summary: {
-        students: allStudentIds.size,
+        students: allStudentIds.size, // الآن هذا الرقم نظيف (طلاب فقط)
         earnings: totalEarnings,
         courses: courses.length,
         pending: pendingRequests
