@@ -2,9 +2,26 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 
 export default async function handler(req, res) {
+  // 🆔 إعداد لوجات التتبع (Logs)
+  const reqId = Math.random().toString(36).substring(7).toUpperCase();
+  const logPrefix = `[FinanceAPI - ${reqId}]`;
+
+  const log = (step, msg, data = null) => {
+    console.log(`🔹 ${logPrefix} [${step}] ${msg}`);
+    if (data) console.log(JSON.stringify(data, null, 2));
+  };
+
+  const errLog = (step, msg, error) => {
+    console.error(`❌ ${logPrefix} [${step}] ${msg}`, error);
+  };
+
+  log('START', 'Starting Finance Report Request...', { query: req.query });
+
   // 1. التحقق من الصلاحية (سوبر أدمن فقط)
   const authResult = await requireSuperAdmin(req, res);
-  if (authResult?.error) return; 
+  if (authResult?.error) {
+    return; // الرد يتم إرساله داخل requireSuperAdmin
+  }
 
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -12,32 +29,33 @@ export default async function handler(req, res) {
 
   const { startDate, endDate } = req.query;
 
-  // تجهيز التواريخ بتنسيق مناسب للدالة (ISO String) مع ضبط التوقيت
+  // تجهيز التواريخ بتنسيق مناسب للدالة
   const formattedStartDate = startDate ? `${startDate}T00:00:00` : null;
   const formattedEndDate = endDate ? `${endDate}T23:59:59` : null;
 
   try {
     // ============================================================
-    // 🆕 1. جلب نسبة المنصة من جدول الإعدادات
+    // 1. جلب نسبة المنصة من جدول الإعدادات
     // ============================================================
     let PLATFORM_PERCENTAGE = 0.10; // القيمة الافتراضية (10%)
 
-    const { data: settingsData, error: settingsError } = await supabase
+    const { data: settingsData } = await supabase
       .from('app_settings')
       .select('value')
       .eq('key', 'platform_percentage')
       .maybeSingle();
 
-    if (!settingsError && settingsData) {
+    if (settingsData) {
       const val = parseFloat(settingsData.value);
       if (!isNaN(val)) {
-        // تحويل الرقم: إذا كان > 1 (مثل 15) نقسمه على 100، وإلا نستخدمه كما هو
         PLATFORM_PERCENTAGE = val > 1 ? val / 100 : val;
       }
     }
 
+    log('CONFIG', `Platform Percentage: ${PLATFORM_PERCENTAGE * 100}%`);
+
     // ============================================================
-    // 🆕 2. حساب الإجمالي الكلي باستخدام RPC (الدالة المعدلة)
+    // 2. حساب الإجمالي الكلي باستخدام RPC
     // ============================================================
     const { data: totalRevenueRPC, error: rpcError } = await supabase
       .rpc('get_total_revenue', { 
@@ -48,26 +66,45 @@ export default async function handler(req, res) {
     if (rpcError) throw rpcError;
 
     const totalRevenue = totalRevenueRPC || 0;
+    log('TOTAL', `Total Revenue: ${totalRevenue}`);
 
     // ============================================================
     // 3. جلب قائمة المدرسين وحساب أرباح كل مدرس
     // ============================================================
+    // ⚠️ هام: نجلب teacher_profile_id لأن الأموال مربوطة به وليس بـ id المستخدم
     const { data: teachersList, error: teacherError } = await supabase
       .from('users')
-      .select('id, first_name, admin_username')
+      .select('id, first_name, admin_username, teacher_profile_id')
       .eq('role', 'teacher');
 
     if (teacherError) throw teacherError;
 
-    // استخدام Promise.all لتنفيذ حسابات المدرسين بشكل متوازي لزيادة السرعة
+    // استخدام Promise.all لتنفيذ الحسابات بشكل متوازي
     const teachersDataPromises = teachersList.map(async (teacher) => {
-      // استدعاء دالة RPC لحساب أرباح المدرس في الفترة المحددة
-      const { data: teacherSales } = await supabase
+      
+      // إذا لم يكن للمستخدم بروفايل مدرس، لا يمكننا حساب أرباحه
+      if (!teacher.teacher_profile_id) {
+         return {
+            id: teacher.id,
+            name: teacher.first_name || teacher.admin_username || 'مدرس (بدون بروفايل)',
+            sales: 0,
+            transaction_count: 0,
+            platform_fee: 0,
+            net_profit: 0
+         };
+      }
+
+      // استدعاء دالة RPC لحساب أرباح المدرس باستخدام teacher_profile_id (BigInt)
+      const { data: teacherSales, error: rpcTeacherError } = await supabase
         .rpc('get_teacher_revenue', { 
-            teacher_id_arg: teacher.id,
+            teacher_id_arg: teacher.teacher_profile_id, // ✅ التعديل الجوهري
             start_date: formattedStartDate, 
             end_date: formattedEndDate
         });
+      
+      if (rpcTeacherError) {
+        errLog('RPC_ERROR', `Failed for teacher ${teacher.first_name}`, rpcTeacherError);
+      }
 
       const sales = teacherSales || 0;
       
@@ -75,22 +112,23 @@ export default async function handler(req, res) {
       const platformFee = sales * PLATFORM_PERCENTAGE;
       const netProfit = sales - platformFee;
 
-      // حساب عدد العمليات (اختياري، يتم جلبه فقط إذا كان هناك مبيعات لتوفير الموارد)
+      // حساب عدد العمليات
       let transactionCount = 0;
       if (sales > 0) {
          const { count } = await supabase
            .from('subscription_requests')
            .select('id', { count: 'exact', head: true })
-           .eq('teacher_id', teacher.id)
+           .eq('teacher_id', teacher.teacher_profile_id) // ✅ استخدام المعرف الصحيح
            .eq('status', 'approved')
-           // نستخدم فلترة التاريخ هنا أيضاً لضمان تطابق العدد مع المبلغ
            .gte('created_at', formattedStartDate || '1970-01-01')
            .lte('created_at', formattedEndDate || new Date().toISOString());
          transactionCount = count || 0;
+         
+         log('RESULT', `Teacher: ${teacher.first_name} | Sales: ${sales}`);
       }
 
       return {
-        id: teacher.id,
+        id: teacher.id, // ID المستخدم (للربط بالفرونت إند)
         name: teacher.first_name || teacher.admin_username || 'مدرس غير معروف',
         sales: sales,
         transaction_count: transactionCount,
@@ -99,7 +137,7 @@ export default async function handler(req, res) {
       };
     });
 
-    // انتظار اكتمال جميع الحسابات وتصفية النتائج
+    // انتظار اكتمال جميع الحسابات
     const processedTeachersList = await Promise.all(teachersDataPromises);
     
     // ترتيب القائمة حسب الأكثر مبيعاً (تنازلياً)
@@ -111,7 +149,7 @@ export default async function handler(req, res) {
 
     // إرسال الرد النهائي
     return res.status(200).json({
-      percentage_used: (PLATFORM_PERCENTAGE * 100) + '%', // توضيح النسبة المستخدمة
+      percentage_used: (PLATFORM_PERCENTAGE * 100) + '%',
       total_revenue: totalRevenue,
       platform_profit: platformProfitTotal,
       teachers_due: teachersDueTotal,
@@ -119,7 +157,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('Finance API Error:', err);
+    errLog('CRITICAL', 'Finance API Error:', err);
     return res.status(500).json({ error: 'فشل حساب التقارير المالية', details: err.message });
   }
 }
