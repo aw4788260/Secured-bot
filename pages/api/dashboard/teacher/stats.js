@@ -6,7 +6,8 @@ export default async (req, res) => {
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) return; 
 
-  const teacherId = user.teacherId;
+  // تأكد من الحصول على teacherId سواء كان المدرس هو المستخدم نفسه أو بروفايل مربوط
+  const teacherId = user.teacherId || user.teacher_profile_id;
 
   try {
     // =========================================================
@@ -28,9 +29,13 @@ export default async (req, res) => {
         .eq('teacher_id', teacherId)
         .eq('status', 'pending'),
 
-      // ج. حساب الأرباح (عبر دالة قاعدة البيانات الجديدة)
-      // نستخدم اسم المتغير "teacher_id_arg" ليتطابق مع تعريف دالة SQL
-      supabase.rpc('get_teacher_revenue', { teacher_id_arg: teacherId })
+      // ج. حساب الأرباح (عبر دالة قاعدة البيانات)
+      // 🛠️ التعديل هنا: نرسل التواريخ null لتتوافق مع تحديث الدالة الأخير
+      supabase.rpc('get_teacher_revenue', { 
+          teacher_id_arg: teacherId,
+          start_date: null,
+          end_date: null
+      })
     ]);
 
     // التحقق من الأخطاء في البيانات الأساسية
@@ -38,10 +43,12 @@ export default async (req, res) => {
 
     // معالجة الأرباح (Fallback Logic)
     let totalEarnings = 0;
+    
     if (!revenueResult.error) {
         totalEarnings = revenueResult.data || 0;
     } else {
         console.warn("⚠️ RPC Failed, falling back to manual calculation:", revenueResult.error.message);
+        
         // الحساب اليدوي كاحتياطي
         const { data: manualData } = await supabase
             .from('subscription_requests')
