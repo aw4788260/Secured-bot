@@ -17,34 +17,15 @@ export default async (req, res) => {
         return res.status(400).json({ message: "Missing Lesson ID" });
     }
 
-    // 1. التحقق الأمني الشامل (Gatekeeper)
-    // نمرر الـ lessonId ونوعه 'video' ليتحقق الحارس من:
-    // أ. صحة التوكن
-    // ب. تطابق الجهاز
-    // ج. صلاحية الجلسة في الداتابيز
-    // د. امتلاك المستخدم لهذا الفيديو (اشتراك)
-    log("🔒 Calling checkUserAccess()...");
-    
+    // 1. التحقق الأمني
     const hasAccess = await checkUserAccess(req, lessonId, 'video');
-    
     if (!hasAccess) {
-        errLog("⛔ Access Denied by System (Check Logs for Reason).");
         return res.status(403).json({ message: "Access Denied" });
     }
 
-    // 2. استخدام البيانات الآمنة
-    // الآن يمكننا الوثوق بـ x-user-id لأنه تم حقنه بواسطة authHelper
-    const userId = req.headers['x-user-id'];
-    log(`✅ User Authorized: ${userId}`);
-
     try {
-        if (!PYTHON_PROXY_BASE_URL) {
-            errLog("Proxy URL is missing in .env");
-            return res.status(500).json({ message: "Proxy Config Error" });
-        }
-
-        // 3. جلب بيانات الفيديو
-        log("🔎 Fetching video metadata...");
+        // 2. جلب بيانات الفيديو من قاعدة البيانات (Supabase)
+        // هذه الخطوة تضمن حصولنا على youtube_video_id اللازم للمشغل رقم 2
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
@@ -52,42 +33,61 @@ export default async (req, res) => {
             .single();
 
         if (vidErr || !videoData) {
-            errLog(`Video Fetch Error: ${vidErr?.message}`);
             return res.status(404).json({ message: "Video not found" });
         }
-        log(`🎥 Found Video: ${videoData.title} (ID: ${videoData.youtube_video_id})`);
 
-        // 4. الاتصال بالبروكسي
-        const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
-        log(`📡 Connecting to Proxy: ${hls_endpoint}`);
+        // ================================================================
+        // محاولة الاتصال بالبروكسي (داخل Try/Catch منفصل)
+        // الهدف: إذا فشل البروكسي، لا نوقف العملية، بل نعيد الـ ID فقط
+        // ================================================================
         
-        const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
+        let proxyResult = { url: null, availableQualities: [] };
+        let isOfflineMode = true;
 
-        const [proxyResponse, settingResult] = await Promise.all([
-            axios.get(hls_endpoint, { 
-                params: { youtubeId: videoData.youtube_video_id },
-                headers: proxyHeaders,
-                timeout: 25000 
-            }),
-            supabase.from('app_settings').select('value').eq('key', 'offline_mode').single()
-        ]);
+        try {
+            if (PYTHON_PROXY_BASE_URL) {
+                const hls_endpoint = `${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`;
+                const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
 
-        log("✅ Proxy Response Received.");
+                // تنفيذ الطلبات بالتوازي
+                const [proxyResponse, settingResult] = await Promise.all([
+                    axios.get(hls_endpoint, { 
+                        params: { youtubeId: videoData.youtube_video_id },
+                        headers: proxyHeaders,
+                        timeout: 5000 // مهلة قصيرة (5 ثواني) لعدم تأخير المشغل 2
+                    }),
+                    supabase.from('app_settings').select('value').eq('key', 'offline_mode').single()
+                ]);
 
-        const isOfflineMode = settingResult.data ? settingResult.data.value === 'true' : true;
-        
-        let directUrl = proxyResponse.data.url;
-        // منطق احتياطي لاختيار أفضل جودة إذا لم يرجع رابط مباشر
-        if (!directUrl && proxyResponse.data.availableQualities?.length > 0) {
-            directUrl = proxyResponse.data.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
+                // معالجة نتيجة البروكسي
+                if (proxyResponse.data) {
+                    proxyResult = proxyResponse.data;
+                    
+                    // منطق اختيار الجودة التلقائي للمشغل 3 و 1
+                    if (!proxyResult.url && proxyResult.availableQualities?.length > 0) {
+                        proxyResult.url = proxyResult.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
+                    }
+                }
+
+                // معالجة وضع الأوفلاين
+                if (settingResult.data) {
+                    isOfflineMode = settingResult.data.value === 'true';
+                }
+            } else {
+                log("⚠️ Proxy URL missing, skipping stream fetch.");
+            }
+        } catch (proxyErr) {
+            // ⚠️ هنا السر: إذا فشل البروكسي، نسجل الخطأ ولكن لا نوقف الكود
+            errLog(`Proxy Failed (Ignored for Player 2): ${proxyErr.message}`);
         }
 
-        log("📤 Sending 200 OK Response to client.");
+        // 3. إرسال الرد النهائي
+        // سيحتوي دائماً على youtube_video_id حتى لو فشل البروكسي
         res.status(200).json({ 
-            ...proxyResponse.data, 
-            url: directUrl, 
+            ...proxyResult, // قد تكون فارغة أو تحتوي على روابط
+            url: proxyResult.url || null, 
             duration: "0",
-            youtube_video_id: videoData.youtube_video_id,
+            youtube_video_id: videoData.youtube_video_id, // ✅ هذا ما يحتاجه المشغل رقم 2
             db_video_title: videoData.title,
             subject_name: videoData.chapters?.subjects?.title,
             chapter_name: videoData.chapters?.title,
@@ -96,10 +96,6 @@ export default async (req, res) => {
 
     } catch (err) {
         errLog(`Critical Error: ${err.message}`);
-        if (err.response) {
-            errLog(`Proxy/Upstream Status: ${err.response.status}`);
-            return res.status(err.response.status).json({ message: "Proxy Error", details: err.response.data });
-        }
         res.status(500).json({ message: err.message });
     }
 };
