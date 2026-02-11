@@ -7,11 +7,11 @@ export default async function handler(req, res) {
   if (authResult.error) return; 
 
   // ==========================================================
-  // 🟢 التعامل مع طلبات GET (جلب الطلبات مع Pagination)
+  // 🟢 التعامل مع طلبات GET (جلب الطلبات مع Pagination والفلترة)
   // ==========================================================
   if (req.method === 'GET') {
-    // ✅ نستقبل رقم الصفحة والحد الأقصى من الرابط، ونضع قيم افتراضية
-    const { status, page = 1, limit = 10 } = req.query;
+    // ✅ نستقبل teacherId مع باقي المعاملات
+    const { status, page = 1, limit = 10, teacherId } = req.query;
 
     // تحويل القيم إلى أرقام لحساب النطاق
     const pageNum = parseInt(page);
@@ -20,27 +20,32 @@ export default async function handler(req, res) {
     const end = start + limitNum - 1;
 
     try {
-      // بناء الاستعلام
+      // بناء الاستعلام الأساسي
       let query = supabase
         .from('subscription_requests')
         .select(`
             *,
             teachers (name) 
-        `, { count: 'exact' }) // ✅ طلب العدد الإجمالي للصفوف (مهم للـ Pagination)
+        `, { count: 'exact' }) // ✅ طلب العدد الإجمالي للصفوف
         .order('created_at', { ascending: false })
-        .range(start, end); // ✅ تحديد النطاق المطلوب (من .. إلى)
+        .range(start, end); // ✅ تحديد النطاق
 
-      // تطبيق الفلتر إذا وجد
+      // 1. تطبيق فلتر الحالة (pending, approved, rejected)
       if (status) {
         query = query.eq('status', status);
       }
 
-      // ✅ نستقبل البيانات + العدد الكلي (count)
+      // 2. ✅ تطبيق فلتر المدرس (الجديد)
+      if (teacherId && teacherId !== 'all') {
+        query = query.eq('teacher_id', teacherId);
+      }
+
+      // تنفيذ الاستعلام
       const { data, count, error } = await query;
 
       if (error) throw error;
 
-      // ✅ نرجع كائن يحتوي على المصفوفة والعدد الكلي
+      // إرجاع البيانات
       return res.status(200).json({ data, count });
 
     } catch (err) {
