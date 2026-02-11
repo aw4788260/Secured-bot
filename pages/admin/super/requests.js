@@ -6,10 +6,14 @@ export default function SuperRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   
-  // ✅ 1. حالات Pagination
+  // ✅ حالات Pagination
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 10; // عدد العناصر في كل صفحة
+  const pageSize = 10;
+
+  // ✅ حالات المدرسين (الجديدة)
+  const [teachers, setTeachers] = useState([]);
+  const [selectedTeacher, setSelectedTeacher] = useState('all');
 
   // حالات النوافذ والتنبيهات
   const [modalImage, setModalImage] = useState(null);
@@ -25,14 +29,26 @@ export default function SuperRequestsPage() {
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
 
+  // ✅ جلب قائمة المدرسين للفلتر
+  const fetchTeachers = async () => {
+    try {
+      const res = await fetch('/api/dashboard/super/teachers'); // تأكد من وجود هذا المسار
+      if (res.ok) {
+        const data = await res.json();
+        setTeachers(data);
+      }
+    } catch (err) {
+      console.error("فشل جلب المدرسين", err);
+    }
+  };
+
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // ✅ 2. إرسال رقم الصفحة والحد الأقصى
-      const res = await fetch(`/api/dashboard/super/requests?status=${filter}&page=${page}&limit=${pageSize}`);
+      // ✅ إرسال teacherId مع الطلب
+      const res = await fetch(`/api/dashboard/super/requests?status=${filter}&page=${page}&limit=${pageSize}&teacherId=${selectedTeacher}`);
       const result = await res.json();
       
-      // ✅ 3. معالجة الاستجابة
       if (result.data) {
           setRequests(result.data);
           setTotalCount(result.count || 0);
@@ -51,15 +67,20 @@ export default function SuperRequestsPage() {
     }
   };
 
-  // ✅ 4. إعادة تعيين الصفحة عند تغيير الفلتر
+  // ✅ جلب المدرسين عند تحميل الصفحة مرة واحدة
+  useEffect(() => {
+    fetchTeachers();
+  }, []);
+
+  // إعادة تعيين الصفحة عند تغيير الفلتر أو المدرس
   useEffect(() => {
     setPage(1);
-  }, [filter]);
+  }, [filter, selectedTeacher]);
 
-  // ✅ 5. جلب البيانات
+  // جلب الطلبات عند تغيير أي من المحددات
   useEffect(() => {
     fetchRequests();
-  }, [filter, page]);
+  }, [filter, page, selectedTeacher]); // ✅ أضفنا selectedTeacher هنا
 
   const initiateAction = (requestId, action) => {
       setRejectionReason('');
@@ -98,7 +119,6 @@ export default function SuperRequestsPage() {
     }
   };
 
-  // حساب عدد الصفحات الكلي
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
@@ -114,6 +134,23 @@ export default function SuperRequestsPage() {
         </div>
         
         <div className="header-actions">
+            
+            {/* ✅ قائمة اختيار المدرس */}
+            <div className="teacher-select-wrapper">
+              <select 
+                value={selectedTeacher} 
+                onChange={(e) => setSelectedTeacher(e.target.value)}
+                className="teacher-select"
+              >
+                <option value="all">👨‍🏫 كل المدرسين</option>
+                {teachers.map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="filter-tabs">
                 <button 
                     className={`tab ${filter === 'pending' ? 'active' : ''}`} 
@@ -146,14 +183,17 @@ export default function SuperRequestsPage() {
       ) : requests.length === 0 ? (
         <div className="empty-state">
             <div style={{fontSize:'3em', marginBottom:'15px'}}>📭</div>
-            <h3>لا توجد طلبات في هذه القائمة</h3>
-            <p>جميع الطلبات تمت معالجتها أو لا يوجد بيانات للعرض.</p>
+            <h3>لا توجد طلبات للعرض</h3>
+            <p>جرب تغيير الفلتر أو اختيار مدرس آخر.</p>
         </div>
       ) : (
         <>
             <div className="requests-grid">
             {requests.map(req => {
-                const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
+                // التعامل مع المسار سواء كان صورة مباشرة أو ملف
+                const receiptUrl = req.payment_file_path 
+                    ? `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}` 
+                    : null;
                 
                 return (
                     <div key={req.id} className={`request-card ${req.status}`}>
@@ -189,7 +229,6 @@ export default function SuperRequestsPage() {
                                 <p className="details-text">{req.course_title || 'محتوى غير محدد'}</p>
                             </div>
 
-                            {/* ✅ إضافة: عرض ملاحظة الطالب إذا وجدت */}
                             {req.user_note && (
                                 <div className="note-box">
                                     <span className="label">📝 ملاحظات الطالب</span>
@@ -197,7 +236,7 @@ export default function SuperRequestsPage() {
                                 </div>
                             )}
 
-                            {req.payment_file_path && (
+                            {receiptUrl && (
                                 <div className="receipt-section">
                                     <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع</p>
                                     <div 
@@ -246,7 +285,6 @@ export default function SuperRequestsPage() {
             })}
             </div>
 
-            {/* ✅ 6. أزرار التنقل بين الصفحات */}
             <div className="pagination-controls">
                 <button 
                     disabled={page === 1} 
@@ -316,9 +354,26 @@ export default function SuperRequestsPage() {
         .header-container h1 { margin: 0 0 5px 0; color: #f8fafc; font-size: 1.8rem; }
         .sub-header { color: #94a3b8; margin: 0; font-size: 0.95em; }
         
-        .header-actions { display: flex; gap: 10px; align-items: center; }
+        .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        
+        /* ✅ تنسيق القائمة المنسدلة */
+        .teacher-select-wrapper { position: relative; }
+        .teacher-select {
+            background: #1e293b;
+            color: white;
+            padding: 8px 30px 8px 15px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            outline: none;
+            height: 40px;
+            min-width: 180px;
+        }
+        .teacher-select:focus { border-color: #38bdf8; }
+
         .filter-tabs { display: flex; background: #1e293b; padding: 4px; border-radius: 8px; border: 1px solid #334155; }
-        .tab { background: transparent; border: none; color: #94a3b8; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .tab { background: transparent; border: none; color: #94a3b8; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; white-space: nowrap; }
         .tab:hover { color: white; }
         .tab.active { background: #38bdf8; color: #0f172a; }
 
@@ -351,7 +406,6 @@ export default function SuperRequestsPage() {
         .details-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
         .details-text { color: #cbd5e1; margin: 0; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
 
-        /* ✅ ستايلات ملاحظات الطالب */
         .note-box { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 15px; }
         .note-text { color: #fbbf24; margin: 0; font-size: 0.95em; line-height: 1.4; white-space: pre-wrap; }
 
@@ -401,7 +455,6 @@ export default function SuperRequestsPage() {
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        /* ✅ 7. ستايلات أزرار التنقل */
         .pagination-controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #334155; }
         .page-btn { background: #1e293b; color: #38bdf8; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-weight: bold; }
         .page-btn:hover:not(:disabled) { background: #334155; }
