@@ -6,11 +6,12 @@ export default function SuperSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  // 1. حالة الإعدادات العامة
+  // 1. حالة الإعدادات العامة (تم إضافة free_mode)
   const [settings, setSettings] = useState({
     platform_percentage: '',
     support_telegram: '',
-    support_whatsapp: ''
+    support_whatsapp: '',
+    free_mode: false // ✅ الإعداد الجديد
   });
 
   // 2. حالة إصدارات التطبيق
@@ -44,7 +45,9 @@ export default function SuperSettings() {
         setSettings({
             platform_percentage: data.platform_percentage || '10',
             support_telegram: data.support_telegram || '',
-            support_whatsapp: data.support_whatsapp || ''
+            support_whatsapp: data.support_whatsapp || '',
+            // ✅ تحويل القيمة النصية "true" إلى boolean
+            free_mode: data.free_mode === 'true' || data.free_mode === true
         });
       }
     } catch (err) {
@@ -60,6 +63,7 @@ export default function SuperSettings() {
       const res = await fetch('/api/dashboard/super/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // ✅ نرسل البيانات (سيتم تحويل البوليان إلى نص في الباك اند إذا لزم الأمر)
         body: JSON.stringify(settings)
       });
       const result = await res.json();
@@ -81,7 +85,6 @@ export default function SuperSettings() {
       const res = await fetch('/api/dashboard/super/app-versions');
       if (res.ok) {
         const data = await res.json();
-        // نتأكد أن البيانات مصفوفة
         setVersions(Array.isArray(data) ? data : []);
       }
     } catch (err) {
@@ -90,17 +93,15 @@ export default function SuperSettings() {
     }
   };
 
-  // تحديث القيم في الـ State عند الكتابة
   const handleVersionChange = (index, field, value) => {
     const updatedVersions = [...versions];
     updatedVersions[index] = { ...updatedVersions[index], [field]: value };
     setVersions(updatedVersions);
   };
 
-  // حفظ نسخة محددة (أندرويد أو آيفون)
   const saveVersion = async (index) => {
     const versionData = versions[index];
-    setLoadingVersions(true); // نستخدم مؤشر تحميل بسيط أو يمكن استخدام نفس saving
+    setLoadingVersions(true);
     try {
       const res = await fetch('/api/dashboard/super/app-versions', {
         method: 'PUT',
@@ -110,7 +111,7 @@ export default function SuperSettings() {
 
       if (res.ok) {
         showToast(`تم تحديث إعدادات ${versionData.platform === 'android' ? 'الاندرويد' : 'الايفون'} بنجاح ✅`);
-        fetchVersions(); // تحديث البيانات للتأكيد
+        fetchVersions();
       } else {
         showToast('حدث خطأ أثناء التحديث', 'error');
       }
@@ -135,7 +136,7 @@ export default function SuperSettings() {
       <div className="settings-container">
         <div className="header">
           <h1>⚙️ إعدادات المنصة العامة</h1>
-          <p>التحكم في النسب المالية، روابط الدعم، وإصدارات التطبيق</p>
+          <p>التحكم في النسب المالية، روابط الدعم، الوضع المجاني، وإصدارات التطبيق</p>
         </div>
 
         {loading ? (
@@ -145,7 +146,29 @@ export default function SuperSettings() {
             
             {/* ================= قسم الإعدادات العامة ================= */}
             <form onSubmit={handleSaveSettings} className="settings-grid">
-              {/* بطاقة الإعدادات المالية */}
+              
+              {/* ✅ 1. بطاقة وضع التطبيق (Free Mode) */}
+              <div className="card highlight-card">
+                <div className="card-header">
+                  <h3>🔓 وضع التطبيق (App Mode)</h3>
+                </div>
+                <div className="card-body">
+                  <label className="checkbox-label large">
+                    <input 
+                      type="checkbox" 
+                      checked={settings.free_mode} 
+                      onChange={(e) => setSettings({...settings, free_mode: e.target.checked})}
+                    />
+                    <span>تفعيل الوضع المجاني (Free Mode)</span>
+                  </label>
+                  <p className="hint">
+                    عند تفعيل هذا الوضع: تختفي الأسعار من التطبيق، ويتحول زر "شراء" إلى "تفعيل مجاني". 
+                    <br/>⚠️ تأكد من تفعيل هذا الوضع فقط عند الحاجة.
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. بطاقة الإعدادات المالية */}
               <div className="card">
                 <div className="card-header">
                   <h3>💰 الإعدادات المالية</h3>
@@ -171,7 +194,7 @@ export default function SuperSettings() {
                 </div>
               </div>
 
-              {/* بطاقة الدعم الفني */}
+              {/* 3. بطاقة الدعم الفني */}
               <div className="card">
                 <div className="card-header">
                   <h3>🎧 روابط الدعم الفني</h3>
@@ -307,6 +330,7 @@ export default function SuperSettings() {
         .settings-grid { display: flex; flex-direction: column; gap: 25px; }
 
         .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
+        .highlight-card { border: 1px solid #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.1); }
         .card-header { background: #0f172a; padding: 15px 20px; border-bottom: 1px solid #334155; }
         .card-header h3 { margin: 0; color: #38bdf8; font-size: 1.1rem; }
         .card-body { padding: 25px; }
@@ -326,13 +350,16 @@ export default function SuperSettings() {
         
         .suffix { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #64748b; font-weight: bold; }
 
-        small { display: block; margin-top: 8px; color: #64748b; font-size: 0.85rem; }
+        small, .hint { display: block; margin-top: 8px; color: #64748b; font-size: 0.85rem; line-height: 1.5; }
+        .hint { color: #94a3b8; }
 
         .actions { margin-top: 10px; display: flex; justify-content: flex-end; }
         .row-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid #334155; padding-top: 20px; }
 
         .checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; color: #f8fafc; }
+        .checkbox-label.large { font-size: 1.1rem; color: #38bdf8; }
         .checkbox-label input { width: 18px; height: 18px; cursor: pointer; }
+        .checkbox-label.large input { width: 22px; height: 22px; }
 
         .save-btn { background: #22c55e; color: #0f172a; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .save-btn:hover:not(:disabled) { background: #4ade80; transform: translateY(-2px); }
