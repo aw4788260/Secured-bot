@@ -6,8 +6,8 @@ export default async function handler(req, res) {
   const authResult = await requireSuperAdmin(req, res);
   if (authResult?.error) return; 
 
-  // المفاتيح التي نتعامل معها
-  const TARGET_KEYS = ['platform_percentage', 'support_telegram', 'support_whatsapp'];
+  // ✅ التعديل هنا: تمت إضافة 'free_mode' إلى القائمة
+  const TARGET_KEYS = ['platform_percentage', 'support_telegram', 'support_whatsapp', 'free_mode'];
 
   // --------------------------------------------------------
   // GET: جلب الإعدادات
@@ -22,7 +22,6 @@ export default async function handler(req, res) {
       if (error) throw error;
 
       // تحويل المصفوفة إلى كائن لسهولة الاستخدام في الواجهة
-      // مثال: { platform_percentage: "10", support_telegram: "..." }
       const settings = {};
       
       // تعيين قيم افتراضية فارغة
@@ -51,10 +50,16 @@ export default async function handler(req, res) {
       const updates = req.body; // نتوقع كائن يحتوي على المفاتيح والقيم
 
       // تجهيز البيانات للإدخال (Upsert)
-      const rowsToUpsert = TARGET_KEYS.map(key => ({
-        key: key,
-        value: String(updates[key] || '') // تحويل القيمة لنص وتجنب null
-      }));
+      const rowsToUpsert = TARGET_KEYS.map(key => {
+        // نأخذ القيمة، وإذا كانت غير موجودة نضع نصاً فارغاً
+        // الدالة String() ستحول true/false إلى "true"/"false" بشكل صحيح
+        const val = updates[key] !== undefined && updates[key] !== null ? updates[key] : '';
+        
+        return {
+          key: key,
+          value: String(val) 
+        };
+      });
 
       const { error } = await supabase
         .from('app_settings')
