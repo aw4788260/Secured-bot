@@ -204,11 +204,11 @@ export default async (req, res) => {
       .select('*')
       .order('sort_order', { ascending: true });
 
-    // 4. ✅ (جديد) جلب إعدادات التواصل ودمجها
+    // 4. ✅ (تعديل) جلب إعدادات التواصل + إعدادات الوضع المجاني
     const { data: settingsData } = await supabase
       .from('app_settings')
       .select('key, value')
-      .in('key', ['support_whatsapp', 'support_telegram']);
+      .in('key', ['support_whatsapp', 'support_telegram', 'free_mode']); // 🆕 تم إضافة free_mode
 
     const contactInfo = {};
     settingsData?.forEach(item => {
@@ -226,7 +226,9 @@ export default async (req, res) => {
       contactInfo: {
           whatsapp: contactInfo['support_whatsapp'] || '',
           telegram: contactInfo['support_telegram'] || ''
-      }
+      },
+      // ✅ إرسال حالة الوضع المجاني
+      freeMode: contactInfo['free_mode'] === 'true'
     });
 
   } catch (err) {
