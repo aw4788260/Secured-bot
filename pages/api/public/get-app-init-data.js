@@ -208,7 +208,7 @@ export default async (req, res) => {
     const { data: settingsData } = await supabase
       .from('app_settings')
       .select('key, value')
-      .in('key', ['support_whatsapp', 'support_telegram', 'free_mode']); 
+      .in('key', ['support_whatsapp', 'support_telegram', 'free_mode']); // 🆕 تم إضافة free_mode
 
     const contactInfo = {};
     settingsData?.forEach(item => {
@@ -227,8 +227,8 @@ export default async (req, res) => {
           whatsapp: contactInfo['support_whatsapp'] || '',
           telegram: contactInfo['support_telegram'] || ''
       },
-      // 🔄 ✅ تم تغيير الاسم هنا للتحكم في الإصدارات
-      freeModeStatus: contactInfo['free_mode'] === 'true'
+      // ✅ إرسال حالة الوضع المجاني
+      freeMode: contactInfo['free_mode'] === 'true'
     });
 
   } catch (err) {
