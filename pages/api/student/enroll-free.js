@@ -1,14 +1,28 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper';
 
+// 🔒 كلمة السر الخاصة بالتفعيل المجاني
+// ⚠️ ملاحظة: يجب أن تكون هذه الكلمة مطابقة تماماً لما سترسله من تطبيق Flutter
+const FREE_MODE_SECRET = "Medaad_Free_Activation_2026_Secure";
+
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  // 1. التحقق من المستخدم
+  // 1. التحقق من المستخدم (Auth Check)
   const isAuthorized = await checkUserAccess(req);
   if (!isAuthorized) return res.status(401).json({ error: 'Unauthorized' });
 
   const userId = req.headers['x-user-id'];
+  
+  // ✅ استقبال كلمة السر من الهيدر
+  const incomingSecret = req.headers['x-free-secret'];
+
+  // ✅ التحقق من تطابق كلمة السر
+  if (incomingSecret !== FREE_MODE_SECRET) {
+      console.log(`[Security Warning] Invalid Free Mode Secret attempt by User: ${userId}`);
+      return res.status(403).json({ error: 'Forbidden: Invalid Activation Secret' });
+  }
+
   const { items } = req.body; // items = [{id, type: 'course'|'subject'}]
 
   try {
