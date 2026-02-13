@@ -158,7 +158,18 @@ export default function ExamStatsPage() {
       {/* Tab Content 2: Question Analysis */}
       {activeTab === 'analysis' && (
           <div className="analysis-grid">
-              {stats.questionStats?.map((q, i) => {
+              {/* ✅ ترتيب الأسئلة بناءً على نسبة الخطأ (الأكثر خطأ يظهر أولاً) */}
+              {[...(stats.questionStats || [])].sort((a, b) => {
+                  const tA = parseInt(a.total_answers) || 0;
+                  const wA = parseInt(a.wrong_answers) || 0;
+                  const percA = tA > 0 ? (wA / tA) : 0;
+
+                  const tB = parseInt(b.total_answers) || 0;
+                  const wB = parseInt(b.wrong_answers) || 0;
+                  const percB = tB > 0 ? (wB / tB) : 0;
+
+                  return percB - percA; // ترتيب تنازلي للأكثر خطأ
+              }).map((q, i) => {
                   const total = parseInt(q.total_answers) || 0;
                   const correct = parseInt(q.correct_answers) || 0;
                   const wrong = parseInt(q.wrong_answers) || 0;
@@ -233,10 +244,10 @@ export default function ExamStatsPage() {
                                           </div>
                                       </div>
 
-                                      {/* عرض صورة السؤال إن وجدت */}
+                                      {/* ✅ تصحيح مسار جلب الصور ليعمل بنجاح */}
                                       {q.image && (
                                           <div className="q-image">
-                                              <img src={`/api/dashboard/teacher/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
+                                              <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
                                           </div>
                                       )}
 
