@@ -180,9 +180,8 @@ export default function ExamStatsPage() {
 
                   return (
                       <div key={q.question_id} className="q-stat-card">
-                          <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
                           
-                          {/* ✅ عرض صورة السؤال في التحليل مع دعم التكبير */}
+                          {/* ✅ عرض صورة السؤال في التحليل (أعلى النص) */}
                           {q.image_file_id && (
                               <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`)}>
                                   <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`} alt="Question Image" />
@@ -190,6 +189,7 @@ export default function ExamStatsPage() {
                               </div>
                           )}
 
+                          <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
                           <div className="q-meta">أجاب على هذا السؤال: <strong>{total} طالب</strong></div>
                           
                           {/* ملخص الصح والخطأ */}
@@ -260,6 +260,14 @@ export default function ExamStatsPage() {
                               {attemptDetails.questions_details.map((q, i) => (
                                   <div key={q.id} className="q-detail-card">
                                       
+                                      {/* ✅ عرض صورة السؤال في ورقة الطالب (أعلى النص) */}
+                                      {q.image && (
+                                          <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image}`)}>
+                                              <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
+                                              <div className="zoom-hint">🔍 تكبير</div>
+                                          </div>
+                                      )}
+
                                       <div className="q-head">
                                           <div className="q-title">
                                               <span className="q-num">{i + 1}</span>
@@ -269,14 +277,6 @@ export default function ExamStatsPage() {
                                               {q.is_student_correct ? <span className="badge green">✅ صحيح</span> : <span className="badge red">❌ خطأ</span>}
                                           </div>
                                       </div>
-
-                                      {/* ✅ عرض صورة السؤال في ورقة الطالب مع التكبير */}
-                                      {q.image && (
-                                          <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image}`)}>
-                                              <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
-                                              <div className="zoom-hint">🔍 تكبير</div>
-                                          </div>
-                                      )}
 
                                       <div className="options-list">
                                           {q.options.map(opt => {
