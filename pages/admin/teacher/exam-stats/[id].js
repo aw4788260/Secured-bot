@@ -15,6 +15,9 @@ export default function ExamStatsPage() {
   const [attemptDetails, setAttemptDetails] = useState(null);
   const [loadingAttempt, setLoadingAttempt] = useState(false);
 
+  // حالة الصورة المكبرة (الجديدة)
+  const [zoomedImage, setZoomedImage] = useState(null);
+
   // جلب الإحصائيات العامة للامتحان
   useEffect(() => {
     if (!examId) return;
@@ -73,15 +76,13 @@ export default function ExamStatsPage() {
   return (
     <TeacherLayout title={`إحصائيات | ${stats.examTitle}`}>
       
-      {/* Header */}
+      {/* Header - تم نقل زر الرجوع لأقصى اليسار */}
       <div className="header-bar">
           <div className="title-area">
-              <button className="back-btn" onClick={() => router.push('/admin/teacher/content')}>⬅️ رجوع</button>
-              <div>
-                  <h1>📊 إحصائيات: {stats.examTitle}</h1>
-                  <p>تحليل أداء الطلاب ونتائج الامتحان</p>
-              </div>
+              <h1>📊 إحصائيات: {stats.examTitle}</h1>
+              <p>تحليل أداء الطلاب ونتائج الامتحان</p>
           </div>
+          <button className="back-btn" onClick={() => router.push('/admin/teacher/content')}>رجوع ⬅️</button>
       </div>
 
       {/* Summary Cards */}
@@ -180,6 +181,15 @@ export default function ExamStatsPage() {
                   return (
                       <div key={q.question_id} className="q-stat-card">
                           <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
+                          
+                          {/* ✅ عرض صورة السؤال في التحليل مع دعم التكبير */}
+                          {q.image_file_id && (
+                              <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`)}>
+                                  <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`} alt="Question Image" />
+                                  <div className="zoom-hint">🔍 تكبير</div>
+                              </div>
+                          )}
+
                           <div className="q-meta">أجاب على هذا السؤال: <strong>{total} طالب</strong></div>
                           
                           {/* ملخص الصح والخطأ */}
@@ -188,7 +198,7 @@ export default function ExamStatsPage() {
                               <span className="badge red">إجابات خاطئة: {wrongPerc}%</span>
                           </div>
 
-                          {/* ✅ تفاصيل كل اختيار (تحليل الإجابات) */}
+                          {/* تحليل اختيار الطلاب للإجابات */}
                           <div className="options-breakdown">
                               <h5 className="breakdown-title">تحليل اختيار الطلاب للإجابات:</h5>
                               
@@ -260,10 +270,11 @@ export default function ExamStatsPage() {
                                           </div>
                                       </div>
 
-                                      {/* تصحيح مسار جلب الصور ليعمل بنجاح */}
+                                      {/* ✅ عرض صورة السؤال في ورقة الطالب مع التكبير */}
                                       {q.image && (
-                                          <div className="q-image">
+                                          <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image}`)}>
                                               <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
+                                              <div className="zoom-hint">🔍 تكبير</div>
                                           </div>
                                       )}
 
@@ -308,14 +319,38 @@ export default function ExamStatsPage() {
           </div>
       )}
 
+      {/* ✅ نافذة التكبير الكلية للصور (Fullscreen Image Zoom) */}
+      {zoomedImage && (
+          <div className="modal-overlay image-zoom-overlay" onClick={() => setZoomedImage(null)}>
+              <div className="zoomed-image-container" onClick={e => e.stopPropagation()}>
+                  <button className="close-btn abs-close" onClick={() => setZoomedImage(null)}>✕</button>
+                  <img src={zoomedImage} alt="Zoomed Question" />
+              </div>
+          </div>
+      )}
+
       <style jsx>{`
         /* Header & Common */
-        .header-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
-        .title-area { display: flex; align-items: flex-start; gap: 15px; }
-        .back-btn { background: #334155; color: #cbd5e1; border: none; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 5px; transition: 0.2s; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+        .title-area { display: flex; flex-direction: column; gap: 5px; }
+        .back-btn { background: #334155; color: #cbd5e1; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 0.95rem; }
         .back-btn:hover { background: #475569; color: white; }
-        .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
+        .header-bar h1 { margin: 0; color: #38bdf8; font-size: 1.6rem; }
         .header-bar p { margin: 0; color: #94a3b8; font-size: 0.95rem; }
+
+        /* ✅ Image Zoom Styles */
+        .q-image { position: relative; display: inline-block; cursor: zoom-in; margin-bottom: 15px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; transition: border-color 0.2s; background: #0f172a; max-width: 100%; }
+        .q-image:hover { border-color: #38bdf8; }
+        .q-image img { display: block; max-height: 200px; width: auto; object-fit: contain; transition: transform 0.3s; }
+        .q-image:hover img { opacity: 0.6; transform: scale(1.02); }
+        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.8); padding: 8px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+        .q-image:hover .zoom-hint { opacity: 1; }
+
+        .image-zoom-overlay { z-index: 20000; padding: 20px; }
+        .zoomed-image-container { position: relative; display: flex; justify-content: center; align-items: center; max-width: 90vw; max-height: 90vh; }
+        .zoomed-image-container img { max-width: 100%; max-height: 90vh; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); object-fit: contain; background: #0f172a; }
+        .abs-close { position: absolute; top: -15px; right: -15px; background: white; color: black; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 10; font-weight: bold; transition: 0.2s; }
+        .abs-close:hover { transform: scale(1.1); background: #ef4444; color: white; }
 
         /* Summary Cards */
         .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -392,8 +427,6 @@ export default function ExamStatsPage() {
         .badge.green { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
         .badge.red { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
 
-        .q-image img { max-height: 200px; max-width: 100%; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
-
         .options-list { display: flex; flex-direction: column; gap: 8px; }
         .opt-row { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px 15px; border-radius: 8px; border: 1px solid #334155; color: #cbd5e1; }
         .opt-row.correct { background: rgba(34, 197, 94, 0.05); border-color: #22c55e; color: white; }
@@ -406,7 +439,7 @@ export default function ExamStatsPage() {
         @keyframes popIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 
         @media (max-width: 768px) {
-            .header-bar .title-area { flex-direction: column; gap: 10px; align-items: flex-start; }
+            .header-bar { flex-direction: column; align-items: flex-start; gap: 15px; }
             .analysis-grid { grid-template-columns: 1fr; }
             .student-info-card { flex-direction: column; align-items: flex-start; gap: 10px; }
             .q-head { flex-direction: column; }
