@@ -158,7 +158,7 @@ export default function ExamStatsPage() {
       {/* Tab Content 2: Question Analysis */}
       {activeTab === 'analysis' && (
           <div className="analysis-grid">
-              {/* ✅ ترتيب الأسئلة بناءً على نسبة الخطأ (الأكثر خطأ يظهر أولاً) */}
+              {/* ترتيب الأسئلة بناءً على نسبة الخطأ (الأكثر خطأ يظهر أولاً) */}
               {[...(stats.questionStats || [])].sort((a, b) => {
                   const tA = parseInt(a.total_answers) || 0;
                   const wA = parseInt(a.wrong_answers) || 0;
@@ -182,20 +182,36 @@ export default function ExamStatsPage() {
                           <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
                           <div className="q-meta">أجاب على هذا السؤال: <strong>{total} طالب</strong></div>
                           
-                          <div className="progress-wrapper">
-                              <div className="progress-labels">
-                                  <span style={{color:'#4ade80'}}>إجابات صحيحة ({correct})</span>
-                                  <span style={{color:'#4ade80'}}>{correctPerc}%</span>
-                              </div>
-                              <div className="progress-bar"><div className="fill green" style={{width: `${correctPerc}%`}}></div></div>
+                          {/* ملخص الصح والخطأ */}
+                          <div className="overall-summary">
+                              <span className="badge green">إجابات صحيحة: {correctPerc}%</span>
+                              <span className="badge red">إجابات خاطئة: {wrongPerc}%</span>
                           </div>
 
-                          <div className="progress-wrapper">
-                              <div className="progress-labels">
-                                  <span style={{color:'#ef4444'}}>إجابات خاطئة ({wrong})</span>
-                                  <span style={{color:'#ef4444'}}>{wrongPerc}%</span>
-                              </div>
-                              <div className="progress-bar"><div className="fill red" style={{width: `${wrongPerc}%`}}></div></div>
+                          {/* ✅ تفاصيل كل اختيار (تحليل الإجابات) */}
+                          <div className="options-breakdown">
+                              <h5 className="breakdown-title">تحليل اختيار الطلاب للإجابات:</h5>
+                              
+                              {/* ترتيب الاختيارات ليظهر الأكثر اختياراً في الأعلى */}
+                              {q.options?.sort((o1, o2) => parseInt(o2.selection_count) - parseInt(o1.selection_count)).map(opt => {
+                                  const optCount = parseInt(opt.selection_count) || 0;
+                                  const optPerc = total > 0 ? Math.round((optCount / total) * 100) : 0;
+                                  const isCorrect = opt.is_correct;
+
+                                  return (
+                                      <div key={opt.option_id} className={`opt-stat-row ${isCorrect ? 'is-correct' : ''}`}>
+                                          <div className="opt-stat-info">
+                                              <span className="opt-text">
+                                                  {isCorrect ? '✅' : '❌'} {opt.option_text}
+                                              </span>
+                                              <span className="opt-count">{optPerc}% ({optCount} طالب)</span>
+                                          </div>
+                                          <div className="opt-progress-bar">
+                                              <div className={`opt-fill ${isCorrect ? 'green' : 'gray'}`} style={{width: `${optPerc}%`}}></div>
+                                          </div>
+                                      </div>
+                                  );
+                              })}
                           </div>
                       </div>
                   );
@@ -244,7 +260,7 @@ export default function ExamStatsPage() {
                                           </div>
                                       </div>
 
-                                      {/* ✅ تصحيح مسار جلب الصور ليعمل بنجاح */}
+                                      {/* تصحيح مسار جلب الصور ليعمل بنجاح */}
                                       {q.image && (
                                           <div className="q-image">
                                               <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
@@ -334,13 +350,24 @@ export default function ExamStatsPage() {
         .q-text { margin: 0 0 10px 0; color: white; font-size: 1.05rem; line-height: 1.5; }
         .q-text span { color: #38bdf8; margin-left: 5px; }
         .q-meta { color: #94a3b8; font-size: 0.85rem; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #334155; }
-        .progress-wrapper { margin-bottom: 12px; }
-        .progress-wrapper:last-child { margin-bottom: 0; }
-        .progress-labels { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; font-weight: bold; }
-        .progress-bar { width: 100%; height: 8px; background: #0f172a; border-radius: 10px; overflow: hidden; }
-        .fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
-        .fill.green { background: #4ade80; }
-        .fill.red { background: #ef4444; }
+        
+        /* Analysis - New Options Breakdown */
+        .overall-summary { display: flex; gap: 10px; margin-bottom: 20px; }
+        .overall-summary .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
+        .overall-summary .badge.green { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+        .overall-summary .badge.red { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        .options-breakdown { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
+        .breakdown-title { color: #cbd5e1; margin: 0 0 15px 0; font-size: 0.9rem; font-weight: normal; }
+        .opt-stat-row { margin-bottom: 12px; }
+        .opt-stat-row:last-child { margin-bottom: 0; }
+        .opt-stat-info { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem; color: #cbd5e1; }
+        .opt-stat-row.is-correct .opt-stat-info { color: #4ade80; font-weight: bold; }
+        .opt-count { font-family: monospace; color: #94a3b8; }
+        .opt-progress-bar { width: 100%; height: 6px; background: #1e293b; border-radius: 10px; overflow: hidden; }
+        .opt-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
+        .opt-fill.green { background: #4ade80; }
+        .opt-fill.gray { background: #64748b; }
 
         /* Modal Styles */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
