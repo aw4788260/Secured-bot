@@ -1,5 +1,6 @@
 import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/router';
 
 // --- أيقونات SVG (نسخة مطابقة) ---
 const Icons = {
@@ -27,6 +28,8 @@ const formatDateForInput = (isoString) => {
 export default function ContentManager() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
+    const router = useRouter();
+
   
   // Navigation
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -526,7 +529,7 @@ export default function ContentManager() {
                               <div className="exam-icon">{Icons.exam}</div>
                               <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة</span></div>
                               <div className="exam-actions">
-                                  <button title="إحصائيات" onClick={() => loadStats(ex.id)}>📊</button>
+                                  <button title="إحصائيات" onClick={() => router.push(`/admin/teacher/exam-stats/${ex.id}`)}>📊</button>
                                   <button title="تعديل" onClick={() => openModal('exam_editor', ex)}>{Icons.edit}</button>
                                   <button title="حذف" className="danger" onClick={() => handleDelete('exams', ex.id)}>{Icons.trash}</button>
                               </div>
@@ -682,31 +685,6 @@ export default function ContentManager() {
           </Modal>
       )}
       
-      {/* 3. Stats Modal */}
-     {modalType === 'stats' && examStats && (
-          <Modal title="تقرير الامتحان" onClose={() => setModalType(null)}>
-              <div className="stats-summary">
-                  <div className="stat-card"><span>عدد الطلاب</span><strong>{examStats.totalAttempts}</strong></div>
-                  <div className="stat-card"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{examStats.averagePercentage}%</strong></div>
-                  <div className="stat-card"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{Number(examStats.averageScore).toFixed(1)}</strong></div>
-              </div>
-              <div className="table-wrap">
-                  <table>
-                      <thead><tr><th>الطالب</th><th>النسبة</th><th>الدرجة</th><th>التاريخ</th></tr></thead>
-                      <tbody>
-                          {examStats.attempts.map((a, i) => (
-                              <tr key={i}>
-                                  <td>{a.student_name_input || 'غير معروف'}</td>
-                                  <td style={{color: a.percentage >= 50 ? '#4ade80' : '#ef4444'}}>{a.percentage}%</td>
-                                  <td>{a.score}</td>
-                                  <td>{a.completed_at ? new Date(a.completed_at).toLocaleDateString('ar-EG') : '-'}</td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
-              </div>
-          </Modal>
-      )}
 
       {/* 4. Exam Editor */}
       {modalType === 'exam_editor' && (
