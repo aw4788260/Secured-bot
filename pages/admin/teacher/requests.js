@@ -6,6 +6,15 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
   
+  // حالات Pagination
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 10;
+
+  // حالات الفلترة
+  const [filter, setFilter] = useState('pending'); // pending, approved, rejected
+
+  // حالات النوافذ والتنبيهات
   const [modalImage, setModalImage] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [confirmModal, setConfirmModal] = useState({ show: false, id: null, action: null });
@@ -19,10 +28,20 @@ export default function RequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // ✅ تحديث المسار إلى API المدرسين الجديد
-      const res = await fetch('/api/dashboard/teacher/requests');
-      const data = await res.json();
-      if (Array.isArray(data)) setRequests(data);
+      // جلب البيانات بناءً على الفلتر والصفحة
+      const res = await fetch(`/api/dashboard/teacher/requests?status=${filter}&page=${page}&limit=${pageSize}`);
+      const result = await res.json();
+      
+      if (result.data) {
+          setRequests(result.data);
+          setTotalCount(result.count || 0);
+      } else if (Array.isArray(result)) {
+          setRequests(result);
+          setTotalCount(result.length);
+      } else {
+          setRequests([]);
+          setTotalCount(0);
+      }
     } catch (err) {
       console.error(err);
       showToast('فشل جلب البيانات', 'error');
@@ -31,9 +50,15 @@ export default function RequestsPage() {
     }
   };
 
+  // إعادة تعيين الصفحة عند تغيير الفلتر
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  // جلب الطلبات عند تغيير الفلتر أو الصفحة
   useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [filter, page]);
 
   const initiateAction = (requestId, action) => {
       setRejectionReason('');
@@ -46,7 +71,6 @@ export default function RequestsPage() {
     setProcessingId(requestId);
 
     try {
-      // ✅ تحديث المسار لتنفيذ الإجراء
       const res = await fetch('/api/dashboard/teacher/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,6 +86,7 @@ export default function RequestsPage() {
       if (res.ok) {
         showToast(result.message || 'تم تنفيذ العملية بنجاح', 'success');
         setRequests(requests.filter(r => r.id !== requestId));
+        setTotalCount(prev => Math.max(0, prev - 1));
       } else {
         showToast(result.error, 'error');
       }
@@ -72,104 +97,172 @@ export default function RequestsPage() {
     }
   };
 
+  const totalPages = Math.ceil(totalCount / pageSize);
+
   return (
     <TeacherLayout title="طلبات الاشتراك">
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           {toast.message}
       </div>
 
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+      <div className="header-container">
         <div>
-            <h1>📥 طلبات الاشتراك المعلقة</h1>
-            <p style={{color:'#94a3b8', marginTop:'5px', fontSize:'0.9em'}}>الطلبات الخاصة بكورساتك فقط</p>
+            <h1>📥 طلبات الاشتراك</h1>
+            <p className="sub-header">متابعة وإدارة الاشتراكات الخاصة بكورساتك</p>
         </div>
-        <button onClick={fetchRequests} className="refresh-btn">🔄 تحديث</button>
+        
+        <div className="header-actions">
+            <div className="filter-tabs">
+                <button 
+                    className={`tab ${filter === 'pending' ? 'active' : ''}`} 
+                    onClick={() => setFilter('pending')}
+                >
+                    ⏳ المعلقة
+                </button>
+                <button 
+                    className={`tab ${filter === 'approved' ? 'active' : ''}`} 
+                    onClick={() => setFilter('approved')}
+                >
+                    ✅ المقبولة
+                </button>
+                <button 
+                    className={`tab ${filter === 'rejected' ? 'active' : ''}`} 
+                    onClick={() => setFilter('rejected')}
+                >
+                    ❌ المرفوضة
+                </button>
+            </div>
+            <button onClick={fetchRequests} className="refresh-btn" title="تحديث البيانات">🔄</button>
+        </div>
       </div>
 
       {loading ? (
-        <div style={{textAlign:'center', color:'#38bdf8', padding:'40px'}}>
+        <div style={{textAlign:'center', color:'#38bdf8', padding:'60px'}}>
             <div className="spinner"></div>
             <p>جاري تحميل الطلبات...</p>
         </div>
       ) : requests.length === 0 ? (
-        <div style={{textAlign:'center', padding:'60px', color:'#94a3b8', background:'#1e293b', borderRadius:'12px', border:'1px dashed #334155'}}>
-            <div style={{fontSize:'3em', marginBottom:'15px'}}>📭</div>
-            <h3>لا توجد طلبات معلقة حالياً</h3>
-            <p>عندما يطلب طالب الاشتراك في كورساتك، سيظهر طلبه هنا.</p>
+        <div className="empty-state">
+            <div style={{fontSize:'3em', margin:'0 auto 15px'}}>📭</div>
+            <h3>لا توجد طلبات للعرض</h3>
+            <p>لا يوجد طلبات في هذه الفئة حالياً.</p>
         </div>
       ) : (
-        <div className="requests-grid">
-          {requests.map(req => {
-            // ✅ تحديث مسار البروكسي (استخدمنا مسار السوبر مؤقتاً أو تأكد من وجود صلاحية للمدرس)
-            // ملاحظة: يُفضل نقل منطق عرض الصور إلى API عام أو خاص بالمدرس إذا لزم الأمر
-            const receiptUrl = `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}`;
-            
-            return (
-                <div key={req.id} className="request-card">
-                    <div className="card-header">
-                        <span className="req-id">#{req.id}</span>
-                        <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
-                    </div>
-
-                    <div className="card-body">
-                        <div className="info-block">
-                            <span className="label">👤 اسم الطالب</span>
-                            <span className="value">{req.user_name}</span>
-                        </div>
-                        
-                        <div className="info-block">
-                            <span className="label">📱 رقم الهاتف</span>
-                            <span className="value" dir="ltr">{req.phone}</span>
-                        </div>
-                        
-                        <div className="info-block">
-                            <span className="label">💰 المبلغ المدفوع</span>
-                            <span className="value price">{req.total_price} ج.م</span>
-                        </div>
-                        
-                        <div className="info-block box">
-                            <span className="label">🛒 تفاصيل الطلب</span>
-                            <p className="value text-wrap">{req.course_title}</p>
+        <>
+            <div className="requests-grid">
+            {requests.map(req => {
+                const receiptUrl = req.payment_file_path 
+                    ? `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}` 
+                    : null;
+                
+                return (
+                    <div key={req.id} className={`request-card ${req.status}`}>
+                        <div className="card-header">
+                            <span className="req-id">#{req.id}</span>
+                            <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
                         </div>
 
-                        <div className="receipt-section">
-                            <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع</p>
-                            <div 
-                                className="receipt-thumbnail-wrapper"
-                                onClick={() => setModalImage(receiptUrl)}
-                            >
-                                <img 
-                                    src={receiptUrl} 
-                                    alt="Receipt" 
-                                    className="receipt-thumbnail" 
-                                    loading="lazy"
-                                    onError={(e) => {e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';}}
-                                />
-                                <div className="zoom-hint">🔍</div>
+                        <div className="card-body">
+                            <div className="info-row">
+                                <div className="info-col">
+                                    <span className="label">👤 اسم الطالب</span>
+                                    <span className="value">{req.user_name}</span>
+                                </div>
+                                <div className="info-col right">
+                                    <span className="label">📱 هاتف الطالب</span>
+                                    <span className="value ltr" dir="ltr">{req.phone}</span>
+                                </div>
                             </div>
-                        </div>
-                    </div>
+                            
+                            <div className="price-box">
+                                <span className="label">المبلغ المدفوع</span>
+                                <span className="price-value">{req.total_price} ج.م</span>
+                            </div>
+                            
+                            <div className="details-box">
+                                <span className="label">🛒 المحتوى المطلوب</span>
+                                <p className="details-text">{req.course_title || 'محتوى غير محدد'}</p>
+                            </div>
 
-                    <div className="card-actions">
-                        <button 
-                            onClick={() => initiateAction(req.id, 'approve')} 
-                            disabled={processingId === req.id}
-                            className="btn approve"
-                        >
-                            ✅ تفعيل
-                        </button>
-                        <button 
-                            onClick={() => initiateAction(req.id, 'reject')} 
-                            disabled={processingId === req.id}
-                            className="btn reject"
-                        >
-                            ❌ رفض
-                        </button>
+                            {req.user_note && (
+                                <div className="note-box">
+                                    <span className="label">📝 ملاحظات الطالب</span>
+                                    <p className="note-text">{req.user_note}</p>
+                                </div>
+                            )}
+
+                            {receiptUrl && (
+                                <div className="receipt-section">
+                                    <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع</p>
+                                    <div 
+                                        className="receipt-thumbnail-wrapper"
+                                        onClick={() => setModalImage(receiptUrl)}
+                                    >
+                                        <img 
+                                            src={receiptUrl} 
+                                            alt="Receipt" 
+                                            className="receipt-thumbnail" 
+                                            loading="lazy"
+                                            onError={(e) => {e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';}}
+                                        />
+                                        <div className="zoom-hint">🔍</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* إظهار أزرار الإجراءات فقط إذا كان الطلب معلقاً */}
+                        {filter === 'pending' && (
+                            <div className="card-actions">
+                                <button 
+                                    onClick={() => initiateAction(req.id, 'approve')} 
+                                    disabled={processingId === req.id}
+                                    className="btn approve"
+                                >
+                                    {processingId === req.id ? '...' : '✅ تفعيل'}
+                                </button>
+                                <button 
+                                    onClick={() => initiateAction(req.id, 'reject')} 
+                                    disabled={processingId === req.id}
+                                    className="btn reject"
+                                >
+                                    {processingId === req.id ? '...' : '❌ رفض'}
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* إظهار سبب الرفض إذا كان مرفوضاً */}
+                        {filter === 'rejected' && req.rejection_reason && (
+                            <div className="rejection-note">
+                                <strong>سبب الرفض:</strong> {req.rejection_reason}
+                            </div>
+                        )}
                     </div>
+                );
+            })}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="pagination-controls">
+                    <button 
+                        disabled={page === 1} 
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        className="page-btn"
+                    >
+                        ➡️ السابق
+                    </button>
+                    <span className="page-info">صفحة {page} من {totalPages}</span>
+                    <button 
+                        disabled={page >= totalPages} 
+                        onClick={() => setPage(p => p + 1)}
+                        className="page-btn"
+                    >
+                        التالي ⬅️
+                    </button>
                 </div>
-            );
-          })}
-        </div>
+            )}
+        </>
       )}
 
       {modalImage && (
@@ -187,7 +280,7 @@ export default function RequestsPage() {
                   <h3>⚠️ تأكيد الإجراء</h3>
                   <p>
                       {confirmModal.action === 'approve' 
-                        ? 'هل أنت متأكد من تفعيل هذا الاشتراك؟' 
+                        ? 'هل أنت متأكد من تفعيل هذا الاشتراك؟ سيتمكن الطالب من الوصول للمحتوى فوراً.' 
                         : 'هل أنت متأكد من رفض هذا الطلب؟'}
                   </p>
 
@@ -215,54 +308,99 @@ export default function RequestsPage() {
       )}
 
       <style jsx>{`
-        .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid #334155; padding-bottom: 20px; }
+        .header-container h1 { margin: 0 0 5px 0; color: #f8fafc; font-size: 1.8rem; }
+        .sub-header { color: #94a3b8; margin: 0; font-size: 0.95em; }
+        
+        .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        
+        .filter-tabs { display: flex; background: #1e293b; padding: 4px; border-radius: 8px; border: 1px solid #334155; }
+        .tab { background: transparent; border: none; color: #94a3b8; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; white-space: nowrap; }
+        .tab:hover { color: white; }
+        .tab.active { background: #38bdf8; color: #0f172a; }
+
+        .refresh-btn { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; transition: 0.2s; }
+        .refresh-btn:hover { background: #38bdf8; color: #0f172a; }
+
+        .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
         .request-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; display: flex; flex-direction: column; }
         .request-card:hover { transform: translateY(-5px); border-color: #38bdf8; }
-        .card-header { background: #0f172a; padding: 12px 20px; display: flex; justify-content: space-between; border-bottom: 1px solid #334155; color: #94a3b8; font-size: 0.9em; }
+        .request-card.approved { border-color: #22c55e; }
+        .request-card.rejected { border-color: #ef4444; opacity: 0.8; }
+
+        .card-header { background: #0f172a; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+        .req-id { font-family: monospace; background: #334155; padding: 2px 6px; border-radius: 4px; color: #cbd5e1; font-size: 0.85em;}
+        .req-date { font-size: 0.85em; color: #94a3b8; }
+
         .card-body { padding: 20px; flex: 1; }
-        .info-block { margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; }
-        .info-block.box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-        .label { color: #94a3b8; font-size: 0.85em; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        .value { color: white; font-size: 1.1em; font-weight: 500; }
-        .value.price { color: #4ade80; font-size: 1.3em; font-weight: bold; }
-        .value.text-wrap { white-space: pre-wrap; line-height: 1.6; font-size: 0.95em; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .info-col { display: flex; flex-direction: column; }
+        .info-col.right { align-items: flex-end; }
+        
+        .label { color: #64748b; font-size: 0.8em; font-weight: bold; text-transform: uppercase; margin-bottom: 3px; }
+        .value { color: white; font-weight: 500; font-size: 1em; }
+        .value.ltr { direction: ltr; font-family: monospace; }
+        
+        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .price-value { color: #4ade80; font-weight: bold; font-size: 1.2em; }
+
+        .details-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
+        .details-text { color: #cbd5e1; margin: 0; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
+
+        .note-box { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 15px; }
+        .note-text { color: #fbbf24; margin: 0; font-size: 0.95em; line-height: 1.4; white-space: pre-wrap; }
+
+        .receipt-section { margin-top: 15px; text-align: center; }
+        .receipt-thumbnail-wrapper { position: relative; height: 160px; width: 100%; background: #0f172a; border-radius: 10px; overflow: hidden; cursor: zoom-in; border: 1px solid #334155; transition: border-color 0.2s; }
+        .receipt-thumbnail-wrapper:hover { border-color: #38bdf8; }
+        .receipt-thumbnail { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
+        .receipt-thumbnail-wrapper:hover .receipt-thumbnail { transform: scale(1.05); opacity: 0.8; }
+        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .receipt-thumbnail-wrapper:hover .zoom-hint { opacity: 1; }
+
         .card-actions { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid #334155; background: #0f172a; }
         .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; font-size: 1em; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn.approve { background: #22c55e; color: #0f172a; }
         .btn.reject { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); }
         .btn.reject:hover { background: #ef4444; color: white; }
-        .refresh-btn { background: #334155; color: #38bdf8; border: 1px solid #38bdf8; padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
-        .refresh-btn:hover { background: #38bdf8; color: #0f172a; }
-        .receipt-section { margin-top: 20px; text-align: center; }
-        .receipt-thumbnail-wrapper { position: relative; height: 180px; width: 100%; background: #0f172a; border-radius: 10px; overflow: hidden; cursor: zoom-in; border: 1px solid #334155; transition: border-color 0.2s; }
-        .receipt-thumbnail-wrapper:hover { border-color: #38bdf8; }
-        .receipt-thumbnail { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
-        .receipt-thumbnail-wrapper:hover .receipt-thumbnail { transform: scale(1.05); opacity: 0.8; }
-        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-        .receipt-thumbnail-wrapper:hover .zoom-hint { opacity: 1; }
+
+        .rejection-note { padding: 15px; background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 0.9em; border-top: 1px solid rgba(239, 68, 68, 0.3); }
+
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; color: #94a3b8; background: #1e293b; border-radius: 12px; border: 1px dashed #334155; margin-top: 20px; }
+
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-content { position: relative; max-width: 95%; max-height: 95%; display: flex; justify-content: center; align-items: center; }
         .modal-img { max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         .close-modal { position: absolute; top: -40px; right: 0px; background: white; color: black; border: none; width: 30px; height: 30px; border-radius: 50%; font-weight: bold; cursor: pointer; font-size: 18px; }
+
         .alert-mode { background: rgba(0,0,0,0.7); backdrop-filter: blur(2px); }
         .alert-box { background: #1e293b; padding: 25px; border-radius: 16px; border: 1px solid #475569; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
         .alert-box h3 { margin-top: 0; color: #38bdf8; }
         .alert-box p { color: #cbd5e1; font-size: 1.1em; margin-bottom: 25px; }
         .reason-input { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; margin-bottom: 20px; resize: vertical; font-family: inherit; }
         .reason-input:focus { border-color: #ef4444; outline: none; }
+        
         .alert-actions { display: flex; gap: 10px; justify-content: center; }
         .alert-actions button { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; font-size: 1em; }
         .cancel-btn { background: transparent; border: 1px solid #64748b; color: #94a3b8; }
         .confirm-btn.green { background: #22c55e; color: #0f172a; }
         .confirm-btn.red { background: #ef4444; color: white; }
+
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #333; color: white; padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; }
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
         .toast.success { background: #22c55e; color: #0f172a; }
         .toast.error { background: #ef4444; color: white; }
-        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
         .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .pagination-controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #334155; }
+        .page-btn { background: #1e293b; color: #38bdf8; border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-weight: bold; }
+        .page-btn:hover:not(:disabled) { background: #334155; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; color: #64748b; }
+        .page-info { color: #94a3b8; font-family: monospace; }
       `}</style>
     </TeacherLayout>
   );
