@@ -4,27 +4,47 @@ import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async (req, res) => {
   const { user, error } = await requireTeacherOrAdmin(req, res);
-  if (error) return;
+  // ✅ تعديل: إرجاع رسالة خطأ 401 بدلاً من return فارغ لتجنب تعليق الطلب
+  if (error) return res.status(401).json({ error: 'Unauthorized' });
 
   const teacherId = user.teacherId;
 
-  // --- GET: جلب الطلبات المعلقة الخاصة بالمدرس ---
+  // ==========================================================
+  // --- GET: جلب الطلبات الخاصة بالمدرس (مع فلترة وتقليب صفحات) ---
+  // ==========================================================
   if (req.method === 'GET') {
-    try {
-      const { data } = await supabase
-        .from('subscription_requests')
-        .select('*')
-        .eq('teacher_id', teacherId) // ✅ الفلترة الأساسية
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+    const { status = 'pending', page = 1, limit = 10 } = req.query;
 
-      return res.status(200).json(data);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const start = (pageNum - 1) * limitNum;
+    const end = start + limitNum - 1;
+
+    try {
+      let query = supabase
+        .from('subscription_requests')
+        .select('*', { count: 'exact' }) // جلب العدد الإجمالي
+        .eq('teacher_id', teacherId)     // ✅ حماية أساسية: جلب طلبات هذا المدرس فقط
+        .order('created_at', { ascending: false })
+        .range(start, end);
+
+      if (status) {
+        query = query.eq('status', status);
+      }
+
+      const { data, count, error: fetchError } = await query;
+
+      if (fetchError) throw fetchError;
+
+      return res.status(200).json({ data, count });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
+  // ==========================================================
   // --- POST: قبول أو رفض الطلب ---
+  // ==========================================================
   if (req.method === 'POST') {
     const { requestId, action, rejectionReason } = req.body;
     
@@ -44,20 +64,23 @@ export default async (req, res) => {
          await supabase.from('subscription_requests')
            .update({ status: 'rejected', rejection_reason: rejectionReason || 'مرفوض' })
            .eq('id', requestId);
-         return res.status(200).json({ success: true });
+         return res.status(200).json({ success: true, message: 'تم رفض الطلب بنجاح' });
       }
 
       if (action === 'approve') {
          let targetUserId = request.user_id;
 
-         // منطق إنشاء المستخدم إذا لم يكن موجوداً (نفس المنطق القديم)
+         // منطق إنشاء المستخدم إذا لم يكن موجوداً
          if (!targetUserId) {
             const { data: existing } = await supabase.from('users').select('id').eq('username', request.user_username).maybeSingle();
             if (existing) targetUserId = existing.id;
             else {
                const { data: newUser } = await supabase.from('users').insert({
-                   username: request.user_username, password: request.password_hash || '123456', // يجب التأكد من وجود هاش
-                   first_name: request.user_name, phone: request.phone, role: 'student'
+                   username: request.user_username, 
+                   password: request.password_hash || '123456', 
+                   first_name: request.user_name, 
+                   phone: request.phone, 
+                   role: 'student'
                }).select('id').single();
                targetUserId = newUser.id;
             }
@@ -74,7 +97,7 @@ export default async (req, res) => {
          }
 
          await supabase.from('subscription_requests').update({ status: 'approved', user_id: targetUserId }).eq('id', requestId);
-         return res.status(200).json({ success: true });
+         return res.status(200).json({ success: true, message: 'تم تفعيل الاشتراك بنجاح' });
       }
     } catch (err) {
       return res.status(500).json({ error: err.message });
