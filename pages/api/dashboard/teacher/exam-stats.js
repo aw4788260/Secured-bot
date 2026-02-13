@@ -26,20 +26,44 @@ export default async (req, res) => {
     }
 
     // ========================================================
-    // ✅ 3. جلب إحصائيات الأسئلة (من الـ View الوهمي في قاعدة البيانات)
+    // ✅ 3. جلب إحصائيات الأسئلة (من الـ View الأول)
     // ========================================================
     const { data: questionStatsData, error: qStatsError } = await supabase
       .from('exam_question_stats')
       .select('*')
       .eq('exam_id', examId);
 
-    // إذا لم يتم إنشاء الـ View في قاعدة البيانات سيطبع تحذيراً
     if (qStatsError) {
-        console.warn("⚠️ لم يتم العثور على View إحصائيات الأسئلة، تأكد من تنفيذ كود SQL.", qStatsError.message);
+        console.warn("⚠️ لم يتم العثور على View إحصائيات الأسئلة.", qStatsError.message);
     }
 
     // ========================================================
-    // 4. جلب محاولات الطلاب (مع إضافة id كممثل لـ attempt_id)
+    // ✅ 4. جلب إحصائيات الاختيارات (من الـ View الثاني) ودمجها
+    // ========================================================
+    let optionStatsData = [];
+    if (questionStatsData && questionStatsData.length > 0) {
+        const questionIds = questionStatsData.map(q => q.question_id);
+        
+        const { data: optData, error: optError } = await supabase
+            .from('exam_option_stats')
+            .select('*')
+            .in('question_id', questionIds);
+            
+        if (optError) {
+             console.warn("⚠️ لم يتم العثور على View إحصائيات الاختيارات.", optError.message);
+        } else {
+             optionStatsData = optData || [];
+        }
+    }
+
+    // دمج الاختيارات داخل كل سؤال لتسهيل العرض في الواجهة
+    const formattedQuestionStats = (questionStatsData || []).map(q => ({
+        ...q,
+        options: optionStatsData.filter(opt => opt.question_id === q.question_id)
+    }));
+
+    // ========================================================
+    // 5. جلب محاولات الطلاب (مع إضافة id كممثل لـ attempt_id)
     // ========================================================
     const { data: attemptsData, error: attemptsError } = await supabase
       .from('user_attempts')
@@ -60,7 +84,7 @@ export default async (req, res) => {
 
     if (attemptsError) throw attemptsError;
 
-    // 5. الحسابات الأساسية
+    // 6. الحسابات الأساسية
     const totalAttempts = attemptsData ? attemptsData.length : 0;
     
     // حساب متوسط الدرجات (Score)
@@ -73,13 +97,13 @@ export default async (req, res) => {
         ? (attemptsData.reduce((acc, curr) => acc + (Number(curr.percentage) || 0), 0) / totalAttempts).toFixed(1) 
         : 0;
 
-    // 6. تنسيق قائمة الطلاب لتتوافق مع الفرونت اند
+    // 7. تنسيق قائمة الطلاب لتتوافق مع الفرونت اند
     const formattedAttempts = attemptsData ? attemptsData.map((attempt) => {
       const userData = Array.isArray(attempt.users) ? attempt.users[0] : attempt.users;
       const finalName = attempt.student_name_input || userData?.first_name || 'طالب غير مسجل';
       
       return {
-        attempt_id: attempt.id, // ✅ هذا هو المعرف الذي سيستخدمه المدرس لفتح صفحة تفاصيل إجابات الطالب
+        attempt_id: attempt.id, 
         student_name_input: finalName, 
         score: attempt.score,
         percentage: attempt.percentage,
@@ -88,14 +112,14 @@ export default async (req, res) => {
       };
     }) : [];
 
-    // 7. إرسال الرد النهائي (شاملاً الإحصائيات الجديدة)
+    // 8. إرسال الرد النهائي (شاملاً الإحصائيات الجديدة المدمجة)
     return res.status(200).json({
       examTitle: exam.title,
       averageScore: averageScore,        
       averagePercentage: averagePercentage, 
       totalAttempts: totalAttempts,
-      attempts: formattedAttempts,         // ✅ قائمة الطلاب + ID المحاولة لكل طالب
-      questionStats: questionStatsData || [] // ✅ إحصائيات كل سؤال (عدد الإجابات الصحيحة والخاطئة)
+      attempts: formattedAttempts,         
+      questionStats: formattedQuestionStats // ✅ إحصائيات الأسئلة + الاختيارات معاً
     });
 
   } catch (err) {
