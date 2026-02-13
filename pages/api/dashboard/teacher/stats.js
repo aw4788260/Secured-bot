@@ -14,7 +14,6 @@ export default async (req, res) => {
     // نجلب الكورسات، الطلبات المعلقة، والأرباح في وقت واحد
     // =========================================================
     
-    // ✅ تصحيح: إضافة await لكل استعلام داخل Promise.all
     const [coursesResult, pendingResult, revenueResult] = await Promise.all([
       // أ. جلب الكورسات
       supabase
@@ -29,9 +28,13 @@ export default async (req, res) => {
         .eq('teacher_id', teacherId)
         .eq('status', 'pending'),
 
-      // ج. حساب الأرباح (عبر دالة قاعدة البيانات RPC)
-      // ✅ نمرر المعامل 'teacher_id_arg' تماماً كما هو معرف في دالة SQL
-      supabase.rpc('get_teacher_revenue', { teacher_id_arg: teacherId })
+      // ج. حساب الأرباح (عبر دالة قاعدة البيانات الحالية)
+      // ✅ التعديل هنا: تمرير جميع المتغيرات الثلاثة لكي لا تفشل الدالة
+      supabase.rpc('get_teacher_revenue', { 
+          teacher_id_arg: teacherId,
+          start_date: null,
+          end_date: null
+      })
     ]);
 
     // التحقق من الأخطاء في البيانات الأساسية
@@ -40,7 +43,7 @@ export default async (req, res) => {
     // معالجة الأرباح (Fallback Logic)
     let totalEarnings = 0;
     
-    // ✅ تصحيح: التأكد من نجاح الدالة واستخراج النتيجة
+    // التأكد من أن الدالة لم ترجع خطأ وأن النتيجة ليست فارغة
     if (!revenueResult.error && revenueResult.data !== null) {
         totalEarnings = Number(revenueResult.data) || 0;
     } else {
@@ -85,9 +88,9 @@ export default async (req, res) => {
     // 4. جلب بيانات الطلاب (مع استثناء المدرسين والمشرفين)
     // =========================================================
     
-    // ✅ تصحيح: تفعيل الاستعلامات بشكل صحيح أو إرجاع نتيجة وهمية فارغة
     const [courseAccessResult, subjectAccessResult] = await Promise.all([
         // أ. مشتركو الكورسات (فقط من لديهم دور student)
+        // ✅ التعديل هنا: استخدام Promise.resolve لمنع فشل Promise.all إذا كانت المصفوفة فارغة
         courseIds.length > 0 ? 
             supabase
             .from('user_course_access')
@@ -97,6 +100,7 @@ export default async (req, res) => {
             : Promise.resolve({ data: [], error: null }),
 
         // ب. مشتركو المواد (فقط من لديهم دور student)
+        // ✅ التعديل هنا: استخدام Promise.resolve
         subjectIds.length > 0 ?
             supabase
             .from('user_subject_access')
@@ -140,7 +144,7 @@ export default async (req, res) => {
       success: true,
       summary: {
         students: allStudentIds.size, 
-        earnings: totalEarnings, // الأرباح المستخرجة من دالة قاعدة البيانات
+        earnings: totalEarnings, // تم استخراجها بنجاح
         courses: courses.length,
         pending: pendingRequests
       },
