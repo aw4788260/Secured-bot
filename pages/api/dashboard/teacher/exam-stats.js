@@ -25,10 +25,26 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 3. جلب المحاولات
+    // ========================================================
+    // ✅ 3. جلب إحصائيات الأسئلة (من الـ View الوهمي في قاعدة البيانات)
+    // ========================================================
+    const { data: questionStatsData, error: qStatsError } = await supabase
+      .from('exam_question_stats')
+      .select('*')
+      .eq('exam_id', examId);
+
+    // إذا لم يتم إنشاء الـ View في قاعدة البيانات سيطبع تحذيراً
+    if (qStatsError) {
+        console.warn("⚠️ لم يتم العثور على View إحصائيات الأسئلة، تأكد من تنفيذ كود SQL.", qStatsError.message);
+    }
+
+    // ========================================================
+    // 4. جلب محاولات الطلاب (مع إضافة id كممثل لـ attempt_id)
+    // ========================================================
     const { data: attemptsData, error: attemptsError } = await supabase
       .from('user_attempts')
       .select(`
+        id,  
         score,
         percentage,
         student_name_input,
@@ -44,7 +60,7 @@ export default async (req, res) => {
 
     if (attemptsError) throw attemptsError;
 
-    // 4. الحسابات (مطابقة للكود الذي طلبته)
+    // 5. الحسابات الأساسية
     const totalAttempts = attemptsData ? attemptsData.length : 0;
     
     // حساب متوسط الدرجات (Score)
@@ -52,17 +68,18 @@ export default async (req, res) => {
         ? (attemptsData.reduce((acc, curr) => acc + (Number(curr.score) || 0), 0) / totalAttempts).toFixed(1) 
         : 0;
 
-    // ✅ حساب متوسط النسبة المئوية (Percentage) - تم إضافته كما طلبت
+    // حساب متوسط النسبة المئوية (Percentage)
     const averagePercentage = totalAttempts > 0 
         ? (attemptsData.reduce((acc, curr) => acc + (Number(curr.percentage) || 0), 0) / totalAttempts).toFixed(1) 
         : 0;
 
-    // 5. تنسيق قائمة الطلاب لتتوافق مع الفرونت اند (attempts array)
+    // 6. تنسيق قائمة الطلاب لتتوافق مع الفرونت اند
     const formattedAttempts = attemptsData ? attemptsData.map((attempt) => {
       const userData = Array.isArray(attempt.users) ? attempt.users[0] : attempt.users;
       const finalName = attempt.student_name_input || userData?.first_name || 'طالب غير مسجل';
       
       return {
+        attempt_id: attempt.id, // ✅ هذا هو المعرف الذي سيستخدمه المدرس لفتح صفحة تفاصيل إجابات الطالب
         student_name_input: finalName, 
         score: attempt.score,
         percentage: attempt.percentage,
@@ -71,13 +88,14 @@ export default async (req, res) => {
       };
     }) : [];
 
-    // 6. إرسال الرد (شاملاً averagePercentage)
+    // 7. إرسال الرد النهائي (شاملاً الإحصائيات الجديدة)
     return res.status(200).json({
       examTitle: exam.title,
-      averageScore: averageScore,        // متوسط الدرجات
-      averagePercentage: averagePercentage, // ✅ متوسط النسبة المئوية
+      averageScore: averageScore,        
+      averagePercentage: averagePercentage, 
       totalAttempts: totalAttempts,
-      attempts: formattedAttempts       // القائمة
+      attempts: formattedAttempts,         // ✅ قائمة الطلاب + ID المحاولة لكل طالب
+      questionStats: questionStatsData || [] // ✅ إحصائيات كل سؤال (عدد الإجابات الصحيحة والخاطئة)
     });
 
   } catch (err) {
