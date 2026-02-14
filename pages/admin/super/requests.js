@@ -122,7 +122,7 @@ export default function SuperRequestsPage() {
     }
   };
 
-  // ✅ دالة تحديث السعر
+  // ✅ دالة تحديث السعر الفعلي (تحدث عمود actual_paid_price بدلاً من total_price)
   const handleUpdatePrice = async () => {
     const { id, price } = editPriceModal;
     if (!price || isNaN(price) || price < 0) {
@@ -145,8 +145,8 @@ export default function SuperRequestsPage() {
       const result = await res.json();
       if (res.ok) {
         showToast(result.message, 'success');
-        // تحديث السعر في الواجهة فوراً
-        setRequests(requests.map(req => req.id === id ? { ...req, total_price: result.newPrice } : req));
+        // ✅ تحديث السعر الفعلي في الواجهة فوراً
+        setRequests(requests.map(req => req.id === id ? { ...req, actual_paid_price: result.newPrice } : req));
         setEditPriceModal({ show: false, id: null, price: '' });
       } else {
         showToast(result.error, 'error');
@@ -229,10 +229,12 @@ export default function SuperRequestsPage() {
         <>
             <div className="requests-grid">
             {requests.map(req => {
-                // التعامل مع المسار سواء كان صورة مباشرة أو ملف
                 const receiptUrl = req.payment_file_path 
                     ? `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}` 
                     : null;
+                
+                // ✅ التحقق من وجود سعر فعلي مدفوع
+                const hasActualPrice = req.actual_paid_price !== null && req.actual_paid_price !== undefined;
                 
                 return (
                     <div key={req.id} className={`request-card ${req.status}`}>
@@ -258,15 +260,28 @@ export default function SuperRequestsPage() {
                                 </div>
                             </div>
                             
-                            {/* ✅ قسم عرض السعر وزر التعديل الجديد */}
+                            {/* ✅ قسم عرض السعر الجديد (الأصلي + المعدل) */}
                             <div className="price-box">
                                 <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start'}}>
-                                    <span className="label">المبلغ المدفوع</span>
-                                    <span className="price-value">{req.total_price} ج.م</span>
+                                    <span className="label">المبلغ المطلوب</span>
+                                    {/* إظهار السعر الأصلي (مشطوب في حال وجود سعر معدل) */}
+                                    <span className="price-value" style={hasActualPrice ? {textDecoration: 'line-through', color: '#64748b', fontSize: '0.9em'} : {}}>
+                                        {req.total_price} ج.م
+                                    </span>
+                                    
+                                    {/* إظهار السعر الفعلي بلون مختلف (إن وُجد) */}
+                                    {hasActualPrice && (
+                                        <>
+                                            <span className="label" style={{marginTop: '5px', color: '#facc15'}}>المدفوع فعلياً</span>
+                                            <span className="price-value" style={{color: '#facc15'}}>{req.actual_paid_price} ج.م</span>
+                                        </>
+                                    )}
                                 </div>
+                                
                                 <button 
                                     className="btn-edit-price"
-                                    onClick={() => setEditPriceModal({ show: true, id: req.id, price: req.total_price })}
+                                    // إذا أراد التعديل مرة أخرى، نضع له القيمة الفعلية (إن وجدت) كقيمة افتراضية
+                                    onClick={() => setEditPriceModal({ show: true, id: req.id, price: hasActualPrice ? req.actual_paid_price : req.total_price })}
                                     title="تعديل المبلغ الفعلي"
                                 >
                                     ✏️ تعديل
@@ -398,12 +413,12 @@ export default function SuperRequestsPage() {
           </div>
       )}
 
-      {/* ✅ نافذة تعديل السعر */}
+      {/* ✅ نافذة تعديل السعر المخصصة للـ Super Admin */}
       {editPriceModal.show && (
           <div className="modal-overlay alert-mode">
               <div className="alert-box">
                   <h3>✏️ تعديل المبلغ المدفوع</h3>
-                  <p style={{marginBottom: '10px', color: '#cbd5e1'}}>أدخل المبلغ الفعلي الذي تم دفعه:</p>
+                  <p style={{marginBottom: '10px', color: '#cbd5e1'}}>أدخل المبلغ الفعلي الذي تم دفعه للاحتفاظ به في السجلات:</p>
                   <input
                       type="number"
                       className="reason-input"
@@ -420,7 +435,7 @@ export default function SuperRequestsPage() {
                         onClick={handleUpdatePrice}
                         disabled={processingId === editPriceModal.id}
                       >
-                          {processingId === editPriceModal.id ? 'جاري الحفظ...' : 'حفظ المبلغ'}
+                          {processingId === editPriceModal.id ? 'جاري الحفظ...' : 'حفظ التعديل'}
                       </button>
                   </div>
               </div>
@@ -434,20 +449,8 @@ export default function SuperRequestsPage() {
         
         .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         
-        /* ✅ تنسيق القائمة المنسدلة */
         .teacher-select-wrapper { position: relative; }
-        .teacher-select {
-            background: #1e293b;
-            color: white;
-            padding: 8px 30px 8px 15px;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            cursor: pointer;
-            outline: none;
-            height: 40px;
-            min-width: 180px;
-        }
+        .teacher-select { background: #1e293b; color: white; padding: 8px 30px 8px 15px; border: 1px solid #334155; border-radius: 8px; font-size: 0.95rem; cursor: pointer; outline: none; height: 40px; min-width: 180px; }
         .teacher-select:focus { border-color: #38bdf8; }
 
         .filter-tabs { display: flex; background: #1e293b; padding: 4px; border-radius: 8px; border: 1px solid #334155; }
@@ -478,10 +481,10 @@ export default function SuperRequestsPage() {
         .value { color: white; font-weight: 500; font-size: 1em; }
         .value.ltr { direction: ltr; font-family: monospace; }
         
+        /* ✅ تحديث شكل مربع السعر */
         .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
         .price-value { color: #4ade80; font-weight: bold; font-size: 1.2em; }
 
-        /* ✅ ستايل زر التعديل الجديد */
         .btn-edit-price { background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: bold; transition: all 0.2s; }
         .btn-edit-price:hover { background: #38bdf8; color: #0f172a; }
 
