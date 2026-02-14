@@ -55,13 +55,32 @@ export default async function handler(req, res) {
   }
 
   // ==========================================================
-  // 🟠 التعامل مع طلبات POST (تغيير الحالة: تفعيل/رفض)
+  // 🟠 التعامل مع طلبات POST (تغيير الحالة: تفعيل/رفض/تعديل السعر)
   // ==========================================================
   if (req.method === 'POST') {
     const { requestId, action, rejectionReason } = req.body;
 
     try {
-      // 1. جلب تفاصيل الطلب أولاً لمعرفة البيانات المطلوبة
+      // --- حالة تعديل المبلغ (Update Price) ---
+      // وضعناها هنا لتُنفذ مباشرة دون الحاجة لجلب تفاصيل الطلب بالكامل
+      if (action === 'update_price') {
+        const { newPrice } = req.body;
+        
+        if (newPrice === undefined || isNaN(newPrice) || newPrice < 0) {
+           return res.status(400).json({ error: 'مبلغ غير صالح' });
+        }
+
+        const { error: updateError } = await supabase
+          .from('subscription_requests')
+          .update({ total_price: newPrice })
+          .eq('id', requestId);
+
+        if (updateError) throw updateError;
+
+        return res.status(200).json({ success: true, message: 'تم تحديث المبلغ بنجاح', newPrice });
+      }
+
+      // 1. جلب تفاصيل الطلب أولاً لمعرفة البيانات المطلوبة لباقي الإجراءات
       const { data: request, error: fetchError } = await supabase
         .from('subscription_requests')
         .select('*')
