@@ -11,7 +11,7 @@ export default function SuperRequestsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 10;
 
-  // ✅ حالات المدرسين (الجديدة)
+  // ✅ حالات المدرسين
   const [teachers, setTeachers] = useState([]);
   const [selectedTeacher, setSelectedTeacher] = useState('all');
 
@@ -20,6 +20,9 @@ export default function SuperRequestsPage() {
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [confirmModal, setConfirmModal] = useState({ show: false, id: null, action: null });
   const [rejectionReason, setRejectionReason] = useState('');
+  
+  // ✅ حالة نافذة تعديل السعر
+  const [editPriceModal, setEditPriceModal] = useState({ show: false, id: null, price: '' });
 
   // الفلترة
   const [filter, setFilter] = useState('pending'); // pending, approved, rejected
@@ -32,7 +35,7 @@ export default function SuperRequestsPage() {
   // ✅ جلب قائمة المدرسين للفلتر
   const fetchTeachers = async () => {
     try {
-      const res = await fetch('/api/dashboard/super/teachers'); // تأكد من وجود هذا المسار
+      const res = await fetch('/api/dashboard/super/teachers'); 
       if (res.ok) {
         const data = await res.json();
         setTeachers(data);
@@ -80,7 +83,7 @@ export default function SuperRequestsPage() {
   // جلب الطلبات عند تغيير أي من المحددات
   useEffect(() => {
     fetchRequests();
-  }, [filter, page, selectedTeacher]); // ✅ أضفنا selectedTeacher هنا
+  }, [filter, page, selectedTeacher]);
 
   const initiateAction = (requestId, action) => {
       setRejectionReason('');
@@ -109,6 +112,42 @@ export default function SuperRequestsPage() {
         showToast(result.message || 'تم تنفيذ العملية بنجاح', 'success');
         setRequests(requests.filter(r => r.id !== requestId));
         setTotalCount(prev => Math.max(0, prev - 1));
+      } else {
+        showToast(result.error, 'error');
+      }
+    } catch (err) {
+      showToast("حدث خطأ في الاتصال", 'error');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // ✅ دالة تحديث السعر
+  const handleUpdatePrice = async () => {
+    const { id, price } = editPriceModal;
+    if (!price || isNaN(price) || price < 0) {
+      showToast('يرجى إدخال مبلغ صحيح', 'error');
+      return;
+    }
+
+    setProcessingId(id);
+    try {
+      const res = await fetch('/api/dashboard/super/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: id,
+          action: 'update_price',
+          newPrice: Number(price)
+        })
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        showToast(result.message, 'success');
+        // تحديث السعر في الواجهة فوراً
+        setRequests(requests.map(req => req.id === id ? { ...req, total_price: result.newPrice } : req));
+        setEditPriceModal({ show: false, id: null, price: '' });
       } else {
         showToast(result.error, 'error');
       }
@@ -219,9 +258,19 @@ export default function SuperRequestsPage() {
                                 </div>
                             </div>
                             
+                            {/* ✅ قسم عرض السعر وزر التعديل الجديد */}
                             <div className="price-box">
-                                <span className="label">المبلغ المدفوع</span>
-                                <span className="price-value">{req.total_price} ج.م</span>
+                                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start'}}>
+                                    <span className="label">المبلغ المدفوع</span>
+                                    <span className="price-value">{req.total_price} ج.م</span>
+                                </div>
+                                <button 
+                                    className="btn-edit-price"
+                                    onClick={() => setEditPriceModal({ show: true, id: req.id, price: req.total_price })}
+                                    title="تعديل المبلغ الفعلي"
+                                >
+                                    ✏️ تعديل
+                                </button>
                             </div>
                             
                             <div className="details-box">
@@ -315,7 +364,7 @@ export default function SuperRequestsPage() {
           </div>
       )}
 
-      {/* نافذة التأكيد */}
+      {/* نافذة التأكيد (القبول/الرفض) */}
       {confirmModal.show && (
           <div className="modal-overlay alert-mode">
               <div className="alert-box">
@@ -343,6 +392,35 @@ export default function SuperRequestsPage() {
                         onClick={executeAction}
                       >
                           نعم، نفذ
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* ✅ نافذة تعديل السعر */}
+      {editPriceModal.show && (
+          <div className="modal-overlay alert-mode">
+              <div className="alert-box">
+                  <h3>✏️ تعديل المبلغ المدفوع</h3>
+                  <p style={{marginBottom: '10px', color: '#cbd5e1'}}>أدخل المبلغ الفعلي الذي تم دفعه:</p>
+                  <input
+                      type="number"
+                      className="reason-input"
+                      style={{ textAlign: 'center', fontSize: '1.5em', fontWeight: 'bold' }}
+                      value={editPriceModal.price}
+                      onChange={(e) => setEditPriceModal({ ...editPriceModal, price: e.target.value })}
+                      placeholder="المبلغ بالجنيه..."
+                      min="0"
+                  />
+                  <div className="alert-actions">
+                      <button className="cancel-btn" onClick={() => setEditPriceModal({ show: false, id: null, price: '' })}>تراجع</button>
+                      <button 
+                        className="confirm-btn green" 
+                        onClick={handleUpdatePrice}
+                        disabled={processingId === editPriceModal.id}
+                      >
+                          {processingId === editPriceModal.id ? 'جاري الحفظ...' : 'حفظ المبلغ'}
                       </button>
                   </div>
               </div>
@@ -400,8 +478,12 @@ export default function SuperRequestsPage() {
         .value { color: white; font-weight: 500; font-size: 1em; }
         .value.ltr { direction: ltr; font-family: monospace; }
         
-        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
         .price-value { color: #4ade80; font-weight: bold; font-size: 1.2em; }
+
+        /* ✅ ستايل زر التعديل الجديد */
+        .btn-edit-price { background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: bold; transition: all 0.2s; }
+        .btn-edit-price:hover { background: #38bdf8; color: #0f172a; }
 
         .details-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
         .details-text { color: #cbd5e1; margin: 0; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
