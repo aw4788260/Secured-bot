@@ -7,7 +7,8 @@ export default function SuperFinance() {
   const [reportLoading, setReportLoading] = useState(null);
   
   const [financials, setFinancials] = useState({
-    total_revenue: 0,
+    total_original_revenue: 0,
+    total_actual_revenue: 0,
     platform_profit: 0,
     teachers_due: 0,
     teachers_list: []
@@ -29,7 +30,8 @@ export default function SuperFinance() {
         setFinancials(data);
       } else {
         setFinancials({
-          total_revenue: 0,
+          total_original_revenue: 0,
+          total_actual_revenue: 0,
           platform_profit: 0,
           teachers_due: 0,
           teachers_list: []
@@ -63,12 +65,13 @@ export default function SuperFinance() {
             .header-container { text-align: center; margin-bottom: 20px; }
             .logo { max-height: 80px; margin-bottom: 10px; }
             h1, h2 { text-align: center; color: #333; margin: 5px 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
             th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
-            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border: 1px solid #eee; -webkit-print-color-adjust: exact; }
+            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border: 1px solid #eee; border-radius: 8px; -webkit-print-color-adjust: exact; }
             .stat { text-align: center; }
-            .stat-val { font-weight: bold; font-size: 18px; color: #2563eb; }
+            .stat-val { font-weight: bold; font-size: 16px; color: #2563eb; margin-top: 5px; }
+            .stat-val.muted { color: #64748b; font-size: 14px; text-decoration: line-through; }
           </style>
         </head>
         <body>
@@ -79,7 +82,8 @@ export default function SuperFinance() {
           </div>
           
           <div class="summary-box">
-            <div class="stat">إجمالي المبيعات<div class="stat-val">${financials.total_revenue.toLocaleString()} ج.م</div></div>
+            <div class="stat">المبيعات الافتراضية<div class="stat-val muted">${financials.total_original_revenue.toLocaleString()} ج.م</div></div>
+            <div class="stat">المبيعات الفعلية (المُحصلة)<div class="stat-val" style="color:#16a34a">${financials.total_actual_revenue.toLocaleString()} ج.م</div></div>
             <div class="stat">ربح المنصة<div class="stat-val">${financials.platform_profit.toLocaleString()} ج.م</div></div>
             <div class="stat">مستحقات المدرسين<div class="stat-val">${financials.teachers_due.toLocaleString()} ج.م</div></div>
           </div>
@@ -89,21 +93,26 @@ export default function SuperFinance() {
               <tr>
                 <th>المدرس</th>
                 <th>عدد العمليات</th>
-                <th>المبيعات</th>
+                <th>المبيعات الافتراضية</th>
+                <th>المبيعات الفعلية</th>
                 <th>حصة المنصة</th>
-                <th>صافي الربح</th>
+                <th>صافي الربح للمدرس</th>
               </tr>
             </thead>
             <tbody>
-              ${financials.teachers_list.map(t => `
+              ${financials.teachers_list.map(t => {
+                const hasCustom = t.original_sales !== t.actual_sales;
+                return `
                 <tr>
-                  <td>${t.name}</td>
+                  <td><strong>${t.name}</strong></td>
                   <td>${t.transaction_count}</td>
-                  <td>${t.sales.toLocaleString()}</td>
+                  <td style="color:#64748b; ${hasCustom ? 'text-decoration:line-through;' : ''}">${t.original_sales.toLocaleString()}</td>
+                  <td style="color:#16a34a; font-weight:bold;">${t.actual_sales.toLocaleString()}</td>
                   <td>${t.platform_fee.toLocaleString()}</td>
-                  <td>${t.net_profit.toLocaleString()}</td>
+                  <td style="color:#2563eb; font-weight:bold;">${t.net_profit.toLocaleString()}</td>
                 </tr>
-              `).join('')}
+                `;
+              }).join('')}
             </tbody>
           </table>
           <script>
@@ -116,7 +125,7 @@ export default function SuperFinance() {
     printWindow.document.close();
   };
 
-  // ✅ دالة طباعة تقرير المدرس التفصيلي (تم التعديل هنا)
+  // ✅ دالة طباعة تقرير المدرس التفصيلي
   const handleTeacherReport = async (teacherId) => {
     setReportLoading(teacherId);
     try {
@@ -131,17 +140,15 @@ export default function SuperFinance() {
         
         const data = await res.json();
         
-        // 🛠️ تعديل: استخدام النسبة القادمة من الـ API أو استخدام 10% كقيمة افتراضية
         const percentage = data.platformPercentage !== undefined ? data.platformPercentage : 0.10;
-        
-        // تنسيق النسبة للعرض (إزالة الأصفار الزائدة، مثلاً 15.00 تصبح 15)
         const percentageDisplay = (percentage * 100).toFixed(0).replace(/\.0+$/, '');
 
-        const totalSales = data.summary.total_approved_amount;
-        const platformShare = totalSales * percentage; 
-        const netProfit = totalSales - platformShare;
+        // الحسابات للتقرير (مبنية على الفعلي)
+        const totalOriginal = data.summary.total_original_amount || 0;
+        const totalActual = data.summary.total_actual_amount || 0;
+        const platformShare = totalActual * percentage; 
+        const netProfit = totalActual - platformShare;
 
-        // ✅ إنشاء اسم الملف الديناميكي
         const safeName = data.teacherName.replace(/\s+/g, '_');
         const fileName = `تقرير_${safeName}_${dateRange.startDate}_${dateRange.endDate}`;
 
@@ -177,6 +184,7 @@ export default function SuperFinance() {
                 .summary-col.border { border-left: 1px solid #ccc; } 
                 
                 .val { font-weight: bold; font-size: 1.1em; display: block; margin-top: 5px; }
+                .val.muted { color: #64748b; font-size: 0.9em; text-decoration: line-through; }
                 .green { color: #16a34a; }
                 .blue { color: #2563eb; }
                 .red { color: #dc2626; }
@@ -197,16 +205,15 @@ export default function SuperFinance() {
 
               <div class="summary">
                 <div class="summary-col border">
-                    <div class="info-row">عدد العمليات المقبولة</div>
-                    <span class="val green">${data.summary.total_approved_count}</span>
-                    <hr style="width:50%; opacity:0.3"/>
-                    <div class="info-row">عدد العمليات المرفوضة</div>
-                    <span class="val red">${data.summary.total_rejected_count}</span>
+                    <div class="info-row">مقبول / مرفوض</div>
+                    <span class="val green">${data.summary.total_approved_count} مقبول</span>
+                    <span class="val red">${data.summary.total_rejected_count} مرفوض</span>
                 </div>
                 
                 <div class="summary-col border">
-                    <div class="info-row">إجمالي المبيعات</div>
-                    <span class="val green">${totalSales.toLocaleString()} ج.م</span>
+                    <div class="info-row">إجمالي المبيعات (الفعلي)</div>
+                    <span class="val muted">${totalOriginal.toLocaleString()} ج.م (افتراضي)</span>
+                    <span class="val green">${totalActual.toLocaleString()} ج.م</span>
                 </div>
 
                 <div class="summary-col border">
@@ -223,17 +230,22 @@ export default function SuperFinance() {
               <table>
                 <thead>
                   <tr>
-                    <th style="width: 100px;">التاريخ</th>
-                    <th>بيانات الطالب</th>
+                    <th style="width: 80px;">التاريخ</th>
+                    <th>الطالب</th>
                     <th>المحتوى</th>
-                    <th>المبلغ</th>
+                    <th>السعر المطلوب</th>
+                    <th>المدفوع فعلياً</th>
                     <th>الحالة</th>
                     <th>ملاحظة الطالب</th>
-                    <th>سبب الرفض</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${data.requests.map(req => `
+                  ${data.requests.map(req => {
+                     const orig = req.total_price || 0;
+                     const act = req.actual_paid_price !== null ? req.actual_paid_price : orig;
+                     const hasCustomPrice = req.actual_paid_price !== null;
+
+                     return `
                     <tr class="${req.status}">
                       <td>${new Date(req.created_at).toLocaleDateString('ar-EG')}</td>
                       <td>
@@ -241,12 +253,13 @@ export default function SuperFinance() {
                         <span class="username">${req.user_username ? `(${req.user_username})` : ''}</span>
                       </td>
                       <td>${req.course_title}</td>
-                      <td>${req.total_price} ج.م</td>
+                      <td style="${hasCustomPrice ? 'text-decoration:line-through;color:#666;' : ''}">${orig}</td>
+                      <td style="font-weight:bold; color:#16a34a;">${act}</td>
                       <td>${req.status === 'approved' ? '✅ مقبول' : '❌ مرفوض'}</td>
                       <td>${req.user_note || '-'}</td>
-                      <td style="color: #dc2626;">${req.rejection_reason || '-'}</td>
                     </tr>
-                  `).join('')}
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
               
@@ -311,11 +324,21 @@ export default function SuperFinance() {
         </div>
 
         <div className="cards-grid">
+           <div className="stat-card default">
+              <div className="icon">🏷️</div>
+              <div className="content">
+                 <h3>المبيعات الافتراضية</h3>
+                 <p>{loading ? '...' : financials.total_original_revenue.toLocaleString()} ج.م</p>
+                 <span className="badge">سعر الكورسات الأصلي</span>
+              </div>
+           </div>
+
            <div className="stat-card total">
               <div className="icon">💵</div>
               <div className="content">
-                 <h3>إجمالي المبيعات</h3>
-                 <p>{loading ? '...' : financials.total_revenue.toLocaleString()} ج.م</p>
+                 <h3>التحصيل الفعلي</h3>
+                 <p>{loading ? '...' : financials.total_actual_revenue.toLocaleString()} ج.م</p>
+                 <span className="badge success">ما تم دفعه فعلياً</span>
               </div>
            </div>
 
@@ -324,7 +347,7 @@ export default function SuperFinance() {
               <div className="content">
                  <h3>صافي ربح المنصة</h3>
                  <p>{loading ? '...' : financials.platform_profit.toLocaleString()} ج.م</p>
-                 <span className="badge">الدخل الحقيقي</span>
+                 <span className="badge">محسوب من التحصيل الفعلي</span>
               </div>
            </div>
 
@@ -333,7 +356,7 @@ export default function SuperFinance() {
               <div className="content">
                  <h3>مستحقات المدرسين</h3>
                  <p>{loading ? '...' : financials.teachers_due.toLocaleString()} ج.م</p>
-                 <span className="badge warning">التزام مالي</span>
+                 <span className="badge warning">التزام مالي للمدرسين</span>
               </div>
            </div>
         </div>
@@ -354,8 +377,9 @@ export default function SuperFinance() {
                  <thead>
                    <tr>
                      <th>اسم المدرس</th>
-                     <th>عدد العمليات</th>
-                     <th>إجمالي المبيعات</th>
+                     <th style={{textAlign:'center'}}>العمليات</th>
+                     <th title="المبلغ الأصلي للكورسات">المبيعات الافتراضية</th>
+                     <th title="ما تم دفعه بالفعل وتم حسابه بالتقارير">التحصيل الفعلي</th>
                      <th>نسبة المنصة</th>
                      <th>صافي ربح المدرس</th>
                      <th>الإجراءات</th>
@@ -367,8 +391,11 @@ export default function SuperFinance() {
                        <tr key={teacher.id}>
                          <td style={{fontWeight:'bold', color:'white'}}>{teacher.name}</td>
                          <td style={{textAlign:'center'}}>{teacher.transaction_count}</td>
-                         <td style={{color:'#4ade80', fontWeight:'bold'}}>{teacher.sales.toLocaleString()} ج.م</td>
-                         <td style={{color:'#facc15'}}>{teacher.platform_fee.toLocaleString()} ج.م</td>
+                         <td style={{color:'#64748b', textDecoration: teacher.original_sales !== teacher.actual_sales ? 'line-through' : 'none'}}>
+                             {teacher.original_sales.toLocaleString()}
+                         </td>
+                         <td style={{color:'#4ade80', fontWeight:'bold'}}>{teacher.actual_sales.toLocaleString()} ج.م</td>
+                         <td style={{color:'#facc15'}}>{teacher.platform_fee.toLocaleString()}</td>
                          <td style={{color:'#38bdf8', fontWeight:'bold'}}>{teacher.net_profit.toLocaleString()} ج.م</td>
                          <td>
                             <button 
@@ -382,7 +409,7 @@ export default function SuperFinance() {
                        </tr>
                      ))
                    ) : (
-                     <tr><td colSpan="6" style={{textAlign:'center', padding:'30px', color:'#64748b'}}>لا توجد بيانات في هذه الفترة</td></tr>
+                     <tr><td colSpan="7" style={{textAlign:'center', padding:'30px', color:'#64748b'}}>لا توجد بيانات في هذه الفترة</td></tr>
                    )}
                  </tbody>
                </table>
@@ -406,20 +433,22 @@ export default function SuperFinance() {
         .export-btn:hover:not(:disabled) { background: #38bdf8; color: #0f172a; }
         .export-btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: #475569; color: #64748b; }
 
-        .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #1e293b; border: 1px solid #334155; padding: 25px; border-radius: 16px; display: flex; gap: 20px; align-items: center; transition: transform 0.2s; }
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; display: flex; gap: 15px; align-items: center; transition: transform 0.2s; }
         .stat-card:hover { transform: translateY(-5px); border-color: #475569; }
         
-        .stat-card .icon { width: 60px; height: 60px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 1.8rem; }
+        .stat-card .icon { width: 50px; height: 50px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; flex-shrink: 0; }
+        .stat-card.default .icon { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
         .stat-card.total .icon { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .stat-card.profit .icon { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
         .stat-card.due .icon { background: rgba(244, 63, 94, 0.1); color: #f43f5e; }
 
-        .stat-card .content h3 { margin: 0 0 5px 0; color: #94a3b8; font-size: 0.9rem; font-weight: normal; }
-        .stat-card .content p { margin: 0; font-size: 1.8rem; font-weight: bold; color: white; }
+        .stat-card .content h3 { margin: 0 0 5px 0; color: #94a3b8; font-size: 0.85rem; font-weight: normal; }
+        .stat-card .content p { margin: 0; font-size: 1.5rem; font-weight: bold; color: white; }
         
-        .badge { font-size: 0.75rem; background: #334155; padding: 2px 8px; border-radius: 4px; color: #cbd5e1; margin-top: 5px; display: inline-block; }
+        .badge { font-size: 0.7rem; background: #334155; padding: 2px 6px; border-radius: 4px; color: #cbd5e1; margin-top: 5px; display: inline-block; }
         .badge.warning { background: rgba(244, 63, 94, 0.2); color: #fca5a5; }
+        .badge.success { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
 
         .table-container { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; }
         .table-header { padding: 20px; border-bottom: 1px solid #334155; background: #0f172a; }
