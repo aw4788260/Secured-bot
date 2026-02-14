@@ -15,7 +15,7 @@ export default function ExamStatsPage() {
   const [attemptDetails, setAttemptDetails] = useState(null);
   const [loadingAttempt, setLoadingAttempt] = useState(false);
 
-  // حالة الصورة المكبرة (الجديدة)
+  // حالة الصورة المكبرة
   const [zoomedImage, setZoomedImage] = useState(null);
 
   // جلب الإحصائيات العامة للامتحان
@@ -76,7 +76,7 @@ export default function ExamStatsPage() {
   return (
     <TeacherLayout title={`إحصائيات | ${stats.examTitle}`}>
       
-      {/* Header - تم نقل زر الرجوع لأقصى اليسار */}
+      {/* Header */}
       <div className="header-bar">
           <div className="title-area">
               <h1>📊 إحصائيات: {stats.examTitle}</h1>
@@ -101,19 +101,21 @@ export default function ExamStatsPage() {
           </div>
       </div>
 
-      {/* Tabs */}
-      <div className="tabs">
-          <button className={`tab ${activeTab === 'students' ? 'active' : ''}`} onClick={() => setActiveTab('students')}>
-             👨‍🎓 نتائج الطلاب
-          </button>
-          <button className={`tab ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
-             🔍 تحليل صعوبة الأسئلة
-          </button>
+      {/* ✅ تبويبات التنقل (داخل مستطيل ملون خفيف ليوضح حركة التنقل) */}
+      <div className="tabs-wrapper">
+          <div className="tabs-container">
+              <button className={`tab ${activeTab === 'students' ? 'active' : ''}`} onClick={() => setActiveTab('students')}>
+                 👨‍🎓 نتائج الطلاب
+              </button>
+              <button className={`tab ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+                 🔍 تحليل صعوبة الأسئلة
+              </button>
+          </div>
       </div>
 
       {/* Tab Content 1: Students Table */}
       {activeTab === 'students' && (
-          <div className="panel">
+          <div className="panel animate-fade">
               <div className="table-responsive">
                   <table>
                       <thead>
@@ -158,8 +160,7 @@ export default function ExamStatsPage() {
 
       {/* Tab Content 2: Question Analysis */}
       {activeTab === 'analysis' && (
-          <div className="analysis-grid">
-              {/* ترتيب الأسئلة بناءً على نسبة الخطأ (الأكثر خطأ يظهر أولاً) */}
+          <div className="analysis-grid animate-fade">
               {[...(stats.questionStats || [])].sort((a, b) => {
                   const tA = parseInt(a.total_answers) || 0;
                   const wA = parseInt(a.wrong_answers) || 0;
@@ -169,7 +170,7 @@ export default function ExamStatsPage() {
                   const wB = parseInt(b.wrong_answers) || 0;
                   const percB = tB > 0 ? (wB / tB) : 0;
 
-                  return percB - percA; // ترتيب تنازلي للأكثر خطأ
+                  return percB - percA; 
               }).map((q, i) => {
                   const total = parseInt(q.total_answers) || 0;
                   const correct = parseInt(q.correct_answers) || 0;
@@ -181,7 +182,7 @@ export default function ExamStatsPage() {
                   return (
                       <div key={q.question_id} className="q-stat-card">
                           
-                          {/* ✅ عرض صورة السؤال في التحليل (أعلى النص) */}
+                          {/* عرض صورة السؤال (أعلى النص) */}
                           {q.image_file_id && (
                               <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`)}>
                                   <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`} alt="Question Image" />
@@ -189,20 +190,21 @@ export default function ExamStatsPage() {
                               </div>
                           )}
 
-                          <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
+                          {/* ✅ نص السؤال داخل مستطيل ملون خفيف */}
+                          <div className="question-text-box">
+                              <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
+                          </div>
+
                           <div className="q-meta">أجاب على هذا السؤال: <strong>{total} طالب</strong></div>
                           
-                          {/* ملخص الصح والخطأ */}
                           <div className="overall-summary">
                               <span className="badge green">إجابات صحيحة: {correctPerc}%</span>
                               <span className="badge red">إجابات خاطئة: {wrongPerc}%</span>
                           </div>
 
-                          {/* تحليل اختيار الطلاب للإجابات */}
                           <div className="options-breakdown">
                               <h5 className="breakdown-title">تحليل اختيار الطلاب للإجابات:</h5>
                               
-                              {/* ترتيب الاختيارات ليظهر الأكثر اختياراً في الأعلى */}
                               {q.options?.sort((o1, o2) => parseInt(o2.selection_count) - parseInt(o1.selection_count)).map(opt => {
                                   const optCount = parseInt(opt.selection_count) || 0;
                                   const optPerc = total > 0 ? Math.round((optCount / total) * 100) : 0;
@@ -232,7 +234,7 @@ export default function ExamStatsPage() {
           </div>
       )}
 
-      {/* Student Attempt Details Modal */}
+      {/* Modal ورقة إجابة الطالب */}
       {selectedAttempt && (
           <div className="modal-overlay" onClick={() => setSelectedAttempt(null)}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -249,18 +251,16 @@ export default function ExamStatsPage() {
                       </div>
                   ) : (
                       <div className="modal-body">
-                          {/* Student Info */}
                           <div className="student-info-card">
                               <div className="s-name">{attemptDetails.student.name}</div>
                               <div className="s-score">الدرجة: <span style={{color:'#facc15'}}>{attemptDetails.exam.score} / {attemptDetails.exam.total_questions}</span> ({attemptDetails.exam.percentage}%)</div>
                           </div>
 
-                          {/* Questions List */}
                           <div className="questions-list">
                               {attemptDetails.questions_details.map((q, i) => (
                                   <div key={q.id} className="q-detail-card">
                                       
-                                      {/* ✅ عرض صورة السؤال في ورقة الطالب (أعلى النص) */}
+                                      {/* عرض صورة السؤال (أعلى النص) */}
                                       {q.image && (
                                           <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image}`)}>
                                               <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
@@ -269,7 +269,8 @@ export default function ExamStatsPage() {
                                       )}
 
                                       <div className="q-head">
-                                          <div className="q-title">
+                                          {/* ✅ نص السؤال داخل مستطيل ملون خفيف */}
+                                          <div className="question-text-box flex-row">
                                               <span className="q-num">{i + 1}</span>
                                               <p>{q.text}</p>
                                           </div>
@@ -319,7 +320,7 @@ export default function ExamStatsPage() {
           </div>
       )}
 
-      {/* ✅ نافذة التكبير الكلية للصور (Fullscreen Image Zoom) */}
+      {/* نافذة التكبير الكلية للصور */}
       {zoomedImage && (
           <div className="modal-overlay image-zoom-overlay" onClick={() => setZoomedImage(null)}>
               <div className="zoomed-image-container" onClick={e => e.stopPropagation()}>
@@ -338,20 +339,6 @@ export default function ExamStatsPage() {
         .header-bar h1 { margin: 0; color: #38bdf8; font-size: 1.6rem; }
         .header-bar p { margin: 0; color: #94a3b8; font-size: 0.95rem; }
 
-        /* ✅ Image Zoom Styles */
-        .q-image { position: relative; display: inline-block; cursor: zoom-in; margin-bottom: 15px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; transition: border-color 0.2s; background: #0f172a; max-width: 100%; }
-        .q-image:hover { border-color: #38bdf8; }
-        .q-image img { display: block; max-height: 200px; width: auto; object-fit: contain; transition: transform 0.3s; }
-        .q-image:hover img { opacity: 0.6; transform: scale(1.02); }
-        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.8); padding: 8px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
-        .q-image:hover .zoom-hint { opacity: 1; }
-
-        .image-zoom-overlay { z-index: 20000; padding: 20px; }
-        .zoomed-image-container { position: relative; display: flex; justify-content: center; align-items: center; max-width: 90vw; max-height: 90vh; }
-        .zoomed-image-container img { max-width: 100%; max-height: 90vh; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); object-fit: contain; background: #0f172a; }
-        .abs-close { position: absolute; top: -15px; right: -15px; background: white; color: black; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 10; font-weight: bold; transition: 0.2s; }
-        .abs-close:hover { transform: scale(1.1); background: #ef4444; color: white; }
-
         /* Summary Cards */
         .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; display: flex; align-items: center; gap: 15px; }
@@ -363,11 +350,15 @@ export default function ExamStatsPage() {
         .stat-card .info span { color: #94a3b8; font-size: 0.9rem; }
         .stat-card .info strong { color: white; font-size: 1.5rem; }
 
-        /* Tabs */
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-        .tab { background: transparent; color: #94a3b8; border: none; padding: 10px 20px; font-size: 1rem; font-weight: bold; cursor: pointer; border-radius: 8px; transition: 0.2s; }
-        .tab:hover { background: rgba(255,255,255,0.05); color: white; }
-        .tab.active { background: #38bdf8; color: #0f172a; }
+        /* ✅ التبويبات (Tabs Switcher) بخلفية ملونة خفيفة */
+        .tabs-wrapper { display: flex; justify-content: center; margin-bottom: 30px; }
+        .tabs-container { display: inline-flex; background: rgba(255, 255, 255, 0.05); padding: 6px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); gap: 5px; }
+        .tab { background: transparent; color: #94a3b8; border: none; padding: 12px 30px; font-size: 1.05rem; font-weight: bold; cursor: pointer; border-radius: 8px; transition: all 0.3s ease; }
+        .tab:hover { color: white; background: rgba(255,255,255,0.05); }
+        .tab.active { background: #38bdf8; color: #0f172a; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3); }
+
+        .animate-fade { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
         /* Table */
         .panel { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
@@ -379,14 +370,32 @@ export default function ExamStatsPage() {
         .view-btn { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: bold; transition: 0.2s; }
         .view-btn:hover { background: #38bdf8; color: #0f172a; }
 
-        /* Analysis Grid */
+        /* Analysis Grid & Question Cards */
         .analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
         .q-stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
-        .q-text { margin: 0 0 10px 0; color: white; font-size: 1.05rem; line-height: 1.5; }
-        .q-text span { color: #38bdf8; margin-left: 5px; }
         .q-meta { color: #94a3b8; font-size: 0.85rem; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #334155; }
         
-        /* Analysis - New Options Breakdown */
+        /* ✅ مستطيل نص السؤال بخلفية خفيفة */
+        .question-text-box { background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-right: 4px solid #38bdf8; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .question-text-box.flex-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 0; flex: 1; }
+        .question-text-box h4, .question-text-box p { margin: 0; color: white; font-size: 1.05rem; line-height: 1.6; }
+        .question-text-box h4 span, .question-text-box span.q-num { color: #38bdf8; font-weight: bold; }
+        .question-text-box span.q-num { background: #38bdf8; color: #0f172a; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+
+        /* Image Zoom Styles */
+        .q-image { position: relative; display: inline-block; cursor: zoom-in; margin-bottom: 15px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; transition: border-color 0.2s; background: #0f172a; max-width: 100%; }
+        .q-image:hover { border-color: #38bdf8; }
+        .q-image img { display: block; max-height: 200px; width: auto; object-fit: contain; transition: transform 0.3s; }
+        .q-image:hover img { opacity: 0.6; transform: scale(1.02); }
+        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.8); padding: 8px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+        .q-image:hover .zoom-hint { opacity: 1; }
+        .image-zoom-overlay { z-index: 20000; padding: 20px; }
+        .zoomed-image-container { position: relative; display: flex; justify-content: center; align-items: center; max-width: 90vw; max-height: 90vh; }
+        .zoomed-image-container img { max-width: 100%; max-height: 90vh; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); object-fit: contain; background: #0f172a; }
+        .abs-close { position: absolute; top: -15px; right: -15px; background: white; color: black; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 10; font-weight: bold; transition: 0.2s; }
+        .abs-close:hover { transform: scale(1.1); background: #ef4444; color: white; }
+
+        /* Options Breakdown */
         .overall-summary { display: flex; gap: 10px; margin-bottom: 20px; }
         .overall-summary .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
         .overall-summary .badge.green { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
@@ -420,9 +429,7 @@ export default function ExamStatsPage() {
         .questions-list { display: flex; flex-direction: column; gap: 20px; }
         .q-detail-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 12px; }
         .q-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; gap: 15px; }
-        .q-title { display: flex; gap: 10px; align-items: flex-start; }
-        .q-num { background: #334155; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; font-weight: bold; }
-        .q-title p { margin: 0; color: white; font-size: 1.05rem; line-height: 1.5; }
+        
         .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap; }
         .badge.green { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
         .badge.red { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
@@ -444,6 +451,7 @@ export default function ExamStatsPage() {
             .student-info-card { flex-direction: column; align-items: flex-start; gap: 10px; }
             .q-head { flex-direction: column; }
             .opt-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .tabs-container { flex-direction: column; width: 100%; }
         }
       `}</style>
     </TeacherLayout>
