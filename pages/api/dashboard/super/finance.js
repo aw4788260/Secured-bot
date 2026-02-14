@@ -56,21 +56,32 @@ export default async function handler(req, res) {
     log('CONFIG', `Platform Percentage: ${PLATFORM_PERCENTAGE * 100}%`);
 
     // ============================================================
-    // 2. حساب الإجمالي الكلي باستخدام RPC
+    // 2. حساب الإجمالي الكلي باستخدام RPC (السعرين)
     // ============================================================
-    const { data: totalRevenueRPC, error: rpcError } = await supabase
+    
+    // أ) الإجمالي الأصلي/الافتراضي (الدالة القديمة)
+    const { data: totalOriginalRPC, error: rpcErrorOriginal } = await supabase
       .rpc('get_total_revenue', { 
         start_date: formattedStartDate, 
         end_date: formattedEndDate 
       });
+    if (rpcErrorOriginal) throw rpcErrorOriginal;
 
-    if (rpcError) throw rpcError;
+    // ب) الإجمالي الفعلي المُحصل (الدالة الجديدة)
+    const { data: totalActualRPC, error: rpcErrorActual } = await supabase
+      .rpc('get_total_actual_revenue', { 
+        start_date: formattedStartDate, 
+        end_date: formattedEndDate 
+      });
+    if (rpcErrorActual) throw rpcErrorActual;
 
-    const totalRevenue = totalRevenueRPC || 0;
-    log('TOTAL', `Total Revenue: ${totalRevenue}`);
+    const totalOriginalRevenue = totalOriginalRPC || 0;
+    const totalActualRevenue = totalActualRPC || 0;
+    
+    log('TOTAL', `Original Revenue: ${totalOriginalRevenue} | Actual Revenue: ${totalActualRevenue}`);
 
     // ============================================================
-    // 3. جلب قائمة المدرسين وحساب أرباح كل مدرس
+    // 3. جلب قائمة المدرسين وحساب أرباح كل مدرس عبر RPC
     // ============================================================
     // ⚠️ هام: نجلب teacher_profile_id لأن الأموال مربوطة به في جدول العمليات
     const { data: teachersList, error: teacherError } = await supabase
@@ -88,34 +99,43 @@ export default async function handler(req, res) {
          return {
             id: teacher.id,
             name: teacher.first_name || teacher.admin_username || 'مدرس (بدون بروفايل)',
-            sales: 0,
+            original_sales: 0,
+            actual_sales: 0,
             transaction_count: 0,
             platform_fee: 0,
             net_profit: 0
          };
       }
 
-      // استدعاء دالة RPC لحساب أرباح المدرس باستخدام teacher_profile_id (وليس id المستخدم)
-      const { data: teacherSales, error: rpcTeacherError } = await supabase
+      // أ) المبيعات الأصلية للمدرس
+      const { data: originalSalesRPC, error: rpcError1 } = await supabase
         .rpc('get_teacher_revenue', { 
-            teacher_id_arg: teacher.teacher_profile_id, // ✅ التصحيح الأساسي هنا
+            teacher_id_arg: teacher.teacher_profile_id, 
             start_date: formattedStartDate, 
             end_date: formattedEndDate
         });
       
-      if (rpcTeacherError) {
-        errLog('RPC_ERROR', `Failed for teacher ${teacher.first_name}`, rpcTeacherError);
-      }
+      // ب) المبيعات الفعلية للمدرس
+      const { data: actualSalesRPC, error: rpcError2 } = await supabase
+        .rpc('get_teacher_actual_revenue', { 
+            teacher_id_arg: teacher.teacher_profile_id, 
+            start_date: formattedStartDate, 
+            end_date: formattedEndDate
+        });
 
-      const sales = teacherSales || 0;
+      if (rpcError1) errLog('RPC_ERROR_1', `Failed original for teacher ${teacher.first_name}`, rpcError1);
+      if (rpcError2) errLog('RPC_ERROR_2', `Failed actual for teacher ${teacher.first_name}`, rpcError2);
+
+      const originalSales = originalSalesRPC || 0;
+      const actualSales = actualSalesRPC || 0;
       
-      // حساب النسب
-      const platformFee = sales * PLATFORM_PERCENTAGE;
-      const netProfit = sales - platformFee;
+      // ✅ حساب النسب والمستحقات يكون بناءً على "المبيعات الفعلية"
+      const platformFee = actualSales * PLATFORM_PERCENTAGE;
+      const netProfit = actualSales - platformFee;
 
       // حساب عدد العمليات (فقط إذا كان هناك مبيعات لتوفير الموارد)
       let transactionCount = 0;
-      if (sales > 0) {
+      if (actualSales > 0 || originalSales > 0) {
          const { count } = await supabase
            .from('subscription_requests')
            .select('id', { count: 'exact', head: true })
@@ -125,13 +145,14 @@ export default async function handler(req, res) {
            .lte('created_at', formattedEndDate || new Date().toISOString());
          transactionCount = count || 0;
          
-         log('RESULT', `Teacher: ${teacher.first_name} | Sales: ${sales}`);
+         log('RESULT', `Teacher: ${teacher.first_name} | Original: ${originalSales} | Actual: ${actualSales}`);
       }
 
       return {
         id: teacher.id, // نُعيد ID المستخدم للفرونت إند لغرض العرض والروابط
         name: teacher.first_name || teacher.admin_username || 'مدرس غير معروف',
-        sales: sales,
+        original_sales: originalSales,
+        actual_sales: actualSales,
         transaction_count: transactionCount,
         platform_fee: platformFee,
         net_profit: netProfit
@@ -141,17 +162,18 @@ export default async function handler(req, res) {
     // انتظار اكتمال جميع الحسابات
     const processedTeachersList = await Promise.all(teachersDataPromises);
     
-    // ترتيب القائمة حسب الأكثر مبيعاً (تنازلياً)
-    const finalTeachersList = processedTeachersList.sort((a, b) => b.sales - a.sales);
+    // ترتيب القائمة حسب الأكثر مبيعاً فعلياً (تنازلياً)
+    const finalTeachersList = processedTeachersList.sort((a, b) => b.actual_sales - a.actual_sales);
 
-    // 4. تجميع الإحصائيات العامة للمنصة
-    const platformProfitTotal = totalRevenue * PLATFORM_PERCENTAGE;
-    const teachersDueTotal = totalRevenue - platformProfitTotal;
+    // 4. تجميع الإحصائيات العامة للمنصة (بناءً على المبالغ الفعلية)
+    const platformProfitTotal = totalActualRevenue * PLATFORM_PERCENTAGE;
+    const teachersDueTotal = totalActualRevenue - platformProfitTotal;
 
-    // إرسال الرد النهائي
+    // إرسال الرد النهائي المتوافق مع التعديلات
     return res.status(200).json({
       percentage_used: (PLATFORM_PERCENTAGE * 100) + '%',
-      total_revenue: totalRevenue,
+      total_original_revenue: totalOriginalRevenue,
+      total_actual_revenue: totalActualRevenue,
       platform_profit: platformProfitTotal,
       teachers_due: teachersDueTotal,
       teachers_list: finalTeachersList
