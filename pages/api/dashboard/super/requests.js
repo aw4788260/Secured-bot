@@ -70,14 +70,15 @@ export default async function handler(req, res) {
            return res.status(400).json({ error: 'مبلغ غير صالح' });
         }
 
+        // ✅ التعديل هنا: تخزين السعر الجديد في عمود actual_paid_price بدلاً من total_price
         const { error: updateError } = await supabase
           .from('subscription_requests')
-          .update({ total_price: newPrice })
+          .update({ actual_paid_price: newPrice })
           .eq('id', requestId);
 
         if (updateError) throw updateError;
 
-        return res.status(200).json({ success: true, message: 'تم تحديث المبلغ بنجاح', newPrice });
+        return res.status(200).json({ success: true, message: 'تم تحديث المبلغ الفعلي بنجاح', newPrice });
       }
 
       // 1. جلب تفاصيل الطلب أولاً لمعرفة البيانات المطلوبة لباقي الإجراءات
