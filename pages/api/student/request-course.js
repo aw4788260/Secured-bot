@@ -71,7 +71,7 @@ export default async (req, res) => {
       // استقبال البيانات
       const selectedItemsStr = getValue('selectedItems');
       const userNote = getValue('user_note');
-      const appliedCode = getValue('discount_code'); // 🆕 استقبال كود الخصم (إن وُجد)
+      const appliedCode = getValue('discount_code'); // استقبال كود الخصم (إن وُجد)
       const receiptFile = getFile('receiptFile');
       
       if (!selectedItemsStr) return res.status(400).json({ error: 'لا توجد عناصر مختارة' });
@@ -117,12 +117,12 @@ export default async (req, res) => {
       const fileName = path.basename(receiptFile.filepath);
 
       // المتغيرات النهائية
-      let originalTotalPrice = 0; // 🆕 السعر الأصلي
-      let finalTotalPrice = 0;    // 🆕 السعر الفعلي بعد الخصم
+      let originalTotalPrice = 0; // السعر الأصلي
+      let finalTotalPrice = null; // ✅ السعر الفعلي يبدأ بـ null
       let titleList = [];
       const requestedData = [];
       let detectedTeacherId = null; 
-      let discountCodeId = null;  // 🆕 لحفظ الـ ID الخاص بالكود
+      let discountCodeId = null;  // لحفظ الـ ID الخاص بالكود
 
       // ---------------------------------------------------------
       // حلقة التكرار لدعم العمليات غير المتزامنة
@@ -179,8 +179,6 @@ export default async (req, res) => {
           });
       }
 
-      finalTotalPrice = originalTotalPrice; // افتراضياً السعر الفعلي هو الأصلي
-
       // =========================================================
       // 🎁 2. معالجة كود الخصم والتأكد من صحته قبل الحفظ
       // =========================================================
@@ -201,14 +199,16 @@ export default async (req, res) => {
 
          discountCodeId = discountData.id;
 
-         // حساب السعر النهائي بعد الخصم
+         // ✅ حساب السعر النهائي وتحديثه فقط في حالة وجود كود خصم
          if (discountData.discount_type === 'percentage') {
             finalTotalPrice = originalTotalPrice - (originalTotalPrice * (discountData.discount_value / 100));
          } else if (discountData.discount_type === 'fixed') {
-            finalTotalPrice = discountData.discount_value;
+            finalTotalPrice = originalTotalPrice - discountData.discount_value;
          }
          
-         if (finalTotalPrice < 0) finalTotalPrice = 0;
+         if (finalTotalPrice !== null && finalTotalPrice < 0) {
+             finalTotalPrice = 0;
+         }
       }
       // =========================================================
 
@@ -224,7 +224,7 @@ export default async (req, res) => {
         
         course_title: finalTitle,
         total_price: originalTotalPrice,       // 👈 السعر الأصلي
-        actual_paid_price: finalTotalPrice,    // 👈 السعر بعد الخصم
+        actual_paid_price: finalTotalPrice,    // 👈 null إذا لم يكن هناك خصم، أو قيمة الخصم
         discount_code_id: discountCodeId,      // 👈 ربط الطلب بالكوبون المستخدم
         
         user_note: userNote,
