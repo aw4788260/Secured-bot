@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import SuperLayout from '../../../components/SuperLayout';
-import { supabase } from '../../../lib/supabaseClient';
 
 export default function DiscountCodes() {
   const [isClient, setIsClient] = useState(false);
@@ -16,38 +15,27 @@ export default function DiscountCodes() {
   const [quantity, setQuantity] = useState(10);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // حالة لحفظ الأكواد التي تم توليدها للتو
   const [newlyGeneratedCodes, setNewlyGeneratedCodes] = useState([]);
   const [copied, setCopied] = useState(false);
 
+  // دالة موحدة لجلب البيانات من الـ API
+  const fetchData = async () => {
+    try {
+      const res = await fetch('/api/dashboard/super/generate-discount-codes');
+      if (res.ok) {
+        const data = await res.json();
+        setTeachers(data.teachers || []);
+        setCodes(data.codes || []);
+      }
+    } catch (e) {
+      console.error("فشل الاتصال بالخادم", e);
+    }
+  };
+
   useEffect(() => {
     setIsClient(true);
-    fetchTeachers();
-    fetchCodes();
+    fetchData();
   }, []);
-
-  const fetchTeachers = async () => {
-    try {
-      const { data, error } = await supabase.from('teachers').select('id, name');
-      if (data && !error) setTeachers(data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchCodes = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('discount_codes')
-        .select('*, teachers(name)')
-        .order('created_at', { ascending: false })
-        .limit(100);
-        
-      if (data && !error) setCodes(data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -73,12 +61,11 @@ export default function DiscountCodes() {
         })
       });
 
-      // حماية في حال فشل السيرفر وإرجاعه HTML بدلاً من JSON
       let data;
       try {
         data = await res.json();
       } catch (parseError) {
-        throw new Error('الخادم لا يستجيب بشكل صحيح. تأكد من ملف الـ API.');
+        throw new Error('الخادم لا يستجيب بشكل صحيح.');
       }
 
       if (res.ok) {
@@ -88,7 +75,7 @@ export default function DiscountCodes() {
         }
         setDiscountValue('');
         setQuantity(10);
-        fetchCodes();
+        fetchData(); // تحديث الجدول بعد التوليد
       } else {
         setMessage({ type: 'error', text: data.message || 'حدث خطأ غير متوقع' });
       }
@@ -121,14 +108,12 @@ export default function DiscountCodes() {
     return type === 'percentage' ? `${val} %` : `${val} ج.م`;
   };
 
-  // حماية جلب اسم المدرس (لمنع خطأ إذا كان null أو array)
   const getTeacherName = (codeObj) => {
     if (!codeObj || !codeObj.teachers) return 'غير محدد';
     if (Array.isArray(codeObj.teachers)) return codeObj.teachers[0]?.name || 'غير محدد';
     return codeObj.teachers.name || 'غير محدد';
   };
 
-  // حماية التواريخ
   const formatDate = (dateString) => {
     if (!dateString) return '';
     try {
@@ -144,7 +129,6 @@ export default function DiscountCodes() {
         <title>توليد أكواد الخصم | الإدارة العليا</title>
       </Head>
 
-      {/* ✅ نُظهر المحتوى فقط بعد التحميل في المتصفح لمنع خطأ الـ Hydration */}
       {isClient ? (
         <div style={{ padding: '20px', direction: 'rtl', fontFamily: 'system-ui, sans-serif' }}>
           <h2 style={{ marginBottom: '20px', color: '#fff' }}>🎟️ إدارة وتوليد أكواد الخصم (Coupons)</h2>
@@ -198,7 +182,8 @@ export default function DiscountCodes() {
                   fontSize: '16px',
                   fontFamily: 'monospace',
                   resize: 'vertical',
-                  backgroundColor: '#fff'
+                  backgroundColor: '#fff',
+                  color: '#000'
                 }}
               />
             </div>
