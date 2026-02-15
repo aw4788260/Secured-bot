@@ -85,7 +85,7 @@ export default function DiscountCodes() {
 
   useEffect(() => { 
       setIsClient(true); 
-      if (isClient) fetchData(page, filters); 
+      fetchData(page, filters); 
   }, [page]); // تحديث عند تغيير الصفحة فقط
 
   // ✅ حل مشكلة الفلتر ليعمل من الضغطة الأولى
