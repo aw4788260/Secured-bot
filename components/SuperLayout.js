@@ -34,9 +34,6 @@ export default function SuperLayout({ children, title }) {
         });
         const data = await res.json();
 
-        // ⚠️ هنا يمكننا إضافة تحقق إضافي من أن الدور هو Super Admin
-        // لكن بما أن الـ API محمي، فالحماية موجودة بالفعل.
-
         if (!res.ok || !data.valid) {
           performLogout();
         } else {
@@ -76,12 +73,13 @@ export default function SuperLayout({ children, title }) {
     router.replace('/admin/login');
   };
 
-  // ✅ القائمة المخصصة للسوبر أدمن (تم التحديث: إزالة مشرفي النظام)
+  // ✅ القائمة المخصصة للسوبر أدمن (تم إضافة صفحة الكوبونات)
   const menuItems = [
     { name: '🏠 لوحة القيادة', path: '/admin/super' },
     { name: '👨‍🏫 إدارة المدرسين', path: '/admin/super/teachers' },
     { name: '👨‍🎓 إدارة الطلاب', path: '/admin/super/students' },
     { name: '📥 كل طلبات الاشتراك', path: '/admin/super/requests' },
+    { name: '🎟️ أكواد الخصم (كوبونات)', path: '/admin/super/discount-codes' }, // 👈 التعديل هنا
     { name: '💰 التقارير المالية', path: '/admin/super/finance' },
     { name: '⚙️ إعدادات المنصة', path: '/admin/super/settings' }
   ];
