@@ -49,7 +49,7 @@ export default async (req, res) => {
     const { requestId, action, rejectionReason } = req.body;
     
     try {
-      // 1. التحقق من أن الطلب يخص هذا المدرس
+      // 1. التحقق من أن الطلب يخص هذا المدرس وجلب بياناته (بما فيها كود الخصم)
       const { data: request } = await supabase
         .from('subscription_requests')
         .select('*')
@@ -61,10 +61,19 @@ export default async (req, res) => {
 
       // 2. التنفيذ
       if (action === 'reject') {
+         // أ. تحديث حالة الطلب إلى مرفوض
          await supabase.from('subscription_requests')
            .update({ status: 'rejected', rejection_reason: rejectionReason || 'مرفوض' })
            .eq('id', requestId);
-         return res.status(200).json({ success: true, message: 'تم رفض الطلب بنجاح' });
+
+         // ب. ♻️ إعادة تفعيل كود الخصم (إن وُجد) لكي يتمكن الطالب من استخدامه مجدداً
+         if (request.discount_code_id) {
+             await supabase.from('discount_codes')
+               .update({ is_used: false })
+               .eq('id', request.discount_code_id);
+         }
+
+         return res.status(200).json({ success: true, message: 'تم رفض الطلب وإعادة تفعيل كود الخصم (إن وجد) بنجاح' });
       }
 
       if (action === 'approve') {
