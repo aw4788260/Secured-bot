@@ -4,6 +4,7 @@ import SuperLayout from '../../../components/SuperLayout';
 import { supabase } from '../../../lib/supabaseClient';
 
 export default function DiscountCodes() {
+  const [isClient, setIsClient] = useState(false); // ✅ حل مشكلة الـ Hydration Error
   const [teachers, setTeachers] = useState([]);
   const [codes, setCodes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -15,34 +16,43 @@ export default function DiscountCodes() {
   const [quantity, setQuantity] = useState(10);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // 🆕 حالة لحفظ الأكواد التي تم توليدها للتو
+  // حالة لحفظ الأكواد التي تم توليدها للتو
   const [newlyGeneratedCodes, setNewlyGeneratedCodes] = useState([]);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    setIsClient(true); // ✅ تأكيد أننا في بيئة المتصفح
     fetchTeachers();
     fetchCodes();
   }, []);
 
   const fetchTeachers = async () => {
-    const { data, error } = await supabase.from('teachers').select('id, name');
-    if (data && !error) setTeachers(data);
+    try {
+      const { data, error } = await supabase.from('teachers').select('id, name');
+      if (data && !error) setTeachers(data);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const fetchCodes = async () => {
-    const { data, error } = await supabase
-      .from('discount_codes')
-      .select('*, teachers(name)')
-      .order('created_at', { ascending: false })
-      .limit(100);
-      
-    if (data && !error) setCodes(data);
+    try {
+      const { data, error } = await supabase
+        .from('discount_codes')
+        .select('*, teachers(name)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+        
+      if (data && !error) setCodes(data);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
     setMessage({ type: '', text: '' });
-    setNewlyGeneratedCodes([]); // تفريغ الأكواد السابقة
+    setNewlyGeneratedCodes([]); 
     setCopied(false);
 
     if (!teacherId || !discountValue || !quantity) {
@@ -66,7 +76,9 @@ export default function DiscountCodes() {
       const data = await res.json();
       if (res.ok) {
         setMessage({ type: 'success', text: data.message });
-        setNewlyGeneratedCodes(data.generated_codes); // ✅ حفظ الأكواد الجديدة لعرضها للنسخ
+        if (data.generated_codes) {
+          setNewlyGeneratedCodes(data.generated_codes); 
+        }
         setDiscountValue('');
         setQuantity(10);
         fetchCodes();
@@ -80,8 +92,10 @@ export default function DiscountCodes() {
     }
   };
 
-  // 🆕 دالة نسخ الأكواد بالشكل المطلوب
+  // دالة نسخ الأكواد بالشكل المطلوب
   const copyCodesToClipboard = () => {
+    if (!newlyGeneratedCodes || newlyGeneratedCodes.length === 0) return;
+
     const textToCopy = newlyGeneratedCodes.map(item => {
       const valText = item.discount_type === 'percentage' 
         ? `${item.discount_value}%` 
@@ -91,13 +105,18 @@ export default function DiscountCodes() {
 
     navigator.clipboard.writeText(textToCopy).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 3000); // إعادة الزر لحالته بعد 3 ثوانٍ
+      setTimeout(() => setCopied(false), 3000); 
+    }).catch(err => {
+      console.error("Failed to copy:", err);
     });
   };
 
   const renderDiscountValue = (type, val) => {
     return type === 'percentage' ? `${val} %` : `${val} ج.م`;
   };
+
+  // ✅ منع الرندر حتى يتم التحميل في الكلاينت لتجنب الـ Hydration Error
+  if (!isClient) return null;
 
   return (
     <SuperLayout>
@@ -122,7 +141,7 @@ export default function DiscountCodes() {
           </div>
         )}
 
-        {/* 🆕 صندوق عرض الأكواد المولدّة حديثاً للنسخ */}
+        {/* صندوق عرض الأكواد المولدّة حديثاً للنسخ */}
         {newlyGeneratedCodes.length > 0 && (
           <div style={{ background: '#e8f4fd', padding: '20px', borderRadius: '10px', border: '1px solid #b6d4fe', marginBottom: '30px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -286,7 +305,8 @@ export default function DiscountCodes() {
                         {renderDiscountValue(code.discount_type, code.discount_value)}
                       </td>
                       <td style={{ padding: '15px', fontSize: '13px', color: '#6c757d' }}>
-                        {new Date(code.created_at).toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' })}
+                        {/* استخدام دالة آمنة للتاريخ لتجنب أخطاء السيرفر/كلاينت */}
+                        {code.created_at ? new Date(code.created_at).toLocaleDateString('ar-EG') : ''}
                       </td>
                       <td style={{ padding: '15px' }}>
                         {code.is_used ? (
