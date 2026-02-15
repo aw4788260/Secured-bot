@@ -35,7 +35,7 @@ export default async function handler(req, res) {
         query = query.eq('status', status);
       }
 
-      // 2. ✅ تطبيق فلتر المدرس (الجديد)
+      // 2. ✅ تطبيق فلتر المدرس
       if (teacherId && teacherId !== 'all') {
         query = query.eq('teacher_id', teacherId);
       }
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
            return res.status(400).json({ error: 'مبلغ غير صالح' });
         }
 
-        // ✅ التعديل هنا: تخزين السعر الجديد في عمود actual_paid_price بدلاً من total_price
+        // تخزين السعر الجديد في عمود actual_paid_price بدلاً من total_price
         const { error: updateError } = await supabase
           .from('subscription_requests')
           .update({ actual_paid_price: newPrice })
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, message: 'تم تحديث المبلغ الفعلي بنجاح', newPrice });
       }
 
-      // 1. جلب تفاصيل الطلب أولاً لمعرفة البيانات المطلوبة لباقي الإجراءات
+      // 1. جلب تفاصيل الطلب أولاً لمعرفة البيانات المطلوبة لباقي الإجراءات (ومعرفة الكود المرتبط)
       const { data: request, error: fetchError } = await supabase
         .from('subscription_requests')
         .select('*')
@@ -94,6 +94,7 @@ export default async function handler(req, res) {
 
       // --- حالة الرفض (Reject) ---
       if (action === 'reject') {
+        // أ. تحديث حالة الطلب إلى مرفوض
         await supabase
           .from('subscription_requests')
           .update({ 
@@ -102,7 +103,15 @@ export default async function handler(req, res) {
           })
           .eq('id', requestId);
 
-        return res.status(200).json({ success: true, message: 'تم رفض الطلب بنجاح' });
+        // ب. ♻️ إعادة تفعيل (إنعاش) كود الخصم إذا كان الطلب يحتوي على كود
+        if (request.discount_code_id) {
+            await supabase
+              .from('discount_codes')
+              .update({ is_used: false })
+              .eq('id', request.discount_code_id);
+        }
+
+        return res.status(200).json({ success: true, message: 'تم رفض الطلب وإعادة تفعيل كود الخصم (إن وجد) بنجاح' });
       }
 
       // --- حالة الموافقة (Approve) ---
