@@ -18,6 +18,7 @@ export default async function handler(req, res) {
   try {
     const codesToInsert = [];
     
+    // توليد أكواد عشوائية فريدة (مثال: MED-X9F2A1)
     for (let i = 0; i < quantity; i++) {
       const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
       const code = `MED-${randomString}`;
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
       success: true, 
       message: `تم توليد ${quantity} كود خصم بنجاح`,
       generated_count: quantity,
-      generated_codes: codesToInsert // ✅ تمت إضافة هذا السطر لإرجاع الأكواد للواجهة
+      generated_codes: codesToInsert // إرجاع الأكواد للواجهة للنسخ
     });
 
   } catch (error) {
