@@ -138,7 +138,7 @@ export default async (req, res) => {
     const { action, payload } = req.body; 
 
     try {
-      // 1️⃣ معالجة طلبات الاشتراك (Handle Request) - (لم يتم تغييره)
+      // 1️⃣ معالجة طلبات الاشتراك (Handle Request)
       if (action === 'handle_request') {
          const { requestId, decision, rejectionReason } = payload;
          
@@ -170,6 +170,14 @@ export default async (req, res) => {
              await supabase.from('subscription_requests')
                  .update({ status: 'rejected', rejection_reason: rejectionReason || 'تم الرفض' })
                  .eq('id', requestId);
+                 
+             // ♻️ التعديل الجديد: إعادة تفعيل كود الخصم (إن وُجد) لكي يتمكن الطالب من استخدامه مجدداً
+             if (reqData.discount_code_id) {
+                 await supabase.from('discount_codes')
+                   .update({ is_used: false })
+                   .eq('id', reqData.discount_code_id);
+             }
+
              return res.status(200).json({ success: true, message: 'Rejected' });
          }
 
@@ -200,7 +208,7 @@ export default async (req, res) => {
          }
       }
 
-      // 2️⃣ التحكم المباشر (Manage Access) - ✅ هنا التعديل الرئيسي
+      // 2️⃣ التحكم المباشر (Manage Access)
       if (action === 'manage_access') {
          const { studentId, type, itemId, allow } = payload;
          
@@ -254,6 +262,7 @@ export default async (req, res) => {
                     teacher_id: teacherId,
                     status: 'approved', // مقبول فوراً
                     total_price: contentPrice, // السعر لحساب الأرباح
+                    actual_paid_price: contentPrice, // يتم تسجيله أيضاً هنا
                     user_name: studentUser.first_name,
                     user_username: studentUser.username,
                     phone: studentUser.phone,
