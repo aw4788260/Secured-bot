@@ -71,6 +71,7 @@ export default async (req, res) => {
       // استقبال البيانات
       const selectedItemsStr = getValue('selectedItems');
       const userNote = getValue('user_note');
+      const appliedCode = getValue('discount_code'); // 🆕 استقبال كود الخصم (إن وُجد)
       const receiptFile = getFile('receiptFile');
       
       if (!selectedItemsStr) return res.status(400).json({ error: 'لا توجد عناصر مختارة' });
@@ -79,20 +80,56 @@ export default async (req, res) => {
       const selectedItems = JSON.parse(selectedItemsStr);
       if (selectedItems.length === 0) return res.status(400).json({ error: 'السلة فارغة' });
 
+      // =========================================================
+      // 🛡️ 1. التحقق من عدم وجود طلبات مكررة قيد الانتظار (Pending)
+      // =========================================================
+      const selectedItemIds = selectedItems.map(item => item.id.toString());
+      
+      const { data: pendingRequests } = await supabase
+        .from('subscription_requests')
+        .select('requested_data')
+        .eq('user_id', user.id)
+        .eq('status', 'pending');
+
+      if (pendingRequests && pendingRequests.length > 0) {
+        let isDuplicate = false;
+        
+        // البحث داخل بيانات الطلبات المعلقة عما إذا كان أي منها يحتوي على عناصر السلة الحالية
+        for (const reqData of pendingRequests) {
+          const items = reqData.requested_data || [];
+          for (const item of items) {
+            if (selectedItemIds.includes(item.id.toString())) {
+              isDuplicate = true;
+              break;
+            }
+          }
+          if (isDuplicate) break;
+        }
+
+        if (isDuplicate) {
+          // ⚠️ نحذف صورة الإيصال المرفوعة لتوفير مساحة السيرفر لأن الطلب مرفوض
+          try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
+          return res.status(400).json({ error: 'لديك طلب قيد المراجعة بالفعل يحتوي على هذه العناصر.' });
+        }
+      }
+      // =========================================================
+
       const fileName = path.basename(receiptFile.filepath);
 
       // المتغيرات النهائية
-      let totalPrice = 0;
+      let originalTotalPrice = 0; // 🆕 السعر الأصلي
+      let finalTotalPrice = 0;    // 🆕 السعر الفعلي بعد الخصم
       let titleList = [];
       const requestedData = [];
-      let detectedTeacherId = null; // 🆕 متغير لحفظ رقم المدرس
+      let detectedTeacherId = null; 
+      let discountCodeId = null;  // 🆕 لحفظ الـ ID الخاص بالكود
 
       // ---------------------------------------------------------
-      // حلقة التكرار (for...of) لدعم العمليات غير المتزامنة (await)
+      // حلقة التكرار لدعم العمليات غير المتزامنة
       // ---------------------------------------------------------
       for (const [index, item] of selectedItems.entries()) {
           const price = parseInt(item.price) || 0;
-          totalPrice += price;
+          originalTotalPrice += price; // جمع السعر الأصلي
           
           let parentCourseName = null;
           let formattedTitle = '';
@@ -102,30 +139,17 @@ export default async (req, res) => {
               formattedTitle = `📦 كورس شامل: ${item.title}`;
               parentCourseName = item.title;
               
-              // 🆕 محاولة جلب رقم المدرس من الكورس (لأول عنصر فقط لتقليل الاستعلامات)
               if (index === 0 && !detectedTeacherId) {
-                  const { data: courseData } = await supabase
-                      .from('courses')
-                      .select('teacher_id')
-                      .eq('id', item.id)
-                      .single();
+                  const { data: courseData } = await supabase.from('courses').select('teacher_id').eq('id', item.id).single();
                   if (courseData) detectedTeacherId = courseData.teacher_id;
               }
           } 
           // ب) إذا كان العنصر مادة
           else if (item.type === 'subject') {
               try {
-                  // جلب رقم الكورس الأب للمادة (ونحتاج المدرس أيضاً)
-                  const { data: subjectData } = await supabase
-                      .from('subjects')
-                      .select('course_id, courses(title, teacher_id)') // ✅ جلبنا المدرس هنا
-                      .eq('id', item.id)
-                      .single();
-
+                  const { data: subjectData } = await supabase.from('subjects').select('course_id, courses(title, teacher_id)').eq('id', item.id).single();
                   if (subjectData && subjectData.courses) {
                       parentCourseName = subjectData.courses.title;
-                      
-                      // 🆕 حفظ رقم المدرس
                       if (index === 0 && !detectedTeacherId) {
                           detectedTeacherId = subjectData.courses.teacher_id;
                       }
@@ -134,7 +158,6 @@ export default async (req, res) => {
                   console.error('Error fetching parent info:', fetchErr);
               }
 
-              // تنسيق النص للمادة
               formattedTitle = `📚 مادة: ${item.title}`;
               if (parentCourseName) {
                   formattedTitle += `\n   ⬅️ تابع لكورس: ${parentCourseName}`;
@@ -156,10 +179,43 @@ export default async (req, res) => {
           });
       }
 
+      finalTotalPrice = originalTotalPrice; // افتراضياً السعر الفعلي هو الأصلي
+
+      // =========================================================
+      // 🎁 2. معالجة كود الخصم والتأكد من صحته قبل الحفظ
+      // =========================================================
+      if (appliedCode && appliedCode.trim() !== '') {
+         const { data: discountData } = await supabase
+            .from('discount_codes')
+            .select('*')
+            .eq('code', appliedCode.trim().toUpperCase())
+            .eq('teacher_id', detectedTeacherId) // تأكيد أن الكود يخص مدرس المادة
+            .eq('is_used', false)
+            .single();
+
+         if (!discountData) {
+            // الكود غير صالح أو تم استخدامه، يجب إيقاف العملية وحذف الصورة المرفوعة
+            try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
+            return res.status(400).json({ error: 'كود الخصم المدخل غير صحيح أو تم استخدامه مسبقاً.' });
+         }
+
+         discountCodeId = discountData.id;
+
+         // حساب السعر النهائي بعد الخصم
+         if (discountData.discount_type === 'percentage') {
+            finalTotalPrice = originalTotalPrice - (originalTotalPrice * (discountData.discount_value / 100));
+         } else if (discountData.discount_type === 'fixed') {
+            finalTotalPrice = discountData.discount_value;
+         }
+         
+         if (finalTotalPrice < 0) finalTotalPrice = 0;
+      }
+      // =========================================================
+
       // إضافة فاصل واضح بين العناصر في النص النهائي
       const finalTitle = titleList.join('\n──────────────────────\n');
       
-      // الحفظ في القاعدة
+      // 3. الحفظ في القاعدة
       const { error: dbError } = await supabase.from('subscription_requests').insert({
         user_id: user.id,
         user_name: user.first_name,
@@ -167,17 +223,27 @@ export default async (req, res) => {
         phone: user.phone,
         
         course_title: finalTitle,
-        total_price: totalPrice,
+        total_price: originalTotalPrice,       // 👈 السعر الأصلي
+        actual_paid_price: finalTotalPrice,    // 👈 السعر بعد الخصم
+        discount_code_id: discountCodeId,      // 👈 ربط الطلب بالكوبون المستخدم
         
         user_note: userNote,
         payment_file_path: fileName,
         status: 'pending',
         requested_data: requestedData,
         
-        teacher_id: detectedTeacherId // ✅ تم إضافة العمود الجديد هنا
+        teacher_id: detectedTeacherId
       });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+         try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
+         throw dbError;
+      }
+
+      // 4. حرق الكود (تحديث حالته لمستخدَم) بعد التأكد من حفظ الطلب بنجاح
+      if (discountCodeId) {
+         await supabase.from('discount_codes').update({ is_used: true }).eq('id', discountCodeId);
+      }
 
       return res.status(200).json({ success: true, message: 'تم إرسال طلب الاشتراك بنجاح! سيتم مراجعته.' });
 
