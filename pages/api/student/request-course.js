@@ -197,6 +197,16 @@ export default async (req, res) => {
             return res.status(400).json({ error: 'كود الخصم المدخل غير صحيح أو تم استخدامه مسبقاً.' });
          }
 
+         // ✅ التحقق النهائي من الصلاحية أثناء طلب الاشتراك
+         if (discountData.expires_at) {
+             const now = new Date();
+             const expiryDate = new Date(discountData.expires_at);
+             if (now > expiryDate) {
+                 try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
+                 return res.status(400).json({ error: 'عذراً، كود الخصم المدخل منتهي الصلاحية.' });
+             }
+         }
+
          discountCodeId = discountData.id;
 
          // ✅ حساب السعر النهائي وتحديثه فقط في حالة وجود كود خصم
