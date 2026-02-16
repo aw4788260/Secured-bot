@@ -16,6 +16,10 @@ export default function DiscountCodes() {
   const [discountValue, setDiscountValue] = useState('');
   const [quantity, setQuantity] = useState(10);
   
+  // ✅ حالات تاريخ الانتهاء
+  const [hasExpiration, setHasExpiration] = useState(false);
+  const [expirationDate, setExpirationDate] = useState('');
+  
   // التنبيهات الذكية (Toasts)
   const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
   
@@ -35,8 +39,8 @@ export default function DiscountCodes() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  // الفلاتر
-  const [filters, setFilters] = useState({ teacherId: 'all', type: 'all', value: '', isUsed: 'all' });
+  // ✅ الفلاتر (تم استبدال isUsed بـ status ليدعم الانتهاء)
+  const [filters, setFilters] = useState({ teacherId: 'all', type: 'all', value: '', status: 'all' });
 
   // العمليات الجماعية (Table)
   const [selectedCodes, setSelectedCodes] = useState([]);
@@ -44,16 +48,21 @@ export default function DiscountCodes() {
   // -------------------------------------------------------------
   // النوافذ المنبثقة (Modals) الأنيقة
   // -------------------------------------------------------------
-  // نافذة التأكيد (بديل window.confirm)
   const [confirmModal, setConfirmModal] = useState({ 
       show: false, title: '', message: '', action: null, type: 'danger' 
   });
 
-  // نافذة التعديل المتقدم
   const [advancedModal, setAdvancedModal] = useState({
       show: false, sourceTxt: '', payload: {}, actionType: '', 
-      newTeacher: '', newType: 'percentage', newValue: ''
+      newTeacher: '', newType: 'percentage', newValue: '',
+      newHasExpiration: false, newExpirationDate: '' // ✅ للتعديل الجماعي
   });
+
+  // ✅ دالة التحقق من الانتهاء
+  const isExpired = (dateString) => {
+      if (!dateString) return false;
+      return new Date() > new Date(dateString);
+  };
 
   // -------------------------------------------------------------
   // جلب البيانات (مع دعم الفلاتر المباشرة)
@@ -63,16 +72,30 @@ export default function DiscountCodes() {
     try {
       const queryParams = new URLSearchParams({
         page: overridePage, limit,
-        teacherId: overrideFilters.teacherId, type: overrideFilters.type,
-        value: overrideFilters.value, isUsed: overrideFilters.isUsed
+        teacherId: overrideFilters.teacherId, 
+        type: overrideFilters.type,
+        value: overrideFilters.value, 
+        status: overrideFilters.status // ✅ نرسل الحالة (all, active, used, expired)
       }).toString();
 
       const res = await fetch(`/api/dashboard/super/generate-discount-codes?${queryParams}`);
       if (res.ok) {
         const data = await res.json();
         setTeachers(data.teachers || []);
-        setCodes(data.codes || []);
-        setTotalCodes(data.total || 0);
+        
+        let fetchedCodes = data.codes || [];
+        
+        // ✅ فلترة إضافية في الفرونت إند لدعم حالة (منتهي) في حال لم يتم تطبيقها في الباك إند
+        if (overrideFilters.status === 'expired') {
+            fetchedCodes = fetchedCodes.filter(c => c.expires_at && isExpired(c.expires_at) && !c.is_used);
+        } else if (overrideFilters.status === 'active') {
+            fetchedCodes = fetchedCodes.filter(c => !c.is_used && (!c.expires_at || !isExpired(c.expires_at)));
+        } else if (overrideFilters.status === 'used') {
+            fetchedCodes = fetchedCodes.filter(c => c.is_used);
+        }
+
+        setCodes(fetchedCodes);
+        setTotalCodes(data.total || fetchedCodes.length);
         setSelectedCodes([]); 
       }
     } catch (e) {
@@ -86,16 +109,15 @@ export default function DiscountCodes() {
   useEffect(() => { 
       setIsClient(true); 
       fetchData(page, filters); 
-  }, [page]); // تحديث عند تغيير الصفحة فقط
+  }, [page]); 
 
-  // ✅ حل مشكلة الفلتر ليعمل من الضغطة الأولى
   const handleApplyFilters = () => { 
       if (page !== 1) setPage(1); 
       else fetchData(1, filters); 
   };
 
   const handleClearFilters = () => {
-    const emptyFilters = { teacherId: 'all', type: 'all', value: '', isUsed: 'all' };
+    const emptyFilters = { teacherId: 'all', type: 'all', value: '', status: 'all' };
     setFilters(emptyFilters);
     if (page !== 1) setPage(1);
     else fetchData(1, emptyFilters);
@@ -110,9 +132,13 @@ export default function DiscountCodes() {
     setCopiedBulk(false);
 
     if (!teacherId || !discountValue || !quantity) return showToast('يرجى تعبئة جميع الحقول المطلوبة', 'error');
+    if (hasExpiration && !expirationDate) return showToast('يرجى تحديد تاريخ الانتهاء', 'error');
 
     setLoading(true);
     try {
+      // ✅ ضبط الوقت ليكون نهاية اليوم المحدد
+      const finalExpiry = hasExpiration && expirationDate ? new Date(expirationDate + 'T23:59:59').toISOString() : null;
+
       const res = await fetch('/api/dashboard/super/generate-discount-codes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -121,7 +147,8 @@ export default function DiscountCodes() {
           teacher_id: parseInt(teacherId),
           discount_type: discountType,
           discount_value: parseFloat(discountValue),
-          quantity: parseInt(quantity)
+          quantity: parseInt(quantity),
+          expires_at: finalExpiry // ✅ إرسال التاريخ للباك إند
         })
       });
 
@@ -130,6 +157,7 @@ export default function DiscountCodes() {
         showToast(data.message, 'success');
         if (data.generated_codes) setNewlyGeneratedCodes(data.generated_codes); 
         setDiscountValue(''); setQuantity(10);
+        setHasExpiration(false); setExpirationDate('');
         handleClearFilters(); 
       } else {
         showToast(data.message || 'خطأ غير متوقع', 'error');
@@ -140,7 +168,7 @@ export default function DiscountCodes() {
   };
 
   // -------------------------------------------------------------
-  // إدارة العمليات الجماعية (API Caller)
+  // إدارة العمليات الجماعية
   // -------------------------------------------------------------
   const executeBulkApi = async (apiPayload) => {
     try {
@@ -163,21 +191,17 @@ export default function DiscountCodes() {
     }
   };
 
-  // معالج أزرار المربع النصي
   const handleTextBulkAction = (actionType) => {
       const codeArray = pastedCodes.split('\n').map(c => c.trim()).filter(Boolean);
       if (codeArray.length === 0) return showToast('يرجى لصق الكوبونات في المربع أولاً', 'error');
-
       processBulkRequest(actionType, { codes: codeArray }, ` (${codeArray.length} كود)`);
   };
 
-  // معالج أزرار الجدول
   const handleTableBulkAction = (actionType) => {
       if (selectedCodes.length === 0) return;
       processBulkRequest(actionType, { ids: selectedCodes }, ` (${selectedCodes.length} كود)`);
   };
 
-  // ✅ المعالج المركزي للـ Modals (بديل window.confirm الأنيق)
   const processBulkRequest = (actionType, payloadObj, sourceTxt) => {
       if (actionType === 'delete') {
           setConfirmModal({
@@ -197,17 +221,16 @@ export default function DiscountCodes() {
               message: `هل تريد تعطيل (حرق) الأكواد المحددة${sourceTxt} ومنع استخدامها؟`,
               action: () => executeBulkApi({ action: 'update_status', is_used: true, ...payloadObj })
           });
-      } else if (actionType === 'change_teacher' || actionType === 'change_value') {
+      } else if (['change_teacher', 'change_value', 'change_expiry'].includes(actionType)) {
           setAdvancedModal({
               show: true, payload: payloadObj, actionType, sourceTxt,
-              newTeacher: '', newType: 'percentage', newValue: ''
+              newTeacher: '', newType: 'percentage', newValue: '', newHasExpiration: false, newExpirationDate: ''
           });
       }
   };
 
-  // تنفيذ التعديل من داخل نافذة التعديل المتقدم
   const submitAdvancedModal = () => {
-      const { actionType, payload, newTeacher, newType, newValue } = advancedModal;
+      const { actionType, payload, newTeacher, newType, newValue, newHasExpiration, newExpirationDate } = advancedModal;
       let apiPayload = { action: 'update_advanced', ...payload };
 
       if (actionType === 'change_teacher') {
@@ -217,13 +240,14 @@ export default function DiscountCodes() {
           if (!newValue) return showToast('الرجاء كتابة القيمة الجديدة', 'error');
           apiPayload.discount_type = newType;
           apiPayload.discount_value = newValue;
+      } else if (actionType === 'change_expiry') {
+          // ✅ التعامل مع تحديث تاريخ الانتهاء الجماعي
+          if (newHasExpiration && !newExpirationDate) return showToast('الرجاء تحديد التاريخ', 'error');
+          apiPayload.expires_at = newHasExpiration ? new Date(newExpirationDate + 'T23:59:59').toISOString() : null;
       }
       executeBulkApi(apiPayload);
   };
 
-  // -------------------------------------------------------------
-  // دوال النسخ (Clipboard)
-  // -------------------------------------------------------------
   const copySingleCode = (codeStr) => {
     navigator.clipboard.writeText(codeStr);
     showToast(`تم نسخ الكود: ${codeStr}`, 'success');
@@ -288,6 +312,25 @@ export default function DiscountCodes() {
                     <label>الكمية المطلوبة:</label>
                     <input type="number" min="1" max="1000" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="form-input" required />
                   </div>
+
+                  {/* ✅ حقل تاريخ الانتهاء (اختياري) */}
+                  <div className="form-group" style={{gridColumn: '1 / -1'}}>
+                    <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', background: 'rgba(56, 189, 248, 0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)'}}>
+                        <input type="checkbox" style={{width: '18px', height: '18px', accentColor: '#38bdf8'}} checked={hasExpiration} onChange={(e) => setHasExpiration(e.target.checked)} />
+                        <span style={{color: '#e2e8f0'}}>تحديد تاريخ انتهاء صلاحية الكوبونات؟ (إذا لم تحدد ستكون دائمة)</span>
+                    </label>
+                    {hasExpiration && (
+                        <input 
+                            type="date" 
+                            className="form-input mt-3" 
+                            value={expirationDate} 
+                            onChange={(e) => setExpirationDate(e.target.value)} 
+                            required={hasExpiration} 
+                            min={new Date().toISOString().split('T')[0]} 
+                        />
+                    )}
+                  </div>
+
                   <div className="form-submit">
                     <button type="submit" disabled={loading} className={`submit-btn ${loading ? 'loading' : ''}`}>
                       {loading ? '⏳ جاري التوليد...' : '⚡ توليد الأكواد الآن'}
@@ -296,7 +339,7 @@ export default function DiscountCodes() {
                 </form>
               </div>
 
-              {/* 2. الإدارة السريعة بالنص (لصق الأكواد) */}
+              {/* 2. الإدارة السريعة بالنص */}
               <div className="card-container highlight-box border-glass">
                   <h3 className="card-title text-blue">🚀 إدارة سريعة بالنص (Bulk Text)</h3>
                   <p className="hint-txt">الصق الكوبونات هنا (كل كوبون في سطر) لتطبيق الإجراء فوراً.</p>
@@ -312,6 +355,7 @@ export default function DiscountCodes() {
                       <button className="btn outline-red" onClick={() => handleTextBulkAction('delete')}>🗑️ حذف</button>
                       <button className="btn outline-blue" onClick={() => handleTextBulkAction('change_teacher')}>👨‍🏫 نقل لمدرس</button>
                       <button className="btn outline-purple" onClick={() => handleTextBulkAction('change_value')}>💰 تغيير القيمة</button>
+                      <button className="btn outline-blue" style={{gridColumn: 'span 1.5'}} onClick={() => handleTextBulkAction('change_expiry')}>⏳ تغيير الصلاحية</button>
                   </div>
               </div>
           </div>
@@ -353,10 +397,11 @@ export default function DiscountCodes() {
                   </div>
                   <div className="filter-item">
                       <label>حالة الكود</label>
-                      <select className="filter-input" value={filters.isUsed} onChange={e=>setFilters({...filters, isUsed: e.target.value})}>
+                      <select className="filter-input" value={filters.status} onChange={e=>setFilters({...filters, status: e.target.value})}>
                           <option value="all">الكل</option>
-                          <option value="false">✅ متاح للاستخدام</option>
-                          <option value="true">🔥 مستخدم / معطل</option>
+                          <option value="active">✅ متاح للاستخدام</option>
+                          <option value="used">🔥 مستخدم / معطل</option>
+                          <option value="expired">⏳ منتهي الصلاحية</option>
                       </select>
                   </div>
               </div>
@@ -376,7 +421,8 @@ export default function DiscountCodes() {
                        <button className="btn green" onClick={() => handleTableBulkAction('activate')}>تفعيل</button>
                        <button className="btn orange" onClick={() => handleTableBulkAction('deactivate')}>تعطيل</button>
                        <button className="btn blue" onClick={() => handleTableBulkAction('change_teacher')}>نقل</button>
-                       <button className="btn purple" onClick={() => handleTableBulkAction('change_value')}>تعديل</button>
+                       <button className="btn purple" onClick={() => handleTableBulkAction('change_value')}>القيمة</button>
+                       <button className="btn blue" onClick={() => handleTableBulkAction('change_expiry')}>الصلاحية</button>
                        <button className="btn red" onClick={() => handleTableBulkAction('delete')}>حذف</button>
                    </div>
                )}
@@ -391,14 +437,15 @@ export default function DiscountCodes() {
                     <th>المدرس</th>
                     <th>الخصم</th>
                     <th>الإنشاء</th>
+                    <th>تاريخ الانتهاء</th>
                     <th>الحالة</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableLoading ? (
-                    <tr><td colSpan="6" className="empty-table loading-txt">جاري التحميل...</td></tr>
+                    <tr><td colSpan="7" className="empty-table loading-txt">جاري التحميل...</td></tr>
                   ) : codes.length === 0 ? (
-                    <tr><td colSpan="6" className="empty-table">لا توجد نتائج تطابق بحثك.</td></tr>
+                    <tr><td colSpan="7" className="empty-table">لا توجد نتائج تطابق بحثك.</td></tr>
                   ) : (
                     codes.map(code => (
                       <tr key={code.id} className={selectedCodes.includes(code.id) ? 'selected-row' : ''}>
@@ -412,9 +459,18 @@ export default function DiscountCodes() {
                         <td className="teacher-name">{code.teachers?.name || 'غير محدد'}</td>
                         <td className="discount-value">{renderDiscountValue(code.discount_type, code.discount_value)}</td>
                         <td className="date-text">{new Date(code.created_at).toLocaleDateString('ar-EG')}</td>
+                        
+                        {/* ✅ عرض تاريخ الانتهاء */}
+                        <td className="date-text" style={{fontWeight: 'bold', color: code.expires_at ? (isExpired(code.expires_at) ? '#fca5a5' : '#e2e8f0') : '#4ade80'}}>
+                            {code.expires_at ? new Date(code.expires_at).toLocaleDateString('ar-EG') : 'مفتوح (دائم)'}
+                        </td>
+
                         <td>
+                          {/* ✅ منطق عرض الحالة المحدث */}
                           {code.is_used ? (
-                            <span className="status-badge used">🔥 معطل</span>
+                            <span className="status-badge used">🔥 معطل/مستخدم</span>
+                          ) : isExpired(code.expires_at) ? (
+                            <span className="status-badge" style={{background:'rgba(245, 158, 11, 0.1)', color:'#fbbf24', border:'1px solid rgba(245, 158, 11, 0.3)'}}>⏳ منتهي الصلاحية</span>
                           ) : (
                             <span className="status-badge active">✅ متاح</span>
                           )}
@@ -463,13 +519,14 @@ export default function DiscountCodes() {
           </div>
       )}
 
-      {/* ✅ نافذة التعديل المتقدم (Advanced Modal) الأنيقة */}
+      {/* ✅ نافذة التعديل المتقدم (Advanced Modal) - تشمل الصلاحية */}
       {advancedModal.show && (
           <div className="modal-overlay blur-bg" onClick={() => setAdvancedModal({...advancedModal, show: false})}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
                   <div className="modal-header-glass">
                       <h3 className="modal-title m-0">
-                          {advancedModal.actionType === 'change_teacher' ? '👨‍🏫 نقل الكوبونات' : '💰 تعديل القيمة'}
+                          {advancedModal.actionType === 'change_teacher' ? '👨‍🏫 نقل الكوبونات' : 
+                           advancedModal.actionType === 'change_value' ? '💰 تعديل القيمة' : '⏳ تعديل الصلاحية'}
                       </h3>
                       <button className="close-x" onClick={() => setAdvancedModal({...advancedModal, show: false})}>✕</button>
                   </div>
@@ -502,6 +559,19 @@ export default function DiscountCodes() {
                               <input type="number" min="1" className="form-input" value={advancedModal.newValue} onChange={e => setAdvancedModal({...advancedModal, newValue: e.target.value})} placeholder="أدخل القيمة..." />
                           </div>
                       </>
+                  )}
+
+                  {/* ✅ خيار تعديل الصلاحية للمودال */}
+                  {advancedModal.actionType === 'change_expiry' && (
+                      <div className="form-group mt-4">
+                        <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: 'white'}}>
+                            <input type="checkbox" style={{width: '18px', height: '18px'}} checked={advancedModal.newHasExpiration} onChange={(e) => setAdvancedModal({...advancedModal, newHasExpiration: e.target.checked})} />
+                            <span>تحديد تاريخ انتهاء؟ (إلغاء التحديد يجعله دائماً)</span>
+                        </label>
+                        {advancedModal.newHasExpiration && (
+                            <input type="date" className="form-input mt-3" value={advancedModal.newExpirationDate} onChange={(e) => setAdvancedModal({...advancedModal, newExpirationDate: e.target.value})} min={new Date().toISOString().split('T')[0]} />
+                        )}
+                      </div>
                   )}
 
                   <div className="modal-actions mt-4">
@@ -549,7 +619,6 @@ export default function DiscountCodes() {
 
         /* ==================== Buttons ==================== */
         .bulk-grid-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-        .bulk-grid-btns .btn.outline-blue, .bulk-grid-btns .btn.outline-purple { grid-column: span 1.5; }
         
         .btn { padding: 10px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 5px; }
         .btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
