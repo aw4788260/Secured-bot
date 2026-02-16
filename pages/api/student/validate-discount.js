@@ -20,9 +20,10 @@ export default async function handler(req, res) {
 
   try {
     // 2. البحث عن الكود في قاعدة البيانات والتأكد من شروطه
+    // ✅ تم إضافة expires_at لجلب تاريخ الانتهاء
     const { data, error } = await supabase
       .from('discount_codes')
-      .select('id, code, discount_type, discount_value')
+      .select('id, code, discount_type, discount_value, expires_at')
       .eq('code', code.trim().toUpperCase()) // تجاهل المسافات وحالة الأحرف
       .eq('teacher_id', teacher_id)          // يجب أن يكون تابعاً لنفس المدرس
       .eq('is_used', false)                  // يجب أن يكون غير مستخدم
@@ -36,7 +37,21 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. إرجاع بيانات الخصم للتطبيق لحساب وعرض السعر الجديد
+    // ✅ 3. التحقق من تاريخ انتهاء الصلاحية (إذا كان الكوبون محدد بتاريخ)
+    if (data.expires_at) {
+        const now = new Date();
+        const expiryDate = new Date(data.expires_at);
+        
+        // إذا كان الوقت الحالي أكبر من وقت الانتهاء، نرفض الكوبون
+        if (now > expiryDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'عذراً، هذا الكوبون منتهي الصلاحية.'
+            });
+        }
+    }
+
+    // 4. إرجاع بيانات الخصم للتطبيق لحساب وعرض السعر الجديد
     return res.status(200).json({ 
       success: true, 
       discount: data 
