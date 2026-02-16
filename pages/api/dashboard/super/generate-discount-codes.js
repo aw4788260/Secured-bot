@@ -45,7 +45,8 @@ export default async function handler(req, res) {
   // 🟠 POST: توليد أو إدارة الكوبونات
   // ==========================================================
   if (req.method === 'POST') {
-    const { action, ids, codes, is_used, teacher_id, discount_type, discount_value } = req.body;
+    // ✅ استقبال expires_at مع باقي البيانات من الـ Request
+    const { action, ids, codes, is_used, teacher_id, discount_type, discount_value, expires_at } = req.body;
 
     // 🛠️ دالة مساعدة لتطبيق التحديث/الحذف إما بالـ ID أو بالنص (Codes)
     const applyCondition = (query) => {
@@ -57,7 +58,9 @@ export default async function handler(req, res) {
     try {
       // --- أ. توليد أكواد جديدة ---
       if (action === 'generate') {
-        const { teacher_id: genTeacherId, discount_type: genType, discount_value: genValue, quantity } = req.body;
+        // ✅ استقبال expires_at الخاص بالتوليد
+        const { teacher_id: genTeacherId, discount_type: genType, discount_value: genValue, quantity, expires_at: genExpiresAt } = req.body;
+        
         if (!genTeacherId || !genType || genValue === undefined || !quantity) {
           return res.status(400).json({ message: 'جميع الحقول مطلوبة' });
         }
@@ -69,7 +72,8 @@ export default async function handler(req, res) {
             code: `MED-${randomString}`,
             teacher_id: genTeacherId,
             discount_type: genType, 
-            discount_value: genValue
+            discount_value: genValue,
+            expires_at: genExpiresAt || null // ✅ حفظ تاريخ الانتهاء (لو فارغ هيكون null أي مفتوح)
           });
         }
 
@@ -91,12 +95,14 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, message: 'تم تحديث حالة الكوبونات بنجاح' });
       }
 
-      // --- ج. تعديل خصائص متقدمة (تغيير المدرس أو القيمة) ---
+      // --- ج. تعديل خصائص متقدمة (تغيير المدرس، القيمة، أو الصلاحية) ---
       if (action === 'update_advanced') {
         const updates = {};
         if (teacher_id !== undefined && teacher_id !== '') updates.teacher_id = teacher_id;
         if (discount_type !== undefined && discount_type !== '') updates.discount_type = discount_type;
         if (discount_value !== undefined && discount_value !== '') updates.discount_value = discount_value;
+        // ✅ تحديث تاريخ الانتهاء
+        if (expires_at !== undefined) updates.expires_at = expires_at; 
 
         if (Object.keys(updates).length === 0) {
             return res.status(400).json({ message: 'لا توجد بيانات لتحديثها' });
