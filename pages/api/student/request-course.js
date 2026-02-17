@@ -70,7 +70,7 @@ export default async (req, res) => {
 
       // استقبال البيانات
       const selectedItemsStr = getValue('selectedItems');
-      const userNote = getValue('user_note');
+      let userNote = getValue('user_note') || ''; // تم التعديل إلى let لتمكين الإضافة عليها
       const appliedCode = getValue('discount_code'); // استقبال كود الخصم (إن وُجد)
       const receiptFile = getFile('receiptFile');
       
@@ -209,6 +209,10 @@ export default async (req, res) => {
 
          discountCodeId = discountData.id;
 
+         // 🔴 التعديل الجديد: إضافة الجملة داخل الملاحظة
+         const usedCouponText = `(تم استخدام الكوبون: ${appliedCode.trim().toUpperCase()})`;
+         userNote = userNote.trim() !== '' ? `${userNote}\n${usedCouponText}` : usedCouponText;
+
          // ✅ حساب السعر النهائي وتحديثه فقط في حالة وجود كود خصم
          if (discountData.discount_type === 'percentage') {
             finalTotalPrice = originalTotalPrice - (originalTotalPrice * (discountData.discount_value / 100));
@@ -237,7 +241,7 @@ export default async (req, res) => {
         actual_paid_price: finalTotalPrice,    // 👈 null إذا لم يكن هناك خصم، أو قيمة الخصم
         discount_code_id: discountCodeId,      // 👈 ربط الطلب بالكوبون المستخدم
         
-        user_note: userNote,
+        user_note: userNote,                   // 👈 الملاحظة هنا ستحتوي على الجملة الجديدة بجانب كلام الطالب
         payment_file_path: fileName,
         status: 'pending',
         requested_data: requestedData,
