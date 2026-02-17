@@ -155,6 +155,11 @@ export default function RequestsPage() {
                     ? `/api/admin/file-proxy?type=receipts&filename=${req.payment_file_path}` 
                     : null;
                 
+                // ✅ حساب تفاصيل السعر والخصم
+                const originalPrice = req.total_price || 0;
+                const actualPaidPrice = req.actual_paid_price;
+                const hasDiscount = req.has_discount === true || (actualPaidPrice !== null && actualPaidPrice !== undefined && actualPaidPrice < originalPrice);
+                
                 return (
                     <div key={req.id} className={`request-card ${req.status}`}>
                         <div className="card-header">
@@ -174,9 +179,17 @@ export default function RequestsPage() {
                                 </div>
                             </div>
                             
-                            <div className="price-box">
+                            {/* ✅ صندوق السعر المحدث لعرض الخصومات */}
+                            <div className={`price-box ${hasDiscount ? 'discounted' : ''}`}>
                                 <span className="label">المبلغ المدفوع</span>
-                                <span className="price-value">{req.total_price} ج.م</span>
+                                {hasDiscount ? (
+                                    <div className="price-group">
+                                        <span className="old-price">{originalPrice} ج.م</span>
+                                        <span className="price-value discount">{actualPaidPrice} ج.م</span>
+                                    </div>
+                                ) : (
+                                    <span className="price-value">{originalPrice} ج.م</span>
+                                )}
                             </div>
                             
                             <div className="details-box">
@@ -341,8 +354,13 @@ export default function RequestsPage() {
         .value { color: white; font-weight: 500; font-size: 1em; }
         .value.ltr { direction: ltr; font-family: monospace; }
         
-        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; transition: 0.3s;}
+        .price-box.discounted { background: rgba(245, 158, 11, 0.05); border-color: rgba(245, 158, 11, 0.3); }
         .price-value { color: #4ade80; font-weight: bold; font-size: 1.2em; }
+        
+        .price-group { display: flex; align-items: center; gap: 10px; }
+        .old-price { text-decoration: line-through; color: #ef4444; font-size: 0.9em; opacity: 0.9; }
+        .price-value.discount { color: #fbbf24; }
 
         .details-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
         .details-text { color: #cbd5e1; margin: 0; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
