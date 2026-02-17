@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import bcrypt from 'bcryptjs'; // ✅ استخدام bcryptjs بناءً على طلبك
 
 export default async function handler(req, res) {
   // 1. التحقق من صلاحية السوبر أدمن
@@ -167,9 +168,9 @@ export default async function handler(req, res) {
         // 2. تصفير الجهاز
         case 'reset_device':
           const { error: resetErr } = await supabase
-             .from('devices')
-             .delete()
-             .in('user_id', targetIds);
+              .from('devices')
+              .delete()
+              .in('user_id', targetIds);
           if (resetErr) throw resetErr;
           successMessage = 'تم تصفير الأجهزة المرتبطة';
           break;
@@ -198,9 +199,13 @@ export default async function handler(req, res) {
              phone: data.phone, 
              username: data.username 
           };
+          
+          // ✅ التعديل: التشفير باستخدام bcryptjs بنفس الطريقة التي أرسلتها
           if (data.password && data.password.trim() !== '') {
-             updates.password = data.password; 
+             const hashedPassword = await bcrypt.hash(data.password, 10);
+             updates.password = hashedPassword; 
           }
+
           const { error: updateErr } = await supabase.from('users').update(updates).eq('id', userId);
           if (updateErr) throw updateErr;
           successMessage = 'تم تحديث البيانات بنجاح';
