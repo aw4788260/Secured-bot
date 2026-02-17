@@ -23,7 +23,7 @@ export default async (req, res) => {
     try {
       let query = supabase
         .from('subscription_requests')
-        .select('*', { count: 'exact' }) // جلب العدد الإجمالي
+        .select('*', { count: 'exact' }) // يجلب كل البيانات ومن ضمنها السعرين
         .eq('teacher_id', teacherId)     // ✅ حماية أساسية: جلب طلبات هذا المدرس فقط
         .order('created_at', { ascending: false })
         .range(start, end);
@@ -36,7 +36,13 @@ export default async (req, res) => {
 
       if (fetchError) throw fetchError;
 
-      return res.status(200).json({ data, count });
+      // ✅ التعديل الجديد: تجهيز البيانات وإضافة مؤشر `has_discount` للتسهيل على واجهة العرض
+      const enrichedData = data.map(request => ({
+          ...request,
+          has_discount: request.actual_paid_price !== null && request.actual_paid_price < request.total_price
+      }));
+
+      return res.status(200).json({ data: enrichedData, count });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
