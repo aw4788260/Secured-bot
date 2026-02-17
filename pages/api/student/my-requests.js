@@ -15,14 +15,20 @@ export default async (req, res) => {
       // جلب الطلبات الخاصة بهذا المستخدم
       const { data, error } = await supabase
           .from('subscription_requests')
-          // ✅ تم إضافة user_note هنا ليتم جلبها مع البيانات
-          .select('id, created_at, status, course_title, total_price, rejection_reason, user_note')
+          // ✅ تم إضافة actual_paid_price لجلب السعر بعد الخصم
+          .select('id, created_at, status, course_title, total_price, actual_paid_price, rejection_reason, user_note')
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      return res.status(200).json(data);
+      // ✅ تجهيز البيانات وإضافة مؤشر واضح يحدد ما إذا تم استخدام خصم أم لا
+      const enrichedData = data.map(request => ({
+          ...request,
+          has_discount: request.actual_paid_price !== null && request.actual_paid_price < request.total_price
+      }));
+
+      return res.status(200).json(enrichedData);
   } catch (err) {
       return res.status(500).json({ error: err.message });
   }
