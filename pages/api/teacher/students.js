@@ -12,7 +12,8 @@ export default async (req, res) => {
   // GET: جلب البيانات
   // =================================================================
   if (req.method === 'GET') {
-    const { mode, query } = req.query;
+    // ✅ إضافة status و page و limit من الاستعلام (لدعم التبويبات والصفحات)
+    const { mode, query, status = 'pending', page = 1, limit = 10 } = req.query;
 
     try {
       // ✅ 1. وضع جديد: جلب محتوى المعلم فقط (للقوائم المنسدلة عند الإضافة)
@@ -30,7 +31,7 @@ export default async (req, res) => {
         return res.status(200).json(content);
       }
 
-      // 🅰️ الوضع الثاني: جلب الطلبات المعلقة (Requests)
+      // 🅰️ الوضع الثاني: جلب الطلبات (Requests) مع الفلترة والصفحات
       if (mode === 'requests') {
         // أ) نجلب أرقام الكورسات والمواد المملوكة للمعلم
         const { data: myCourses } = await supabase
@@ -47,17 +48,20 @@ export default async (req, res) => {
           
         const mySubjectIds = mySubjects?.map(s => s.id) || [];
 
-        // ب) جلب كل الطلبات المعلقة
+        // ب) جلب الطلبات بناءً على حالتها (مقبولة، مرفوضة، قيد الانتظار)
         const { data: allRequests, error: reqError } = await supabase
           .from('subscription_requests')
           .select('*')
-          .eq('status', 'pending')
+          .eq('status', status)
           .order('created_at', { ascending: false });
 
         if (reqError) throw reqError;
 
-        // ج) فلترة الطلبات في الذاكرة
+        // ج) فلترة الطلبات لتشمل فقط محتوى هذا المعلم
         const teacherRequests = allRequests.filter(req => {
+            // التوافقية مع التحديث الجديد إذا كان المعرف مسجلاً مباشرة
+            if (req.teacher_id === teacherId) return true;
+
             const items = req.requested_data || [];
             return items.some(item => {
                 if (item.type === 'course') return myCourseIds.includes(item.id);
@@ -66,7 +70,17 @@ export default async (req, res) => {
             });
         });
 
-        return res.status(200).json(teacherRequests);
+        // د) نظام الصفحات (Pagination) بمعدل 10 طلبات
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const startIndex = (pageNum - 1) * limitNum;
+        const paginatedRequests = teacherRequests.slice(startIndex, startIndex + limitNum);
+
+        // ✅ إرجاع البيانات في شكل {data, count} لدعم عرض الصفحات
+        return res.status(200).json({
+           data: paginatedRequests,
+           count: teacherRequests.length
+        });
       }
 
       // 🅱️ الوضع الثالث: البحث عن طالب (Search Student)
@@ -156,7 +170,7 @@ export default async (req, res) => {
          const mySubjectIds = mySubjects?.map(s => s.id) || [];
 
          const items = reqData.requested_data || [];
-         const isMyRequest = items.some(item => {
+         const isMyRequest = (reqData.teacher_id === teacherId) || items.some(item => {
              if (item.type === 'course') return myCourseIds.includes(item.id);
              if (item.type === 'subject') return mySubjectIds.includes(item.id);
              return false;
