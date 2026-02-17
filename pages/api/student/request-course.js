@@ -83,7 +83,8 @@ export default async (req, res) => {
       // =========================================================
       // 🛡️ 1. التحقق من عدم وجود طلبات مكررة قيد الانتظار (Pending)
       // =========================================================
-      const selectedItemIds = selectedItems.map(item => item.id.toString());
+      // ✅ دمج نوع العنصر مع الـ ID لضمان عدم حدوث تداخل (مثال: course_1, subject_1)
+      const selectedItemKeys = selectedItems.map(item => `${item.type}_${item.id}`);
       
       const { data: pendingRequests } = await supabase
         .from('subscription_requests')
@@ -94,11 +95,12 @@ export default async (req, res) => {
       if (pendingRequests && pendingRequests.length > 0) {
         let isDuplicate = false;
         
-        // البحث داخل بيانات الطلبات المعلقة عما إذا كان أي منها يحتوي على عناصر السلة الحالية
+        // فحص التطابق التام بناءً على (النوع + رقم العنصر) معاً
         for (const reqData of pendingRequests) {
           const items = reqData.requested_data || [];
           for (const item of items) {
-            if (selectedItemIds.includes(item.id.toString())) {
+            const currentKey = `${item.type}_${item.id}`;
+            if (selectedItemKeys.includes(currentKey)) {
               isDuplicate = true;
               break;
             }
@@ -109,7 +111,7 @@ export default async (req, res) => {
         if (isDuplicate) {
           // ⚠️ نحذف صورة الإيصال المرفوعة لتوفير مساحة السيرفر لأن الطلب مرفوض
           try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
-          return res.status(400).json({ error: 'لديك طلب قيد المراجعة بالفعل يحتوي على هذه العناصر.' });
+          return res.status(400).json({ error: 'لديك طلب قيد المراجعة بالفعل يحتوي على هذا المحتوى تحديداً.' });
         }
       }
       // =========================================================
@@ -209,7 +211,7 @@ export default async (req, res) => {
 
          discountCodeId = discountData.id;
 
-         // 🔴 التعديل الجديد: إضافة الجملة داخل الملاحظة
+         // 🔴 إضافة الجملة داخل الملاحظة
          const usedCouponText = `(تم استخدام الكوبون: ${appliedCode.trim().toUpperCase()})`;
          userNote = userNote.trim() !== '' ? `${userNote}\n${usedCouponText}` : usedCouponText;
 
@@ -241,7 +243,7 @@ export default async (req, res) => {
         actual_paid_price: finalTotalPrice,    // 👈 null إذا لم يكن هناك خصم، أو قيمة الخصم
         discount_code_id: discountCodeId,      // 👈 ربط الطلب بالكوبون المستخدم
         
-        user_note: userNote,                   // 👈 الملاحظة هنا ستحتوي على الجملة الجديدة بجانب كلام الطالب
+        user_note: userNote,                   // 👈 الملاحظة تحتوي على الجملة الجديدة بجانب كلام الطالب
         payment_file_path: fileName,
         status: 'pending',
         requested_data: requestedData,
