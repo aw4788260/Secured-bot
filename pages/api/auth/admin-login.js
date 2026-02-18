@@ -2,15 +2,36 @@ import { supabase } from '../../../lib/supabaseClient';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { serialize } from 'cookie';
+import { LRUCache } from 'lru-cache'; // ✅ 1. استيراد مكتبة الحماية
+
+// ✅ 2. إعداد الذاكرة المؤقتة (خارج الدالة لتبقى محفوظة في ذاكرة الخادم)
+// سيتم تتبع أقصى 500 عنوان IP لمنع استهلاك الذاكرة، ومدة الحظر 15 دقيقة
+const rateLimit = new LRUCache({
+  max: 500, 
+  ttl: 15 * 60 * 1000, 
+});
 
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
+
+  // ✅ 3. استخراج عنوان الـ IP الخاص بالمستخدم (يدعم الخوادم الوكيلة مثل Vercel و Cloudflare)
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
+  
+  // ✅ 4. التحقق من عدد المحاولات السابقة لهذا الـ IP
+  const currentAttempts = rateLimit.get(ip) || 0;
+
+  if (currentAttempts >= 5) {
+    // إذا تجاوز 5 محاولات، يتم رفض الطلب فوراً للحد من الضغط على قاعدة البيانات
+    return res.status(429).json({ 
+        success: false, 
+        message: 'تم حظر عنوان IP الخاص بك مؤقتاً لكثرة المحاولات الخاطئة. يرجى المحاولة بعد 15 دقيقة.' 
+    });
+  }
 
   const { username, password } = req.body;
 
   try {
     // 1. البحث باستخدام admin_username حصراً
-    // كما طلبت: الاعتماد فقط على بيانات الأدمن
     const { data: user } = await supabase
       .from('users')
       .select('id, admin_password, is_admin, role, is_blocked, teacher_profile_id, first_name, admin_username')
@@ -19,6 +40,8 @@ export default async (req, res) => {
 
     // إذا لم يوجد مستخدم بهذا الاسم في عمود admin_username
     if (!user) {
+        // ✅ تسجيل محاولة فاشلة
+        rateLimit.set(ip, currentAttempts + 1);
         return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
 
@@ -26,11 +49,12 @@ export default async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.admin_password);
 
     if (!isMatch) {
+        // ✅ تسجيل محاولة فاشلة
+        rateLimit.set(ip, currentAttempts + 1);
         return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
 
     // 3. التحقق من الصلاحيات (Teacher & Super Admin Only)
-    // نسمح بالدخول إذا كان admin=true أو role='super_admin' أو role='teacher'
     const isSuperAdmin = user.is_admin === true || user.role === 'super_admin';
     const isTeacher = user.role === 'teacher';
 
@@ -43,7 +67,10 @@ export default async (req, res) => {
         return res.status(403).json({ success: false, message: 'هذا الحساب محظور.' });
     }
 
-    // 5. توليد وحفظ توكن الجلسة
+    // ✅ 5. تصفير العداد عند تسجيل الدخول بنجاح!
+    rateLimit.delete(ip);
+
+    // 6. توليد وحفظ توكن الجلسة
     const newSessionToken = crypto.randomBytes(32).toString('hex');
 
     const { error: updateError } = await supabase
@@ -53,7 +80,7 @@ export default async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // 6. إعداد الكوكيز
+    // 7. إعداد الكوكيز
     const cookie = serialize('admin_session', newSessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV !== 'development',
@@ -73,6 +100,7 @@ export default async (req, res) => {
 
   } catch (err) {
     console.error("Login Error:", err);
-    return res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    // ✅ إخفاء رسالة الخطأ الأصلية لتجنب تسريب بيانات الخادم للمخترقين
+    return res.status(500).json({ success: false, message: 'حدث خطأ داخلي في الخادم' });
   }
 };
