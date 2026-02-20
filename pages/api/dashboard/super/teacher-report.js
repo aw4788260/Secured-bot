@@ -1,6 +1,23 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 
+// ✅ دالة ذكية لحساب فرق التوقيت لمصر بناءً على التاريخ (تدعم الصيفي والشتوي)
+const getEgyptOffset = (dateString) => {
+    try {
+        const date = new Date(dateString);
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', timeZoneName: 'shortOffset' });
+        const parts = fmt.formatToParts(date);
+        const offsetString = parts.find(p => p.type === 'timeZoneName').value; 
+        
+        const hours = parseInt(offsetString.replace(/[^\d+-]/g, '')) || 2;
+        const sign = hours >= 0 ? '+' : '-';
+        const paddedHours = Math.abs(hours).toString().padStart(2, '0');
+        return `${sign}${paddedHours}:00`; 
+    } catch (e) {
+        return '+02:00'; 
+    }
+};
+
 export default async function handler(req, res) {
   // 🆔 إعداد لوجات التتبع (Logs)
   const reqId = Math.random().toString(36).substring(7).toUpperCase();
@@ -77,10 +94,13 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
-    // 3. تنسيق التواريخ للدالة والاستعلام
+    // 3. تنسيق التواريخ للدالة والاستعلام مع فرق التوقيت الديناميكي
     // ============================================================
-    const formattedStartDate = startDate ? `${startDate}T00:00:00` : null;
-    const formattedEndDate = endDate ? `${endDate}T23:59:59` : null;
+    const startOffset = startDate ? getEgyptOffset(startDate) : '+02:00';
+    const endOffset = endDate ? getEgyptOffset(endDate) : '+02:00';
+
+    const formattedStartDate = startDate ? `${startDate}T00:00:00${startOffset}` : null;
+    const formattedEndDate = endDate ? `${endDate}T23:59:59${endOffset}` : null;
 
     // ============================================================
     // ✅ 4. جلب الأرباح الفعلية مباشرة من دالة قاعدة البيانات (RPC)
