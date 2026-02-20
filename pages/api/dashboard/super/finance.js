@@ -7,16 +7,25 @@ const getEgyptOffset = (dateString) => {
         const date = new Date(dateString);
         const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', timeZoneName: 'shortOffset' });
         const parts = fmt.formatToParts(date);
-        const offsetString = parts.find(p => p.type === 'timeZoneName').value; // سينتج "GMT+2" أو "GMT+3"
+        const offsetString = parts.find(p => p.type === 'timeZoneName').value; 
         
         const hours = parseInt(offsetString.replace(/[^\d+-]/g, '')) || 2;
         const sign = hours >= 0 ? '+' : '-';
         const paddedHours = Math.abs(hours).toString().padStart(2, '0');
         
-        return `${sign}${paddedHours}:00`; // النتيجة النهائية: "+02:00" أو "+03:00"
+        return `${sign}${paddedHours}:00`; 
     } catch (e) {
-        return '+02:00'; // قيمة احتياطية
+        return '+02:00'; 
     }
+};
+
+// ✅ الدالة الجديدة: تحويل تاريخ مصر إلى UTC (جرينتش) صريح قبل إرساله للداتابيز
+const getUtcBoundary = (dateString, isEnd = false) => {
+    if (!dateString) return null;
+    const offset = getEgyptOffset(dateString);
+    const time = isEnd ? '23:59:59' : '00:00:00';
+    // بناء التاريخ بتوقيت مصر ثم تحويله لـ ISO (الذي يعطينا توقيت جرينتش بحرف Z)
+    return new Date(`${dateString}T${time}${offset}`).toISOString();
 };
 
 export default async function handler(req, res) {
@@ -47,12 +56,11 @@ export default async function handler(req, res) {
 
   const { startDate, endDate } = req.query;
 
-  // ✅ تطبيق فرق التوقيت الديناميكي
-  const startOffset = startDate ? getEgyptOffset(startDate) : '+02:00';
-  const endOffset = endDate ? getEgyptOffset(endDate) : '+02:00';
+  // ✅ الاعتماد على التوقيت العالمي الصريح (التحويل لـ UTC صراحةً)
+  const formattedStartDate = getUtcBoundary(startDate, false);
+  const formattedEndDate = getUtcBoundary(endDate, true);
 
-  const formattedStartDate = startDate ? `${startDate}T00:00:00${startOffset}` : null;
-  const formattedEndDate = endDate ? `${endDate}T23:59:59${endOffset}` : null;
+  log('DATES', `Converted Start: ${formattedStartDate} | End: ${formattedEndDate}`);
 
   try {
     // ============================================================
@@ -66,7 +74,7 @@ export default async function handler(req, res) {
       .eq('key', 'platform_percentage')
       .maybeSingle();
 
-    if (settingsData) {
+    if (settingsData && settingsData.value) {
       const val = parseFloat(settingsData.value);
       if (!isNaN(val)) {
         // تحويل الرقم: إذا كان > 1 (مثل 15) نقسمه على 100، وإلا نستخدمه كما هو
@@ -162,7 +170,7 @@ export default async function handler(req, res) {
            .select('id', { count: 'exact', head: true })
            .eq('teacher_id', teacher.teacher_profile_id) // ✅ استخدام المعرف الصحيح
            .eq('status', 'approved')
-           .gte('created_at', formattedStartDate || '1970-01-01T00:00:00Z') // حماية التوقيت هنا أيضاً
+           .gte('created_at', formattedStartDate || '1970-01-01T00:00:00.000Z') // حماية التوقيت هنا أيضاً
            .lte('created_at', formattedEndDate || new Date().toISOString());
          transactionCount = count || 0;
          
