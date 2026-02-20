@@ -49,12 +49,12 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات (تم حذف type من هنا)
+    // 4. جلب البيانات (✅ تم إضافة teacher_id إلى courses للتحقق من الملكية)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
         id, title, course_id,
-        courses ( id, title ),
+        courses ( id, title, teacher_id ),
         chapters (
           id, title, sort_order,
           videos (id, title, sort_order, youtube_video_id), 
@@ -67,8 +67,21 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 5. جلب محاولات الطالب المكتملة
-    const examIds = subjectData.exams.map(e => e.id);
+    // ✅ 4.5 معرفة ما إذا كان المستخدم الحالي هو المدرس صاحب الكورس
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('teacher_profile_id')
+      .eq('id', userId)
+      .single();
+      
+    const isOwner = currentUser?.teacher_profile_id && 
+                    String(currentUser.teacher_profile_id) === String(subjectData.courses?.teacher_id);
+
+    // 5. جلب محاولات الطالب المكتملة (بشكل آمن)
+    const safeExams = subjectData.exams || [];
+    const safeChapters = subjectData.chapters || [];
+    
+    const examIds = safeExams.map(e => e.id);
     let attemptsMap = {}; 
 
     if (examIds.length > 0) {
@@ -93,26 +106,32 @@ export default async (req, res) => {
       course_id: subjectData.course_id,
       course_title: subjectData.courses?.title || "Unknown Course",
       
-      chapters: subjectData.chapters
-        .sort((a, b) => a.sort_order - b.sort_order)
+      chapters: safeChapters
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map(ch => ({
           ...ch,
-          // تم حذف type من هنا أيضاً
-          videos: ch.videos.sort((a, b) => a.sort_order - b.sort_order).map(v => ({
+          videos: (ch.videos || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(v => ({
             id: v.id, title: v.title, hasId: !!v.youtube_video_id 
           })),
-          pdfs: ch.pdfs.sort((a, b) => a.sort_order - b.sort_order)
+          pdfs: (ch.pdfs || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         })),
         
-      exams: subjectData.exams
+      exams: safeExams
         .filter(ex => {
             // استبعاد المعطل يدوياً
             if (ex.is_active === false) return false;
 
-            // ⚠️ تم إزالة شرط (now < startTime) هنا لعرض الامتحانات القادمة
+            // ✅ فلتر الوقت: إذا لم يحن الوقت، يتم إخفاؤه للجميع باستثناء المدرس المالك
+            if (ex.start_time) {
+                const startTime = new Date(ex.start_time);
+                if (now < startTime && !isOwner) {
+                    return false; 
+                }
+            }
+            
             return true; 
         })
-        .sort((a, b) => a.sort_order - b.sort_order)
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map(ex => {
           const attemptId = attemptsMap[ex.id] || null;
           const isCompleted = !!attemptId;
