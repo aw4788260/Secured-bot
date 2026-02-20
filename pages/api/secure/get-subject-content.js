@@ -109,11 +109,7 @@ export default async (req, res) => {
             // استبعاد المعطل يدوياً
             if (ex.is_active === false) return false;
 
-            // استبعاد الامتحان الذي لم يبدأ وقته بعد
-            if (ex.start_time) {
-                const startTime = new Date(ex.start_time);
-                if (now < startTime) return false;
-            }
+            // ⚠️ تم إزالة شرط (now < startTime) هنا لعرض الامتحانات القادمة
             return true; 
         })
         .sort((a, b) => a.sort_order - b.sort_order)
