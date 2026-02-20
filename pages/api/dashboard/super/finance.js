@@ -1,6 +1,24 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 
+// ✅ دالة ذكية لحساب فرق التوقيت لمصر بناءً على التاريخ (تدعم الصيفي والشتوي)
+const getEgyptOffset = (dateString) => {
+    try {
+        const date = new Date(dateString);
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', timeZoneName: 'shortOffset' });
+        const parts = fmt.formatToParts(date);
+        const offsetString = parts.find(p => p.type === 'timeZoneName').value; // سينتج "GMT+2" أو "GMT+3"
+        
+        const hours = parseInt(offsetString.replace(/[^\d+-]/g, '')) || 2;
+        const sign = hours >= 0 ? '+' : '-';
+        const paddedHours = Math.abs(hours).toString().padStart(2, '0');
+        
+        return `${sign}${paddedHours}:00`; // النتيجة النهائية: "+02:00" أو "+03:00"
+    } catch (e) {
+        return '+02:00'; // قيمة احتياطية
+    }
+};
+
 export default async function handler(req, res) {
   // 🆔 إعداد لوجات التتبع (Logs) لمراقبة الطلبات
   const reqId = Math.random().toString(36).substring(7).toUpperCase();
@@ -29,9 +47,12 @@ export default async function handler(req, res) {
 
   const { startDate, endDate } = req.query;
 
-  // تجهيز التواريخ بتنسيق مناسب للدالة (ISO String)
-  const formattedStartDate = startDate ? `${startDate}T00:00:00` : null;
-  const formattedEndDate = endDate ? `${endDate}T23:59:59` : null;
+  // ✅ تطبيق فرق التوقيت الديناميكي
+  const startOffset = startDate ? getEgyptOffset(startDate) : '+02:00';
+  const endOffset = endDate ? getEgyptOffset(endDate) : '+02:00';
+
+  const formattedStartDate = startDate ? `${startDate}T00:00:00${startOffset}` : null;
+  const formattedEndDate = endDate ? `${endDate}T23:59:59${endOffset}` : null;
 
   try {
     // ============================================================
@@ -141,7 +162,7 @@ export default async function handler(req, res) {
            .select('id', { count: 'exact', head: true })
            .eq('teacher_id', teacher.teacher_profile_id) // ✅ استخدام المعرف الصحيح
            .eq('status', 'approved')
-           .gte('created_at', formattedStartDate || '1970-01-01')
+           .gte('created_at', formattedStartDate || '1970-01-01T00:00:00Z') // حماية التوقيت هنا أيضاً
            .lte('created_at', formattedEndDate || new Date().toISOString());
          transactionCount = count || 0;
          
