@@ -18,6 +18,15 @@ const getEgyptOffset = (dateString) => {
     }
 };
 
+// ✅ الدالة الجديدة: تحويل تاريخ مصر إلى UTC (جرينتش) صريح قبل إرساله للداتابيز
+const getUtcBoundary = (dateString, isEnd = false) => {
+    if (!dateString) return null;
+    const offset = getEgyptOffset(dateString);
+    const time = isEnd ? '23:59:59' : '00:00:00';
+    // بناء التاريخ بتوقيت مصر ثم تحويله لـ ISO (الذي يعطينا توقيت جرينتش بحرف Z)
+    return new Date(`${dateString}T${time}${offset}`).toISOString();
+};
+
 export default async function handler(req, res) {
   // 🆔 إعداد لوجات التتبع (Logs)
   const reqId = Math.random().toString(36).substring(7).toUpperCase();
@@ -96,11 +105,9 @@ export default async function handler(req, res) {
     // ============================================================
     // 3. تنسيق التواريخ للدالة والاستعلام مع فرق التوقيت الديناميكي
     // ============================================================
-    const startOffset = startDate ? getEgyptOffset(startDate) : '+02:00';
-    const endOffset = endDate ? getEgyptOffset(endDate) : '+02:00';
-
-    const formattedStartDate = startDate ? `${startDate}T00:00:00${startOffset}` : null;
-    const formattedEndDate = endDate ? `${endDate}T23:59:59${endOffset}` : null;
+    // الاعتماد على التوقيت العالمي الصريح
+    const formattedStartDate = getUtcBoundary(startDate, false);
+    const formattedEndDate = getUtcBoundary(endDate, true);
 
     // ============================================================
     // ✅ 4. جلب الأرباح الفعلية مباشرة من دالة قاعدة البيانات (RPC)
