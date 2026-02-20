@@ -34,11 +34,11 @@ export default async function handler(req, res) {
 
   try {
     // ============================================================
-    // 1. جلب بيانات المدرس + teacher_profile_id (التصحيح هنا)
+    // 1. جلب بيانات المدرس
     // ============================================================
     const { data: teacher, error: tError } = await supabase
         .from('users')
-        .select('first_name, admin_username, teacher_profile_id') // 👈 جلبنا معرف البروفايل
+        .select('first_name, admin_username, teacher_profile_id')
         .eq('id', teacherId)
         .single();
     
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
             teacherName: teacher.first_name || teacher.admin_username,
             requests: [],
-            summary: { total_approved_amount: 0, total_approved_count: 0, total_rejected_count: 0 },
+            summary: { total_original_amount: 0, total_actual_amount: 0, total_approved_count: 0, total_rejected_count: 0 },
             platformPercentage: 0
         });
     }
@@ -77,46 +77,68 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
-    // 3. إعداد استعلام العمليات (باستخدام teacher_profile_id)
+    // 3. تنسيق التواريخ للدالة والاستعلام
+    // ============================================================
+    const formattedStartDate = startDate ? `${startDate}T00:00:00` : null;
+    const formattedEndDate = endDate ? `${endDate}T23:59:59` : null;
+
+    // ============================================================
+    // ✅ 4. جلب الأرباح الفعلية مباشرة من دالة قاعدة البيانات (RPC)
+    // ============================================================
+    log('FETCH_RPC', 'Calling get_teacher_actual_revenue RPC...');
+    
+    const { data: actualRevenueRPC, error: rpcError } = await supabase.rpc('get_teacher_actual_revenue', {
+        teacher_id_arg: teacher.teacher_profile_id,
+        start_date: formattedStartDate,
+        end_date: formattedEndDate
+    });
+
+    if (rpcError) {
+        errLog('RPC_ERROR', 'Failed to calculate actual revenue via DB function', rpcError);
+    }
+    
+    const totalActualAmount = actualRevenueRPC || 0;
+    log('RPC_RESULT', `Actual Revenue from RPC: ${totalActualAmount}`);
+
+    // ============================================================
+    // 5. إعداد استعلام العمليات (للعرض في الجدول)
     // ============================================================
     let query = supabase
       .from('subscription_requests')
       .select('*')
-      .eq('teacher_id', teacher.teacher_profile_id) // ✅ استخدام المعرف الصحيح
+      .eq('teacher_id', teacher.teacher_profile_id)
       .in('status', ['approved', 'rejected'])
       .order('created_at', { ascending: false });
 
-    // فلترة التاريخ
-    if (startDate) {
-        query = query.gte('created_at', `${startDate}T00:00:00`);
-    }
-    if (endDate) {
-        query = query.lte('created_at', `${endDate}T23:59:59`);
-    }
+    // تطبيق فلترة التاريخ للجدول أيضاً
+    if (formattedStartDate) query = query.gte('created_at', formattedStartDate);
+    if (formattedEndDate) query = query.lte('created_at', formattedEndDate);
 
     const { data: requests, error: rError } = await query;
 
     if (rError) throw rError;
 
-    log('DATA_FETCHED', `Found ${requests.length} requests for ProfileID ${teacher.teacher_profile_id}`);
-
-    // حساب التجميعات
+    // ============================================================
+    // 6. حساب باقي التجميعات البسيطة
+    // ============================================================
     const summary = {
-        total_approved_amount: 0,
+        total_original_amount: 0, 
+        total_actual_amount: totalActualAmount, // 👈 تم الاعتماد على الدالة (RPC) هنا!
         total_approved_count: 0,
         total_rejected_count: 0
     };
 
+    // حلقة التكرار الآن تُستخدم فقط لحساب أعداد الطلبات والسعر الافتراضي الأصلي
     requests.forEach(req => {
         if (req.status === 'approved') {
-            summary.total_approved_amount += (req.total_price || 0);
+            summary.total_original_amount += (req.total_price || 0);
             summary.total_approved_count += 1;
         } else if (req.status === 'rejected') {
             summary.total_rejected_count += 1;
         }
     });
 
-    log('SUCCESS', `Report Ready. Total Amount: ${summary.total_approved_amount}`);
+    log('SUCCESS', `Report Ready. Actual Amount: ${summary.total_actual_amount}`);
 
     return res.status(200).json({
         teacherName: teacher.first_name || teacher.admin_username,
