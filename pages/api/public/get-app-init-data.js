@@ -228,7 +228,7 @@ export default async (req, res) => {
           telegram: contactInfo['support_telegram'] || ''
       },
       // ✅ إرسال حالة الوضع المجاني
-      freeMode: contactInfo['free_mode'] === 'true'
+      freeModeV2: contactInfo['free_mode'] === 'true'
     });
 
   } catch (err) {
