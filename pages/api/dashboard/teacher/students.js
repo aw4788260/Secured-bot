@@ -64,24 +64,20 @@ export default async (req, res) => {
     try {
         // --- الحالة 1: طلب تفاصيل طالب معين (للمودال) ---
         if (get_details_for_user) {
-            const validStudentIds = await getMyStudentIds();
-            const targetIdStr = String(get_details_for_user);
-
-            if (!validStudentIds.map(String).includes(targetIdStr)) {
-                 return res.status(200).json({ courses: [], subjects: [], available_courses: [], available_subjects: [] });
-            }
+            // ✅ تم إزالة قيد (validStudentIds) للسماح للمدرس بفتح بروفايل أي طالب للبحث عنه وإضافته
+            // لا تقلق، البيانات المجلوبة محمية وتخص هذا المدرس فقط بسبب (.in('course_id', myCourseIds))
 
             const { data: userCourses } = await supabase
                 .from('user_course_access')
                 .select('course_id, courses(title)')
                 .eq('user_id', get_details_for_user)
-                .in('course_id', myCourseIds);
+                .in('course_id', myCourseIds); // 🔒 حماية: جلب كورسات هذا المدرس فقط
             
             const { data: userSubjects } = await supabase
                 .from('user_subject_access')
                 .select('subject_id, subjects(title, course_id)')
                 .eq('user_id', get_details_for_user)
-                .in('subject_id', mySubjectIds);
+                .in('subject_id', mySubjectIds); // 🔒 حماية: جلب مواد هذا المدرس فقط
 
             const ownedCourseIds = userCourses?.map(uc => uc.course_id) || [];
             const ownedSubjectIds = userSubjects?.map(us => us.subject_id) || [];
@@ -103,36 +99,42 @@ export default async (req, res) => {
         }
 
         // --- الحالة 2: الجدول والبحث ---
-        let targetStudentIds = await getMyStudentIds();
-
-        if (courses_filter) {
-            const filterCourseIds = courses_filter.split(',');
-            const { data: filteredByCourse } = await supabase.from('user_course_access').select('user_id').in('course_id', filterCourseIds);
-            const usersInCourses = filteredByCourse?.map(x => x.user_id) || [];
-            targetStudentIds = targetStudentIds.filter(id => usersInCourses.includes(id));
-        }
-
-        if (subjects_filter) {
-            const filterSubjectIds = subjects_filter.split(',');
-            const { data: filteredBySubject } = await supabase.from('user_subject_access').select('user_id').in('subject_id', filterSubjectIds);
-            const usersInSubjects = filteredBySubject?.map(x => x.user_id) || [];
-            targetStudentIds = targetStudentIds.filter(id => usersInSubjects.includes(id));
-        }
-
-        if (targetStudentIds.length === 0) {
-            return res.status(200).json({ students: [], total: 0 });
-        }
-
         let query = supabase
             .from('users')
-            .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' })
-            .in('id', targetStudentIds);
+            .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' });
 
         if (search && search.trim() !== '') {
+            // ✅ مسار البحث العام: يبحث في جميع طلاب المنصة
+            query = query.eq('role', 'student');
+            
             const term = search.trim();
             let orQuery = `first_name.ilike.%${term}%,username.ilike.%${term}%,phone.ilike.%${term}%`;
             if (/^\d+$/.test(term)) orQuery += `,id.eq.${term}`;
             query = query.or(orQuery);
+            
+        } else {
+            // ✅ المسار الافتراضي (بدون بحث): يجلب طلاب هذا المدرس فقط لتجنب الزحام
+            let targetStudentIds = await getMyStudentIds();
+
+            if (courses_filter) {
+                const filterCourseIds = courses_filter.split(',');
+                const { data: filteredByCourse } = await supabase.from('user_course_access').select('user_id').in('course_id', filterCourseIds);
+                const usersInCourses = filteredByCourse?.map(x => x.user_id) || [];
+                targetStudentIds = targetStudentIds.filter(id => usersInCourses.includes(id));
+            }
+
+            if (subjects_filter) {
+                const filterSubjectIds = subjects_filter.split(',');
+                const { data: filteredBySubject } = await supabase.from('user_subject_access').select('user_id').in('subject_id', filterSubjectIds);
+                const usersInSubjects = filteredBySubject?.map(x => x.user_id) || [];
+                targetStudentIds = targetStudentIds.filter(id => usersInSubjects.includes(id));
+            }
+
+            if (targetStudentIds.length === 0) {
+                return res.status(200).json({ students: [], total: 0 });
+            }
+
+            query = query.in('id', targetStudentIds);
         }
 
         const from = (page - 1) * limit;
@@ -168,6 +170,8 @@ export default async (req, res) => {
       const myStudentIds = await getMyStudentIds();
       const safeMyIds = myStudentIds.map(String);
       
+      // ✅ 🔒 الحماية الصارمة: المدرس يمكنه فقط منح الصلاحيات للطلاب الجدد (grant_access)
+      // أما الإجراءات الأخرى (مثل الحذف) فلا تتم إلا على الطلاب الذين يمتلكون كورساته (safeMyIds)
       const isAuthorized = targetIds.every(id => safeMyIds.includes(String(id)) || action === 'grant_access'); 
 
       if (!isAuthorized && action !== 'grant_access') {
@@ -175,7 +179,7 @@ export default async (req, res) => {
       }
 
       if (action !== 'grant_access' && action !== 'revoke_access') {
-          return res.status(403).json({ error: 'عذراً، غير مصرح لك بتعديل بيانات الطلاب أو حذفهم.' });
+          return res.status(403).json({ error: 'عذراً، غير مصرح لك بتعديل بيانات الطلاب الأساسية أو حظرهم.' });
       }
 
       try {
@@ -183,6 +187,7 @@ export default async (req, res) => {
           if (action === 'grant_access') {
               const { courses = [], subjects = [] } = grantList || {};
               
+              // 🔒 فلترة البيانات القادمة من الفرونت إند لضمان أنها تخص هذا المدرس فقط
               const safeCourses = courses.filter(id => myCourseIds.includes(Number(id)) || myCourseIds.includes(String(id)));
               const safeSubjects = subjects.filter(id => mySubjectIds.includes(Number(id)) || mySubjectIds.includes(String(id)));
 
@@ -305,6 +310,7 @@ export default async (req, res) => {
           if (action === 'revoke_access') {
               const { courseId, subjectId } = req.body;
               
+              // 🔒 حماية إضافية قبل الحذف
               if (courseId && myCourseIds.includes(Number(courseId))) {
                   await supabase.from('user_course_access').delete().in('user_id', targetIds).eq('course_id', courseId);
               } else if (subjectId && mySubjectIds.includes(Number(subjectId))) {
