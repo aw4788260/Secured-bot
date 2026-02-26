@@ -71,11 +71,10 @@ export default async function handler(req, res) {
       const to = from + limit - 1;
 
       // بناء الاستعلام الأساسي
-      // ✅ التعديل: جلب الطلاب والمشرفين (student + moderator)
+      // ✅ التعديل: إزالة شرط الرتبة لجلب كافة المستخدمين (مدرسين، طلاب، مشرفين، إلخ)
       let query = supabase
         .from('users')
         .select('id, first_name, username, phone, role, is_blocked, created_at, is_admin, devices(id, fingerprint)', { count: 'exact' })
-        .in('role', ['student', 'moderator']) // يسمح بظهور الطلاب والمشرفين
         .order('created_at', { ascending: false })
         .range(from, to);
 
