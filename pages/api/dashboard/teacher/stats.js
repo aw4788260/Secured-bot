@@ -28,9 +28,9 @@ export default async (req, res) => {
         .eq('teacher_id', teacherId)
         .eq('status', 'pending'),
 
-      // ج. حساب الأرباح (عبر دالة قاعدة البيانات الحالية)
-      // ✅ التعديل هنا: تمرير جميع المتغيرات الثلاثة لكي لا تفشل الدالة
-      supabase.rpc('get_teacher_revenue', { 
+      // ج. حساب الأرباح (عبر دالة قاعدة البيانات الجديدة الخاصة بالتحصيل الفعلي)
+      // ✅ التعديل هنا: استخدام الدالة get_teacher_actual_revenue
+      supabase.rpc('get_teacher_actual_revenue', { 
           teacher_id_arg: teacherId,
           start_date: null,
           end_date: null
@@ -50,14 +50,19 @@ export default async (req, res) => {
         console.warn("⚠️ RPC Failed or returned null, falling back to manual calculation.", revenueResult.error?.message);
         
         // الحساب اليدوي كاحتياطي
+        // ✅ التعديل هنا: جلب actual_paid_price مع total_price لحساب السعر الفعلي
         const { data: manualData, error: manualError } = await supabase
             .from('subscription_requests')
-            .select('total_price')
+            .select('total_price, actual_paid_price')
             .eq('teacher_id', teacherId)
             .eq('status', 'approved');
             
         if (!manualError && manualData) {
-             totalEarnings = manualData.reduce((sum, item) => sum + (Number(item.total_price) || 0), 0);
+             // ✅ التعديل هنا: محاكاة COALESCE (استخدام actual_paid_price وإلا استخدام total_price)
+             totalEarnings = manualData.reduce((sum, item) => {
+                 const priceToUse = item.actual_paid_price !== null ? item.actual_paid_price : item.total_price;
+                 return sum + (Number(priceToUse) || 0);
+             }, 0);
         }
     }
 
