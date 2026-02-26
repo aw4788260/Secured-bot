@@ -94,9 +94,9 @@ export default async (req, res) => {
     // 5. حساب الأرباح (باستخدام الدالة حصراً)
     // =========================================================
     
-    // ✅ التعديل الجوهري هنا: إضافة start_date و end_date كـ null
+    // ✅ التعديل الجوهري هنا: استدعاء دالة التحصيل الفعلي المحدثة
     const { data: rpcData, error: rpcError } = await supabase
-      .rpc('get_teacher_revenue', { 
+      .rpc('get_teacher_actual_revenue', { 
           teacher_id_arg: teacherId,
           start_date: null,
           end_date: null
