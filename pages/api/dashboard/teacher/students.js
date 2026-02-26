@@ -104,12 +104,17 @@ export default async (req, res) => {
             .select(`id, first_name, username, phone, created_at, is_blocked, is_admin, devices(fingerprint)`, { count: 'exact' });
 
         if (search && search.trim() !== '') {
-            // ✅ مسار البحث العام: يبحث في جميع طلاب المنصة
+            // ✅ مسار البحث العام (يبحث في جميع الطلاب بالمنصة)
             query = query.eq('role', 'student');
             
             const term = search.trim();
-            let orQuery = `first_name.ilike.%${term}%,username.ilike.%${term}%,phone.ilike.%${term}%`;
-            if (/^\d+$/.test(term)) orQuery += `,id.eq.${term}`;
+            // ✅ التعديل هنا: البحث الدقيق والمطابق تماماً (eq بدلاً من ilike)
+            let orQuery = `first_name.eq.${term},username.eq.${term},phone.eq.${term}`;
+            
+            if (/^\d+$/.test(term)) {
+                orQuery += `,id.eq.${term}`;
+            }
+            
             query = query.or(orQuery);
             
         } else {
@@ -170,8 +175,8 @@ export default async (req, res) => {
       const myStudentIds = await getMyStudentIds();
       const safeMyIds = myStudentIds.map(String);
       
-      // ✅ 🔒 الحماية الصارمة: المدرس يمكنه فقط منح الصلاحيات للطلاب الجدد (grant_access)
-      // أما الإجراءات الأخرى (مثل الحذف) فلا تتم إلا على الطلاب الذين يمتلكون كورساته (safeMyIds)
+      // ✅ 🔒 الحماية الصارمة: المدرس يمكنه فقط منح الصلاحيات للطلاب (حتى لو لم يكونوا طلابه بعد)
+      // أما الإجراءات الأخرى فلا تتم إلا على الطلاب الذين يمتلكون كورساته بالفعل (safeMyIds)
       const isAuthorized = targetIds.every(id => safeMyIds.includes(String(id)) || action === 'grant_access'); 
 
       if (!isAuthorized && action !== 'grant_access') {
@@ -310,7 +315,7 @@ export default async (req, res) => {
           if (action === 'revoke_access') {
               const { courseId, subjectId } = req.body;
               
-              // 🔒 حماية إضافية قبل الحذف
+              // 🔒 حماية إضافية قبل الحذف للتأكد من ملكية المدرس للكورس/المادة
               if (courseId && myCourseIds.includes(Number(courseId))) {
                   await supabase.from('user_course_access').delete().in('user_id', targetIds).eq('course_id', courseId);
               } else if (subjectId && mySubjectIds.includes(Number(subjectId))) {
