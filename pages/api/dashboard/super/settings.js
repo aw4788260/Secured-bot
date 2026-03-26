@@ -6,8 +6,8 @@ export default async function handler(req, res) {
   const authResult = await requireSuperAdmin(req, res);
   if (authResult?.error) return; 
 
-  // ✅ التعديل هنا: تمت إضافة 'free_mode' إلى القائمة
-  const TARGET_KEYS = ['platform_percentage', 'support_telegram', 'support_whatsapp', 'free_mode'];
+  // ✅ التعديل هنا: تمت إضافة 'player_settings' إلى القائمة
+  const TARGET_KEYS = ['platform_percentage', 'support_telegram', 'support_whatsapp', 'free_mode', 'player_settings'];
 
   // --------------------------------------------------------
   // GET: جلب الإعدادات
@@ -30,7 +30,16 @@ export default async function handler(req, res) {
       // ملء القيم الموجودة في قاعدة البيانات
       if (data) {
         data.forEach(item => {
-          settings[item.key] = item.value;
+          // ✅ فك تشفير JSON إذا كان المفتاح هو player_settings
+          if (item.key === 'player_settings' && item.value) {
+            try {
+              settings[item.key] = JSON.parse(item.value);
+            } catch (e) {
+              settings[item.key] = item.value; // في حالة حدوث خطأ في فك التشفير
+            }
+          } else {
+            settings[item.key] = item.value;
+          }
         });
       }
 
@@ -52,12 +61,15 @@ export default async function handler(req, res) {
       // تجهيز البيانات للإدخال (Upsert)
       const rowsToUpsert = TARGET_KEYS.map(key => {
         // نأخذ القيمة، وإذا كانت غير موجودة نضع نصاً فارغاً
-        // الدالة String() ستحول true/false إلى "true"/"false" بشكل صحيح
         const val = updates[key] !== undefined && updates[key] !== null ? updates[key] : '';
+        
+        // ✅ تحويل الكائن إلى نص JSON إذا كان نوعه Object (خاص بـ player_settings)
+        // الدالة String() ستحول باقي الأنواع العادية مثل true/false إلى "true"/"false"
+        const stringValue = typeof val === 'object' ? JSON.stringify(val) : String(val);
         
         return {
           key: key,
-          value: String(val) 
+          value: stringValue 
         };
       });
 
