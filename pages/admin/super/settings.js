@@ -6,13 +6,26 @@ export default function SuperSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  // 1. حالة الإعدادات العامة (تم إضافة free_mode)
+  // 1. حالة الإعدادات العامة (مضاف إليها player_settings)
   const [settings, setSettings] = useState({
     platform_percentage: '',
     support_telegram: '',
     support_whatsapp: '',
-    free_mode: false // ✅ الإعداد الجديد
+    free_mode: false,
+    player_settings: {
+      player_1: { enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)", order: 1 },
+      player_2: { enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع", order: 2 },
+      player_3: { enabled: true, name: "مشغل يوتيوب", description: "جودة متعددة", order: 3 },
+      downloads: { video_enabled: true, pdf_enabled: true }
+    }
   });
+
+  // قائمة توضيحية لأسماء المشغلات في لوحة التحكم
+  const playersList = [
+    { id: 'player_1', title: 'المشغل الأول (الأساسي)' },
+    { id: 'player_2', title: 'المشغل الثاني (الاحتياطي)' },
+    { id: 'player_3', title: 'المشغل الثالث (اليوتيوب)' },
+  ];
 
   // 2. حالة إصدارات التطبيق
   const [versions, setVersions] = useState([]);
@@ -42,13 +55,15 @@ export default function SuperSettings() {
       const res = await fetch('/api/dashboard/super/settings');
       if (res.ok) {
         const data = await res.json();
-        setSettings({
+        setSettings(prev => ({
+            ...prev,
             platform_percentage: data.platform_percentage || '10',
             support_telegram: data.support_telegram || '',
             support_whatsapp: data.support_whatsapp || '',
-            // ✅ تحويل القيمة النصية "true" إلى boolean
-            free_mode: data.free_mode === 'true' || data.free_mode === true
-        });
+            free_mode: data.free_mode === 'true' || data.free_mode === true,
+            // دمج الإعدادات القادمة من السيرفر مع الافتراضية
+            player_settings: data.player_settings ? { ...prev.player_settings, ...data.player_settings } : prev.player_settings
+        }));
       }
     } catch (err) {
       console.error(err);
@@ -63,7 +78,6 @@ export default function SuperSettings() {
       const res = await fetch('/api/dashboard/super/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // ✅ نرسل البيانات (سيتم تحويل البوليان إلى نص في الباك اند إذا لزم الأمر)
         body: JSON.stringify(settings)
       });
       const result = await res.json();
@@ -77,6 +91,34 @@ export default function SuperSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // دالة تحديث بيانات مشغل معين
+  const handlePlayerChange = (playerId, field, value) => {
+    setSettings(prev => ({
+      ...prev,
+      player_settings: {
+        ...prev.player_settings,
+        [playerId]: {
+          ...prev.player_settings[playerId],
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  // دالة تحديث إعدادات التحميل
+  const handleDownloadChange = (field, value) => {
+    setSettings(prev => ({
+      ...prev,
+      player_settings: {
+        ...prev.player_settings,
+        downloads: {
+          ...prev.player_settings.downloads,
+          [field]: value
+        }
+      }
+    }));
   };
 
   // --- دوال إصدارات التطبيق ---
@@ -136,7 +178,7 @@ export default function SuperSettings() {
       <div className="settings-container">
         <div className="header">
           <h1>⚙️ إعدادات المنصة العامة</h1>
-          <p>التحكم في النسب المالية، روابط الدعم، الوضع المجاني، وإصدارات التطبيق</p>
+          <p>التحكم في المشغلات، التحميل، النسب المالية، وإصدارات التطبيق</p>
         </div>
 
         {loading ? (
@@ -147,7 +189,7 @@ export default function SuperSettings() {
             {/* ================= قسم الإعدادات العامة ================= */}
             <form onSubmit={handleSaveSettings} className="settings-grid">
               
-              {/* ✅ 1. بطاقة وضع التطبيق (Free Mode) */}
+              {/* 1. وضع التطبيق */}
               <div className="card highlight-card">
                 <div className="card-header">
                   <h3>🔓 وضع التطبيق (App Mode)</h3>
@@ -168,7 +210,95 @@ export default function SuperSettings() {
                 </div>
               </div>
 
-              {/* 2. بطاقة الإعدادات المالية */}
+              {/* ✅ 2. إعدادات المشغلات */}
+              <div className="card">
+                <div className="card-header">
+                  <h3>▶️ إعدادات مشغلات الفيديو (Video Players)</h3>
+                </div>
+                <div className="card-body">
+                  <p className="hint" style={{marginBottom: '20px'}}>
+                    يمكنك هنا تفعيل أو إيقاف المشغلات، وتغيير أسمائها، وتغيير ترتيبها في نافذة الطالب (الرقم الأقل يظهر أولاً).
+                  </p>
+                  
+                  {playersList.map((p) => {
+                    const pData = settings.player_settings[p.id];
+                    return (
+                      <div key={p.id} className="player-config-box">
+                        <h4>{p.title}</h4>
+                        <label className="checkbox-label" style={{marginBottom: '15px'}}>
+                          <input 
+                            type="checkbox" 
+                            checked={pData.enabled} 
+                            onChange={e => handlePlayerChange(p.id, 'enabled', e.target.checked)}
+                          />
+                          <span style={{ color: pData.enabled ? '#4ade80' : '#ef4444' }}>
+                            {pData.enabled ? 'مفعل ويظهر للطلاب' : 'مخفي ومعطل'}
+                          </span>
+                        </label>
+                        <div className="grid-3">
+                          <div className="form-group">
+                            <label>الاسم الذي يظهر للطلاب</label>
+                            <input 
+                              type="text" 
+                              className="input-field" 
+                              value={pData.name} 
+                              onChange={e => handlePlayerChange(p.id, 'name', e.target.value)} 
+                              required 
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>الوصف أسفل الاسم</label>
+                            <input 
+                              type="text" 
+                              className="input-field" 
+                              value={pData.description} 
+                              onChange={e => handlePlayerChange(p.id, 'description', e.target.value)} 
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>الترتيب</label>
+                            <input 
+                              type="number" 
+                              className="input-field ltr text-center" 
+                              value={pData.order} 
+                              onChange={e => handlePlayerChange(p.id, 'order', Number(e.target.value))} 
+                              min="1" 
+                              required 
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* ✅ 3. إعدادات التحميل */}
+              <div className="card">
+                <div className="card-header">
+                  <h3>⬇️ إعدادات التحميل (Offline Download)</h3>
+                </div>
+                <div className="card-body">
+                  <label className="checkbox-label large" style={{marginBottom: '15px'}}>
+                    <input 
+                      type="checkbox" 
+                      checked={settings.player_settings.downloads.video_enabled} 
+                      onChange={e => handleDownloadChange('video_enabled', e.target.checked)} 
+                    />
+                    <span>السماح للطلاب بتحميل الفيديوهات</span>
+                  </label>
+                  <label className="checkbox-label large">
+                    <input 
+                      type="checkbox" 
+                      checked={settings.player_settings.downloads.pdf_enabled} 
+                      onChange={e => handleDownloadChange('pdf_enabled', e.target.checked)} 
+                    />
+                    <span>السماح للطلاب بتحميل ملفات الـ PDF</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* 4. الإعدادات المالية */}
               <div className="card">
                 <div className="card-header">
                   <h3>💰 الإعدادات المالية</h3>
@@ -194,7 +324,7 @@ export default function SuperSettings() {
                 </div>
               </div>
 
-              {/* 3. بطاقة الدعم الفني */}
+              {/* 5. روابط الدعم الفني */}
               <div className="card">
                 <div className="card-header">
                   <h3>🎧 روابط الدعم الفني</h3>
@@ -224,10 +354,10 @@ export default function SuperSettings() {
                 </div>
               </div>
 
-              {/* زر الحفظ للإعدادات العامة */}
-              <div className="actions">
-                <button type="submit" className="save-btn" disabled={saving}>
-                  {saving ? 'جاري الحفظ...' : '💾 حفظ الإعدادات العامة'}
+              {/* زر الحفظ للإعدادات العامة (Sticky Button) */}
+              <div className="actions" style={{ position: 'sticky', bottom: '20px', zIndex: 100 }}>
+                <button type="submit" className="save-btn" disabled={saving} style={{ width: '100%', padding: '16px', fontSize: '1.2rem' }}>
+                  {saving ? 'جاري الحفظ...' : '💾 حفظ الإعدادات العامة (المشغلات والتفاصيل)'}
                 </button>
               </div>
             </form>
@@ -336,7 +466,16 @@ export default function SuperSettings() {
         .card-body { padding: 25px; }
 
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 100px; gap: 15px; }
+        @media (max-width: 600px) { 
+          .grid-2, .grid-3 { grid-template-columns: 1fr; } 
+        }
+
+        /* 🟢 تنسيقات بطاقة المشغل */
+        .player-config-box { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px; }
+        .player-config-box:last-child { margin-bottom: 0; }
+        .player-config-box h4 { margin-top: 0; color: #f8fafc; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;}
+        .player-config-box h4::before { content: '🎬'; }
 
         .form-group { margin-bottom: 20px; }
         .form-group:last-child { margin-bottom: 0; }
@@ -347,6 +486,7 @@ export default function SuperSettings() {
         .input-field { width: 100%; padding: 12px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; font-size: 1rem; transition: 0.2s; }
         .input-field:focus { border-color: #38bdf8; outline: none; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }
         .input-field.ltr { direction: ltr; text-align: left; }
+        .input-field.text-center { text-align: center; font-weight: bold; }
         
         .suffix { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #64748b; font-weight: bold; }
 
@@ -356,9 +496,9 @@ export default function SuperSettings() {
         .actions { margin-top: 10px; display: flex; justify-content: flex-end; }
         .row-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid #334155; padding-top: 20px; }
 
-        .checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; color: #f8fafc; }
+        .checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; color: #f8fafc; font-weight: bold; }
         .checkbox-label.large { font-size: 1.1rem; color: #38bdf8; }
-        .checkbox-label input { width: 18px; height: 18px; cursor: pointer; }
+        .checkbox-label input { width: 18px; height: 18px; cursor: pointer; accent-color: #38bdf8; }
         .checkbox-label.large input { width: 22px; height: 22px; }
 
         .save-btn { background: #22c55e; color: #0f172a; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
