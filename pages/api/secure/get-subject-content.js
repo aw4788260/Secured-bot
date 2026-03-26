@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات الأساسية للمادة
+    // 4. جلب البيانات (✅ تم إضافة teacher_id إلى courses للتحقق من الملكية)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -67,7 +67,7 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // 4.5 معرفة ما إذا كان المستخدم الحالي هو المدرس صاحب الكورس
+    // ✅ 4.5 معرفة ما إذا كان المستخدم الحالي هو المدرس صاحب الكورس
     const { data: currentUser } = await supabase
       .from('users')
       .select('teacher_profile_id')
@@ -77,18 +77,18 @@ export default async (req, res) => {
     const isOwner = currentUser?.teacher_profile_id && 
                     String(currentUser.teacher_profile_id) === String(subjectData.courses?.teacher_id);
 
-    // 5. جلب إعدادات المشغلات (Player Settings) من جدول app_settings ديناميكياً
+    // ✅ 5. جلب إعدادات المشغلات (Player Settings) من جدول app_settings ديناميكياً
     const { data: settingsData } = await supabase
       .from('app_settings')
       .select('value')
       .eq('key', 'player_settings')
       .maybeSingle();
 
-    // قيم افتراضية في حال لم يتم إدخالها في قاعدة البيانات بعد
+    // قيم افتراضية في حال لم يتم إدخالها في قاعدة البيانات بعد (تتضمن الترتيب order)
     let playerSettings = {
-      player_1: { enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)" },
-      player_2: { enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع" },
-      player_3: { enabled: false, name: "مشغل يوتيوب", description: "جودة متعددة" },
+      player_1: { enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)", order: 1 },
+      player_2: { enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع", order: 2 },
+      player_3: { enabled: true, name: "مشغل يوتيوب", description: "جودة متعددة", order: 3 },
       downloads: { video_enabled: true, pdf_enabled: true }
     };
 
@@ -130,7 +130,7 @@ export default async (req, res) => {
       course_id: subjectData.course_id,
       course_title: subjectData.courses?.title || "Unknown Course",
       
-      // إرفاق الإعدادات التي تم جلبها من القاعدة لتذهب لتطبيق فلاتر
+      // ✅ إرفاق الإعدادات التي تم جلبها من القاعدة لتذهب لتطبيق فلاتر
       player_settings: playerSettings,
       
       chapters: safeChapters
@@ -145,13 +145,17 @@ export default async (req, res) => {
         
       exams: safeExams
         .filter(ex => {
+            // استبعاد المعطل يدوياً
             if (ex.is_active === false) return false;
+
+            // ✅ فلتر الوقت: إذا لم يحن الوقت، يتم إخفاؤه للجميع باستثناء المدرس المالك
             if (ex.start_time) {
                 const startTime = new Date(ex.start_time);
                 if (now < startTime && !isOwner) {
                     return false; 
                 }
             }
+            
             return true; 
         })
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
@@ -159,9 +163,11 @@ export default async (req, res) => {
           const attemptId = attemptsMap[ex.id] || null;
           const isCompleted = !!attemptId;
           
+          // فحص هل انتهى وقت الامتحان؟
           let isExpired = false;
           if (ex.end_time) {
               const endTime = new Date(ex.end_time);
+              // إذا انتهى الوقت ولم يحل الطالب الامتحان
               if (now > endTime && !isCompleted) {
                   isExpired = true;
               }
