@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات (✅ تم إضافة teacher_id إلى courses للتحقق من الملكية)
+    // 4. جلب البيانات
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -67,7 +67,7 @@ export default async (req, res) => {
 
     if (contentError) throw contentError;
 
-    // ✅ 4.5 معرفة ما إذا كان المستخدم الحالي هو المدرس صاحب الكورس
+    // 4.5 معرفة ما إذا كان المستخدم الحالي هو المدرس صاحب الكورس
     const { data: currentUser } = await supabase
       .from('users')
       .select('teacher_profile_id')
@@ -106,6 +106,18 @@ export default async (req, res) => {
       course_id: subjectData.course_id,
       course_title: subjectData.courses?.title || "Unknown Course",
       
+      // ✅ 7. هيكل إعدادات المشغلات وأزرار التحميل (Player Settings)
+      // في المستقبل يمكنك استبدال هذا الكائن بجلب مباشر من subjectData.player_settings لو أضفته لقاعدة البيانات
+      player_settings: {
+        player_1: { enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)" },
+        player_2: { enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع" },
+        player_3: { enabled: false, name: "مشغل يوتيوب", description: "جودة متعددة" },
+        downloads: {
+          video_enabled: true,
+          pdf_enabled: true
+        }
+      },
+      
       chapters: safeChapters
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map(ch => ({
@@ -121,7 +133,7 @@ export default async (req, res) => {
             // استبعاد المعطل يدوياً
             if (ex.is_active === false) return false;
 
-            // ✅ فلتر الوقت: إذا لم يحن الوقت، يتم إخفاؤه للجميع باستثناء المدرس المالك
+            // فلتر الوقت: إذا لم يحن الوقت، يتم إخفاؤه للجميع باستثناء المدرس المالك
             if (ex.start_time) {
                 const startTime = new Date(ex.start_time);
                 if (now < startTime && !isOwner) {
