@@ -8,7 +8,7 @@ export default async (req, res) => {
   }
 
   let userData = null;
-  let userAccess = { courses: [], subjects: [] };
+  let userAccess = { courses: [], subjects: [], topics: [] }; // ✅ إضافة topics هنا
   let libraryData = []; 
   let isLoggedIn = false;
   let userId = null;
@@ -16,6 +16,7 @@ export default async (req, res) => {
   // 1. محاولة التعرف على المستخدم من التوكن (Soft Check)
   const authHeader = req.headers['authorization'];
   const deviceIdHeader = req.headers['x-device-id'];
+  const fcmTokenHeader = req.headers['x-fcm-token']; // ✅ استلام توكن فايربيز من التطبيق
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
@@ -47,6 +48,14 @@ export default async (req, res) => {
        
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
            
+          // ✅ تحديث توكن فايربيز (FCM Token) في قاعدة البيانات لتتمكن من مراسلة هذا الجهاز
+          if (fcmTokenHeader) {
+              await supabase
+                  .from('users')
+                  .update({ fcm_token: fcmTokenHeader })
+                  .eq('id', userId);
+          }
+
           // ✅ منطق جديد: جلب صورة المدرس إذا كان الحساب مرتبطاً بملف مدرس
           let profileImage = null;
           if (user.teacher_profile_id) {
@@ -82,8 +91,10 @@ export default async (req, res) => {
           isLoggedIn = true;
 
           // ==========================================
-          // منطق المكتبة (Library Logic)
+          // منطق المكتبة (Library Logic) وقنوات الإشعارات
           // ==========================================
+          
+          let notificationTopics = ['all_users']; // ✅ القناة الأساسية لكل المستخدمين المسجلين
 
           // أ) جلب الكورسات الكاملة (✅ تم إضافة description و price)
           const { data: fullCourses } = await supabase
@@ -101,6 +112,10 @@ export default async (req, res) => {
           let courseSubjectsMap = {};
           if (fullCourses && fullCourses.length > 0) {
             const courseIds = fullCourses.map(item => item.course_id);
+            
+            // ✅ تسجيل الطالب في قنوات الإشعارات الخاصة بكورساته الكاملة
+            courseIds.forEach(id => notificationTopics.push(`course_${id}`));
+
             const { data: allSubjects } = await supabase
                 .from('subjects')
                 .select('id, title, price, course_id, sort_order')
@@ -117,6 +132,9 @@ export default async (req, res) => {
                         title: sub.title,
                         price: sub.price // ✅
                     });
+                    
+                    // ✅ بما أن الطالب اشترى الكورس كاملاً، يجب إضافته لقنوات استماع مواده أيضاً
+                    notificationTopics.push(`subject_${sub.id}`);
                 });
             }
           }
@@ -136,10 +154,11 @@ export default async (req, res) => {
             `)
             .eq('user_id', userId);
 
-          // هيكلة الصلاحيات
+          // هيكلة الصلاحيات (مع قنوات الإشعارات الجديدة)
           userAccess = {
             courses: fullCourses ? fullCourses.map(c => c.course_id.toString()) : [],
-            subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : []
+            subjects: singleSubjects ? singleSubjects.map(s => s.subject_id.toString()) : [],
+            topics: notificationTopics // ✅ إرسال قنوات فايربيز للتطبيق
           };
 
           const libraryMap = new Map();
@@ -166,6 +185,14 @@ export default async (req, res) => {
           // إضافة المواد المنفصلة
           singleSubjects?.forEach(item => {
             const subject = item.subjects;
+            
+            // ✅ تسجيل الطالب في قناة الإشعارات الخاصة بالمادة المنفصلة التي اشتراها
+            if (subject && subject.id) {
+               if (!notificationTopics.includes(`subject_${subject.id}`)) {
+                   notificationTopics.push(`subject_${subject.id}`);
+               }
+            }
+
             const parentCourse = subject?.courses;
             if (parentCourse) {
               const subjectData = { 
