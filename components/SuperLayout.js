@@ -81,6 +81,7 @@ export default function SuperLayout({ children, title }) {
     { name: '📥 كل طلبات الاشتراك', path: '/admin/super/requests' },
     { name: '🎟️ أكواد الخصم (كوبونات)', path: '/admin/super/discount-codes' }, // 👈 التعديل هنا
     { name: '💰 التقارير المالية', path: '/admin/super/finance' },
+    { name: '📢 إرسال الإشعارات', path: '/admin/super/notifications' },
     { name: '⚙️ إعدادات المنصة', path: '/admin/super/settings' }
   ];
 
