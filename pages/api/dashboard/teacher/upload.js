@@ -1,5 +1,6 @@
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { supabase } from '../../../../lib/supabaseClient';
+import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -131,10 +132,12 @@ export default async (req, res) => {
              }
         }
 
+        const pdfTitle = req.body.title || req.file.originalname;
+
         // ب. الإدخال في الجدول
         const { error: dbError } = await supabase.from('pdfs').insert({
             chapter_id: req.body.chapterId,
-            title: req.body.title || req.file.originalname,
+            title: pdfTitle,
             file_path: req.file.filename,
             sort_order: 999
         });
@@ -144,6 +147,60 @@ export default async (req, res) => {
             throw new Error('فشل حفظ بيانات الملف في قاعدة البيانات');
         }
         console.log(`[Upload Step 8] DB Record Created Successfully!`);
+
+        // ✅ ج. منطق إرسال الإشعار (إذا تم تفعيل الخيار من المدرس)
+        if (req.body.notifyStudents === 'true') {
+            console.log(`[Upload Step 9] Notifying students about new PDF...`);
+            try {
+                // جلب اسم الكورس ومعرف المادة لإرسال الإشعار للقناة الصحيحة
+                const { data: info } = await supabase
+                    .from('chapters')
+                    .select('subject_id, subjects(courses(title))')
+                    .eq('id', req.body.chapterId)
+                    .single();
+
+                if (info && info.subject_id) {
+                    const courseTitle = info.subjects?.courses?.title || 'تحديث جديد في الكورس';
+                    const subjectId = info.subject_id;
+
+                    const message = {
+                        notification: { 
+                            title: courseTitle, 
+                            body: `تم رفع ملف: ${pdfTitle}` 
+                        },
+                        topic: `subject_${subjectId}`,
+                        android: { 
+                            priority: 'high', 
+                            notification: { sound: 'default' } 
+                        },
+                        apns: { 
+                            payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } 
+                        },
+                        data: { 
+                            click_action: 'FLUTTER_NOTIFICATION_CLICK', 
+                            type: 'subject', 
+                            id: subjectId.toString() 
+                        }
+                    };
+
+                    // إرسال الإشعار عبر فايربيز
+                    await admin.messaging().send(message);
+
+                    // حفظ الإشعار في جدول الإشعارات ليظهر للطالب داخل التطبيق لاحقاً
+                    await supabase.from('notifications').insert({
+                        title: courseTitle,
+                        body: `تم رفع ملف: ${pdfTitle}`,
+                        target_type: 'subject',
+                        target_id: subjectId.toString(),
+                        sender_role: 'teacher'
+                    });
+                    console.log(`[Upload Step 10] Notification sent and saved successfully.`);
+                }
+            } catch (notifyErr) {
+                console.error("[Error] Failed to send FCM notification:", notifyErr.message);
+                // لا نقوم بعمل throw هنا لكي لا يفشل الطلب الأصلي (الرفع تم بنجاح بالفعل)
+            }
+        }
     }
 
     // 5. إرسال الرد
