@@ -38,7 +38,9 @@ export default function ContentManager() {
 
   // Modals & UI
   const [modalType, setModalType] = useState(null); 
-  const [formData, setFormData] = useState({ title: '', url: '', price: 0, description: '' });
+  // ✅ أضفنا notifyStudents للفورم الافتراضي
+  const [formData, setFormData] = useState({ title: '', url: '', price: 0, description: '', notifyStudents: false });
+  const [notifyPdf, setNotifyPdf] = useState(false); // ✅ حالة مستقلة للـ PDF
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
@@ -48,7 +50,8 @@ export default function ContentManager() {
 
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
-  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [] });
+  // ✅ أضفنا notifyStudents للاختبارات
+  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [], notifyStudents: false });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
@@ -56,20 +59,16 @@ export default function ContentManager() {
   const [examStats, setExamStats] = useState(null);
 
  const refreshView = async () => {
-      // لا نعرض loading هنا لكي لا تكون التجربة مزعجة عند كل تحديث صغير
       try {
-          // 1. جلب الهيكل الأساسي (كورسات + مواد سطحية)
           const res = await fetch('/api/dashboard/teacher/content');
           const data = await res.json();
           let newCourses = data.courses || [];
 
-          // 2. هام جداً: إذا كنا داخل مادة، نعيد جلب تفاصيلها العميقة (فصول، امتحانات)
           if (selectedSubject) {
               const subRes = await fetch(`/api/dashboard/teacher/content?mode=subject_details&id=${selectedSubject.id}`);
               const subData = await subRes.json();
               
               if (subData.success) {
-                  // دمج التفاصيل الجديدة في قائمة الكورسات
                   newCourses = newCourses.map(c => {
                       if (c.id === selectedCourse?.id) {
                           return {
@@ -79,31 +78,23 @@ export default function ContentManager() {
                       }
                       return c;
                   });
-
-                  // تحديث المادة المختارة لضمان ظهور العناصر الجديدة (فيديو/امتحان/ملف)
                   setSelectedSubject(subData.subject);
-
-                  // إذا كنا داخل فصل، نحدثه أيضاً
                   if (selectedChapter) {
                       const updatedCh = subData.subject.chapters?.find(ch => ch.id === selectedChapter.id);
                       setSelectedChapter(updatedCh || null);
                   }
               }
           }
-          // 3. تحديث الكورس المختار
           if (selectedCourse) {
               const updatedC = newCourses.find(c => c.id === selectedCourse.id);
               setSelectedCourse(updatedC || null);
           }
-
-          // 4. تحديث الحالة العامة
           setCourses(newCourses);
       } catch (err) {
           console.error("Refresh Error:", err);
       }
   };
 
-  // استبدال fetchContent القديمة بـ refreshView عند التحميل
   useEffect(() => { 
       window.scrollTo(0, 0);
       refreshView(); 
@@ -129,7 +120,6 @@ export default function ContentManager() {
       else if (selectedCourse) setSelectedCourse(null);
   };
 
-  // ✅ [Lazy Loading] التعامل مع النقر على المادة
   const handleSubjectClick = async (subject) => {
       if (subject.chapters && subject.exams) {
           setSelectedSubject(subject);
@@ -226,7 +216,7 @@ export default function ContentManager() {
           if (res.ok) { 
               showAlert('success', 'تمت العملية بنجاح'); 
               setModalType(null); 
-              await refreshView(); // ✅ استخدام الدالة الذكية هنا
+              await refreshView(); 
           }
           else { showAlert('error', data.error || 'حدث خطأ'); }
       } catch (e) { showAlert('error', 'خطأ في الاتصال'); }
@@ -242,14 +232,17 @@ export default function ContentManager() {
 
   // --- Modal Opening ---
   const openModal = async (type, data = {}) => {
-      setFormData({ title: '', url: '', price: 0 }); 
+      // ✅ تصفير بيانات الفورم وجعل التنبيه false افتراضياً
+      setFormData({ title: '', url: '', price: 0, description: '', notifyStudents: false }); 
+      setNotifyPdf(false);
       
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
           setFormData({ 
               title: data.title || '', 
               url: '', 
               price: data.price || 0 ,
-              description: data.description || ''
+              description: data.description || '',
+              notifyStudents: false
           });
       }
 
@@ -278,6 +271,7 @@ export default function ContentManager() {
                           randO: fullExam.randomize_options,
                           startTime: formatDateForInput(fullExam.start_time),
                           endTime: formatDateForInput(fullExam.end_time),
+                          notifyStudents: false, // لا نرسل عند التعديل
                           questions: fullExam.questions ? fullExam.questions.map(q => ({
                               id: q.id, text: q.question_text, image: q.image_file_id,
                               options: q.options.map(o => o.option_text),
@@ -299,7 +293,8 @@ export default function ContentManager() {
               setExamForm({ 
                   id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, 
                   startTime: '', endTime: '', 
-                  questions: [] 
+                  questions: [],
+                  notifyStudents: false // ✅ افتراضياً false
               });
           }
           setDeletedQIds([]); setEditingQIndex(-1); 
@@ -398,7 +393,8 @@ export default function ContentManager() {
                   start_time: examForm.startTime,
                   end_time: examForm.endTime,
                   questions: examForm.questions, 
-                  deletedQuestionIds: deletedQIds
+                  deletedQuestionIds: deletedQIds,
+                  notifyStudents: examForm.notifyStudents // ✅ إرسال قيمة التنبيه
               })
           });
 
@@ -406,7 +402,7 @@ export default function ContentManager() {
           if (res.ok) { 
               showAlert('success', 'تم الحفظ بنجاح'); 
               setModalType(null); 
-              await refreshView(); // ✅ استخدام الدالة الذكية هنا
+              await refreshView(); 
           } else { 
               const errorMsg = data.error || data.message || 'فشل الحفظ';
               showAlert('error', errorMsg); 
@@ -622,10 +618,24 @@ export default function ContentManager() {
               )}
 
               {modalType === 'add_video' && (
+                  <>
                   <div className="form-group">
                       <label>رابط يوتيوب</label>
                       <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
                   </div>
+                  {/* ✅ خيار إرسال التنبيه عند إضافة فيديو */}
+                  <div className="form-group" style={{marginTop: '15px'}}>
+                      <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#cbd5e1'}}>
+                          <input 
+                            type="checkbox" 
+                            style={{width: '18px', height: '18px', accentColor: '#38bdf8'}} 
+                            checked={formData.notifyStudents} 
+                            onChange={e => setFormData({...formData, notifyStudents: e.target.checked})} 
+                          />
+                          <span>إرسال إشعار للطلاب المشتركين في المادة</span>
+                      </label>
+                  </div>
+                  </>
               )}
               
               <div className="acts">
@@ -640,7 +650,8 @@ export default function ContentManager() {
                       else if (modalType === 'add_chapter') apiCall('create', 'chapters', { subject_id: selectedSubject.id, title: formData.title });
                       else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
                       
-                      else if (modalType === 'add_video') apiCall('create', 'videos', { chapter_id: selectedChapter.id, title: formData.title, url: formData.url });
+                      // ✅ إرسال قيمة التنبيه مع إضافة الفيديو
+                      else if (modalType === 'add_video') apiCall('create', 'videos', { chapter_id: selectedChapter.id, title: formData.title, url: formData.url, notifyStudents: formData.notifyStudents });
                   }}>حفظ</button>
               </div>
           </Modal>
@@ -657,7 +668,13 @@ export default function ContentManager() {
                   setLoading(true); 
                   
                   const fd = new FormData();
-                  fd.append('file', file); fd.append('title', e.target.title.value); fd.append('type', 'pdf'); fd.append('chapterId', selectedChapter.id);
+                  fd.append('file', file); 
+                  fd.append('title', e.target.title.value); 
+                  fd.append('type', 'pdf'); 
+                  fd.append('chapterId', selectedChapter.id);
+                  // ✅ إرسال خيار التنبيه لملفات الـ PDF
+                  fd.append('notifyStudents', notifyPdf);
+
                   try {
                       const res = await fetch('/api/dashboard/teacher/upload', {method:'POST', body:fd});
                       const data = await res.json();
@@ -675,10 +692,22 @@ export default function ContentManager() {
                       <label>اختر الملف</label>
                       <input className="input file" type="file" name="file" accept="application/pdf" required />
                   </div>
+                  {/* ✅ خيار إرسال التنبيه لملفات الـ PDF */}
+                  <div className="form-group" style={{marginTop: '15px'}}>
+                      <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#cbd5e1'}}>
+                          <input 
+                            type="checkbox" 
+                            style={{width: '18px', height: '18px', accentColor: '#38bdf8'}} 
+                            checked={notifyPdf} 
+                            onChange={e => setNotifyPdf(e.target.checked)} 
+                          />
+                          <span>إرسال إشعار للطلاب المشتركين في المادة</span>
+                      </label>
+                  </div>
                   <div className="acts">
                       <button type="button" className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
                       <button type="submit" className="btn-primary" disabled={loading}>
-                          {loading ? 'جاري الرفع... ⏳' : 'رفع'}
+                          {loading ? 'جاري الرفع... ⏳' : 'رفع وحفظ'}
                       </button>
                   </div>
               </form>
@@ -737,6 +766,17 @@ export default function ContentManager() {
                               <div className="toggles-group" style={{marginTop:'15px'}}>
                                   <div className="toggle-row"><span>عشوائية الأسئلة</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
                                   <div className="toggle-row"><span>عشوائية الاختيارات</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
+                                  
+                                  {/* ✅ خيار التنبيه للامتحانات (يظهر عند الإنشاء فقط) */}
+                                  {!examForm.id && (
+                                    <div className="toggle-row" style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #334155'}}>
+                                        <span style={{color: '#38bdf8', fontSize: '0.85rem', fontWeight: 'bold'}}>إرسال إشعار للطلاب</span>
+                                        <label className="switch">
+                                            <input type="checkbox" checked={examForm.notifyStudents} onChange={e=>setExamForm({...examForm, notifyStudents: e.target.checked})} />
+                                            <span className="slider round"></span>
+                                        </label>
+                                    </div>
+                                  )}
                               </div>
                           </div>
                           
