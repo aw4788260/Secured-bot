@@ -1,20 +1,20 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 
 export default async (req, res) => {
-  // 1. التحقق من الصلاحية (نستخدم requireTeacherOrAdmin للتوافق مع الداشبورد)
+  // 1. التحقق من الصلاحية
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // توحيد مسمى متغير المصادقة ليتوافق مع المنطق الخاص بك
   const auth = {
     teacherId: user.teacherId,
     userId: user.id
   };
 
-  // 🛠️ دالة تحويل التوقيت (كما طلبت)
+  // 🛠️ دالة تحويل التوقيت
   const toEgyptUTC = (dateString) => {
       if (!dateString) return null;
       try {
@@ -22,14 +22,12 @@ export default async (req, res) => {
         const dateAsUtc = new Date(cleanDate + 'Z');
         if (isNaN(dateAsUtc.getTime())) return null;
         
-        // حساب الإزاحة الزمنية للقاهرة
         const timeZone = 'Africa/Cairo';
         const fmt = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' });
         const parts = fmt.formatToParts(dateAsUtc);
         const offsetPart = parts.find(p => p.type === 'timeZoneName').value;
         const offsetHours = parseInt(offsetPart.replace(/[^\d+-]/g, ''));
         
-        // تعديل الوقت
         dateAsUtc.setHours(dateAsUtc.getHours() - offsetHours);
         return dateAsUtc.toISOString();
       } catch (e) {
@@ -41,24 +39,20 @@ export default async (req, res) => {
   // --- معالجة الطلبات (POST): إنشاء، تحديث، أو حذف ---
   if (req.method === 'POST') {
       
-      // استقبال البيانات
       let examData = req.body;
-      let action = 'create'; // الافتراضي
+      let action = 'create'; 
 
-      // دعم هيكلية action/payload أو البيانات المباشرة
       if (req.body.action && req.body.payload) {
           action = req.body.action;
           examData = req.body.payload;
       } else if (req.body.examId) {
           action = 'update';
       } else if (req.body.action === 'save_exam') {
-          // دعم إضافي للصيغة القديمة في الفرونت
           action = req.body.id ? 'update' : 'create';
           examData = req.body;
           if (examData.id) examData.examId = examData.id;
       }
 
-      // ✅ Mapping: ضمان قراءة العشوائية إذا جاءت بأسماء مختصرة من الفرونت
       if (examData.randQ !== undefined) examData.randomizeQuestions = examData.randQ;
       if (examData.randO !== undefined) examData.randomizeOptions = examData.randO;
 
@@ -71,10 +65,10 @@ export default async (req, res) => {
         end_time, 
         examId,
         randomizeQuestions, 
-        randomizeOptions 
+        randomizeOptions,
+        notifyStudents // ✅ استلام قيمة خيار التنبيه
       } = examData;
 
-      // 🛑 [جديد] التحقق من منطقية التواريخ (البداية والنهاية)
       if (start_time && end_time) {
           const start = new Date(start_time);
           const end = new Date(end_time);
@@ -86,19 +80,11 @@ export default async (req, res) => {
       try {
         let targetExamId = examId;
 
-        // =================================================
-        // الحالة 3: حذف امتحان (Delete)
-        // =================================================
         if (action === 'delete') {
             if (!examId) return res.status(400).json({ error: 'Exam ID required for delete' });
-
-            // 1. حذف محاولات الطلاب
             await supabase.from('user_attempts').delete().eq('exam_id', examId);
-            
-            // 2. حذف الأسئلة
             await supabase.from('questions').delete().eq('exam_id', examId);
 
-            // 3. حذف الامتحان (مع التحقق من الملكية عبر teacher_id)
             const { error: deleteErr } = await supabase
                 .from('exams')
                 .delete()
@@ -106,20 +92,16 @@ export default async (req, res) => {
                 .eq('teacher_id', auth.teacherId); 
 
             if (deleteErr) throw deleteErr;
-
-            return res.status(200).json({ success: true, message: 'Exam and all related data deleted' });
+            return res.status(200).json({ success: true, message: 'Exam deleted' });
         }
         
-        // =================================================
-        // الحالة 1: إنشاء امتحان جديد (Create)
-        // =================================================
         else if (action === 'create') {
             if (!title || !subjectId) return res.status(400).json({ error: 'بيانات الامتحان ناقصة' });
 
-            // 🛡️ التحقق الأمني: هل يملك المعلم هذه المادة؟
+            // ✅ جلب بيانات المادة والكورس للتحقق وللإشعار
             const { data: subjectInfo, error: subErr } = await supabase
                 .from('subjects')
-                .select('courses!inner(teacher_id)')
+                .select('id, courses!inner(teacher_id, title)')
                 .eq('id', subjectId)
                 .single();
             
@@ -146,10 +128,35 @@ export default async (req, res) => {
 
             if (examErr) throw examErr;
             targetExamId = newExam.id;
+
+            // ✅ إرسال إشعار فوري للطلاب إذا تم تفعيل الخيار
+            if (notifyStudents === true) {
+                try {
+                    const courseTitle = subjectInfo.courses?.title || 'تحديث جديد';
+                    const message = {
+                        notification: { title: courseTitle, body: `تم رفع اختبار: ${title}` },
+                        topic: `subject_${subjectId}`,
+                        android: { priority: 'high', notification: { sound: 'default' } },
+                        apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
+                        data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectId.toString() }
+                    };
+
+                    await admin.messaging().send(message);
+
+                    // حفظ في سجل الإشعارات
+                    await supabase.from('notifications').insert({
+                        title: courseTitle,
+                        body: `تم رفع اختبار: ${title}`,
+                        target_type: 'subject',
+                        target_id: subjectId.toString(),
+                        sender_role: 'teacher'
+                    });
+                } catch (notifyErr) {
+                    console.error("FCM Exam Notify Error:", notifyErr.message);
+                }
+            }
         } 
-        // =================================================
-        // الحالة 2: تحديث امتحان موجود (Update)
-        // =================================================
+
         else if (action === 'update') {
             if (!targetExamId) return res.status(400).json({ error: 'Exam ID required for update' });
 
@@ -169,24 +176,19 @@ export default async (req, res) => {
 
             if (updateErr) throw updateErr;
 
-            // ✅ إعادة بناء الأسئلة لضمان التوافق
             await supabase.from('user_attempts').delete().eq('exam_id', targetExamId);
             await supabase.from('questions').delete().eq('exam_id', targetExamId);
         }
 
-        // =================================================
-        // إدخال الأسئلة (مشترك للإنشاء والتحديث)
-        // =================================================
+        // إدخال الأسئلة
         if (action !== 'delete' && questions && questions.length > 0) {
             for (const [index, q] of questions.entries()) {
                 const { data: newQ, error: qErr } = await supabase.from('questions').insert({
                     exam_id: targetExamId, 
                     question_text: q.text,
-                    image_file_id: q.image || null, // حفظ الصورة
+                    image_file_id: q.image || null,
                     sort_order: index,
                 }).select().single();
-
-                if (qErr) console.error("Error creating question:", qErr);
 
                 if (newQ && q.options) {
                     const optionsData = q.options.map((optText, i) => ({
@@ -224,18 +226,13 @@ export default async (req, res) => {
           .order('percentage', { ascending: false });
 
       if (!attempts) return res.status(200).json({ 
-          averageScore: 0, 
-          averagePercentage: 0,
-          topStudents: [], 
-          totalAttempts: 0 
+          averageScore: 0, averagePercentage: 0, topStudents: [], totalAttempts: 0 
       });
 
       const totalAttempts = attempts.length;
-      
       const averageScore = totalAttempts > 0 
           ? (attempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalAttempts).toFixed(1) 
           : 0;
-
       const averagePercentage = totalAttempts > 0 
           ? (attempts.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalAttempts).toFixed(1) 
           : 0;
@@ -249,10 +246,7 @@ export default async (req, res) => {
       }));
 
       return res.status(200).json({ 
-          averageScore, 
-          averagePercentage, 
-          totalAttempts, 
-          topStudents 
+          averageScore, averagePercentage, totalAttempts, topStudents 
       });
   }
 };
