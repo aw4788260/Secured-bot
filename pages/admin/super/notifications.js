@@ -40,7 +40,7 @@ export default function SuperNotifications() {
   const handleSend = async (e) => {
     e.preventDefault();
     if (!formData.title || !formData.body) return showToast('العنوان والنص مطلوبان', 'error');
-    if (formData.targetType === 'user' && !formData.userIdentifier) return showToast('يرجى إدخال هاتف أو يوزرنيم الطالب', 'error');
+    if (formData.targetType === 'user' && !formData.userIdentifier) return showToast('يرجى إدخال هاتف أو اسم المستخدم', 'error');
     if (['course', 'subject'].includes(formData.targetType) && !formData.targetId) return showToast('يرجى تحديد المحتوى المستهدف', 'error');
 
     setLoading(true);
@@ -134,7 +134,7 @@ export default function SuperNotifications() {
                 <label className={`radio-card ${formData.targetType === 'user' ? 'active' : ''}`}>
                   <input type="radio" name="target" checked={formData.targetType === 'user'} onChange={() => setFormData({...formData, targetType: 'user', targetId: ''})} />
                   <span className="icon">👤</span>
-                  <span className="text">طالب محدد (خاص)</span>
+                  <span className="text">مستخدم محدد (خاص)</span>
                 </label>
               </div>
 
@@ -166,16 +166,16 @@ export default function SuperNotifications() {
 
                 {formData.targetType === 'user' && (
                   <div className="form-group animate-slide">
-                    <label>معرف الطالب (هاتف أو يوزرنيم):</label>
+                    <label>معرف المستخدم (طالب، مدرس، أو مشرف):</label>
                     <input 
                       type="text" 
                       className="input-field ltr" 
-                      placeholder="01xxxxxxxxx أو username" 
+                      placeholder="رقم الهاتف أو الـ Username" 
                       value={formData.userIdentifier}
                       onChange={e => setFormData({...formData, userIdentifier: e.target.value})}
                       required 
                     />
-                    <small className="hint">سيتم إرسال هذا الإشعار لهاتف هذا الطالب فقط (إذا كان مسجلاً بالمنصة ومُحملاً للتطبيق).</small>
+                    <small className="hint">سيتم إرسال الإشعار لهاتف هذا المستخدم فقط (شريطة أن يكون قد فتح التطبيق مسبقاً).</small>
                   </div>
                 )}
               </div>
@@ -206,7 +206,7 @@ export default function SuperNotifications() {
             </div>
             <div className="info-box mt-4">
               <strong>💡 ملاحظة هامة:</strong>
-              <p>الإشعارات تصل للطلاب حتى وإن كان التطبيق مغلقاً. عند الضغط على الإشعار سيتم توجيه الطالب تلقائياً لصفحة الإشعارات داخل التطبيق.</p>
+              <p>الإشعارات تصل للمستخدمين حتى وإن كان التطبيق مغلقاً. عند الضغط على الإشعار سيتم توجيه المستخدم تلقائياً لصفحة الإشعارات داخل التطبيق.</p>
             </div>
           </div>
         </div>
