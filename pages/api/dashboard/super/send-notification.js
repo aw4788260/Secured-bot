@@ -27,32 +27,35 @@ export default async (req, res) => {
     };
 
     // ==========================================================
-    // 🎯 استهداف طالب معين (عبر الهاتف أو اسم المستخدم)
+    // 🎯 استهداف مستخدم معين (طالب، مدرس، أو مشرف)
     // ==========================================================
     if (targetType === 'user') {
         if (!userIdentifier) {
-            return res.status(400).json({ success: false, message: 'يرجى إدخال هاتف أو اسم مستخدم الطالب.' });
+            return res.status(400).json({ success: false, message: 'يرجى إدخال هاتف أو اسم المستخدم.' });
         }
 
-        // البحث عن الطالب وجلب التوكن الخاص بجهازه
-        const { data: student, error: stdErr } = await supabase
+        // ✅ التعديل هنا: إزالة شرط (role = student) ليتم البحث في كافة المستخدمين
+        const { data: targetUser, error: userErr } = await supabase
             .from('users')
-            .select('id, fcm_token, first_name')
-            .eq('role', 'student')
+            .select('id, fcm_token, first_name, role')
             .or(`username.eq.${userIdentifier.trim()},phone.eq.${userIdentifier.trim()}`)
             .single();
 
-        if (stdErr || !student) {
-            return res.status(404).json({ success: false, message: 'لم يتم العثور على طالب بهذا الرقم/الاسم.' });
-        }
-        if (!student.fcm_token) {
-            return res.status(400).json({ success: false, message: `الطالب (${student.first_name}) لم يقم بفتح التطبيق حتى الآن، لا يمكن إرسال إشعار له.` });
+        if (userErr || !targetUser) {
+            return res.status(404).json({ success: false, message: 'لم يتم العثور على مستخدم بهذا الرقم/الاسم.' });
         }
 
-        // إرسال الإشعار لجهاز الطالب تحديداً
-        message.token = student.fcm_token;
-        message.data.id = student.id.toString();
-        finalTargetId = student.id;
+        // التحقق مما إذا كان المستخدم قد فتح التطبيق وتم توليد توكن له
+        if (!targetUser.fcm_token) {
+            // تحديد المسمى لرسالة الخطأ بناءً على دور المستخدم
+            const roleName = targetUser.role === 'teacher' ? 'المدرس' : targetUser.role === 'moderator' ? 'المشرف' : 'الطالب';
+            return res.status(400).json({ success: false, message: `${roleName} (${targetUser.first_name}) لم يقم بفتح التطبيق حتى الآن، لا يمكن إرسال إشعار له.` });
+        }
+
+        // إرسال الإشعار لجهاز المستخدم تحديداً
+        message.token = targetUser.fcm_token;
+        message.data.id = targetUser.id.toString();
+        finalTargetId = targetUser.id;
     } 
     // ==========================================================
     // 📢 استهداف جماعي (الكل، كورس، أو مادة)
@@ -75,7 +78,7 @@ export default async (req, res) => {
     const fcmResponse = await admin.messaging().send(message);
     console.log('FCM Success:', fcmResponse);
 
-    // حفظ الإشعار في قاعدة البيانات ليظهر للطالب في "شاشة الإشعارات" داخل التطبيق
+    // حفظ الإشعار في قاعدة البيانات ليظهر في "شاشة الإشعارات" داخل التطبيق
     const { error: dbError } = await supabase
       .from('notifications')
       .insert({
@@ -90,7 +93,7 @@ export default async (req, res) => {
 
     return res.status(200).json({ 
         success: true, 
-        message: targetType === 'user' ? 'تم إرسال الإشعار للطالب بنجاح 🚀' : 'تم إرسال الإشعار الجماعي بنجاح 🚀' 
+        message: targetType === 'user' ? 'تم إرسال الإشعار للمستخدم بنجاح 🚀' : 'تم إرسال الإشعار الجماعي بنجاح 🚀' 
     });
 
   } catch (error) {
