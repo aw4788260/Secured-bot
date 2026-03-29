@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 
 // 🛠️ دالة مساعدة لاستخراج معرف الفيديو من رابط يوتيوب
 const extractYouTubeID = (url) => {
@@ -29,7 +30,6 @@ export default async (req, res) => {
 
     try {
       // 🟢 الحالة 1: جلب تفاصيل امتحان محدد (شاملة الأسئلة والاختيارات)
-      // يتم استدعاؤها فقط عند فتح نافذة تعديل الامتحان
       if (mode === 'exam_details') {
           if (!id) return res.status(400).json({ error: 'Exam ID required' });
 
@@ -47,7 +47,6 @@ export default async (req, res) => {
 
           if (examError) throw examError;
 
-          // ترتيب الأسئلة والاختيارات
           if (exam.questions) {
              exam.questions.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
              exam.questions.forEach(q => {
@@ -59,7 +58,6 @@ export default async (req, res) => {
       }
 
       // 🟡 الحالة 2: جلب تفاصيل مادة محددة (شاملة الفصول والامتحانات "بدون أسئلة")
-      // يتم استدعاؤها عند النقر على المادة
       else if (mode === 'subject_details') {
           if (!id) return res.status(400).json({ error: 'Subject ID required' });
 
@@ -83,13 +81,12 @@ export default async (req, res) => {
 
           if (subError) throw subError;
 
-          // ترتيب المحتوى الداخلي للمادة
           if (subject.chapters) {
               subject.chapters.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
               subject.chapters.forEach(ch => {
-                  if (ch.videos) {
-                      ch.videos.forEach(v => { v.url = v.youtube_video_id; });
-                      ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                  if (ch.videos) { 
+                      ch.videos.forEach(v => { v.url = v.youtube_video_id; }); 
+                      ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)); 
                   }
                   if (ch.pdfs) ch.pdfs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
               });
@@ -101,8 +98,7 @@ export default async (req, res) => {
           return res.status(200).json({ success: true, subject });
       }
 
-      // 🔴 الحالة 3 (الافتراضية): جلب الهيكل الأساسي (كورسات ومواد فقط)
-      // يتم استدعاؤها عند فتح الصفحة لأول مرة (سريعة جداً)
+      // 🔴 الحالة 3: جلب الهيكل الأساسي (كورسات ومواد فقط)
       else {
           const { data: courses, error: fetchError } = await supabase
             .from('courses')
@@ -115,7 +111,6 @@ export default async (req, res) => {
 
           if (fetchError) throw fetchError;
 
-          // ترتيب المواد
           courses.forEach(c => {
               if (c.subjects) c.subjects.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
           });
@@ -124,7 +119,6 @@ export default async (req, res) => {
       }
 
     } catch (err) {
-      console.error("🔥 [ContentAPI] GET Error:", err.message);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -150,17 +144,9 @@ export default async (req, res) => {
       delete data.url; 
     }
 
-    // --------------------------------------------------------
-    // 🛡️ دوال التحقق الأمنية الداخلية
-    // --------------------------------------------------------
-    
     const checkCourseOwnership = async (courseId) => {
       if (!courseId) return false;
-      const { data: course } = await supabase
-          .from('courses')
-          .select('teacher_id')
-          .eq('id', courseId)
-          .single();
+      const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', courseId).single();
       return course && String(course.teacher_id) === String(auth.teacherId);
     };
 
@@ -182,7 +168,6 @@ export default async (req, res) => {
                 return subject?.course_id;
              }
           }
-          // Handle videos and PDFs
           if (itemType === 'videos' || itemType === 'pdfs') {
              let chapterId = itemData.chapter_id;
              if (isUpdateOrDelete) {
@@ -195,26 +180,24 @@ export default async (req, res) => {
              }
           }
           return null;
-       } catch (e) {
-          console.error("ParentLookup Error:", e.message);
-          return null;
-       }
+       } catch (e) { return null; }
     };
 
     try {
-      // --- إضافة عنصر جديد (Create) ---
       if (action === 'create') {
         let insertData = { ...data };
         
+        // ✅ استخراج حالة خيار الإشعار وحذفه من بيانات الإدخال لجدول الفيديوهات لتجنب أخطاء الـ SQL
+        const shouldNotify = insertData.notifyStudents === true;
+        delete insertData.notifyStudents;
+
         if (type !== 'courses') {
            const targetCourseId = await getParentCourseId(type, insertData, false);
            if (targetCourseId) {
                const isOwner = await checkCourseOwnership(targetCourseId);
                if (!isOwner) return res.status(403).json({ error: 'غير مسموح لك بالإضافة في هذا الكورس.' });
            } else {
-               if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) {
-                   return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
-               }
+               if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
            }
            insertData.sort_order = 999;
         } else {
@@ -223,42 +206,71 @@ export default async (req, res) => {
            if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
         }
 
-        const { data: newItem, error } = await supabase
-            .from(type)
-            .insert(insertData)
-            .select()
-            .single();
-
+        const { data: newItem, error } = await supabase.from(type).insert(insertData).select().single();
         if (error) {
            if (error.code === '23505') return res.status(400).json({ error: 'تكرار في البيانات (Duplicate Code/ID)' });
            throw error;
         }
 
-        // إضافة صلاحيات الفريق للكورسات الجديدة
+        // ✅ إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
+        if (type === 'videos' && shouldNotify && newItem) {
+            try {
+                // جلب اسم الكورس ومعرف المادة لإرسال الإشعار للقناة الصحيحة
+                const { data: info } = await supabase
+                    .from('chapters')
+                    .select('subject_id, subjects(courses(title))')
+                    .eq('id', newItem.chapter_id)
+                    .single();
+
+                if (info && info.subject_id) {
+                    const courseTitle = info.subjects?.courses?.title || 'تحديث جديد في الكورس';
+                    const subjectId = info.subject_id;
+                    const videoTitle = newItem.title;
+
+                    const message = {
+                        notification: { 
+                            title: courseTitle, 
+                            body: `تم رفع فيديو: ${videoTitle}` 
+                        },
+                        topic: `subject_${subjectId}`,
+                        android: { 
+                            priority: 'high', 
+                            notification: { sound: 'default' } 
+                        },
+                        apns: { 
+                            payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } 
+                        },
+                        data: { 
+                            click_action: 'FLUTTER_NOTIFICATION_CLICK', 
+                            type: 'subject', 
+                            id: subjectId.toString() 
+                        }
+                    };
+
+                    // إرسال الإشعار الفوري
+                    await admin.messaging().send(message);
+
+                    // حفظ الإشعار في جدول الإشعارات ليراه الطلاب داخل التطبيق لاحقاً
+                    await supabase.from('notifications').insert({
+                        title: courseTitle,
+                        body: `تم رفع فيديو: ${videoTitle}`,
+                        target_type: 'subject',
+                        target_id: subjectId.toString(),
+                        sender_role: 'teacher'
+                    });
+                }
+            } catch (notifyErr) {
+                console.error("Failed to send notification:", notifyErr.message);
+            }
+        }
+
         if (type === 'courses' && newItem) {
            let accessList = [{ user_id: auth.userId, course_id: newItem.id }];
            try {
-               const { data: teamMembers } = await supabase
-                 .from('users')
-                 .select('id')
-                 .eq('teacher_profile_id', auth.teacherId) 
-                 .neq('role', 'student');
-
-               if (teamMembers?.length > 0) {
-                   teamMembers.forEach(member => {
-                       if (member.id !== auth.userId) {
-                           accessList.push({ user_id: member.id, course_id: newItem.id });
-                       }
-                   });
-               }
-
-               const { error: accessError } = await supabase
-                  .from('user_course_access')
-                  .upsert(accessList, { onConflict: 'user_id, course_id' });
-               
-               if (accessError) console.error("Auto-access error:", accessError);
-
-           } catch (permError) { console.error("Error calculating permissions:", permError); }
+               const { data: teamMembers } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).neq('role', 'student');
+               if (teamMembers?.length > 0) teamMembers.forEach(member => { if (member.id !== auth.userId) accessList.push({ user_id: member.id, course_id: newItem.id }); });
+               await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' });
+           } catch (permError) {}
         }
 
         if (type === 'videos' && newItem) newItem.url = newItem.youtube_video_id;
@@ -266,7 +278,6 @@ export default async (req, res) => {
         return res.status(200).json({ success: true, item: newItem });
       }
 
-      // --- تعديل عنصر (Update) ---
       if (action === 'update') {
          const { id, ...updates } = data;
          let isAuthorized = false;
@@ -275,14 +286,9 @@ export default async (req, res) => {
             const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
             if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
          } else if (type === 'exams') {
-             // 🛠️ إضافة التحقق للامتحانات في التعديل
-             const { data: exam } = await supabase
-                .from('exams')
-                .select('subjects(courses(teacher_id))')
-                .eq('id', id)
-                .single();
-            const teacherId = exam?.subjects?.courses?.teacher_id;
-            if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
+             const { data: exam } = await supabase.from('exams').select('subjects(courses(teacher_id))').eq('id', id).single();
+             const teacherId = exam?.subjects?.courses?.teacher_id;
+             if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
          } else {
             const targetCourseId = await getParentCourseId(type, { id }, true);
             if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
@@ -295,7 +301,6 @@ export default async (req, res) => {
          return res.status(200).json({ success: true });
       }
 
-      // --- حذف عنصر (Delete) ---
       if (action === 'delete') {
          const { id } = data;
          let isAuthorized = false;
@@ -304,16 +309,9 @@ export default async (req, res) => {
             const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
             if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
          } else if (type === 'exams') {
-             // 🛠️ FIX: إضافة التحقق للامتحانات في الحذف
-             const { data: exam } = await supabase
-                .from('exams')
-                .select('subjects(courses(teacher_id))')
-                .eq('id', id)
-                .single();
-            
+             const { data: exam } = await supabase.from('exams').select('subjects(courses(teacher_id))').eq('id', id).single();
              const teacherId = exam?.subjects?.courses?.teacher_id;
              if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
-
          } else {
             const targetCourseId = await getParentCourseId(type, { id }, true);
             if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
@@ -327,7 +325,6 @@ export default async (req, res) => {
       }
 
     } catch (err) {
-      console.error("API Action Error:", err.message);
       return res.status(500).json({ error: err.message });
     }
   }
