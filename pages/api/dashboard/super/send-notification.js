@@ -18,12 +18,44 @@ export default async (req, res) => {
   try {
     let finalTargetId = targetId;
     
-    // الهيكل الأساسي للرسالة (يدعم أندرويد وآيفون)
+    // ==========================================================
+    // 🛠️ إعداد هيكل الرسالة لضمان الوصول الفوري (High Priority)
+    // ==========================================================
     let message = {
       notification: { title, body },
-      android: { priority: 'high', notification: { sound: 'default' } },
-      apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
-      data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: targetType }
+      
+      // ✅ إعدادات أندرويد لإختراق وضع توفير الطاقة (Doze Mode)
+      android: {
+        priority: 'high', // ضروري جداً لوصول الإشعار والهاتف مغلق
+        notification: {
+          sound: 'default',
+          priority: 'max', // أقصى أولوية للعرض على الشاشة
+          channelId: 'fcm_channel', // يجب أن يطابق المعرف في كود Flutter
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK'
+        }
+      },
+      
+      // ✅ إعدادات آيفون (APNs) لضمان الوصول السريع
+      apns: {
+        headers: {
+          'apns-priority': '10', // أولوية قصوى لنظام iOS
+        },
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+            contentAvailable: true, // يسمح للتطبيق بمعالجة البيانات في الخلفية
+          },
+        },
+      },
+      
+      // البيانات الإضافية للتوجيه داخل التطبيق
+      data: { 
+        click_action: 'FLUTTER_NOTIFICATION_CLICK', 
+        type: targetType,
+        title: title,
+        body: body
+      }
     };
 
     // ==========================================================
@@ -34,7 +66,6 @@ export default async (req, res) => {
             return res.status(400).json({ success: false, message: 'يرجى إدخال هاتف أو اسم المستخدم.' });
         }
 
-        // ✅ التعديل هنا: إزالة شرط (role = student) ليتم البحث في كافة المستخدمين
         const { data: targetUser, error: userErr } = await supabase
             .from('users')
             .select('id, fcm_token, first_name, role')
@@ -45,14 +76,12 @@ export default async (req, res) => {
             return res.status(404).json({ success: false, message: 'لم يتم العثور على مستخدم بهذا الرقم/الاسم.' });
         }
 
-        // التحقق مما إذا كان المستخدم قد فتح التطبيق وتم توليد توكن له
         if (!targetUser.fcm_token) {
-            // تحديد المسمى لرسالة الخطأ بناءً على دور المستخدم
             const roleName = targetUser.role === 'teacher' ? 'المدرس' : targetUser.role === 'moderator' ? 'المشرف' : 'الطالب';
-            return res.status(400).json({ success: false, message: `${roleName} (${targetUser.first_name}) لم يقم بفتح التطبيق حتى الآن، لا يمكن إرسال إشعار له.` });
+            return res.status(400).json({ success: false, message: `${roleName} (${targetUser.first_name}) لم يقم بفتح التطبيق حتى الآن.` });
         }
 
-        // إرسال الإشعار لجهاز المستخدم تحديداً
+        // إرسال لتوكن الجهاز مباشرة
         message.token = targetUser.fcm_token;
         message.data.id = targetUser.id.toString();
         finalTargetId = targetUser.id;
@@ -78,7 +107,7 @@ export default async (req, res) => {
     const fcmResponse = await admin.messaging().send(message);
     console.log('FCM Success:', fcmResponse);
 
-    // حفظ الإشعار في قاعدة البيانات ليظهر في "شاشة الإشعارات" داخل التطبيق
+    // حفظ الإشعار في قاعدة البيانات
     const { error: dbError } = await supabase
       .from('notifications')
       .insert({
