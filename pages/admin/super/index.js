@@ -1,14 +1,15 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import SuperLayout from '../../../components/SuperLayout';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // أيقونات SVG بسيطة
 const Icons = {
   users: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
   money: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>,
   course: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>,
-  activity: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+  activity: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>,
+  pulse: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
 };
 
 export default function SuperDashboard() {
@@ -17,12 +18,12 @@ export default function SuperDashboard() {
     totalTeachers: 0,
     totalRevenue: 0,
     activeCourses: 0,
+    activeUsersToday: 0, // ✅ تهيئة النشطين اليوم
     recentUsers: [],
-    chartData: [] // ✅ تهيئة مصفوفة الرسم البياني
+    chartData: [], 
+    activeUsersChartData: [] // ✅ تهيئة بيانات رسم النشاط
   });
   const [loading, setLoading] = useState(true);
-
-  // تم حذف const chartData الثابتة لأننا سنستخدم stats.chartData القادمة من الـ API
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -66,13 +67,21 @@ export default function SuperDashboard() {
           <div className="loading-spinner">جاري التحميل...</div>
         ) : (
           <>
-            {/* بطاقات الإحصائيات */}
+            {/* بطاقات الإحصائيات (أصبحت 5 بطاقات) */}
             <div className="stats-grid">
               <div className="stat-card blue">
                 <div className="icon">{Icons.users}</div>
                 <div className="info">
                   <h3>الطلاب المسجلين</h3>
                   <p>{stats.totalUsers || 0}</p>
+                </div>
+              </div>
+
+              <div className="stat-card pink">
+                <div className="icon">{Icons.pulse}</div>
+                <div className="info">
+                  <h3>النشطون اليوم</h3>
+                  <p>{stats.activeUsersToday || 0}</p>
                 </div>
               </div>
 
@@ -101,28 +110,59 @@ export default function SuperDashboard() {
               </div>
             </div>
 
-            {/* ✅ قسم الرسم البياني (بيانات حقيقية) */}
-            <div className="chart-section">
-                <h3>📊 نمو الإيرادات (آخر 7 أيام)</h3>
-                <div className="chart-wrapper">
-                    {stats.chartData && stats.chartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={stats.chartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                                <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
-                                <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
-                                <Tooltip 
-                                    contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
-                                    cursor={{fill: 'rgba(56, 189, 248, 0.1)'}}
-                                />
-                                <Bar dataKey="sales" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={40} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%', color:'#64748b'}}>
-                            لا توجد بيانات مبيعات في آخر 7 أيام
-                        </div>
-                    )}
+            {/* ✅ قسم الرسوم البيانية المتجاورة */}
+            <div className="charts-container">
+                {/* رسم الإيرادات */}
+                <div className="chart-section">
+                    <h3>📊 نمو الإيرادات (آخر 7 أيام)</h3>
+                    <div className="chart-wrapper">
+                        {stats.chartData && stats.chartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={stats.chartData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <Tooltip 
+                                        contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
+                                        cursor={{fill: 'rgba(56, 189, 248, 0.1)'}}
+                                    />
+                                    <Bar dataKey="sales" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={30} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="empty-chart">
+                                لا توجد بيانات مبيعات في آخر 7 أيام
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* رسم نشاط المستخدمين */}
+                <div className="chart-section">
+                    <h3>🚀 نشاط المستخدمين (آخر 7 أيام)</h3>
+                    <div className="chart-wrapper">
+                        {stats.activeUsersChartData && stats.activeUsersChartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={stats.activeUsersChartData}>
+                                    <defs>
+                                        <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3}/>
+                                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <Tooltip 
+                                        contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
+                                    />
+                                    <Area type="monotone" dataKey="users" stroke="#ec4899" strokeWidth={3} fillOpacity={1} fill="url(#colorUsers)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="empty-chart">لا توجد بيانات نشاط متاحة</div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -131,7 +171,6 @@ export default function SuperDashboard() {
               <div className="panel">
                 <div className="panel-header">
                   <h3>🆕 أحدث التسجيلات</h3>
-                  {/* تم تفعيل زر عرض الكل */}
                   <button className="btn-text" onClick={() => window.location.href='/admin/super/students'}>عرض الكل</button>
                 </div>
                 <div className="table-responsive">
@@ -202,21 +241,24 @@ export default function SuperDashboard() {
         
         .loading-spinner { text-align: center; padding: 50px; color: #38bdf8; font-size: 1.2rem; }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #1e293b; padding: 25px; border-radius: 16px; display: flex; align-items: center; gap: 20px; border: 1px solid #334155; transition: transform 0.2s; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #1e293b; padding: 20px; border-radius: 16px; display: flex; align-items: center; gap: 15px; border: 1px solid #334155; transition: transform 0.2s; }
         .stat-card:hover { transform: translateY(-5px); border-color: #475569; }
-        .stat-card .icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-        .stat-card .info h3 { margin: 0 0 5px 0; font-size: 0.9rem; color: #94a3b8; font-weight: normal; }
-        .stat-card .info p { margin: 0; font-size: 1.5rem; font-weight: bold; color: #f8fafc; }
+        .stat-card .icon { width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .stat-card .info h3 { margin: 0 0 5px 0; font-size: 0.85rem; color: #94a3b8; font-weight: normal; }
+        .stat-card .info p { margin: 0; font-size: 1.4rem; font-weight: bold; color: #f8fafc; }
         
         .stat-card.blue .icon { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
         .stat-card.green .icon { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
         .stat-card.purple .icon { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
         .stat-card.orange .icon { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+        .stat-card.pink .icon { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
 
-        .chart-section { background: #1e293b; padding: 20px; border-radius: 16px; border: 1px solid #334155; margin-bottom: 30px; }
-        .chart-section h3 { margin: 0 0 20px 0; color: #f8fafc; font-size: 1.1rem; }
-        .chart-wrapper { height: 300px; width: 100%; }
+        .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .chart-section { background: #1e293b; padding: 20px; border-radius: 16px; border: 1px solid #334155; }
+        .chart-section h3 { margin: 0 0 20px 0; color: #f8fafc; font-size: 1.05rem; }
+        .chart-wrapper { height: 260px; width: 100%; }
+        .empty-chart { display: flex; justify-content: center; align-items: center; height: 100%; color: #64748b; font-size: 0.9rem; }
 
         .content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
         .panel { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; display: flex; flex-direction: column; }
@@ -246,7 +288,7 @@ export default function SuperDashboard() {
         .action-btn span { color: #94a3b8; }
 
         @media (max-width: 1024px) {
-          .content-grid { grid-template-columns: 1fr; }
+          .content-grid, .charts-container { grid-template-columns: 1fr; }
         }
         @media (max-width: 600px) {
           .page-header { flex-direction: column; align-items: flex-start; gap: 15px; }
