@@ -48,13 +48,19 @@ export default async (req, res) => {
        
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
            
-          // ✅ تحديث توكن فايربيز (FCM Token) في قاعدة البيانات لتتمكن من مراسلة هذا الجهاز
+          // ✅ تحديث آخر ظهور وتوكن فايربيز (FCM Token) في عملية واحدة
+          let updatePayload = {
+              last_active_at: new Date().toISOString()
+          };
+
           if (fcmTokenHeader) {
-              await supabase
-                  .from('users')
-                  .update({ fcm_token: fcmTokenHeader })
-                  .eq('id', userId);
+              updatePayload.fcm_token = fcmTokenHeader;
           }
+
+          await supabase
+              .from('users')
+              .update(updatePayload)
+              .eq('id', userId);
 
           // ✅ منطق جديد: جلب صورة المدرس إذا كان الحساب مرتبطاً بملف مدرس
           let profileImage = null;
