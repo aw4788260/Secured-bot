@@ -7,6 +7,9 @@ export default async function handler(req, res) {
   if (authResult.error) return; 
 
   try {
+    // ✅ تحديث إحصائيات اليوم في قاعدة البيانات قبل جلبها (لضمان دقة الأرقام الحالية)
+    await supabase.rpc('update_daily_user_stats');
+
     // تحديد نطاق التاريخ (آخر 7 أيام)
     // نقوم بتصفير الوقت (الساعة 00:00) لضمان شمولية اليوم بالكامل
     const dateLimitObj = new Date();
@@ -21,7 +24,8 @@ export default async function handler(req, res) {
         coursesResult, 
         revenueRpcResult,
         recentUsersResult,
-        chartDataResult // ✅ استعلام الرسم البياني
+        chartDataResult, // استعلام الرسم البياني للمبيعات
+        dailyStatsResult // ✅ استعلام إحصائيات النشاط اليومي
     ] = await Promise.all([
       // 1. إجمالي الطلاب
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
@@ -42,12 +46,19 @@ export default async function handler(req, res) {
         .order('created_at', { ascending: false })
         .limit(5),
 
-      // 6. ✅ بيانات الرسم البياني (أرباح الفترة المحددة)
+      // 6. بيانات الرسم البياني (أرباح الفترة المحددة)
       supabase
         .from('subscription_requests')
         .select('created_at, total_price')
         .eq('status', 'approved')
-        .gte('created_at', dateLimit) 
+        .gte('created_at', dateLimit),
+
+      // 7. ✅ جلب آخر 7 أيام من جدول الإحصائيات اليومية
+      supabase
+        .from('daily_user_stats')
+        .select('record_date, active_users_today')
+        .order('record_date', { ascending: false })
+        .limit(7)
     ]);
 
     // --- معالجة الأرباح الكلية ---
@@ -63,15 +74,18 @@ export default async function handler(req, res) {
       totalRevenue = manualData?.reduce((acc, curr) => acc + (curr.total_price || 0), 0) || 0;
     }
 
-    // --- معالجة بيانات الرسم البياني (تجميع الأرباح يومياً) ---
-    // الترتيب: من اليوم الحالي (0) والرجوع للوراء 6 أيام
+    // --- معالجة بيانات الرسوم البيانية ---
     const chartDataFinal = [];
+    const activeUsersChartFinal = []; // ✅ مصفوفة بيانات رسم النشاط
     const daysMap = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    
     const rawChartData = chartDataResult.data || [];
+    const rawDailyStats = dailyStatsResult.data || [];
 
-    for (let i = 0; i < 7; i++) {
+    // ✅ الترتيب: من 6 أيام للوراء تنازلياً وصولاً لليوم (لضبط اتجاه الرسم البياني من اليسار لليمين)
+    for (let i = 6; i >= 0; i--) {
         const d = new Date();
-        d.setDate(d.getDate() - i); // i=0 هو اليوم، i=1 هو أمس، وهكذا...
+        d.setDate(d.getDate() - i); 
         
         // تنسيق التاريخ للمقارنة (ISO Date Part Only: YYYY-MM-DD)
         const dateStr = d.toISOString().split('T')[0];
@@ -80,18 +94,28 @@ export default async function handler(req, res) {
         // تجميع أرباح هذا اليوم
         const dayTotal = rawChartData
             .filter(item => {
-                // نأخذ الجزء الخاص بالتاريخ فقط من التوقيت لضمان المطابقة
                 const itemDateStr = new Date(item.created_at).toISOString().split('T')[0];
                 return itemDateStr === dateStr;
             })
             .reduce((sum, item) => sum + (item.total_price || 0), 0);
             
         chartDataFinal.push({ 
-            name: i === 0 ? 'اليوم' : dayName, // تسمية اليوم الحالي بـ "اليوم"
+            name: i === 0 ? 'اليوم' : dayName,
             date: dateStr, 
             sales: dayTotal 
         });
+
+        // ✅ تجميع المستخدمين النشطين لهذا اليوم
+        const foundStat = rawDailyStats.find(s => s.record_date === dateStr);
+        activeUsersChartFinal.push({
+            name: i === 0 ? 'اليوم' : dayName,
+            date: dateStr,
+            users: foundStat ? foundStat.active_users_today : 0
+        });
     }
+
+    // ✅ استخراج رقم النشطين اليوم (آخر عنصر في المصفوفة لأننا رتبناها تصاعدياً زمنياً)
+    const activeUsersToday = activeUsersChartFinal[6]?.users || 0;
 
     // --- تنسيق المستخدمين الجدد ---
     const formattedRecentUsers = recentUsersResult.data 
@@ -110,7 +134,9 @@ export default async function handler(req, res) {
       activeCourses: coursesResult.count || 0,
       totalRevenue: totalRevenue,
       recentUsers: formattedRecentUsers,
-      chartData: chartDataFinal // البيانات مرتبة: [اليوم، أمس، ...، قبل 6 أيام]
+      chartData: chartDataFinal,
+      activeUsersChartData: activeUsersChartFinal, // ✅ بيانات رسم النشاط
+      activeUsersToday: activeUsersToday // ✅ رقم النشطين اليوم للبطاقة
     });
 
   } catch (err) {
