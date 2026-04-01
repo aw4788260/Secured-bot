@@ -47,6 +47,9 @@ export default async (req, res) => {
         randomizeQuestions: exam.randomize_questions, 
         randomizeOptions: exam.randomize_options,
         
+        // ✅ إرسال خيار السماح بإعادة الامتحان (التدريب)
+        allow_retake: exam.allow_retake || false,
+        
         questions: questions
     };
 
