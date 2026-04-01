@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد أداة فايربيز لإرسال الإشعارات
 
 // ============================================================
 // 🛠️ دوال مساعدة لمعالجة فيديوهات يوتيوب
@@ -65,6 +66,7 @@ export default async (req, res) => {
   const auth = await verifyTeacher(req);
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
+  // ✅ استقبال الخيار الخاص بالإشعارات (notifyStudents) مع باقي البيانات
   const { action, type, data } = req.body; 
 
   // ============================================================
@@ -125,6 +127,15 @@ export default async (req, res) => {
       return null;
   };
 
+  // ============================================================
+  // 🛡️ دالة مساعدة للحصول على subject_id من chapter_id (للإشعارات)
+  // ============================================================
+  const getSubjectIdFromChapter = async (chapterId) => {
+      if (!chapterId) return null;
+      const { data: chapter } = await supabase.from('chapters').select('subject_id, subjects!inner(courses!inner(title))').eq('id', chapterId).single();
+      return chapter ? { subjectId: chapter.subject_id, courseTitle: chapter.subjects?.courses?.title } : null;
+  };
+
   try {
     // --- إضافة عنصر جديد (Create) ---
     if (action === 'create') {
@@ -136,6 +147,7 @@ export default async (req, res) => {
       if (type === 'videos' && videoUrl) {
           insertData.youtube_video_id = extractYouTubeID(videoUrl);
           delete insertData.url; // إزالة الـ url حتى لا يتعارض مع قاعدة البيانات
+          delete insertData.notifyStudents; // إزالة خيار الإشعارات قبل الإرسال لقاعدة البيانات
 
           const ytCheck = await fetchYouTubeDetails(insertData.youtube_video_id);
           if (!ytCheck.isValid) {
@@ -143,6 +155,12 @@ export default async (req, res) => {
           }
           
           insertData.duration = ytCheck.duration;
+      }
+      
+      // إزالة حقل notifyStudents من البيانات إذا كان موجوداً قبل حفظه (خاص بالـ PDF أيضاً إن وُجد)
+      const shouldNotify = data.notifyStudents === true || data.notifyStudents === 'true';
+      if (insertData.notifyStudents !== undefined) {
+          delete insertData.notifyStudents;
       }
       
       // 🛡️ التحقق الأمني عند الإضافة
@@ -198,6 +216,43 @@ export default async (req, res) => {
           } catch (permError) { console.error("Error granting permissions:", permError); }
       }
 
+      // ============================================================
+      // ✅🚀 إرسال إشعار فوري للطلاب إذا تم تفعيل الخيار وتم حفظ العنصر
+      // ============================================================
+      if (shouldNotify && (type === 'videos' || type === 'pdfs')) {
+          try {
+              // نحتاج لجلب اسم الكورس ومعرف المادة لإرسال الإشعار للشخص الصحيح
+              const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
+              if (subjectInfo && subjectInfo.subjectId) {
+                  const courseTitle = subjectInfo.courseTitle || 'تحديث جديد';
+                  const itemTitle = insertData.title || 'محتوى جديد';
+                  const itemTypeName = type === 'videos' ? 'فيديو جديد' : 'ملف جديد';
+
+                  const message = {
+                      notification: { title: courseTitle, body: `تم رفع ${itemTypeName}: ${itemTitle}` },
+                      topic: `subject_${subjectInfo.subjectId}`, // التنبيه للمشتركين في المادة فقط
+                      android: { priority: 'high', notification: { sound: 'default' } },
+                      apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
+                      data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectInfo.subjectId.toString() }
+                  };
+
+                  await admin.messaging().send(message);
+
+                  // حفظ في سجل الإشعارات
+                  await supabase.from('notifications').insert({
+                      title: courseTitle,
+                      body: `تم رفع ${itemTypeName}: ${itemTitle}`,
+                      target_type: 'subject',
+                      target_id: subjectInfo.subjectId.toString(),
+                      sender_role: 'teacher'
+                  });
+                  console.log(`✅ Notification sent successfully for new ${type}: ${itemTitle}`);
+              }
+          } catch (notifyErr) {
+              console.error("⚠️ FCM Notify Error (Content):", notifyErr.message);
+          }
+      }
+
       return res.status(200).json({ success: true, item: newItem });
     }
 
@@ -205,6 +260,9 @@ export default async (req, res) => {
     if (action === 'update') {
        const { id, ...updates } = data;
        let isAuthorized = false;
+
+       // إزالة حقل notifyStudents من بيانات التعديل إن وُجد عن طريق الخطأ
+       if (updates.notifyStudents !== undefined) delete updates.notifyStudents;
 
        // 🚀 التحقق من الفيديو في حالة تعديل الرابط
        const videoUrl = updates.url || updates.youtube_video_id;
