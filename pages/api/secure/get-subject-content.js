@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات (✅ تم إضافة teacher_id إلى courses للتحقق من الملكية + duration للـ videos)
+    // 4. جلب البيانات (✅ تم إضافة allow_retake للـ exams و duration للـ videos)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -60,7 +60,7 @@ export default async (req, res) => {
           videos (id, title, sort_order, youtube_video_id, duration), 
           pdfs (id, title, sort_order)
         ),
-        exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active) 
+        exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active, allow_retake) 
       `)
       .eq('id', subjectId)
       .single();
