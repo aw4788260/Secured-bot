@@ -14,13 +14,63 @@ export default async (req, res) => {
 
   // 3. استخدام المعرف الآمن المحقون
   const userId = req.headers['x-user-id'];
-  const { attemptId, answers } = req.body; // answers format: { "questionId": optionId }
+  
+  // ✅ استقبال examId ضروري في حالة التدريب لمعرفة أي امتحان نصحح
+  const { attemptId, answers, examId } = req.body; // answers format: { "questionId": optionId }
 
   if (!attemptId || !answers) {
       return res.status(400).json({ error: 'Missing Data' });
   }
 
   try {
+    // =========================================================
+    // ✅✅ سيناريو 1: وضع التدريب (الإعادة المؤقتة)
+    // =========================================================
+    if (attemptId === 'temp_retake_mode') {
+        if (!examId) {
+            return res.status(400).json({ error: 'Missing Exam ID for practice mode' });
+        }
+
+        console.log(`${apiName} 🔄 Grading practice mode for exam: ${examId}`);
+
+        // جلب الإجابات الصحيحة الخاصة بهذا الامتحان
+        const { data: questions } = await supabase
+          .from('questions')
+          .select(`id, options (id, is_correct)`)
+          .eq('exam_id', examId);
+
+        let score = 0;
+        const total = questions?.length || 0;
+
+        // تصحيح الإجابات في الذاكرة (بدون حفظ في قاعدة البيانات)
+        (questions || []).forEach(q => {
+          const userSelectedOptionId = answers[q.id];
+          const correctOption = q.options.find(o => o.is_correct);
+          
+          if (correctOption && userSelectedOptionId && String(userSelectedOptionId) === String(correctOption.id)) {
+            score++;
+          }
+        });
+
+        // حساب النسبة المئوية
+        const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+
+        console.log(`${apiName} ✅ Practice Exam submitted. Score: ${score}/${total} (${percentage}%)`);
+
+        // إرجاع النتيجة مباشرة للفرونت إند دون الحفظ
+        return res.status(200).json({
+          success: true,
+          score: score,
+          total: total,
+          percentage: percentage,
+          is_practice: true // ✅ علامة للتطبيق بأن هذه نتيجة تدريب
+        });
+    }
+
+    // =========================================================
+    // ✅✅ سيناريو 2: المحاولة الحقيقية الأساسية
+    // =========================================================
+    
     // 4. جلب بيانات المحاولة للتحقق من الملكية
     const { data: attemptData, error: fetchError } = await supabase
         .from('user_attempts')
@@ -41,20 +91,20 @@ export default async (req, res) => {
         return res.status(409).json({ error: "Exam already submitted" });
     }
 
-    const examId = attemptData.exam_id;
+    const realExamId = attemptData.exam_id;
 
     // 6. جلب الإجابات الصحيحة
     const { data: questions } = await supabase
       .from('questions')
       .select(`id, options (id, is_correct)`)
-      .eq('exam_id', examId);
+      .eq('exam_id', realExamId);
 
     let score = 0;
-    const total = questions.length;
+    const total = questions?.length || 0;
     let answersToInsert = [];
 
     // 7. تصحيح الإجابات
-    questions.forEach(q => {
+    (questions || []).forEach(q => {
       const userSelectedOptionId = answers[q.id]; // ID الاختيار الذي اختاره الطالب
       const correctOption = q.options.find(o => o.is_correct);
       
@@ -106,7 +156,8 @@ export default async (req, res) => {
       success: true,
       score: score,
       total: total,
-      percentage: percentage
+      percentage: percentage,
+      is_practice: false
     });
 
   } catch (err) {
