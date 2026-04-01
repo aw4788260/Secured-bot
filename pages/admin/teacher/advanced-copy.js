@@ -8,11 +8,11 @@ const Icons = {
     copy: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>,
     source: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>,
     target: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
-    subject: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>,
-    chapter: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
+    subject: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>,
+    chapter: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
     video: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>,
     pdf: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
-    exam: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>,
+    exam: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>,
     arrowDown: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>,
     check: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
 };
@@ -28,7 +28,8 @@ export default function AdvancedCopyPage() {
   const [targetCourseId, setTargetCourseId] = useState('');
   
   const [sourceTree, setSourceTree] = useState([]);
-  const [selected, setSelected] = useState({ subjects: [], chapters: [], videos: [], pdfs: [], exams: [] });
+  // ✅ التحديد أصبح يقتصر على المواد، الفصول، والامتحانات فقط
+  const [selected, setSelected] = useState({ subjects: [], chapters: [], exams: [] });
 
   const [toast, setToast] = useState({ show: false, msg: '', type: '' });
 
@@ -55,7 +56,7 @@ export default function AdvancedCopyPage() {
   useEffect(() => {
     if (!sourceCourseId) {
         setSourceTree([]);
-        setSelected({ subjects: [], chapters: [], videos: [], pdfs: [], exams: [] });
+        setSelected({ subjects: [], chapters: [], exams: [] });
         return;
     }
     const fetchTree = async () => {
@@ -77,29 +78,64 @@ export default function AdvancedCopyPage() {
   }, [sourceCourseId]);
 
   const selectAll = (subjects) => {
-    const newSelected = { subjects: [], chapters: [], videos: [], pdfs: [], exams: [] };
+    const newSelected = { subjects: [], chapters: [], exams: [] };
     subjects.forEach(sub => {
       newSelected.subjects.push(sub.id);
       sub.exams?.forEach(ex => newSelected.exams.push(ex.id));
-      sub.chapters?.forEach(ch => {
-        newSelected.chapters.push(ch.id);
-        ch.videos?.forEach(v => newSelected.videos.push(v.id));
-        ch.pdfs?.forEach(p => newSelected.pdfs.push(p.id));
-      });
+      sub.chapters?.forEach(ch => newSelected.chapters.push(ch.id));
     });
     setSelected(newSelected);
   };
 
-  const toggleSelection = (type, id, parentIds = {}) => {
+  // ✅ الدوال الذكية للتعامل مع التحديد المترابط
+  const toggleSubject = (sub) => {
     setSelected(prev => {
-      const isSelected = prev[type].includes(id);
-      const newState = { ...prev, [type]: isSelected ? prev[type].filter(x => x !== id) : [...prev[type], id] };
+        const isSelected = prev.subjects.includes(sub.id);
+        let newSubjects = [...prev.subjects];
+        let newChapters = [...prev.chapters];
+        let newExams = [...prev.exams];
 
-      if (!isSelected) {
-        if (parentIds.subjectId && !newState.subjects.includes(parentIds.subjectId)) newState.subjects.push(parentIds.subjectId);
-        if (parentIds.chapterId && !newState.chapters.includes(parentIds.chapterId)) newState.chapters.push(parentIds.chapterId);
-      }
-      return newState;
+        if (isSelected) {
+            // إلغاء تحديد المادة يلغي تحديد كافة الفصول والامتحانات التابعة لها
+            newSubjects = newSubjects.filter(id => id !== sub.id);
+            const subChapterIds = sub.chapters?.map(c => c.id) || [];
+            const subExamIds = sub.exams?.map(e => e.id) || [];
+            newChapters = newChapters.filter(id => !subChapterIds.includes(id));
+            newExams = newExams.filter(id => !subExamIds.includes(id));
+        } else {
+            // تحديد المادة يحدد كافة الفصول والامتحانات التابعة لها تلقائياً
+            newSubjects.push(sub.id);
+            sub.chapters?.forEach(c => { if(!newChapters.includes(c.id)) newChapters.push(c.id); });
+            sub.exams?.forEach(e => { if(!newExams.includes(e.id)) newExams.push(e.id); });
+        }
+        return { subjects: newSubjects, chapters: newChapters, exams: newExams };
+    });
+  };
+
+  const toggleChapter = (chapterId, subjectId) => {
+    setSelected(prev => {
+        const isSelected = prev.chapters.includes(chapterId);
+        let newChapters = isSelected ? prev.chapters.filter(id => id !== chapterId) : [...prev.chapters, chapterId];
+        let newSubjects = [...prev.subjects];
+        
+        // التحديد التلقائي للمادة الأب في حال تم تحديد أحد الفصول
+        if (!isSelected && !newSubjects.includes(subjectId)) {
+            newSubjects.push(subjectId);
+        }
+        return { ...prev, chapters: newChapters, subjects: newSubjects };
+    });
+  };
+
+  const toggleExam = (examId, subjectId) => {
+    setSelected(prev => {
+        const isSelected = prev.exams.includes(examId);
+        let newExams = isSelected ? prev.exams.filter(id => id !== examId) : [...prev.exams, examId];
+        let newSubjects = [...prev.subjects];
+        
+        if (!isSelected && !newSubjects.includes(subjectId)) {
+            newSubjects.push(subjectId);
+        }
+        return { ...prev, exams: newExams, subjects: newSubjects };
     });
   };
 
@@ -108,12 +144,24 @@ export default function AdvancedCopyPage() {
     if (sourceCourseId === targetCourseId) return showToast('لا يمكن النسخ لنفس الكورس', 'error');
     if (selected.subjects.length === 0) return showToast('يرجى تحديد مادة واحدة على الأقل للنسخ', 'error');
 
+    // ✅ بناء Payload نهائي يشمل الـ Videos والـ PDFs بناءً على الفصول المحددة (للتوافق مع الـ API)
+    const finalPayload = { ...selected, videos: [], pdfs: [] };
+    
+    sourceTree.forEach(sub => {
+        sub.chapters?.forEach(ch => {
+            if (selected.chapters.includes(ch.id)) {
+                ch.videos?.forEach(v => finalPayload.videos.push(v.id));
+                ch.pdfs?.forEach(p => finalPayload.pdfs.push(p.id));
+            }
+        });
+    });
+
     setCopying(true);
     try {
       const res = await fetch('/api/dashboard/teacher/advanced-copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceCourseId, targetCourseId, selected })
+        body: JSON.stringify({ sourceCourseId, targetCourseId, selected: finalPayload })
       });
       const data = await res.json();
       
@@ -160,8 +208,6 @@ export default function AdvancedCopyPage() {
             
             {/* العمود الأيمن: إعدادات النسخ (Steps) */}
             <div className="config-column">
-                
-                {/* الخطوة الأولى */}
                 <div className="step-card">
                     <div className="step-header">
                         <div className="step-num">1</div>
@@ -180,7 +226,6 @@ export default function AdvancedCopyPage() {
 
                 <div className="flow-arrow">{Icons.arrowDown}</div>
 
-                {/* الخطوة الثانية */}
                 <div className="step-card">
                     <div className="step-header">
                         <div className="step-num">2</div>
@@ -197,7 +242,6 @@ export default function AdvancedCopyPage() {
                     </div>
                 </div>
 
-                {/* الخطوة الثالثة: الملخص والتنفيذ */}
                 <div className="step-card highlight">
                     <div className="step-header">
                         <div className="step-num highlight-num">3</div>
@@ -213,9 +257,9 @@ export default function AdvancedCopyPage() {
                                 <span className="s-icon">{Icons.chapter}</span>
                                 <div className="s-details"><span className="s-val">{selected.chapters.length}</span><span className="s-lbl">فصول</span></div>
                             </div>
-                            <div className="summary-item">
+                            <div className="summary-item" style={{opacity: 0.7}}>
                                 <span className="s-icon">{Icons.video}</span>
-                                <div className="s-details"><span className="s-val">{selected.videos.length}</span><span className="s-lbl">فيديو</span></div>
+                                <div className="s-details"><span className="s-val">تلقائي</span><span className="s-lbl">فيديو</span></div>
                             </div>
                             <div className="summary-item">
                                 <span className="s-icon">{Icons.exam}</span>
@@ -234,11 +278,11 @@ export default function AdvancedCopyPage() {
                 </div>
             </div>
 
-            {/* العمود الأيسر: شجرة المحتوى */}
+            {/* العمود الأيسر: الهيكل المرئي للمحتوى (Tree) */}
             <div className="tree-column">
                 <div className="tree-header">
-                    <h3>شجرة المحتوى القابلة للنسخ</h3>
-                    <span className="badge">حدد العناصر المطلوبة</span>
+                    <h3>هيكل الكورس (حدد العناصر المطلوبة)</h3>
+                    <span className="badge">يتم نسخ المرفقات تلقائياً مع الفصول</span>
                 </div>
                 
                 <div className="tree-content custom-scroll">
@@ -250,72 +294,79 @@ export default function AdvancedCopyPage() {
                     ) : sourceTree.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-icon">{Icons.source}</div>
-                            <p>يرجى اختيار الكورس المصدري من القائمة اليمنى لرؤية محتوياته هنا.</p>
+                            <p>يرجى اختيار الكورس المصدري من القائمة اليمنى لتهيئة شجرة النسخ.</p>
                         </div>
                     ) : (
                         <div className="tree-wrapper">
                             {sourceTree.map(sub => (
-                                <div key={sub.id} className="tree-node subject-node">
-                                    <label className="checkbox-wrapper">
-                                        <input type="checkbox" checked={selected.subjects.includes(sub.id)} onChange={() => toggleSelection('subjects', sub.id)} />
-                                        <span className="checkmark"></span>
-                                        <div className="node-content">
-                                            <span className="node-icon purple-text">{Icons.subject}</span>
-                                            <span className="node-title">{sub.title}</span>
-                                        </div>
-                                    </label>
+                                <div key={sub.id} className="subject-section">
+                                    {/* 1. قسم المادة (عنوان رئيسي) */}
+                                    <div className={`subject-header ${selected.subjects.includes(sub.id) ? 'active' : ''}`}>
+                                        <label className="checkbox-wrapper">
+                                            <input type="checkbox" checked={selected.subjects.includes(sub.id)} onChange={() => toggleSubject(sub)} />
+                                            <span className="checkmark main"></span>
+                                            <div className="node-content">
+                                                <span className="node-icon purple-text">{Icons.subject}</span>
+                                                <h4 className="node-title">مادة: {sub.title}</h4>
+                                            </div>
+                                        </label>
+                                    </div>
 
-                                    <div className="tree-branch">
-                                        {/* الفصول */}
+                                    {/* محتوى المادة */}
+                                    <div className="subject-body">
+                                        
+                                        {/* 2. الفصول (عناوين فرعية مع التحديد) */}
                                         {sub.chapters?.map(ch => (
-                                            <div key={ch.id} className="tree-node chapter-node">
-                                                <label className="checkbox-wrapper">
-                                                    <input type="checkbox" checked={selected.chapters.includes(ch.id)} onChange={() => toggleSelection('chapters', ch.id, { subjectId: sub.id })} />
-                                                    <span className="checkmark"></span>
-                                                    <div className="node-content">
-                                                        <span className="node-icon blue-text">{Icons.chapter}</span>
-                                                        <span className="node-title">{ch.title}</span>
-                                                    </div>
-                                                </label>
+                                            <div key={ch.id} className={`chapter-section ${selected.chapters.includes(ch.id) ? 'active' : ''}`}>
+                                                <div className="chapter-header">
+                                                    <label className="checkbox-wrapper">
+                                                        <input type="checkbox" checked={selected.chapters.includes(ch.id)} onChange={() => toggleChapter(ch.id, sub.id)} />
+                                                        <span className="checkmark sub"></span>
+                                                        <div className="node-content">
+                                                            <span className="node-icon blue-text">{Icons.chapter}</span>
+                                                            <h5 className="node-title">شابتر: {ch.title}</h5>
+                                                        </div>
+                                                    </label>
+                                                </div>
                                                 
-                                                <div className="tree-branch sub-branch">
-                                                    {/* الفيديوهات */}
-                                                    {ch.videos?.map(v => (
-                                                        <label key={v.id} className="checkbox-wrapper item-node">
-                                                            <input type="checkbox" checked={selected.videos.includes(v.id)} onChange={() => toggleSelection('videos', v.id, { subjectId: sub.id, chapterId: ch.id })} />
-                                                            <span className="checkmark small"></span>
-                                                            <div className="node-content">
-                                                                <span className="node-icon slate-text">{Icons.video}</span>
-                                                                <span className="node-title">{v.title}</span>
-                                                            </div>
-                                                        </label>
-                                                    ))}
-                                                    {/* الملفات */}
-                                                    {ch.pdfs?.map(p => (
-                                                        <label key={p.id} className="checkbox-wrapper item-node">
-                                                            <input type="checkbox" checked={selected.pdfs.includes(p.id)} onChange={() => toggleSelection('pdfs', p.id, { subjectId: sub.id, chapterId: ch.id })} />
-                                                            <span className="checkmark small"></span>
-                                                            <div className="node-content">
-                                                                <span className="node-icon pink-text">{Icons.pdf}</span>
-                                                                <span className="node-title">{p.title}</span>
-                                                            </div>
-                                                        </label>
-                                                    ))}
+                                                {/* المرفقات (فقط عرض - بدون شيك بوكس) */}
+                                                <div className="chapter-contents">
+                                                    {(ch.videos?.length > 0 || ch.pdfs?.length > 0) ? (
+                                                        <div className="contents-grid">
+                                                            {ch.videos?.map(v => (
+                                                                <div key={`v-${v.id}`} className="content-pill video">
+                                                                    {Icons.video}
+                                                                    <span className="truncate">{v.title}</span>
+                                                                </div>
+                                                            ))}
+                                                            {ch.pdfs?.map(p => (
+                                                                <div key={`p-${p.id}`} className="content-pill pdf">
+                                                                    {Icons.pdf}
+                                                                    <span className="truncate">{p.title}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="empty-content">لا توجد مرفقات داخل هذا الشابتر</div>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))}
-                                        
-                                        {/* الامتحانات */}
+
+                                        {/* 3. الامتحانات (مثل الفصول تماماً) */}
                                         {sub.exams?.map(ex => (
-                                            <label key={ex.id} className="checkbox-wrapper exam-node">
-                                                <input type="checkbox" checked={selected.exams.includes(ex.id)} onChange={() => toggleSelection('exams', ex.id, { subjectId: sub.id })} />
-                                                <span className="checkmark"></span>
-                                                <div className="node-content">
-                                                    <span className="node-icon yellow-text">{Icons.exam}</span>
-                                                    <span className="node-title">امتحان: {ex.title}</span>
-                                                </div>
-                                            </label>
+                                            <div key={ex.id} className={`exam-section ${selected.exams.includes(ex.id) ? 'active' : ''}`}>
+                                                <label className="checkbox-wrapper">
+                                                    <input type="checkbox" checked={selected.exams.includes(ex.id)} onChange={() => toggleExam(ex.id, sub.id)} />
+                                                    <span className="checkmark exam-mark"></span>
+                                                    <div className="node-content">
+                                                        <span className="node-icon yellow-text">{Icons.exam}</span>
+                                                        <h5 className="node-title exam-title">امتحان: {ex.title}</h5>
+                                                    </div>
+                                                </label>
+                                            </div>
                                         ))}
+
                                     </div>
                                 </div>
                             ))}
@@ -375,47 +426,78 @@ export default function AdvancedCopyPage() {
         .btn-execute:disabled { opacity: 0.6; cursor: not-allowed; background: #475569; box-shadow: none; }
         .btn-execute:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4); }
 
-        /* Tree Column */
+        /* Tree Column (Professional Structure) */
         .tree-column { background: #1e293b; border: 1px solid #334155; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 180px); min-height: 600px; }
         .tree-header { padding: 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
         .tree-header h3 { margin: 0; color: #f8fafc; font-size: 1.1rem; }
         .badge { background: rgba(56, 189, 248, 0.1); color: #38bdf8; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
 
-        .tree-content { flex: 1; overflow-y: auto; padding: 20px; background: #111827; }
+        .tree-content { flex: 1; overflow-y: auto; padding: 25px; background: #111827; }
         .custom-scroll::-webkit-scrollbar { width: 8px; }
         .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-        /* Tree Structure */
-        .tree-wrapper { display: flex; flex-direction: column; gap: 15px; }
-        .tree-node { position: relative; }
-        .tree-branch { margin-right: 22px; padding-right: 15px; border-right: 1px solid #334155; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-        .sub-branch { border-right-style: dashed; border-color: #475569; }
+        .tree-wrapper { display: flex; flex-direction: column; gap: 25px; }
 
-        /* Checkbox & Labels */
-        .checkbox-wrapper { display: flex; align-items: center; cursor: pointer; position: relative; user-select: none; padding: 8px 12px; border-radius: 8px; transition: 0.2s; border: 1px solid transparent; }
-        .checkbox-wrapper:hover { background: rgba(255,255,255,0.03); border-color: #334155; }
+        /* 1. Subject Section */
+        .subject-section { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .subject-header { background: rgba(168, 85, 247, 0.05); padding: 15px 20px; border-bottom: 1px solid rgba(168, 85, 247, 0.1); transition: background 0.3s; }
+        .subject-header.active { background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); }
+        .subject-body { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+
+        /* 2. Chapter Section */
+        .chapter-section { border: 1px dashed #475569; border-radius: 10px; background: #0f172a; overflow: hidden; transition: border-color 0.3s; }
+        .chapter-section.active { border-style: solid; border-color: #38bdf8; box-shadow: inset 0 0 10px rgba(56, 189, 248, 0.05); }
+        .chapter-header { padding: 12px 15px; background: rgba(0,0,0,0.2); border-bottom: 1px dashed #334155; }
+        .chapter-section.active .chapter-header { background: rgba(56, 189, 248, 0.1); border-bottom-style: solid; border-color: rgba(56, 189, 248, 0.2); }
+        .chapter-contents { padding: 15px; }
+
+        /* 3. Read-Only Content Pills (Videos & PDFs) */
+        .contents-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .content-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 500; border: 1px solid; opacity: 0.8; user-select: none; }
+        .chapter-section.active .content-pill { opacity: 1; }
+        .content-pill.video { background: rgba(148, 163, 184, 0.05); border-color: #475569; color: #cbd5e1; }
+        .content-pill.pdf { background: rgba(244, 114, 182, 0.05); border-color: rgba(244, 114, 182, 0.3); color: #f472b6; }
+        .truncate { max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .empty-content { color: #64748b; font-size: 0.85rem; font-style: italic; }
+
+        /* 4. Exam Section */
+        .exam-section { background: #0f172a; border: 1px dashed #475569; border-radius: 10px; padding: 12px 15px; transition: 0.3s; }
+        .exam-section.active { border-style: solid; border-color: #facc15; background: rgba(250, 204, 21, 0.05); box-shadow: inset 0 0 10px rgba(250, 204, 21, 0.05); }
+        
+        /* Node Texts & Icons */
+        .node-content { display: flex; align-items: center; gap: 12px; }
+        .node-title { margin: 0; color: #f8fafc; font-size: 1rem; }
+        h4.node-title { font-size: 1.1rem; }
+        .exam-title { color: #e2e8f0; }
+        .exam-section.active .exam-title { color: #facc15; }
+        
+        .purple-text { color: #c084fc; } .blue-text { color: #38bdf8; } .yellow-text { color: #facc15; }
+
+        /* Checkboxes Custom Design */
+        .checkbox-wrapper { display: flex; align-items: center; cursor: pointer; position: relative; user-select: none; width: 100%; }
         .checkbox-wrapper input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
         
-        .checkmark { position: relative; height: 22px; width: 22px; background-color: #0f172a; border: 2px solid #475569; border-radius: 6px; transition: 0.2s; flex-shrink: 0; margin-left: 12px; }
-        .checkmark.small { height: 18px; width: 18px; border-radius: 4px; }
-        .checkbox-wrapper:hover input ~ .checkmark { border-color: #94a3b8; }
-        .checkbox-wrapper input:checked ~ .checkmark { background-color: #a855f7; border-color: #a855f7; }
-        .checkbox-wrapper input:checked ~ .checkmark.small { background-color: #38bdf8; border-color: #38bdf8; }
-        .checkmark:after { content: ""; position: absolute; display: none; left: 6px; top: 2px; width: 6px; height: 12px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-        .checkmark.small:after { left: 5px; top: 1px; width: 4px; height: 9px; }
-        .checkbox-wrapper input:checked ~ .checkmark:after { display: block; }
+        .checkmark { position: relative; background-color: #0f172a; border: 2px solid #475569; border-radius: 6px; transition: 0.2s; flex-shrink: 0; margin-left: 15px; display: flex; align-items: center; justify-content: center;}
+        .checkmark.main { height: 24px; width: 24px; }
+        .checkmark.sub { height: 20px; width: 20px; }
+        .checkmark.exam-mark { height: 20px; width: 20px; border-radius: 5px; }
 
-        .node-content { display: flex; align-items: center; gap: 10px; }
-        .node-icon { display: flex; align-items: center; justify-content: center; }
-        .purple-text { color: #c084fc; } .blue-text { color: #38bdf8; } .slate-text { color: #94a3b8; } .pink-text { color: #f472b6; } .yellow-text { color: #facc15; }
+        .checkbox-wrapper:hover input ~ .checkmark { border-color: #94a3b8; }
         
-        .node-title { color: #e2e8f0; font-size: 1rem; }
-        .subject-node > .checkbox-wrapper { background: rgba(168, 85, 247, 0.05); border-color: rgba(168, 85, 247, 0.2); }
-        .subject-node > .checkbox-wrapper .node-title { font-weight: bold; font-size: 1.1rem; color: #f8fafc; }
-        .item-node .node-title { font-size: 0.9rem; color: #cbd5e1; }
-        .exam-node .node-title { font-weight: bold; color: #facc15; }
+        /* Subject Check */
+        .checkbox-wrapper input:checked ~ .checkmark.main { background-color: #a855f7; border-color: #a855f7; }
+        /* Chapter Check */
+        .checkbox-wrapper input:checked ~ .checkmark.sub { background-color: #38bdf8; border-color: #38bdf8; }
+        /* Exam Check */
+        .checkbox-wrapper input:checked ~ .checkmark.exam-mark { background-color: #facc15; border-color: #facc15; }
+
+        .checkmark:after { content: ""; position: absolute; display: none; border: solid #0f172a; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+        .checkmark.main:after { left: 7px; top: 3px; width: 6px; height: 12px; }
+        .checkmark.sub:after { left: 6px; top: 2px; width: 5px; height: 10px; }
+        .checkmark.exam-mark:after { left: 6px; top: 2px; width: 5px; height: 10px; border-color: #0f172a; }
+        .checkbox-wrapper input:checked ~ .checkmark:after { display: block; }
 
         /* States & Loaders */
         .loading-state, .empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; color: #64748b; text-align: center; }
