@@ -66,10 +66,10 @@ export default async function handler(req, res) {
       // حلقة النسخ (نستخدم for...of لضمان الترتيب وإتمام الوعود Async/Await)
       for (const oldSub of sourceSubjects) {
           
-          // أ. نسخ المادة (Subject)
+          // أ. نسخ المادة (Subject) - تم إزالة كلمة (نسخة) من هنا
           const { data: newSub } = await supabase.from('subjects').insert({
               course_id: targetCourseId,
-              title: `${oldSub.title} (نسخة)`,
+              title: oldSub.title, // يتم النسخ بالاسم الأصلي تماماً
               price: oldSub.price,
               sort_order: oldSub.sort_order
           }).select().single();
