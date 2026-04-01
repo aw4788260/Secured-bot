@@ -1,4 +1,6 @@
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { supabase } from '../../../lib/supabaseClient'; // ✅ استيراد قاعدة البيانات
+import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز للإشعارات
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -103,6 +105,49 @@ export default async (req, res) => {
     console.log(`   -> Original Name: ${req.file.originalname}`);
     console.log(`   -> Saved Name:    ${req.file.filename}`);
     console.log(`   -> Size:          ${(req.file.size / 1024 / 1024).toFixed(2)} MB`);
+
+    // ============================================================
+    // ✅🚀 إرسال الإشعارات إذا تم طلب ذلك عبر الـ FormData (خاص بملفات الـ PDF)
+    // ============================================================
+    const { notifyStudents, chapterId, title } = req.body || {};
+    
+    if (notifyStudents === 'true' && chapterId) {
+        try {
+            // جلب معرف المادة واسم الكورس للتمكن من إرسال الإشعار للطلاب المشتركين
+            const { data: chapter } = await supabase
+                .from('chapters')
+                .select('subject_id, subjects!inner(courses!inner(title))')
+                .eq('id', chapterId)
+                .single();
+            
+            if (chapter && chapter.subject_id) {
+                const subjectId = chapter.subject_id;
+                const courseTitle = chapter.subjects?.courses?.title || 'تحديث جديد';
+                const itemTitle = title || 'ملف PDF جديد';
+                
+                const message = {
+                    notification: { title: courseTitle, body: `تم رفع ملف جديد: ${itemTitle}` },
+                    topic: `subject_${subjectId}`,
+                    android: { priority: 'high', notification: { sound: 'default' } },
+                    apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
+                    data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectId.toString() }
+                };
+
+                await admin.messaging().send(message);
+
+                await supabase.from('notifications').insert({
+                    title: courseTitle,
+                    body: `تم رفع ملف جديد: ${itemTitle}`,
+                    target_type: 'subject',
+                    target_id: subjectId.toString(),
+                    sender_role: 'teacher'
+                });
+                console.log(`✅ Notification sent for uploaded file: ${itemTitle}`);
+            }
+        } catch (notifyErr) {
+            console.error("⚠️ FCM Notify Error (Upload):", notifyErr.message);
+        }
+    }
 
     // 4. إرسال الرد
     return res.status(200).json({ 
