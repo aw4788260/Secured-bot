@@ -28,7 +28,6 @@ export default function AdvancedCopyPage() {
   const [targetCourseId, setTargetCourseId] = useState('');
   
   const [sourceTree, setSourceTree] = useState([]);
-  // ✅ التحديد أصبح يقتصر على المواد، الفصول، والامتحانات فقط
   const [selected, setSelected] = useState({ subjects: [], chapters: [], exams: [] });
 
   const [toast, setToast] = useState({ show: false, msg: '', type: '' });
@@ -144,7 +143,7 @@ export default function AdvancedCopyPage() {
     if (sourceCourseId === targetCourseId) return showToast('لا يمكن النسخ لنفس الكورس', 'error');
     if (selected.subjects.length === 0) return showToast('يرجى تحديد مادة واحدة على الأقل للنسخ', 'error');
 
-    // ✅ بناء Payload نهائي يشمل الـ Videos والـ PDFs بناءً على الفصول المحددة (للتوافق مع الـ API)
+    // بناء Payload نهائي يشمل الـ Videos والـ PDFs بناءً على الفصول المحددة (للتوافق مع الـ API)
     const finalPayload = { ...selected, videos: [], pdfs: [] };
     
     sourceTree.forEach(sub => {
@@ -166,8 +165,9 @@ export default function AdvancedCopyPage() {
       const data = await res.json();
       
       if (res.ok) {
-        showToast('تم نسخ المحتوى بنجاح! سيتم تحويلك...', 'success');
-        setTimeout(() => router.push('/admin/teacher/content'), 2000);
+        showToast('🎉 تم نسخ المحتوى المختار بنجاح!', 'success');
+        // ✅ مسح التحديدات بعد النسخ بدلاً من عمل إعادة تحميل
+        setSelected({ subjects: [], chapters: [], exams: [] });
       } else {
         showToast(data.error || 'حدث خطأ أثناء النسخ', 'error');
       }
@@ -180,6 +180,7 @@ export default function AdvancedCopyPage() {
 
   return (
     <TeacherLayout title="النسخ المتقدم">
+      {/* التنبيهات (Toast) */}
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           <div className="toast-icon">{toast.type === 'success' ? Icons.check : '!'}</div>
           {toast.msg}
@@ -206,83 +207,85 @@ export default function AdvancedCopyPage() {
       ) : (
         <div className="copy-layout">
             
-            {/* العمود الأيمن: إعدادات النسخ (Steps) */}
+            {/* العمود الأيمن: إعدادات النسخ (تم جعله مثبت - Sticky) */}
             <div className="config-column">
-                <div className="step-card">
-                    <div className="step-header">
-                        <div className="step-num">1</div>
-                        <h3>تحديد المصدر</h3>
-                    </div>
-                    <div className="step-body">
-                        <label className="input-label">
-                            <span className="label-icon blue">{Icons.source}</span> الكورس المراد النسخ منه:
-                        </label>
-                        <select className="custom-select" value={sourceCourseId} onChange={e => setSourceCourseId(e.target.value)}>
-                            <option value="">-- اختر الكورس المصدري --</option>
-                            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                        </select>
-                    </div>
-                </div>
-
-                <div className="flow-arrow">{Icons.arrowDown}</div>
-
-                <div className="step-card">
-                    <div className="step-header">
-                        <div className="step-num">2</div>
-                        <h3>تحديد الهدف</h3>
-                    </div>
-                    <div className="step-body">
-                        <label className="input-label">
-                            <span className="label-icon green">{Icons.target}</span> الكورس المراد النسخ إليه:
-                        </label>
-                        <select className="custom-select target-select" value={targetCourseId} onChange={e => setTargetCourseId(e.target.value)}>
-                            <option value="">-- اختر الكورس الهدف --</option>
-                            {courses.filter(c => String(c.id) !== sourceCourseId).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                        </select>
-                    </div>
-                </div>
-
-                <div className="step-card highlight">
-                    <div className="step-header">
-                        <div className="step-num highlight-num">3</div>
-                        <h3>المراجعة والتنفيذ</h3>
-                    </div>
-                    <div className="step-body">
-                        <div className="summary-grid">
-                            <div className="summary-item">
-                                <span className="s-icon">{Icons.subject}</span>
-                                <div className="s-details"><span className="s-val">{selected.subjects.length}</span><span className="s-lbl">مواد</span></div>
-                            </div>
-                            <div className="summary-item">
-                                <span className="s-icon">{Icons.chapter}</span>
-                                <div className="s-details"><span className="s-val">{selected.chapters.length}</span><span className="s-lbl">فصول</span></div>
-                            </div>
-                            <div className="summary-item" style={{opacity: 0.7}}>
-                                <span className="s-icon">{Icons.video}</span>
-                                <div className="s-details"><span className="s-val">تلقائي</span><span className="s-lbl">فيديو</span></div>
-                            </div>
-                            <div className="summary-item">
-                                <span className="s-icon">{Icons.exam}</span>
-                                <div className="s-details"><span className="s-val">{selected.exams.length}</span><span className="s-lbl">امتحان</span></div>
-                            </div>
+                <div className="sticky-wrapper">
+                    <div className="step-card">
+                        <div className="step-header">
+                            <div className="step-num">1</div>
+                            <h3>تحديد المصدر</h3>
                         </div>
+                        <div className="step-body">
+                            <label className="input-label">
+                                <span className="label-icon blue">{Icons.source}</span> الكورس المراد النسخ منه:
+                            </label>
+                            <select className="custom-select" value={sourceCourseId} onChange={e => setSourceCourseId(e.target.value)}>
+                                <option value="">-- اختر الكورس المصدري --</option>
+                                {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                            </select>
+                        </div>
+                    </div>
 
-                        <button className="btn-execute" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId || selected.subjects.length === 0}>
-                            {copying ? (
-                                <><span className="spinner-small"></span> جاري معالجة ونسخ البيانات...</>
-                            ) : (
-                                <>{Icons.copy} تأكيد وبدء النسخ</>
-                            )}
-                        </button>
+                    <div className="flow-arrow">{Icons.arrowDown}</div>
+
+                    <div className="step-card">
+                        <div className="step-header">
+                            <div className="step-num">2</div>
+                            <h3>تحديد الهدف</h3>
+                        </div>
+                        <div className="step-body">
+                            <label className="input-label">
+                                <span className="label-icon green">{Icons.target}</span> الكورس المراد النسخ إليه:
+                            </label>
+                            <select className="custom-select target-select" value={targetCourseId} onChange={e => setTargetCourseId(e.target.value)}>
+                                <option value="">-- اختر الكورس الهدف --</option>
+                                {courses.filter(c => String(c.id) !== sourceCourseId).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="step-card highlight">
+                        <div className="step-header">
+                            <div className="step-num highlight-num">3</div>
+                            <h3>المراجعة والتنفيذ</h3>
+                        </div>
+                        <div className="step-body">
+                            <div className="summary-grid">
+                                <div className="summary-item">
+                                    <span className="s-icon">{Icons.subject}</span>
+                                    <div className="s-details"><span className="s-val">{selected.subjects.length}</span><span className="s-lbl">مواد</span></div>
+                                </div>
+                                <div className="summary-item">
+                                    <span className="s-icon">{Icons.chapter}</span>
+                                    <div className="s-details"><span className="s-val">{selected.chapters.length}</span><span className="s-lbl">فصول</span></div>
+                                </div>
+                                <div className="summary-item" style={{opacity: 0.7}}>
+                                    <span className="s-icon">{Icons.video}</span>
+                                    <div className="s-details"><span className="s-val">تلقائي</span><span className="s-lbl">مرفقات</span></div>
+                                </div>
+                                <div className="summary-item">
+                                    <span className="s-icon">{Icons.exam}</span>
+                                    <div className="s-details"><span className="s-val">{selected.exams.length}</span><span className="s-lbl">امتحان</span></div>
+                                </div>
+                            </div>
+
+                            <button className="btn-execute" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId || selected.subjects.length === 0}>
+                                {copying ? (
+                                    <><span className="spinner-small"></span> جاري معالجة ونسخ البيانات...</>
+                                ) : (
+                                    <>{Icons.copy} تأكيد وبدء النسخ</>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* العمود الأيسر: الهيكل المرئي للمحتوى (Tree) */}
+            {/* العمود الأيسر: الهيكل المرئي للمحتوى (Tree) - مربع جانبي منظم */}
             <div className="tree-column">
                 <div className="tree-header">
-                    <h3>هيكل الكورس (حدد العناصر المطلوبة)</h3>
-                    <span className="badge">يتم نسخ المرفقات تلقائياً مع الفصول</span>
+                    <h3>هيكل الكورس والمحتوى</h3>
+                    <span className="badge">قم بتحديد ما تريد نسخه</span>
                 </div>
                 
                 <div className="tree-content custom-scroll">
@@ -294,7 +297,7 @@ export default function AdvancedCopyPage() {
                     ) : sourceTree.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-icon">{Icons.source}</div>
-                            <p>يرجى اختيار الكورس المصدري من القائمة اليمنى لتهيئة شجرة النسخ.</p>
+                            <p>يرجى اختيار الكورس المصدري من القائمة اليمنى لتهيئة المربع الجانبي للنسخ.</p>
                         </div>
                     ) : (
                         <div className="tree-wrapper">
@@ -314,7 +317,6 @@ export default function AdvancedCopyPage() {
 
                                     {/* محتوى المادة */}
                                     <div className="subject-body">
-                                        
                                         {/* 2. الفصول (عناوين فرعية مع التحديد) */}
                                         {sub.chapters?.map(ch => (
                                             <div key={ch.id} className={`chapter-section ${selected.chapters.includes(ch.id) ? 'active' : ''}`}>
@@ -353,7 +355,7 @@ export default function AdvancedCopyPage() {
                                             </div>
                                         ))}
 
-                                        {/* 3. الامتحانات (مثل الفصول تماماً) */}
+                                        {/* 3. الامتحانات */}
                                         {sub.exams?.map(ex => (
                                             <div key={ex.id} className={`exam-section ${selected.exams.includes(ex.id) ? 'active' : ''}`}>
                                                 <label className="checkbox-wrapper">
@@ -366,7 +368,6 @@ export default function AdvancedCopyPage() {
                                                 </label>
                                             </div>
                                         ))}
-
                                     </div>
                                 </div>
                             ))}
@@ -388,12 +389,14 @@ export default function AdvancedCopyPage() {
         .btn-back { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px; transition: 0.2s; }
         .btn-back:hover { background: #334155; color: white; }
 
-        /* Layout */
-        .copy-layout { display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; }
+        /* Layout - تنظيم التقسيم */
+        .copy-layout { display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; position: relative;}
         @media(max-width: 900px) { .copy-layout { grid-template-columns: 1fr; } }
 
-        /* Config Column (Steps) */
-        .config-column { display: flex; flex-direction: column; gap: 15px; }
+        /* Config Column (Steps) - جعله مثبت (Sticky) */
+        .config-column { position: relative; }
+        .sticky-wrapper { position: sticky; top: 80px; display: flex; flex-direction: column; gap: 15px; }
+        
         .step-card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .step-card.highlight { border-color: rgba(168, 85, 247, 0.4); box-shadow: 0 10px 30px rgba(168, 85, 247, 0.1); background: linear-gradient(180deg, #1e293b, #151c2c); }
         
@@ -426,9 +429,9 @@ export default function AdvancedCopyPage() {
         .btn-execute:disabled { opacity: 0.6; cursor: not-allowed; background: #475569; box-shadow: none; }
         .btn-execute:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4); }
 
-        /* Tree Column (Professional Structure) */
-        .tree-column { background: #1e293b; border: 1px solid #334155; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 180px); min-height: 600px; }
-        .tree-header { padding: 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        /* Tree Column (Professional Sidebar Box) */
+        .tree-column { background: #1e293b; border: 1px solid #334155; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 120px); min-height: 600px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
+        .tree-header { padding: 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         .tree-header h3 { margin: 0; color: #f8fafc; font-size: 1.1rem; }
         .badge { background: rgba(56, 189, 248, 0.1); color: #38bdf8; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
 
@@ -438,16 +441,22 @@ export default function AdvancedCopyPage() {
         .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-        .tree-wrapper { display: flex; flex-direction: column; gap: 25px; }
+        .tree-wrapper { display: flex; flex-direction: column; gap: 25px; padding-bottom: 20px;}
 
         /* 1. Subject Section */
         .subject-section { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .subject-header { background: rgba(168, 85, 247, 0.05); padding: 15px 20px; border-bottom: 1px solid rgba(168, 85, 247, 0.1); transition: background 0.3s; }
         .subject-header.active { background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); }
-        .subject-body { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        
+        .subject-body { padding: 20px; display: flex; flex-direction: column; gap: 15px; position: relative;}
+        /* خط شجري يربط بين المادة ومحتوياتها */
+        .subject-body::before { content: ''; position: absolute; top: 0; bottom: 30px; right: 35px; width: 2px; background: #334155; z-index: 1;}
 
         /* 2. Chapter Section */
-        .chapter-section { border: 1px dashed #475569; border-radius: 10px; background: #0f172a; overflow: hidden; transition: border-color 0.3s; }
+        .chapter-section { border: 1px dashed #475569; border-radius: 10px; background: #0f172a; overflow: hidden; transition: border-color 0.3s; position: relative; z-index: 2; margin-right: 30px; }
+        /* فرع الشجرة الموصل للفصل */
+        .chapter-section::before { content: ''; position: absolute; top: 25px; right: -30px; width: 30px; height: 2px; background: #334155; z-index: 1;}
+        
         .chapter-section.active { border-style: solid; border-color: #38bdf8; box-shadow: inset 0 0 10px rgba(56, 189, 248, 0.05); }
         .chapter-header { padding: 12px 15px; background: rgba(0,0,0,0.2); border-bottom: 1px dashed #334155; }
         .chapter-section.active .chapter-header { background: rgba(56, 189, 248, 0.1); border-bottom-style: solid; border-color: rgba(56, 189, 248, 0.2); }
@@ -455,15 +464,18 @@ export default function AdvancedCopyPage() {
 
         /* 3. Read-Only Content Pills (Videos & PDFs) */
         .contents-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-        .content-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 500; border: 1px solid; opacity: 0.8; user-select: none; }
+        .content-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 500; border: 1px solid; opacity: 0.6; user-select: none; transition: 0.3s;}
         .chapter-section.active .content-pill { opacity: 1; }
         .content-pill.video { background: rgba(148, 163, 184, 0.05); border-color: #475569; color: #cbd5e1; }
+        .chapter-section.active .content-pill.video { border-color: #38bdf8; color: white; background: rgba(56,189,248,0.1); }
         .content-pill.pdf { background: rgba(244, 114, 182, 0.05); border-color: rgba(244, 114, 182, 0.3); color: #f472b6; }
+        .chapter-section.active .content-pill.pdf { border-color: #f472b6; color: white; background: rgba(244,114,182,0.15); }
         .truncate { max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .empty-content { color: #64748b; font-size: 0.85rem; font-style: italic; }
 
         /* 4. Exam Section */
-        .exam-section { background: #0f172a; border: 1px dashed #475569; border-radius: 10px; padding: 12px 15px; transition: 0.3s; }
+        .exam-section { background: #0f172a; border: 1px dashed #475569; border-radius: 10px; padding: 12px 15px; transition: 0.3s; position: relative; z-index: 2; margin-right: 30px; }
+        .exam-section::before { content: ''; position: absolute; top: 25px; right: -30px; width: 30px; height: 2px; background: #334155; z-index: 1;}
         .exam-section.active { border-style: solid; border-color: #facc15; background: rgba(250, 204, 21, 0.05); box-shadow: inset 0 0 10px rgba(250, 204, 21, 0.05); }
         
         /* Node Texts & Icons */
