@@ -1,6 +1,63 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 
+// ============================================================
+// 🛠️ دوال مساعدة لمعالجة فيديوهات يوتيوب
+// ============================================================
+const extractYouTubeID = (url) => {
+  if (!url) return null;
+  const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[7].length === 11) ? match[7] : url;
+};
+
+const fetchYouTubeDetails = async (videoId) => {
+  try {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      
+      // حماية إضافية في حال نسيان إضافة المفتاح
+      if (!apiKey) {
+          console.warn("⚠️ لم يتم العثور على YOUTUBE_API_KEY. تم تخطي جلب المدة.");
+          return { isValid: true, duration: '00:00' };
+      }
+
+      const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=contentDetails,status&key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data.items || data.items.length === 0) {
+          return { isValid: false, error: '❌ الفيديو غير موجود أو الرابط غير صحيح.' };
+      }
+
+      const video = data.items[0];
+
+      // 1. التحقق من حالة الفيديو
+      if (video.status.privacyStatus === 'private') {
+          return { isValid: false, error: '❌ لا يمكن إضافة فيديو "خاص" (Private). يرجى تغييره في يوتيوب إلى "غير مدرج" (Unlisted).' };
+      }
+
+      // 2. استخراج المدة وتحويلها من صيغة ISO (PT12M30S) إلى صيغة عادية (12:30)
+      const isoDuration = video.contentDetails.duration;
+      const match = isoDuration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+      
+      const hours = match[1] ? parseInt(match[1], 10) : 0;
+      const minutes = match[2] ? parseInt(match[2], 10) : 0;
+      const seconds = match[3] ? parseInt(match[3], 10) : 0;
+
+      let formattedDuration = '';
+      if (hours > 0) formattedDuration += `${hours}:`;
+      formattedDuration += `${hours > 0 ? minutes.toString().padStart(2, '0') : minutes}:`;
+      formattedDuration += seconds.toString().padStart(2, '0');
+
+      return { isValid: true, duration: formattedDuration };
+
+  } catch (err) {
+      console.error("YouTube API Error:", err);
+      return { isValid: false, error: 'حدث خطأ أثناء الاتصال بخوادم يوتيوب للتحقق من الفيديو.' };
+  }
+};
+
+
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
@@ -72,6 +129,19 @@ export default async (req, res) => {
     // --- إضافة عنصر جديد (Create) ---
     if (action === 'create') {
       let insertData = { ...data };
+
+      // 🚀 التحقق من الفيديو وجلب المدة إذا كان العنصر فيديو
+      if (type === 'videos' && insertData.url) {
+          insertData.youtube_video_id = extractYouTubeID(insertData.url);
+          delete insertData.url;
+
+          const ytCheck = await fetchYouTubeDetails(insertData.youtube_video_id);
+          if (!ytCheck.isValid) {
+              return res.status(400).json({ error: ytCheck.error });
+          }
+          
+          insertData.duration = ytCheck.duration;
+      }
       
       // 🛡️ التحقق الأمني عند الإضافة
       if (type !== 'courses') {
@@ -112,7 +182,7 @@ export default async (req, res) => {
           throw error;
       }
 
-      // إدارة الصلاحيات (كما هي)
+      // إدارة الصلاحيات للكورسات الجديدة
       if (type === 'courses' && newItem) {
           try {
             const accessList = [];
@@ -129,10 +199,23 @@ export default async (req, res) => {
       return res.status(200).json({ success: true, item: newItem });
     }
 
-    // --- تعديل عنصر (Update) - تم الإصلاح هنا ---
+    // --- تعديل عنصر (Update) ---
     if (action === 'update') {
        const { id, ...updates } = data;
        let isAuthorized = false;
+
+       // 🚀 التحقق من الفيديو في حالة تعديل الرابط
+       if (type === 'videos' && updates.url) {
+           updates.youtube_video_id = extractYouTubeID(updates.url);
+           delete updates.url;
+
+           const ytCheck = await fetchYouTubeDetails(updates.youtube_video_id);
+           if (!ytCheck.isValid) {
+               return res.status(400).json({ error: ytCheck.error });
+           }
+           
+           updates.duration = ytCheck.duration;
+       }
 
        // 1. التحقق الصريح قبل التنفيذ
        if (type === 'courses') {
@@ -161,7 +244,7 @@ export default async (req, res) => {
        return res.status(200).json({ success: true });
     }
 
-    // --- حذف عنصر (Delete) - تم الإصلاح هنا ---
+    // --- حذف عنصر (Delete) ---
     if (action === 'delete') {
        const { id } = data;
        let isAuthorized = false;
