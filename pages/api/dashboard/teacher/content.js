@@ -26,7 +26,7 @@ const fetchYouTubeDetails = async (videoId) => {
       const data = await res.json();
 
       if (!data.items || data.items.length === 0) {
-          return { isValid: false, error: '❌ الفيديو غير موجود أو الرابط غير صحيح.' };
+          return { isValid: false, error: '❌ الفيديو خاص او الرابط غير صحيح' };
       }
 
       const video = data.items[0];
