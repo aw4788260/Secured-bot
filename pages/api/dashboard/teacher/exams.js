@@ -66,7 +66,8 @@ export default async (req, res) => {
         examId,
         randomizeQuestions, 
         randomizeOptions,
-        notifyStudents // ✅ استلام قيمة خيار التنبيه
+        notifyStudents,
+        allow_retake // ✅ استلام خيار السماح بإعادة الامتحان للتدريب
       } = examData;
 
       if (start_time && end_time) {
@@ -123,7 +124,8 @@ export default async (req, res) => {
                 end_time: adjustedEndTime,
                 is_active: true,
                 randomize_questions: randomizeQuestions || false,
-                randomize_options: randomizeOptions || false
+                randomize_options: randomizeOptions || false,
+                allow_retake: allow_retake || false // ✅ حفظ الخيار في قاعدة البيانات عند الإنشاء
             }).select().single();
 
             if (examErr) throw examErr;
@@ -169,7 +171,8 @@ export default async (req, res) => {
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
                 randomize_questions: randomizeQuestions || false,
-                randomize_options: randomizeOptions || false
+                randomize_options: randomizeOptions || false,
+                allow_retake: allow_retake || false // ✅ تحديث الخيار في قاعدة البيانات
             })
             .eq('id', targetExamId)
             .eq('teacher_id', auth.teacherId); 
