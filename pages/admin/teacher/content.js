@@ -394,7 +394,7 @@ export default function ContentManager() {
                   end_time: examForm.endTime,
                   questions: examForm.questions, 
                   deletedQuestionIds: deletedQIds,
-                  notifyStudents: examForm.notifyStudents // ✅ إرسال قيمة التنبيه
+                  notifyStudents: examForm.notifyStudents, // ✅ إرسال قيمة التنبيه
                   allow_retake: examForm.allowRetake
               })
           });
