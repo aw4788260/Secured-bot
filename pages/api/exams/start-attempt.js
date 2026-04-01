@@ -44,12 +44,12 @@ export default async (req, res) => {
     const userId = req.headers['x-user-id'];
     console.log(`${apiName} 👤 User Identified: ${userId}`);
 
-    // 4. جلب إعدادات الامتحان (تمت إضافة duration_minutes)
+    // 4. جلب إعدادات الامتحان (تمت إضافة duration_minutes و allow_retake)
     console.log(`${apiName} 📥 Fetching Exam Config for ID: ${examId}...`);
     
     const { data: examConfig, error: configError } = await supabase
         .from('exams')
-        .select('randomize_questions, randomize_options, start_time, end_time, is_active, duration_minutes')
+        .select('randomize_questions, randomize_options, start_time, end_time, is_active, duration_minutes, allow_retake')
         .eq('id', examId)
         .single();
 
@@ -98,13 +98,21 @@ export default async (req, res) => {
       .select('id', { count: 'exact', head: true })
       .match({ user_id: userId, exam_id: examId, status: 'completed' });
     
+    let isRetake = false;
+
     if (count > 0) {
-        console.warn(`${apiName} ⚠️ Attempt Rejected: Exam already completed.`);
-        return res.status(409).json({ error: 'الامتحان مكتمل سابقاً.', isCompleted: true });
+        // إذا أكمل الطالب الامتحان مسبقاً، نتحقق من سماحية الإعادة للتدريب
+        if (examConfig.allow_retake) {
+            console.log(`${apiName} 🔄 User already completed, but allow_retake is TRUE. Starting practice mode...`);
+            isRetake = true;
+        } else {
+            console.warn(`${apiName} ⚠️ Attempt Rejected: Exam already completed.`);
+            return res.status(409).json({ error: 'الامتحان مكتمل سابقاً.', isCompleted: true });
+        }
     }
     
-    // ✅✅ سيناريو 1: إذا كان الامتحان منتهياً (Expired) -> إرسال نموذج الإجابة
-    if (isExpiredMode) {
+    // ✅✅ سيناريو 1: إذا كان الامتحان منتهياً (Expired) ولم يكن وضع تدريب -> إرسال نموذج الإجابة
+    if (isExpiredMode && !isRetake) {
         // جلب الأسئلة مع الإجابات الصحيحة (is_correct)
         const { data: questionsWithAnswers, error: qAnsError } = await supabase.from('questions')
           .select(`
@@ -124,22 +132,29 @@ export default async (req, res) => {
         });
     }
 
-    // ✅✅ سيناريو 2: الامتحان ساري -> بدء محاولة جديدة
+    // ✅✅ سيناريو 2: الامتحان ساري (أو هو وضع تدريب) -> بدء محاولة جديدة
+    let attemptIdToReturn;
 
-    // تنظيف المحاولات المعلقة
-    await supabase.from('user_attempts')
-        .delete()
-        .match({ user_id: userId, exam_id: examId, status: 'started' });
+    if (isRetake) {
+        // في حالة التدريب، لا ننشئ محاولة في قاعدة البيانات
+        attemptIdToReturn = 'temp_retake_mode';
+    } else {
+        // تنظيف المحاولات المعلقة (للمحاولة الأساسية فقط)
+        await supabase.from('user_attempts')
+            .delete()
+            .match({ user_id: userId, exam_id: examId, status: 'started' });
 
-    // إنشاء المحاولة
-    const { data: newAttempt, error: attError } = await supabase.from('user_attempts').insert({
-        user_id: userId,
-        exam_id: examId,
-        student_name_input: studentName || null,
-        status: 'started'
-      }).select().single();
+        // إنشاء المحاولة الأساسية في قاعدة البيانات
+        const { data: newAttempt, error: attError } = await supabase.from('user_attempts').insert({
+            user_id: userId,
+            exam_id: examId,
+            student_name_input: studentName || null,
+            status: 'started'
+        }).select().single();
 
-    if (attError) throw attError;
+        if (attError) throw attError;
+        attemptIdToReturn = newAttempt.id;
+    }
 
     // جلب الأسئلة (بدون is_correct)
     const { data: questions, error: qError } = await supabase.from('questions')
@@ -168,18 +183,21 @@ export default async (req, res) => {
         }));
     }
 
-    // حفظ ترتيب الأسئلة
-    const questionOrder = finalQuestions.map(q => q.id);
-    await supabase.from('user_attempts')
-        .update({ question_order: questionOrder })
-        .eq('id', newAttempt.id);
+    if (!isRetake) {
+        // حفظ ترتيب الأسئلة في قاعدة البيانات فقط للمحاولة الأساسية الحقيقية
+        const questionOrder = finalQuestions.map(q => q.id);
+        await supabase.from('user_attempts')
+            .update({ question_order: questionOrder })
+            .eq('id', attemptIdToReturn);
+    }
 
-    console.log(`${apiName} 🚀 SUCCESS! Attempt ID: ${newAttempt.id}`);
+    console.log(`${apiName} 🚀 SUCCESS! Attempt ID: ${attemptIdToReturn}`);
     
     return res.status(200).json({ 
-        attemptId: newAttempt.id, 
+        attemptId: attemptIdToReturn, 
+        is_retake: isRetake, // ✅ إخبار التطبيق أن هذه محاولة تدريبية
         questions: finalQuestions,
-        durationMinutes: examConfig.duration_minutes || 10 // ✅ إرجاع مدة الامتحان من القاعدة
+        durationMinutes: examConfig.duration_minutes || 10 
     });
 
   } catch (err) {
