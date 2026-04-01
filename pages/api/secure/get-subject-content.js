@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات (✅ تم إضافة teacher_id إلى courses للتحقق من الملكية)
+    // 4. جلب البيانات (✅ تم إضافة teacher_id إلى courses للتحقق من الملكية + duration للـ videos)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -57,7 +57,7 @@ export default async (req, res) => {
         courses ( id, title, teacher_id ),
         chapters (
           id, title, sort_order,
-          videos (id, title, sort_order, youtube_video_id), 
+          videos (id, title, sort_order, youtube_video_id, duration), 
           pdfs (id, title, sort_order)
         ),
         exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active) 
@@ -115,7 +115,7 @@ export default async (req, res) => {
         .eq('user_id', userId)
         .in('exam_id', examIds)
         .eq('status', 'completed'); 
-       
+        
       attempts?.forEach(attempt => {
         attemptsMap[attempt.exam_id] = attempt.id;
       });
@@ -138,7 +138,10 @@ export default async (req, res) => {
         .map(ch => ({
           ...ch,
           videos: (ch.videos || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(v => ({
-            id: v.id, title: v.title, hasId: !!v.youtube_video_id 
+            id: v.id, 
+            title: v.title, 
+            duration: v.duration, // ✅ تم إضافة الحقل هنا لإرساله إلى فلاتر
+            hasId: !!v.youtube_video_id 
           })),
           pdfs: (ch.pdfs || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         })),
