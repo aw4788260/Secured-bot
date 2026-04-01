@@ -19,7 +19,7 @@ export default async function handler(req, res) {
       const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', courseId).single();
       if (!course || course.teacher_id !== teacherId) return res.status(403).json({ error: 'غير مصرح' });
 
-      // جلب شجرة البيانات (المواد -> الفصول -> الفيديوهات/الملفات) + (المواد -> الامتحانات)
+      // جلب شجرة البيانات
       const { data: subjects } = await supabase
         .from('subjects')
         .select(`
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================================
-  // POST: خوارزمية النسخ الذكي (Deep Copy)
+  // POST: خوارزمية النسخ الذكي (متوافقة 100% مع الجداول)
   // ==========================================================
   if (req.method === 'POST') {
     const { sourceCourseId, targetCourseId, selected } = req.body;
@@ -63,13 +63,12 @@ export default async function handler(req, res) {
         `)
         .in('id', selected.subjects);
 
-      // حلقة النسخ (نستخدم for...of لضمان الترتيب وإتمام الوعود Async/Await)
       for (const oldSub of sourceSubjects) {
           
-          // أ. نسخ المادة (Subject) - تم إزالة كلمة (نسخة) من هنا
+          // أ. نسخ المادة (Subject) بدون إضافة كلمة (نسخة)
           const { data: newSub } = await supabase.from('subjects').insert({
               course_id: targetCourseId,
-              title: oldSub.title, // يتم النسخ بالاسم الأصلي تماماً
+              title: oldSub.title, 
               price: oldSub.price,
               sort_order: oldSub.sort_order
           }).select().single();
@@ -88,32 +87,38 @@ export default async function handler(req, res) {
 
               const newChapId = newChap.id;
 
-              // ج. نسخ الفيديوهات
-              const videosToCopy = oldChap.videos.filter(v => selected.videos.includes(v.id)).map(v => ({
-                  chapter_id: newChapId,
-                  title: v.title,
-                  youtube_video_id: v.youtube_video_id,
-                  type: v.type,
-                  storage_path: v.storage_path,
-                  sort_order: v.sort_order
-              }));
-              if (videosToCopy.length > 0) await supabase.from('videos').insert(videosToCopy);
+              // ج. نسخ الفيديوهات (نسخ تلقائي لجميع فيديوهات الشابتر المنسوخ)
+              // متوافق تماماً مع هيكل جدول الفيديوهات الخاص بك
+              if (oldChap.videos && oldChap.videos.length > 0) {
+                  const videosToCopy = oldChap.videos.map(v => ({
+                      title: v.title,
+                      youtube_video_id: v.youtube_video_id || null,
+                      sort_order: v.sort_order || 0,
+                      chapter_id: newChapId // ربط الفيديو بالشابتر الجديد
+                  }));
+                  
+                  const { error: videoError } = await supabase.from('videos').insert(videosToCopy);
+                  if (videoError) console.error("Video Copy Error:", videoError);
+              }
 
-              // د. نسخ الملفات (PDFs)
-              const pdfsToCopy = oldChap.pdfs.filter(p => selected.pdfs.includes(p.id)).map(p => ({
-                  chapter_id: newChapId,
-                  title: p.title,
-                  file_path: p.file_path,
-                  sort_order: p.sort_order
-              }));
-              if (pdfsToCopy.length > 0) await supabase.from('pdfs').insert(pdfsToCopy);
+              // د. نسخ الملفات (نسخ تلقائي لجميع ملفات الشابتر)
+              if (oldChap.pdfs && oldChap.pdfs.length > 0) {
+                  const pdfsToCopy = oldChap.pdfs.map(p => ({
+                      title: p.title,
+                      file_path: p.file_path,
+                      sort_order: p.sort_order || 0,
+                      chapter_id: newChapId
+                  }));
+                  
+                  const { error: pdfError } = await supabase.from('pdfs').insert(pdfsToCopy);
+                  if (pdfError) console.error("PDF Copy Error:", pdfError);
+              }
           }
 
           // هـ. نسخ الامتحانات (Exams)
           const examsToCopy = oldSub.exams.filter(ex => selected.exams.includes(ex.id));
           
           for (const oldExam of examsToCopy) {
-              // إدخال الامتحان الجديد
               const { data: newExam } = await supabase.from('exams').insert({
                   subject_id: newSubId,
                   teacher_id: teacherId,
@@ -128,13 +133,11 @@ export default async function handler(req, res) {
                   sort_order: oldExam.sort_order
               }).select().single();
 
-              // جلب أسئلة الامتحان القديم
               const { data: oldQuestions } = await supabase
                 .from('questions')
                 .select('*, options(*)')
                 .eq('exam_id', oldExam.id);
 
-              // نسخ الأسئلة والخيارات
               for (const oldQ of (oldQuestions || [])) {
                   const { data: newQ } = await supabase.from('questions').insert({
                       exam_id: newExam.id,
