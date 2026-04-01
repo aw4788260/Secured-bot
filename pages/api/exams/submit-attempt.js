@@ -33,7 +33,7 @@ export default async (req, res) => {
 
         console.log(`${apiName} 🔄 Grading practice mode for exam: ${examId}`);
 
-        // جلب الإجابات الصحيحة الخاصة بهذا الامتحان
+        // جلب الإجابات الصحيحة الخاصة بهذا الامتحان مباشرة من قاعدة البيانات
         const { data: questions } = await supabase
           .from('questions')
           .select(`id, options (id, is_correct)`)
@@ -42,7 +42,7 @@ export default async (req, res) => {
         let score = 0;
         const total = questions?.length || 0;
 
-        // تصحيح الإجابات في الذاكرة (بدون حفظ في قاعدة البيانات)
+        // تصحيح الإجابات في الذاكرة (RAM) فقط بدون حفظ في قاعدة البيانات
         (questions || []).forEach(q => {
           const userSelectedOptionId = answers[q.id];
           const correctOption = q.options.find(o => o.is_correct);
@@ -57,7 +57,7 @@ export default async (req, res) => {
 
         console.log(`${apiName} ✅ Practice Exam submitted. Score: ${score}/${total} (${percentage}%)`);
 
-        // إرجاع النتيجة مباشرة للفرونت إند دون الحفظ
+        // إرجاع النتيجة مباشرة للفرونت إند دون تنفيذ أي عمليات INSERT أو UPDATE
         return res.status(200).json({
           success: true,
           score: score,
@@ -93,7 +93,7 @@ export default async (req, res) => {
 
     const realExamId = attemptData.exam_id;
 
-    // 6. جلب الإجابات الصحيحة
+    // 6. جلب الإجابات الصحيحة للمحاولة الحقيقية
     const { data: questions } = await supabase
       .from('questions')
       .select(`id, options (id, is_correct)`)
@@ -103,9 +103,9 @@ export default async (req, res) => {
     const total = questions?.length || 0;
     let answersToInsert = [];
 
-    // 7. تصحيح الإجابات
+    // 7. تصحيح الإجابات وتجهيزها للحفظ
     (questions || []).forEach(q => {
-      const userSelectedOptionId = answers[q.id]; // ID الاختيار الذي اختاره الطالب
+      const userSelectedOptionId = answers[q.id]; 
       const correctOption = q.options.find(o => o.is_correct);
       
       let isCorrect = false;
@@ -114,7 +114,6 @@ export default async (req, res) => {
         isCorrect = true;
       }
 
-      // تجهيز الصف لإدخاله
       if (userSelectedOptionId) {
           answersToInsert.push({
               attempt_id: attemptId,
@@ -125,7 +124,7 @@ export default async (req, res) => {
       }
     });
 
-    // 8. حفظ الإجابات التفصيلية (Bulk Insert)
+    // 8. حفظ الإجابات التفصيلية في جدول user_answers
     if (answersToInsert.length > 0) {
         const { error: ansError } = await supabase
             .from('user_answers')
@@ -137,12 +136,12 @@ export default async (req, res) => {
     // ✅ حساب النسبة المئوية
     const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
 
-    // 9. تحديث المحاولة بالدرجة النهائية (score) والنسبة (percentage)
+    // 9. تحديث حالة المحاولة بالدرجة والنسبة ووقت الانتهاء
     const { error: updateError } = await supabase
       .from('user_attempts')
       .update({
         score: score,
-        percentage: percentage, // ✅ تم إضافة هذا السطر لحفظ النسبة
+        percentage: percentage,
         status: 'completed',
         completed_at: new Date().toISOString()
       })
