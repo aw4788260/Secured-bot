@@ -436,6 +436,13 @@ export default function ContentManager() {
           </div>
           <div className="actions-area">
               {/* Edit Buttons */}
+                   <button 
+        className="btn-secondary" 
+        style={{ borderColor: '#a855f7', color: '#a855f7', background: 'rgba(168, 85, 247, 0.1)' }}
+        onClick={() => router.push('/admin/teacher/advanced-copy')}
+    >
+        🚀 مميزات متقدمة 
+    </button>
               {selectedChapter && <button className="btn-secondary edit" onClick={() => openModal('edit_chapter', selectedChapter)}>{Icons.edit} تعديل الفصل</button>}
               {selectedSubject && !selectedChapter && <button className="btn-secondary edit" onClick={() => openModal('edit_subject', selectedSubject)}>{Icons.edit} تعديل المادة</button>}
               {selectedCourse && !selectedSubject && <button className="btn-secondary edit" onClick={() => openModal('edit_course', selectedCourse)}>{Icons.edit} تعديل الكورس</button>}
