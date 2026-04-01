@@ -46,7 +46,7 @@ export default async (req, res) => {
           action = 'update';
       }
 
-      // ✅ استقبال إعدادات العشوائية مع باقي البيانات
+      // ✅ استقبال إعدادات العشوائية وخيار إعادة الامتحان
       const { 
         title, 
         subjectId, 
@@ -55,8 +55,9 @@ export default async (req, res) => {
         start_time, 
         end_time, 
         examId,
-        randomizeQuestions, // جديد
-        randomizeOptions    // جديد
+        randomizeQuestions, 
+        randomizeOptions,
+        allow_retake // ✅ تمت إضافته هنا
       } = examData;
 
       try {
@@ -118,9 +119,9 @@ export default async (req, res) => {
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
                 is_active: true,
-                // ✅ حفظ إعدادات العشوائية
                 randomize_questions: randomizeQuestions || false,
-                randomize_options: randomizeOptions || false
+                randomize_options: randomizeOptions || false,
+                allow_retake: allow_retake || false // ✅ إضافة قيمة إعادة الامتحان للتدريب
             }).select().single();
 
             if (examErr) throw examErr;
@@ -141,9 +142,9 @@ export default async (req, res) => {
                 duration_minutes: duration,
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
-                // ✅ تحديث إعدادات العشوائية
                 randomize_questions: randomizeQuestions || false,
-                randomize_options: randomizeOptions || false
+                randomize_options: randomizeOptions || false,
+                allow_retake: allow_retake || false // ✅ تحديث قيمة إعادة الامتحان للتدريب
             })
             .eq('id', targetExamId)
             .eq('teacher_id', auth.teacherId); 
