@@ -10,6 +10,53 @@ const extractYouTubeID = (url) => {
   return (match && match[7].length === 11) ? match[7] : url;
 };
 
+// 🚀 دالة جديدة: التحقق من يوتيوب وجلب مدة الفيديو
+const fetchYouTubeDetails = async (videoId) => {
+  try {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      
+      // حماية إضافية: إذا نسي المبرمج إضافة المفتاح، نسمح بمرور الفيديو بمدة 00:00 بدلاً من تعطيل النظام
+      if (!apiKey) {
+          console.warn("⚠️ لم يتم العثور على YOUTUBE_API_KEY. تم تخطي جلب المدة.");
+          return { isValid: true, duration: '00:00' };
+      }
+
+      const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=contentDetails,status&key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data.items || data.items.length === 0) {
+          return { isValid: false, error: '❌ الفيديو غير موجود أو الرابط غير صحيح.' };
+      }
+
+      const video = data.items[0];
+
+      // 1. التحقق من حالة الفيديو
+      if (video.status.privacyStatus === 'private') {
+          return { isValid: false, error: '❌ لا يمكن إضافة فيديو "خاص" (Private). يرجى تغييره في يوتيوب إلى "غير مدرج" (Unlisted).' };
+      }
+
+      // 2. استخراج المدة وتحويلها من صيغة ISO (PT12M30S) إلى صيغة عادية (12:30)
+      const isoDuration = video.contentDetails.duration;
+      const match = isoDuration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+      
+      const hours = match[1] ? parseInt(match[1], 10) : 0;
+      const minutes = match[2] ? parseInt(match[2], 10) : 0;
+      const seconds = match[3] ? parseInt(match[3], 10) : 0;
+
+      let formattedDuration = '';
+      if (hours > 0) formattedDuration += `${hours}:`;
+      formattedDuration += `${hours > 0 ? minutes.toString().padStart(2, '0') : minutes}:`;
+      formattedDuration += seconds.toString().padStart(2, '0');
+
+      return { isValid: true, duration: formattedDuration };
+
+  } catch (err) {
+      console.error("YouTube API Error:", err);
+      return { isValid: false, error: 'حدث خطأ أثناء الاتصال بخوادم يوتيوب للتحقق من الفيديو.' };
+  }
+};
+
 export default async (req, res) => {
   // 1. التحقق من الصلاحية (مدرس أو أدمن)
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -138,10 +185,20 @@ export default async (req, res) => {
         data = { id: req.body.id };
     }
 
-    // ✅ معالجة فيديو اليوتيوب
+    // ✅ معالجة فيديو اليوتيوب + التحقق من الخصوصية وجلب المدة
     if (type === 'videos' && data?.url) {
       data.youtube_video_id = extractYouTubeID(data.url);
       delete data.url; 
+      
+      // 🚀 التحقق من يوتيوب
+      const ytCheck = await fetchYouTubeDetails(data.youtube_video_id);
+      if (!ytCheck.isValid) {
+          // إذا كان خاص أو الرابط خطأ، نرفض العملية فوراً
+          return res.status(400).json({ error: ytCheck.error });
+      }
+      
+      // إضافة المدة إلى البيانات التي سيتم حفظها
+      data.duration = ytCheck.duration;
     }
 
     const checkCourseOwnership = async (courseId) => {
@@ -187,7 +244,7 @@ export default async (req, res) => {
       if (action === 'create') {
         let insertData = { ...data };
         
-        // ✅ استخراج حالة خيار الإشعار وحذفه من بيانات الإدخال لجدول الفيديوهات لتجنب أخطاء الـ SQL
+        // استخراج حالة خيار الإشعار وحذفه من بيانات الإدخال لجدول الفيديوهات لتجنب أخطاء الـ SQL
         const shouldNotify = insertData.notifyStudents === true;
         delete insertData.notifyStudents;
 
@@ -212,10 +269,9 @@ export default async (req, res) => {
            throw error;
         }
 
-        // ✅ إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
+        // إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
         if (type === 'videos' && shouldNotify && newItem) {
             try {
-                // جلب اسم الكورس ومعرف المادة لإرسال الإشعار للقناة الصحيحة
                 const { data: info } = await supabase
                     .from('chapters')
                     .select('subject_id, subjects(courses(title))')
@@ -247,10 +303,8 @@ export default async (req, res) => {
                         }
                     };
 
-                    // إرسال الإشعار الفوري
                     await admin.messaging().send(message);
 
-                    // حفظ الإشعار في جدول الإشعارات ليراه الطلاب داخل التطبيق لاحقاً
                     await supabase.from('notifications').insert({
                         title: courseTitle,
                         body: `تم رفع فيديو: ${videoTitle}`,
