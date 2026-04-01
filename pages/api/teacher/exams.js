@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import admin from '../../../lib/firebaseAdmin'; // ✅ تم استيراد فايربيز لإرسال الإشعارات
 
 export default async (req, res) => {
   // التحقق من صلاحية المعلم
@@ -46,7 +47,7 @@ export default async (req, res) => {
           action = 'update';
       }
 
-      // ✅ استقبال إعدادات العشوائية وخيار إعادة الامتحان
+      // ✅ استقبال إعدادات العشوائية، الإعادة، والإشعارات
       const { 
         title, 
         subjectId, 
@@ -57,7 +58,8 @@ export default async (req, res) => {
         examId,
         randomizeQuestions, 
         randomizeOptions,
-        allow_retake // ✅ تمت إضافته هنا
+        allow_retake,   // ✅ خيار السماح بالتدريب
+        notifyStudents  // ✅ خيار التنبيه بالإشعارات
       } = examData;
 
       try {
@@ -94,15 +96,15 @@ export default async (req, res) => {
             if (!title || !subjectId) return res.status(400).json({ error: 'بيانات الامتحان ناقصة' });
 
             // 🛡️ [جديد وهام جداً] التحقق الأمني: هل يملك المعلم هذه المادة؟
-            // نقوم بجلب بيانات المادة والكورس المرتبط بها للتحقق من teacher_id
+            // نقوم بجلب بيانات المادة والكورس المرتبط بها للتحقق من teacher_id + جلب الاسم للإشعار
             const { data: subjectInfo, error: subErr } = await supabase
                 .from('subjects')
-                .select('courses!inner(teacher_id)') // Join Inner لضمان وجود الكورس
+                .select('id, courses!inner(teacher_id, title)') 
                 .eq('id', subjectId)
                 .single();
             
             // إذا لم يتم العثور على المادة أو كان المعلم المالك مختلفاً عن المعلم الحالي
-            if (subErr || !subjectInfo || subjectInfo.courses.teacher_id !== auth.teacherId) {
+            if (subErr || !subjectInfo || String(subjectInfo.courses.teacher_id) !== String(auth.teacherId)) {
                 return res.status(403).json({ error: 'غير مسموح لك بإضافة امتحان لمادة في كورس لا تملكه.' });
             }
 
@@ -121,11 +123,39 @@ export default async (req, res) => {
                 is_active: true,
                 randomize_questions: randomizeQuestions || false,
                 randomize_options: randomizeOptions || false,
-                allow_retake: allow_retake || false // ✅ إضافة قيمة إعادة الامتحان للتدريب
+                allow_retake: allow_retake || false // ✅ حفظ قيمة إعادة الامتحان للتدريب
             }).select().single();
 
             if (examErr) throw examErr;
             targetExamId = newExam.id;
+
+            // ✅ 🚀 إرسال إشعار فوري للطلاب إذا تم تفعيل الخيار من التطبيق
+            if (notifyStudents === true) {
+                try {
+                    const courseTitle = subjectInfo.courses?.title || 'تحديث جديد';
+                    const message = {
+                        notification: { title: courseTitle, body: `تم رفع اختبار جديد: ${title}` },
+                        topic: `subject_${subjectId}`, // التنبيه للمشتركين في المادة فقط
+                        android: { priority: 'high', notification: { sound: 'default' } },
+                        apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
+                        data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectId.toString() }
+                    };
+
+                    await admin.messaging().send(message);
+
+                    // حفظ في سجل الإشعارات في قاعدة البيانات ليظهر بداخل التطبيق
+                    await supabase.from('notifications').insert({
+                        title: courseTitle,
+                        body: `تم رفع اختبار جديد: ${title}`,
+                        target_type: 'subject',
+                        target_id: subjectId.toString(),
+                        sender_role: 'teacher'
+                    });
+                    console.log(`✅ Exam Notification sent successfully for exam: ${title}`);
+                } catch (notifyErr) {
+                    console.error("⚠️ FCM Exam Notify Error:", notifyErr.message);
+                }
+            }
         } 
         // =================================================
         // الحالة 2: تحديث امتحان موجود (Update)
