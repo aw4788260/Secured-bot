@@ -51,7 +51,7 @@ export default function ContentManager() {
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
   // ✅ أضفنا notifyStudents للاختبارات
-  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [], notifyStudents: false });
+  const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [], notifyStudents: false, allowRetake: false });
   const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
@@ -269,6 +269,7 @@ export default function ContentManager() {
                           requiresName: true, 
                           randQ: fullExam.randomize_questions,
                           randO: fullExam.randomize_options,
+                          allowRetake: fullExam.allow_retake || false,
                           startTime: formatDateForInput(fullExam.start_time),
                           endTime: formatDateForInput(fullExam.end_time),
                           notifyStudents: false, // لا نرسل عند التعديل
@@ -291,11 +292,10 @@ export default function ContentManager() {
               setLoading(false);
           } else {
               setExamForm({ 
-                  id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, 
-                  startTime: '', endTime: '', 
-                  questions: [],
-                  notifyStudents: false // ✅ افتراضياً false
-              });
+    id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, 
+    startTime: '', endTime: '', questions: [], notifyStudents: false,
+    allowRetake: false // ✅ القيمة الافتراضية
+});
           }
           setDeletedQIds([]); setEditingQIndex(-1); 
           setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
@@ -395,6 +395,7 @@ export default function ContentManager() {
                   questions: examForm.questions, 
                   deletedQuestionIds: deletedQIds,
                   notifyStudents: examForm.notifyStudents // ✅ إرسال قيمة التنبيه
+                  allow_retake: examForm.allowRetake
               })
           });
 
@@ -773,7 +774,14 @@ export default function ContentManager() {
                               <div className="toggles-group" style={{marginTop:'15px'}}>
                                   <div className="toggle-row"><span>عشوائية الأسئلة</span><label className="switch"><input type="checkbox" checked={examForm.randQ} onChange={e=>setExamForm({...examForm, randQ: e.target.checked})} /><span className="slider round"></span></label></div>
                                   <div className="toggle-row"><span>عشوائية الاختيارات</span><label className="switch"><input type="checkbox" checked={examForm.randO} onChange={e=>setExamForm({...examForm, randO: e.target.checked})} /><span className="slider round"></span></label></div>
-                                  
+                                  <div className="toggle-row" style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #334155'}}>
+    <span style={{color: '#facc15', fontSize: '0.85rem'}}>السماح بإعادة الامتحان (تدريب)</span>
+    <label className="switch">
+        <input type="checkbox" checked={examForm.allowRetake} onChange={e=>setExamForm({...examForm, allowRetake: e.target.checked})} />
+        <span className="slider round"></span>
+    </label>
+</div>
+
                                   {/* ✅ خيار التنبيه للامتحانات (يظهر عند الإنشاء فقط) */}
                                   {!examForm.id && (
                                     <div className="toggle-row" style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #334155'}}>
