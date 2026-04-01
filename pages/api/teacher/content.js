@@ -131,9 +131,11 @@ export default async (req, res) => {
       let insertData = { ...data };
 
       // 🚀 التحقق من الفيديو وجلب المدة إذا كان العنصر فيديو
-      if (type === 'videos' && insertData.url) {
-          insertData.youtube_video_id = extractYouTubeID(insertData.url);
-          delete insertData.url;
+      // تحسين: استخدمنا url أو youtube_video_id تحسباً لاختلاف مفاتيح الإرسال من التطبيق
+      const videoUrl = insertData.url || insertData.youtube_video_id;
+      if (type === 'videos' && videoUrl) {
+          insertData.youtube_video_id = extractYouTubeID(videoUrl);
+          delete insertData.url; // إزالة الـ url حتى لا يتعارض مع قاعدة البيانات
 
           const ytCheck = await fetchYouTubeDetails(insertData.youtube_video_id);
           if (!ytCheck.isValid) {
@@ -182,7 +184,7 @@ export default async (req, res) => {
           throw error;
       }
 
-      // إدارة الصلاحيات للكورسات الجديدة
+      // إدارة الصلاحيات (كما هي)
       if (type === 'courses' && newItem) {
           try {
             const accessList = [];
@@ -205,8 +207,9 @@ export default async (req, res) => {
        let isAuthorized = false;
 
        // 🚀 التحقق من الفيديو في حالة تعديل الرابط
-       if (type === 'videos' && updates.url) {
-           updates.youtube_video_id = extractYouTubeID(updates.url);
+       const videoUrl = updates.url || updates.youtube_video_id;
+       if (type === 'videos' && videoUrl) {
+           updates.youtube_video_id = extractYouTubeID(videoUrl);
            delete updates.url;
 
            const ytCheck = await fetchYouTubeDetails(updates.youtube_video_id);
