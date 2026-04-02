@@ -24,25 +24,28 @@ export default async (req, res) => {
 
   try {
     // =========================================================
-    // ✅✅ سيناريو 1: وضع التدريب (الإعادة المؤقتة)
+    // ✅✅ سيناريو 1: وضع التدريب (التصحيح التفصيلي الفوري)
     // =========================================================
     if (attemptId === 'temp_retake_mode') {
         if (!examId) {
             return res.status(400).json({ error: 'Missing Exam ID for practice mode' });
         }
 
-        console.log(`${apiName} 🔄 Grading practice mode for exam: ${examId}`);
+        console.log(`${apiName} 🔄 Detailed Grading for practice mode: ${examId}`);
 
-        // جلب الإجابات الصحيحة الخاصة بهذا الامتحان مباشرة من قاعدة البيانات
-        const { data: questions } = await supabase
+        // جلب الأسئلة مع كافة تفاصيلها (الخيارات، الصور، النص) للإرسال للفرونت إند
+        const { data: questions, error: qErr } = await supabase
           .from('questions')
-          .select(`id, options (id, is_correct)`)
+          .select(`id, question_text, image_file_id, options (id, option_text, is_correct)`)
           .eq('exam_id', examId);
+
+        if (qErr) throw qErr;
 
         let score = 0;
         const total = questions?.length || 0;
+        let correctedQuestions = [];
 
-        // تصحيح الإجابات في الذاكرة (RAM) فقط بدون حفظ في قاعدة البيانات
+        // تصحيح الإجابات في الذاكرة وبناء مصفوفة النتائج التفصيلية
         (questions || []).forEach(q => {
           const userSelectedOptionId = answers[q.id];
           const correctOption = q.options.find(o => o.is_correct);
@@ -50,20 +53,29 @@ export default async (req, res) => {
           if (correctOption && userSelectedOptionId && String(userSelectedOptionId) === String(correctOption.id)) {
             score++;
           }
+
+          // بناء هيكل السؤال المصحح ليعرض في شاشة "DETAILED ANALYSIS"
+          correctedQuestions.push({
+            id: q.id,
+            question_text: q.question_text,
+            image_file_id: q.image_file_id,
+            options: q.options,
+            correct_option_id: correctOption?.id,
+            user_answer: { selected_option_id: userSelectedOptionId }
+          });
         });
 
         // حساب النسبة المئوية
         const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
 
-        console.log(`${apiName} ✅ Practice Exam submitted. Score: ${score}/${total} (${percentage}%)`);
+        console.log(`${apiName} ✅ Practice Exam graded. Score: ${score}/${total}`);
 
-        // إرجاع النتيجة مباشرة للفرونت إند دون تنفيذ أي عمليات INSERT أو UPDATE
+        // إرجاع النتيجة مع التفاصيل الدقيقة مباشرة للفرونت إند دون حفظ في قاعدة البيانات
         return res.status(200).json({
           success: true,
-          score: score,
-          total: total,
-          percentage: percentage,
-          is_practice: true // ✅ علامة للتطبيق بأن هذه نتيجة تدريب
+          score_details: { score, total, percentage }, // توحيد الهيكل مع المحاولات العادية
+          corrected_questions: correctedQuestions,    // مصفوفة الأسئلة كاملة للتحليل
+          is_practice: true
         });
     }
 
@@ -149,7 +161,7 @@ export default async (req, res) => {
 
     if (updateError) throw updateError;
 
-    console.log(`${apiName} ✅ Exam submitted. Score: ${score}/${total} (${percentage}%)`);
+    console.log(`${apiName} ✅ Real Exam submitted. Score: ${score}/${total}`);
 
     return res.status(200).json({
       success: true,
