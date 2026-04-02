@@ -17,6 +17,12 @@ export default async function handler(req, res) {
     dateLimitObj.setHours(0, 0, 0, 0); 
     const dateLimit = dateLimitObj.toISOString();
 
+    // استخراج التاريخ المحلي لاستخدامه كفلتر لجدول الإحصائيات اليومية
+    const limitYear = dateLimitObj.getFullYear();
+    const limitMonth = String(dateLimitObj.getMonth() + 1).padStart(2, '0');
+    const limitDay = String(dateLimitObj.getDate()).padStart(2, '0');
+    const localLimitDateStr = `${limitYear}-${limitMonth}-${limitDay}`;
+
     // استخدام Promise.all لتنفيذ جميع الاستعلامات في نفس الوقت
     const [
         studentsResult, 
@@ -53,12 +59,12 @@ export default async function handler(req, res) {
         .eq('status', 'approved')
         .gte('created_at', dateLimit),
 
-      // 7. ✅ جلب آخر 7 أيام من جدول الإحصائيات اليومية
+      // 7. ✅ جلب إحصائيات النشاط اليومي بناءً على التاريخ المحلي لتجنب فقدان أي يوم
       supabase
         .from('daily_user_stats')
         .select('record_date, active_users_today')
+        .gte('record_date', localLimitDateStr)
         .order('record_date', { ascending: false })
-        .limit(7)
     ]);
 
     // --- معالجة الأرباح الكلية ---
@@ -86,30 +92,38 @@ export default async function handler(req, res) {
     for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i); 
-        
-        // تنسيق التاريخ للمقارنة (ISO Date Part Only: YYYY-MM-DD)
-        const dateStr = d.toISOString().split('T')[0];
         const dayName = daysMap[d.getDay()]; 
         
-        // تجميع أرباح هذا اليوم
+        // ========================================================
+        // 💰 الجزء الخاص بالأرباح (تم تركه كما هو بتوقيت UTC كما طلبت)
+        // ========================================================
+        const utcDateStr = d.toISOString().split('T')[0];
+        
         const dayTotal = rawChartData
             .filter(item => {
                 const itemDateStr = new Date(item.created_at).toISOString().split('T')[0];
-                return itemDateStr === dateStr;
+                return itemDateStr === utcDateStr;
             })
             .reduce((sum, item) => sum + (item.total_price || 0), 0);
             
         chartDataFinal.push({ 
             name: i === 0 ? 'اليوم' : dayName,
-            date: dateStr, 
+            date: utcDateStr, 
             sales: dayTotal 
         });
 
-        // ✅ تجميع المستخدمين النشطين لهذا اليوم
-        const foundStat = rawDailyStats.find(s => s.record_date === dateStr);
+        // ========================================================
+        // 👥 الجزء الخاص بعدد المستخدمين النشطين (تم تعديله للتوقيت المحلي)
+        // ========================================================
+        const localYear = d.getFullYear();
+        const localMonth = String(d.getMonth() + 1).padStart(2, '0');
+        const localDay = String(d.getDate()).padStart(2, '0');
+        const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+
+        const foundStat = rawDailyStats.find(s => s.record_date === localDateStr);
         activeUsersChartFinal.push({
             name: i === 0 ? 'اليوم' : dayName,
-            date: dateStr,
+            date: localDateStr,
             users: foundStat ? foundStat.active_users_today : 0
         });
     }
