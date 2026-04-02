@@ -2,12 +2,18 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 
-// 🛠️ دالة مساعدة لاستخراج معرف الفيديو من رابط يوتيوب
+// 🛠️ دالة مساعدة لاستخراج معرف الفيديو من رابط يوتيوب (محدثة لدعم جميع الروابط)
 const extractYouTubeID = (url) => {
   if (!url) return null;
-  const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+  
+  // إذا تم إدخال الـ ID مباشرة (11 حرف) بدون رابط
+  if (url.length === 11 && !url.includes('/')) return url;
+
+  // تعبير نمطي (Regex) حديث وشامل يدعم جميع روابط يوتيوب بما فيها youtu.be والروابط التي تحتوي على ?si=
+  const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
   const match = url.match(regExp);
-  return (match && match[7].length === 11) ? match[7] : url;
+  
+  return match ? match[1] : url;
 };
 
 // 🚀 دالة جديدة: التحقق من يوتيوب وجلب مدة الفيديو
