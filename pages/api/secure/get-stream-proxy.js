@@ -1,7 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
-import jwt from 'jsonwebtoken';
 
 // ✅ 1. استيراد مكتبات Firebase
 import { db } from '../../../lib/firebaseAdmin';
@@ -11,8 +10,6 @@ export default async (req, res) => {
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
-
-    log("🚀 Start Request: get-stream-proxy");
 
     // 1. قراءة إعدادات البروكسي (الأساسي والاحتياطي)
     const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; 
@@ -38,7 +35,10 @@ export default async (req, res) => {
             return res.status(403).json({ message: "Access Denied" });
         }
 
+        const userId = req.headers['x-user-id']; 
+        
         // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
+        // ✅ تم التعديل هنا: جلب تفاصيل الشابتر، المادة، الكورس، والمدرس بالكامل
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select(`
@@ -65,6 +65,7 @@ export default async (req, res) => {
         }
 
         const youtubeId = videoData.youtube_video_id;
+        log(`🎥 Requesting Proxy for: ${videoData.title} (User: ${userId})`);
 
         // استخراج تفاصيل الكورس والمدرس بشكل آمن
         const chapter = videoData.chapters;
@@ -78,105 +79,87 @@ export default async (req, res) => {
         const teacherName = course?.teachers?.name || 'بدون مدرس';
 
         // ================================================================
-        // ✅ 3.5 تسجيل المشاهدة في Firebase بدقة تامة
+        // ✅ [جديد] 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
-            const rawUserId = req.headers['x-user-id']; 
-            const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
-
             if (userId) {
-                let fallbackName = 'مستخدم';
-                
-                // الخطة البديلة لجلب الاسم من التوكن
-                try {
-                    const authHeader = req.headers['authorization'];
-                    if (authHeader && authHeader.startsWith('Bearer ')) {
-                        const token = authHeader.split(' ')[1];
-                        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                        if (decoded.username) fallbackName = decoded.username;
-                    }
-                } catch(e) {
-                    errLog("Failed to decode JWT for fallback name.");
-                }
-
-                // جلب بيانات الطالب (باستخدام parseInt لحل مشكلة الـ bigint)
-                const { data: studentData, error: studentErr } = await supabase
+                // ✅ تم التعديل: جلب first_name و username لعدم وجود last_name في الـ Schema
+                const { data: studentData } = await supabase
                     .from('users')
-                    .select('first_name, username, phone')
-                    .eq('id', parseInt(userId, 10))
+                    .select('first_name, username')
+                    .eq('id', userId)
                     .maybeSingle();
 
-                if (studentErr) {
-                    errLog(`Failed to fetch student data: ${studentErr.message}`);
-                }
-
                 const studentFullName = studentData 
-                    ? (studentData.first_name || studentData.username || studentData.phone || fallbackName) 
-                    : fallbackName;
+                    ? (studentData.first_name || studentData.username || 'مستخدم') 
+                    : 'مستخدم';
 
                 const docId = `${lessonId}_${userId}`;
 
-                // ⚠️ إضافة await لمنع Vercel من إغلاق الاتصال قبل الحفظ
-                await db.collection('video_views').doc(docId).set({
-                    videoId: lessonId.toString(),
-                    studentId: userId.toString(),
-                    teacherId: teacherId.toString(),
-                    teacherName: teacherName,
-                    studentName: studentFullName,
+                // تسجيل البيانات بدون await لضمان سرعة الرد وعدم تعطيل الفيديو
+                db.collection('video_views').doc(docId).set({
+                    videoId: lessonId,
+                    studentId: userId,
+                    teacherId: teacherId.toString(), // ✅ تم وضع الـ ID الحقيقي للمدرس
+                    teacherName: teacherName,       // ✅ اسم المدرس الفعلي
+                    studentName: studentFullName,   // ✅ اسم الطالب الصحيح
                     videoTitle: videoData.title || 'بدون عنوان',
-                    courseName: courseName,
-                    subjectName: subjectName,
-                    chapterName: chapterName,
+                    courseName: courseName,         // ✅ اسم الكورس
+                    subjectName: subjectName,       // ✅ اسم المادة
+                    chapterName: chapterName,       // ✅ اسم الفصل
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+                }, { merge: true }).catch(err => errLog(`Firebase View Log Write Error: ${err.message}`));
                 
-                log(`📝 Video view logged to Firebase successfully for: ${studentFullName}`);
+                log("📝 Video view logged to Firebase successfully in background.");
             }
         } catch (firebaseSetupErr) {
-            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
+            errLog(`Failed to setup Firebase log (Ignored): ${firebaseSetupErr.message}`);
         }
         // ================================================================
 
 
         // 4. الاتصال بالبروكسي (نظام السيرفر الأساسي + الاحتياطي)
-        let proxyResult = null; // ✅ تم إزالة تعريف isOfflineMode من هنا لمنع التكرار
+        let result = null;
+        let proxyMethodUsed = "local_vps_primary";
 
         try {
             // --- المحاولة الأولى: السيرفر الأساسي ---
             log(`➡️ Trying Primary Proxy...`);
             const primaryResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId }
+                // تم إزالة مهلة الانتظار، سينتظر الرد الطبيعي أو الخطأ
             });
-            proxyResult = primaryResponse.data;
-            log("✅ Primary Proxy Succeeded!");
+            result = primaryResponse.data;
 
         } catch (primaryErr) {
             errLog(`⚠️ Primary Proxy Failed (${primaryErr.message}). Switching IMMEDIATELY to Backup Proxy...`);
             
+            // إذا لم يكن هناك رابط احتياطي في .env، ارمِ الخطأ فوراً
             if (!PROXY_BACKUP_URL) {
                 throw primaryErr; 
             }
 
-            // --- المحاولة الثانية: السيرفر الاحتياطي ---
+            // --- المحاولة الثانية: السيرفر الاحتياطي (تعمل فوراً عند حدوث خطأ في الأساسي) ---
             try {
                 const backupResponse = await axios.get(`${PROXY_BACKUP_URL}/extract`, {
                     params: { id: youtubeId }
                 });
-                proxyResult = backupResponse.data;
+                result = backupResponse.data;
+                proxyMethodUsed = "local_vps_backup_api"; // لتمييز مصدر الرد في النهاية
                 log(`✅ Backup Proxy Succeeded!`);
             } catch (backupErr) {
                 errLog(`❌ Backup Proxy ALSO Failed: ${backupErr.message}`);
-                throw backupErr;
+                throw backupErr; // رمي الخطأ للـ catch الخارجية إذا فشل الاثنان
             }
         }
 
         // التأكد من وجود نتائج صالحة
-        if (!proxyResult || !proxyResult.availableQualities || proxyResult.availableQualities.length === 0) {
+        if (!result || !result.availableQualities || result.availableQualities.length === 0) {
             throw new Error("No streams found from either proxy");
         }
 
         // 5. فلترة وتنقية الروابط
-        let rawQualities = proxyResult.availableQualities;
+        let rawQualities = result.availableQualities;
         const uniqueQualitiesMap = new Map();
         const audioStreams = [];
 
@@ -205,8 +188,6 @@ export default async (req, res) => {
             ...Array.from(uniqueQualitiesMap.values()),
             ...audioStreams
         ];
-        
-        proxyResult.availableQualities = filteredQualities;
 
         // 6. تجهيز الرد
         const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
@@ -216,22 +197,22 @@ export default async (req, res) => {
             .select('value')
             .eq('key', 'offline_mode')
             .single();
-            
-        // ✅ يتم تعريف المتغير مرة واحدة فقط هنا
         const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
         return res.status(200).json({
-            ...proxyResult,
-            url: proxyResult.url || null,
+            availableQualities: filteredQualities,
+            title: videoData.title,
             thumbnail: thumbnail,
             duration: "0",
             youtube_video_id: youtubeId,
             db_video_title: videoData.title,
             subject_name: subjectName, 
             chapter_name: chapterName,
-            offline_mode: isOfflineMode
+            offline_mode: isOfflineMode,
+            proxy_method: proxyMethodUsed
         });
 
+    // معالجة الأخطاء النهائية (لو فشل الأساسي والاحتياطي)
     } catch (proxyErr) {
         errLog(`VPS Proxy Error: ${proxyErr.message}`);
         
