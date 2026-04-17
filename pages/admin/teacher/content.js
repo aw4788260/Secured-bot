@@ -588,11 +588,10 @@ export default function ContentManager() {
                           <div key={v.id} className="media-card draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'videos')}>
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="thumb">{Icons.video}</div>
-                              
                               <div className="media-body">
                                   <h4>{v.title}</h4>
+                                  {/* ✅ أيقونة المشاهدات والحذف */}
                                   <div style={{display: 'flex', gap: '8px'}}>
-                                      {/* ✅ زر عرض المشاهدات الجديد */}
                                       <button 
                                           className="btn-icon" 
                                           title="من شاهد الفيديو؟" 
@@ -606,7 +605,7 @@ export default function ContentManager() {
                                       </button>
                                   </div>
                               </div>
-                          </div> {/* ✅ هذا هو وسم الإغلاق الذي كان مفقوداً في كودك */}
+                          </div>
                       ))}
                   </div>
               </div>
