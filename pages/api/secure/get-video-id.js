@@ -12,7 +12,7 @@ const PYTHON_HLS_BACKUP_URL = process.env.PYTHON_HLS_BACKUP_URL;
 
 export default async (req, res) => {
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
-    const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
+    const log = (msg) => console.log(`🔍 [DEBUG-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
     log("🚀 Start Request: get-video-id");
@@ -31,6 +31,7 @@ export default async (req, res) => {
 
     try {
         // 2. جلب بيانات الفيديو من قاعدة البيانات
+        // ✅ تم التعديل هنا: التدرج في جلب بيانات الفصل والمادة والكورس والمدرس
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select(`
@@ -69,51 +70,45 @@ export default async (req, res) => {
         const teacherName = course?.teachers?.name || 'بدون مدرس';
 
         // ================================================================
-        // ✅ [مُحدّث] تسجيل المشاهدة في Firebase بدقة تامة
+        // ✅ [جديد] تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
-            // 1. استخراج الـ ID والتأكد من أنه ليس مصفوفة (Array)
-            const rawStudentId = req.headers['x-user-id']; 
-            const studentId = Array.isArray(rawStudentId) ? rawStudentId[0] : rawStudentId;
+            const studentId = req.headers['x-user-id']; // مستخرج من authHelper
             
             if (studentId) {
                 const docId = `${lessonId}_${studentId}`;
                 
-                // 2. جلب بيانات الطالب (تحويل studentId لرقم ليتطابق مع الـ bigint في الجدول)
-                const { data: studentData, error: studentErr } = await supabase
+                // جلب اسم الطالب (الاعتماد على first_name ثم username)
+                const { data: studentData } = await supabase
                     .from('users')
-                    .select('first_name, username, phone')
-                    .eq('id', parseInt(studentId, 10))
+                    .select('first_name, username')
+                    .eq('id', studentId)
                     .maybeSingle();
 
-                if (studentErr) {
-                    errLog(`Failed to fetch student data: ${studentErr.message}`);
-                }
+                const studentFullName = studentData 
+                    ? (studentData.first_name || studentData.username || 'مستخدم') 
+                    : 'مستخدم';
 
-                // 3. تحديد اسم الطالب بدقة (الاسم الأول -> ثم اليوزرنيم -> ثم الهاتف)
-                let studentFullName = 'مستخدم غير معروف';
-                if (studentData) {
-                    studentFullName = studentData.first_name || studentData.username || studentData.phone || 'مستخدم';
-                }
-
-                // 4. ⚠️ إضافة await ضرورية جداً لمنع الـ Timeout في Vercel قبل إتمام الحفظ
-                await db.collection('video_views').doc(docId).set({
-                    videoId: lessonId.toString(),
-                    studentId: studentId.toString(),
-                    teacherId: teacherId.toString(),
-                    teacherName: teacherName,
-                    studentName: studentFullName,
+                // تسجيل البيانات في فايربيز دون انتظار (لا يوجد await)
+                db.collection('video_views').doc(docId).set({
+                    videoId: lessonId,
+                    studentId: studentId,
+                    teacherId: teacherId.toString(), // ✅ المعرف الحقيقي للمدرس
+                    teacherName: teacherName,       // ✅ اسم المدرس
+                    studentName: studentFullName,   // ✅ اسم الطالب الصحيح
                     videoTitle: videoData.title || 'بدون عنوان',
-                    courseName: courseName,
-                    subjectName: subjectName,
-                    chapterName: chapterName,
+                    courseName: courseName,         // ✅ اسم الكورس
+                    subjectName: subjectName,       // ✅ اسم المادة
+                    chapterName: chapterName,       // ✅ اسم الفصل
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+                }, { merge: true }).catch(err => {
+                    errLog(`Firebase View Log Error: ${err.message}`);
+                });
                 
-                log(`📝 Logged view to Firebase successfully for: ${studentFullName}`);
+                log("📝 Firebase View logging triggered.");
             }
         } catch (firebaseSetupErr) {
-            errLog(`Firebase Write Error: ${firebaseSetupErr.message}`);
+            errLog(`Firebase Setup Error (Ignored): ${firebaseSetupErr.message}`);
         }
         // ================================================================
 
@@ -170,7 +165,7 @@ export default async (req, res) => {
                 log("⚠️ Proxy URL missing, skipping stream fetch.");
             }
         } catch (proxyErr) {
-            errLog(`Proxy Failed: ${proxyErr.message}`);
+            errLog(`Proxy Failed (Ignored for Player 2): ${proxyErr.message}`);
         }
 
         // 4. إرسال الرد النهائي
@@ -180,10 +175,9 @@ export default async (req, res) => {
             duration: "0",
             youtube_video_id: videoData.youtube_video_id, 
             db_video_title: videoData.title,
-            subject_name: subjectName, 
-            chapter_name: chapterName, 
-            offline_mode: isOfflineMode,
-            proxy_method: proxyMethodUsed
+            subject_name: subjectName, // ✅ استخدام المتغير المستخرج بأمان
+            chapter_name: chapterName, // ✅ استخدام المتغير المستخرج بأمان
+            offline_mode: isOfflineMode 
         });
 
     } catch (err) {
