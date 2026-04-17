@@ -38,9 +38,24 @@ export default async (req, res) => {
         const userId = req.headers['x-user-id']; 
         
         // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
+        // ✅ تم التعديل هنا: جلب تفاصيل الشابتر، المادة، الكورس، والمدرس بالكامل
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
+            .select(`
+                youtube_video_id, 
+                title, 
+                chapters ( 
+                    title, 
+                    subjects ( 
+                        title,
+                        courses (
+                            title,
+                            teacher_id,
+                            teachers ( name )
+                        )
+                    ) 
+                )
+            `)
             .eq('id', lessonId)
             .single();
 
@@ -52,20 +67,31 @@ export default async (req, res) => {
         const youtubeId = videoData.youtube_video_id;
         log(`🎥 Requesting Proxy for: ${videoData.title} (User: ${userId})`);
 
+        // استخراج تفاصيل الكورس والمدرس بشكل آمن
+        const chapter = videoData.chapters;
+        const subject = chapter?.subjects;
+        const course = subject?.courses;
+        
+        const chapterName = chapter?.title || 'بدون فصل';
+        const subjectName = subject?.title || 'بدون مادة';
+        const courseName = course?.title || 'بدون كورس';
+        const teacherId = course?.teacher_id || 'UNKNOWN_TEACHER';
+        const teacherName = course?.teachers?.name || 'بدون مدرس';
+
         // ================================================================
         // ✅ [جديد] 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
             if (userId) {
-                // جلب اسم الطالب بأمان باستخدام maybeSingle
+                // ✅ تم التعديل: جلب first_name و username لعدم وجود last_name في الـ Schema
                 const { data: studentData } = await supabase
                     .from('users')
-                    .select('first_name, last_name')
+                    .select('first_name, username')
                     .eq('id', userId)
                     .maybeSingle();
 
                 const studentFullName = studentData 
-                    ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
+                    ? (studentData.first_name || studentData.username || 'مستخدم') 
                     : 'مستخدم';
 
                 const docId = `${lessonId}_${userId}`;
@@ -74,11 +100,13 @@ export default async (req, res) => {
                 db.collection('video_views').doc(docId).set({
                     videoId: lessonId,
                     studentId: userId,
-                    teacherId: 'UNKNOWN_TEACHER', // تم وضع قيمة افتراضية لتجنب أخطاء العلاقات في قاعدة البيانات
-                    studentName: studentFullName || 'بدون اسم',
+                    teacherId: teacherId.toString(), // ✅ تم وضع الـ ID الحقيقي للمدرس
+                    teacherName: teacherName,       // ✅ اسم المدرس الفعلي
+                    studentName: studentFullName,   // ✅ اسم الطالب الصحيح
                     videoTitle: videoData.title || 'بدون عنوان',
-                    courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
-                    chapterName: videoData.chapters?.title || 'بدون فصل',
+                    courseName: courseName,         // ✅ اسم الكورس
+                    subjectName: subjectName,       // ✅ اسم المادة
+                    chapterName: chapterName,       // ✅ اسم الفصل
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true }).catch(err => errLog(`Firebase View Log Write Error: ${err.message}`));
                 
@@ -178,8 +206,8 @@ export default async (req, res) => {
             duration: "0",
             youtube_video_id: youtubeId,
             db_video_title: videoData.title,
-            subject_name: videoData.chapters?.subjects?.title || "Unknown Subject",
-            chapter_name: videoData.chapters?.title || "Unknown Chapter",
+            subject_name: subjectName, 
+            chapter_name: chapterName,
             offline_mode: isOfflineMode,
             proxy_method: proxyMethodUsed
         });
