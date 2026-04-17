@@ -2,6 +2,10 @@ import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
 
+// ✅ 1. استيراد مكتبات Firebase
+import { db } from '../../../lib/firebaseAdmin';
+import admin from 'firebase-admin';
+
 export default async (req, res) => {
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
@@ -34,9 +38,10 @@ export default async (req, res) => {
         const userId = req.headers['x-user-id']; 
         
         // 3. جلب البيانات من قاعدة البيانات
+        // ✅ التعديل: إضافة teacher_id للاستعلام لربط المشاهدة بالمدرس
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
+            .select('youtube_video_id, title, chapters ( title, subjects ( title, teacher_id ) )')
             .eq('id', lessonId)
             .single();
 
@@ -46,6 +51,44 @@ export default async (req, res) => {
 
         const youtubeId = videoData.youtube_video_id;
         log(`🎥 Requesting Proxy for: ${videoData.title} (User: ${userId})`);
+
+        // ================================================================
+        // ✅ [جديد] 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
+        // ================================================================
+        try {
+            // جلب اسم الطالب بسرعة من قاعدة البيانات
+            const { data: studentData } = await supabase
+                .from('users')
+                .select('first_name, last_name')
+                .eq('id', userId)
+                .single();
+
+            const studentFullName = studentData 
+                ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
+                : 'طالب';
+
+            const docId = `${lessonId}_${userId}`;
+            // جلب معرف المدرس (تأكد من أنه موجود في جدول subjects)
+            const teacherId = videoData.chapters?.subjects?.teacher_id || 'UNKNOWN';
+
+            // تسجيل البيانات بدون await لضمان سرعة الرد
+            db.collection('video_views').doc(docId).set({
+                videoId: lessonId,
+                studentId: userId,
+                teacherId: teacherId,
+                studentName: studentFullName || 'بدون اسم',
+                videoTitle: videoData.title || 'بدون عنوان',
+                courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
+                chapterName: videoData.chapters?.title || 'بدون فصل',
+                lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(err => errLog(`Firebase View Log Error: ${err.message}`));
+            
+            log("📝 Video view logged to Firebase successfully in background.");
+        } catch (firebaseSetupErr) {
+            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
+        }
+        // ================================================================
+
 
         // 4. الاتصال بالبروكسي (نظام السيرفر الأساسي + الاحتياطي)
         let result = null;
