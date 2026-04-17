@@ -23,18 +23,17 @@ export default async (req, res) => {
         return res.status(400).json({ message: "Missing Lesson ID" });
     }
 
-    // 1. التحقق الأمني (تقوم الدالة بحقن x-user-id في الـ headers إذا نجحت)
+    // 1. التحقق الأمني
     const hasAccess = await checkUserAccess(req, lessonId, 'video');
     if (!hasAccess) {
         return res.status(403).json({ message: "Access Denied" });
     }
 
     try {
-        // 2. جلب بيانات الفيديو من قاعدة البيانات
-        // ✅ تم إضافة جلب teacher_id إذا كان متوفراً في جدول subjects لديك
+        // 2. جلب بيانات الفيديو من قاعدة البيانات (نسختك الأصلية دون تغيير)
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title, teacher_id ) )')
+            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
             .eq('id', lessonId)
             .single();
 
@@ -43,47 +42,48 @@ export default async (req, res) => {
         }
 
         // ================================================================
-        // ✅ [جديد] 3. تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
+        // ✅ [جديد] تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
-            const studentId = req.headers['x-user-id']; // تم حقنه من authHelper
-
-            // جلب اسم الطالب بسرعة (يمكنك تجاهل هذا السطر إذا كنت تخزن الاسم في الـ JWT)
-            const { data: studentData } = await supabase
-                .from('users')
-                .select('first_name, last_name')
-                .eq('id', studentId)
-                .single();
-
-            const studentFullName = studentData 
-                ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
-                : 'طالب';
-
-            const docId = `${lessonId}_${studentId}`;
-            // تأكد من مسار جلب معرف المدرس بناءً على هيكل جداولك (قد تحتاج لتعديله إذا كان المدرس في جدول الكورسات)
-            const teacherId = videoData.chapters?.subjects?.teacher_id || 'UNKNOWN';
-
-            // لاحظ عدم استخدام await هنا لكي لا نؤخر الرد على تطبيق الطالب
-            db.collection('video_views').doc(docId).set({
-                videoId: lessonId,
-                studentId: studentId,
-                teacherId: teacherId,
-                studentName: studentFullName || 'بدون اسم',
-                videoTitle: videoData.title || 'بدون عنوان',
-                courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
-                chapterName: videoData.chapters?.title || 'بدون فصل',
-                lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }).catch(err => errLog(`Firebase View Log Error: ${err.message}`));
+            const studentId = req.headers['x-user-id']; // مستخرج من authHelper
             
-            log("📝 Video view logged to Firebase successfully in background.");
+            if (studentId) {
+                const docId = `${lessonId}_${studentId}`;
+                
+                // جلب اسم الطالب (اختياري، مضاف للتبسيط في العرض للمدرس)
+                const { data: studentData } = await supabase
+                    .from('users')
+                    .select('first_name, last_name')
+                    .eq('id', studentId)
+                    .maybeSingle();
+
+                const studentFullName = studentData 
+                    ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
+                    : 'مستخدم';
+
+                // تسجيل البيانات في فايربيز دون انتظار (لا يوجد await)
+                db.collection('video_views').doc(docId).set({
+                    videoId: lessonId,
+                    studentId: studentId,
+                    teacherId: 'UNKNOWN_TEACHER', // يتم تجاهله أو استخدامه لاحقاً إذا احتجت
+                    studentName: studentFullName || 'بدون اسم',
+                    videoTitle: videoData.title || 'بدون عنوان',
+                    courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
+                    chapterName: videoData.chapters?.title || 'بدون فصل',
+                    lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(err => {
+                    errLog(`Firebase View Log Error: ${err.message}`);
+                });
+                
+                log("📝 Firebase View logging triggered.");
+            }
         } catch (firebaseSetupErr) {
-            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
+            errLog(`Firebase Setup Error (Ignored): ${firebaseSetupErr.message}`);
         }
         // ================================================================
 
-
         // ================================================================
-        // 4. الاتصال بالبروكسي (الأساسي ثم الاحتياطي)
+        // 3. الاتصال بالبروكسي (الأساسي ثم الاحتياطي)
         // ================================================================
         let proxyResult = { url: null, availableQualities: [] };
         let isOfflineMode = true;
@@ -138,7 +138,7 @@ export default async (req, res) => {
             errLog(`Proxy Failed (Ignored for Player 2): ${proxyErr.message}`);
         }
 
-        // 5. إرسال الرد النهائي
+        // 4. إرسال الرد النهائي
         res.status(200).json({ 
             ...proxyResult, 
             url: proxyResult.url || null, 
