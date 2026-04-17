@@ -30,16 +30,44 @@ export default async (req, res) => {
     }
 
     try {
-        // 2. جلب بيانات الفيديو من قاعدة البيانات (نسختك الأصلية دون تغيير)
+        // 2. جلب بيانات الفيديو من قاعدة البيانات
+        // ✅ تم التعديل هنا: التدرج في جلب بيانات الفصل والمادة والكورس والمدرس
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
+            .select(`
+                youtube_video_id, 
+                title, 
+                chapters ( 
+                    title, 
+                    subjects ( 
+                        title,
+                        courses (
+                            title,
+                            teacher_id,
+                            teachers ( name )
+                        )
+                    ) 
+                )
+            `)
             .eq('id', lessonId)
             .single();
 
         if (vidErr || !videoData) {
             return res.status(404).json({ message: "Video not found" });
         }
+
+        const youtubeId = videoData.youtube_video_id;
+
+        // استخراج المتغيرات بأمان لتجنب أخطاء undefined
+        const chapter = videoData.chapters;
+        const subject = chapter?.subjects;
+        const course = subject?.courses;
+        
+        const chapterName = chapter?.title || 'بدون فصل';
+        const subjectName = subject?.title || 'بدون مادة';
+        const courseName = course?.title || 'بدون كورس';
+        const teacherId = course?.teacher_id || 'UNKNOWN_TEACHER';
+        const teacherName = course?.teachers?.name || 'بدون مدرس';
 
         // ================================================================
         // ✅ [جديد] تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
@@ -50,26 +78,28 @@ export default async (req, res) => {
             if (studentId) {
                 const docId = `${lessonId}_${studentId}`;
                 
-                // جلب اسم الطالب (اختياري، مضاف للتبسيط في العرض للمدرس)
+                // جلب اسم الطالب (الاعتماد على first_name ثم username)
                 const { data: studentData } = await supabase
                     .from('users')
-                    .select('first_name, last_name')
+                    .select('first_name, username')
                     .eq('id', studentId)
                     .maybeSingle();
 
                 const studentFullName = studentData 
-                    ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
+                    ? (studentData.first_name || studentData.username || 'مستخدم') 
                     : 'مستخدم';
 
                 // تسجيل البيانات في فايربيز دون انتظار (لا يوجد await)
                 db.collection('video_views').doc(docId).set({
                     videoId: lessonId,
                     studentId: studentId,
-                    teacherId: 'UNKNOWN_TEACHER', // يتم تجاهله أو استخدامه لاحقاً إذا احتجت
-                    studentName: studentFullName || 'بدون اسم',
+                    teacherId: teacherId.toString(), // ✅ المعرف الحقيقي للمدرس
+                    teacherName: teacherName,       // ✅ اسم المدرس
+                    studentName: studentFullName,   // ✅ اسم الطالب الصحيح
                     videoTitle: videoData.title || 'بدون عنوان',
-                    courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
-                    chapterName: videoData.chapters?.title || 'بدون فصل',
+                    courseName: courseName,         // ✅ اسم الكورس
+                    subjectName: subjectName,       // ✅ اسم المادة
+                    chapterName: chapterName,       // ✅ اسم الفصل
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true }).catch(err => {
                     errLog(`Firebase View Log Error: ${err.message}`);
@@ -112,7 +142,7 @@ export default async (req, res) => {
                 } catch (primaryErr) {
                     errLog(`⚠️ Primary Proxy Failed: ${primaryErr.message}. Switching IMMEDIATELY to Backup...`);
                     
-                    // استخدام المتغير الجديد هنا
+                    // استخدام المتغير الاحتياطي
                     if (PYTHON_HLS_BACKUP_URL) {
                         // --- المحاولة الثانية: السيرفر الاحتياطي ---
                         const backupResponse = await axios.get(`${PYTHON_HLS_BACKUP_URL}/api/get-hls-playlist`, {
@@ -145,8 +175,8 @@ export default async (req, res) => {
             duration: "0",
             youtube_video_id: videoData.youtube_video_id, 
             db_video_title: videoData.title,
-            subject_name: videoData.chapters?.subjects?.title,
-            chapter_name: videoData.chapters?.title,
+            subject_name: subjectName, // ✅ استخدام المتغير المستخرج بأمان
+            chapter_name: chapterName, // ✅ استخدام المتغير المستخرج بأمان
             offline_mode: isOfflineMode 
         });
 
