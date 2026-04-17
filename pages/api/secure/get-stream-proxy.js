@@ -27,7 +27,7 @@ export default async (req, res) => {
     }
 
     try {
-        // 2. التحقق الأمني (بوابة المرور) - تعمل كما كانت للمدرس والطالب
+        // 2. التحقق الأمني (بوابة المرور)
         const hasAccess = await checkUserAccess(req, lessonId, 'video');
         
         if (!hasAccess) {
@@ -37,17 +37,15 @@ export default async (req, res) => {
 
         const userId = req.headers['x-user-id']; 
         
-        // 3. جلب البيانات من قاعدة البيانات (النسخة الأصلية التي طلبتها)
-        // ✅ تم إضافة teacher_id بشكل آمن فقط إذا كان جدول subjects يدعمه، وإذا فشل، تم إضافة fallback
+        // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title, teacher_id ) )')
+            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
             .eq('id', lessonId)
             .single();
 
-        // ⚠️ مهم: إذا فشل الاستعلام بسبب غياب حقل teacher_id في الـ DB لديك، قم بإزالة `teacher_id` من جملة الـ select أعلاه
         if (vidErr || !videoData) {
-            errLog(`Video fetch error: ${vidErr?.message}`);
+            errLog(`Database Fetch Error: ${vidErr?.message}`);
             return res.status(404).json({ message: "Video not found in DB" });
         }
 
@@ -58,40 +56,36 @@ export default async (req, res) => {
         // ✅ [جديد] 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
-            // جلب اسم الطالب بسرعة من قاعدة البيانات
-            const { data: studentData, error: studentErr } = await supabase
-                .from('users')
-                .select('first_name, last_name')
-                .eq('id', userId)
-                .single();
+            if (userId) {
+                // جلب اسم الطالب بأمان باستخدام maybeSingle
+                const { data: studentData } = await supabase
+                    .from('users')
+                    .select('first_name, last_name')
+                    .eq('id', userId)
+                    .maybeSingle();
 
-            if (studentErr) {
-                errLog(`Firebase Log - User fetch warning (Ignored): ${studentErr.message}`);
+                const studentFullName = studentData 
+                    ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
+                    : 'مستخدم';
+
+                const docId = `${lessonId}_${userId}`;
+
+                // تسجيل البيانات بدون await لضمان سرعة الرد وعدم تعطيل الفيديو
+                db.collection('video_views').doc(docId).set({
+                    videoId: lessonId,
+                    studentId: userId,
+                    teacherId: 'UNKNOWN_TEACHER', // تم وضع قيمة افتراضية لتجنب أخطاء العلاقات في قاعدة البيانات
+                    studentName: studentFullName || 'بدون اسم',
+                    videoTitle: videoData.title || 'بدون عنوان',
+                    courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
+                    chapterName: videoData.chapters?.title || 'بدون فصل',
+                    lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(err => errLog(`Firebase View Log Write Error: ${err.message}`));
+                
+                log("📝 Video view logged to Firebase successfully in background.");
             }
-
-            const studentFullName = studentData 
-                ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
-                : 'مستخدم';
-
-            const docId = `${lessonId}_${userId}`;
-            // جلب معرف المدرس بأمان
-            const teacherId = videoData.chapters?.subjects?.teacher_id || 'UNKNOWN';
-
-            // تسجيل البيانات بدون await لضمان سرعة الرد
-            db.collection('video_views').doc(docId).set({
-                videoId: lessonId,
-                studentId: userId,
-                teacherId: teacherId,
-                studentName: studentFullName || 'بدون اسم',
-                videoTitle: videoData.title || 'بدون عنوان',
-                courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
-                chapterName: videoData.chapters?.title || 'بدون فصل',
-                lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }).catch(err => errLog(`Firebase View Log Error: ${err.message}`));
-            
-            log("📝 Video view logged to Firebase successfully in background.");
         } catch (firebaseSetupErr) {
-            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
+            errLog(`Failed to setup Firebase log (Ignored): ${firebaseSetupErr.message}`);
         }
         // ================================================================
 
