@@ -888,6 +888,59 @@ export default function ContentManager() {
               </div>
           </div>
       )}
+{/* ✅ نافذة عرض الطلاب الذين شاهدوا الفيديو */}
+      {isViewsModalOpen && (
+          <div className="modal-overlay" onClick={() => setIsViewsModalOpen(false)}>
+              <div className="modal-box" style={{maxWidth: '600px', width: '90%'}} onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                      <h3 style={{fontSize: '1.1rem'}}>إحصائيات: <span style={{color: '#38bdf8'}}>{selectedMediaName}</span></h3>
+                      <button onClick={() => setIsViewsModalOpen(false)} className="close-btn">{Icons.close}</button>
+                  </div>
+
+                  {loadingViews ? (
+                      <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>جاري التحميل من فايربيز... ⏳</div>
+                  ) : (
+                      <>
+                          {/* عرض العدد الإجمالي */}
+                          <div style={{background: '#0f172a', padding: '15px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center', border: '1px solid #334155'}}>
+                              <span style={{color: '#94a3b8', fontSize: '0.9rem'}}>إجمالي عدد الطلاب الذين فتحوا الفيديو</span>
+                              <strong style={{display: 'block', fontSize: '1.8rem', color: '#22c55e'}}>{mediaViews.length}</strong>
+                          </div>
+                          
+                          {mediaViews.length > 0 ? (
+                              <div style={{maxHeight: '350px', overflowY: 'auto', borderRadius: '8px', border: '1px solid #334155'}}>
+                                  <table style={{width: '100%', borderCollapse: 'collapse', textAlign: 'right'}}>
+                                      <thead style={{background: '#1e293b', position: 'sticky', top: '0'}}>
+                                          <tr>
+                                              <th style={{padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem'}}>اسم الطالب</th>
+                                              <th style={{padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem'}}>آخر وقت مشاهدة</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          {mediaViews.map((view, idx) => (
+                                              <tr key={idx} style={{borderBottom: '1px solid #1e293b'}} className="hover-row">
+                                                  <td style={{padding: '12px', color: 'white', fontWeight: '500'}}>{view.studentName}</td>
+                                                  <td style={{padding: '12px', color: '#cbd5e1', fontSize: '0.8rem'}} dir="ltr">
+                                                      {new Date(view.lastViewedAt).toLocaleString('ar-EG', {
+                                                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                                      })}
+                                                  </td>
+                                              </tr>
+                                          ))}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          ) : (
+                              <div style={{textAlign: 'center', padding: '30px', color: '#64748b'}}>لا توجد سجلات مشاهدة لهذا الفيديو بعد.</div>
+                          )}
+                      </>
+                  )}
+                  <div className="acts">
+                      <button className="btn-cancel" onClick={() => setIsViewsModalOpen(false)}>إغلاق</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {confirmData.show && (
           <div className="modal-overlay">
@@ -1151,62 +1204,7 @@ export default function ContentManager() {
             }
         }
       `}</style>
-
-          {/* ✅ نافذة عرض الطلاب الذين شاهدوا الفيديو */}
-      {isViewsModalOpen && (
-          <div className="modal-overlay" onClick={() => setIsViewsModalOpen(false)}>
-              <div className="modal-box" style={{maxWidth: '600px', width: '90%'}} onClick={e => e.stopPropagation()}>
-                  <div className="modal-header">
-                      <h3 style={{fontSize: '1.1rem'}}>إحصائيات: <span style={{color: '#38bdf8'}}>{selectedMediaName}</span></h3>
-                      <button onClick={() => setIsViewsModalOpen(false)} className="close-btn">{Icons.close}</button>
-                  </div>
-
-                  {loadingViews ? (
-                      <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>جاري التحميل من فايربيز... ⏳</div>
-                  ) : (
-                      <>
-                          {/* عرض العدد الإجمالي */}
-                          <div style={{background: '#0f172a', padding: '15px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center', border: '1px solid #334155'}}>
-                              <span style={{color: '#94a3b8', fontSize: '0.9rem'}}>إجمالي عدد الطلاب الذين فتحوا الفيديو</span>
-                              <strong style={{display: 'block', fontSize: '1.8rem', color: '#22c55e'}}>{mediaViews.length}</strong>
-                          </div>
-                          
-                          {mediaViews.length > 0 ? (
-                              <div style={{maxHeight: '350px', overflowY: 'auto', borderRadius: '8px', border: '1px solid #334155'}}>
-                                  <table style={{width: '100%', borderCollapse: 'collapse', textAlign: 'right'}}>
-                                      <thead style={{background: '#1e293b', position: 'sticky', top: '0'}}>
-                                          <tr>
-                                              <th style={{padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem'}}>اسم الطالب</th>
-                                              <th style={{padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem'}}>آخر وقت مشاهدة</th>
-                                          </tr>
-                                      </thead>
-                                      <tbody>
-                                          {mediaViews.map((view, idx) => (
-                                              <tr key={idx} style={{borderBottom: '1px solid #1e293b'}} className="hover-row">
-                                                  <td style={{padding: '12px', color: 'white', fontWeight: '500'}}>{view.studentName}</td>
-                                                  <td style={{padding: '12px', color: '#cbd5e1', fontSize: '0.8rem'}} dir="ltr">
-                                                      {new Date(view.lastViewedAt).toLocaleString('ar-EG', {
-                                                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                                      })}
-                                                  </td>
-                                              </tr>
-                                          ))}
-                                      </tbody>
-                                  </table>
-                              </div>
-                          ) : (
-                              <div style={{textAlign: 'center', padding: '30px', color: '#64748b'}}>لا توجد سجلات مشاهدة لهذا الفيديو بعد.</div>
-                          )}
-                      </>
-                  )}
-                  <div className="acts">
-                      <button className="btn-cancel" onClick={() => setIsViewsModalOpen(false)}>إغلاق</button>
-                  </div>
-              </div>
-          </div>
-      )}
-          
-    </TeacherLayout>
+  </TeacherLayout>
   );
 }
 
