@@ -575,6 +575,7 @@ export default function ContentManager() {
       )}
 
       {/* 4. Chapter Content */}
+      {/* 4. Chapter Content */}
       {selectedChapter && (
           <div className="content-layout">
               <div className="panel">
@@ -587,23 +588,25 @@ export default function ContentManager() {
                           <div key={v.id} className="media-card draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'videos')}>
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="thumb">{Icons.video}</div>
+                              
                               <div className="media-body">
-    <h4>{v.title}</h4>
-    <div style={{display: 'flex', gap: '8px'}}>
-        {/* ✅ زر عرض المشاهدات الجديد */}
-        <button 
-            className="btn-icon" 
-            title="من شاهد الفيديو؟" 
-            style={{color: '#38bdf8', background: 'rgba(56, 189, 248, 0.1)'}}
-            onClick={() => fetchMediaViews(v.id, v.title)}
-        >
-            {Icons.eye}
-        </button>
-        <button className="btn-icon danger" onClick={() => handleDelete('videos', v.id)}>
-            {Icons.trash}
-        </button>
-    </div>
-</div>
+                                  <h4>{v.title}</h4>
+                                  <div style={{display: 'flex', gap: '8px'}}>
+                                      {/* ✅ زر عرض المشاهدات الجديد */}
+                                      <button 
+                                          className="btn-icon" 
+                                          title="من شاهد الفيديو؟" 
+                                          style={{color: '#38bdf8', background: 'rgba(56, 189, 248, 0.1)'}}
+                                          onClick={() => fetchMediaViews(v.id, v.title)}
+                                      >
+                                          {Icons.eye}
+                                      </button>
+                                      <button className="btn-icon danger" onClick={() => handleDelete('videos', v.id)}>
+                                          {Icons.trash}
+                                      </button>
+                                  </div>
+                              </div>
+                          </div> {/* ✅ هذا هو وسم الإغلاق الذي كان مفقوداً في كودك */}
                       ))}
                   </div>
               </div>
