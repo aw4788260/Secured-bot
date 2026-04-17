@@ -2,8 +2,9 @@ import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
 
-// ✅ 1. التعديل الأول: استيراد admin و db بشكل صحيح من ملف الإعدادات الخاص بك
-import admin, { db } from '../../../lib/firebaseAdmin'; 
+// ✅ 1. استيراد مكتبات Firebase
+import { db } from '../../../lib/firebaseAdmin';
+import admin from 'firebase-admin';
 
 export default async (req, res) => {
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
@@ -37,6 +38,7 @@ export default async (req, res) => {
         const userId = req.headers['x-user-id']; 
         
         // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
+        // ✅ تم التعديل هنا: جلب تفاصيل الشابتر، المادة، الكورس، والمدرس بالكامل
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select(`
@@ -77,54 +79,44 @@ export default async (req, res) => {
         const teacherName = course?.teachers?.name || 'بدون مدرس';
 
         // ================================================================
-        // ✅ [مُعدَّل] 3.5 تسجيل المشاهدة في Firebase (مع Await و Logs للتتبع)
+        // ✅ [جديد] 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
             if (userId) {
-                log(`👤 Fetching student name for ID: ${userId}`);
-                
-                // جلب اسم الطالب (الاعتماد على first_name ثم username)
-                const { data: studentData, error: studentErr } = await supabase
+                // ✅ تم التعديل: جلب first_name و username لعدم وجود last_name في الـ Schema
+                const { data: studentData } = await supabase
                     .from('users')
                     .select('first_name, username')
                     .eq('id', userId)
                     .maybeSingle();
 
-                if (studentErr) {
-                    errLog(`Error fetching student from Supabase: ${studentErr.message}`);
-                }
-
-                // لوج للتأكد من البيانات القادمة من قاعدة البيانات
-                log(`📊 Student DB Data: ${JSON.stringify(studentData)}`);
-
                 const studentFullName = studentData 
                     ? (studentData.first_name || studentData.username || 'مستخدم') 
                     : 'مستخدم';
-                    
-                log(`🏷️ Final extracted student name to be saved: ${studentFullName}`);
 
                 const docId = `${lessonId}_${userId}`;
 
-                // ✅ التعديل الثاني: إضافة await لضمان حفظ البيانات قبل انتهاء العملية
-                await db.collection('video_views').doc(docId).set({
+                // تسجيل البيانات بدون await لضمان سرعة الرد وعدم تعطيل الفيديو
+                db.collection('video_views').doc(docId).set({
                     videoId: lessonId,
                     studentId: userId,
-                    teacherId: teacherId.toString(),
-                    teacherName: teacherName,       
-                    studentName: studentFullName,   
+                    teacherId: teacherId.toString(), // ✅ تم وضع الـ ID الحقيقي للمدرس
+                    teacherName: teacherName,       // ✅ اسم المدرس الفعلي
+                    studentName: studentFullName,   // ✅ اسم الطالب الصحيح
                     videoTitle: videoData.title || 'بدون عنوان',
-                    courseName: courseName,         
-                    subjectName: subjectName,       
-                    chapterName: chapterName,       
+                    courseName: courseName,         // ✅ اسم الكورس
+                    subjectName: subjectName,       // ✅ اسم المادة
+                    chapterName: chapterName,       // ✅ اسم الفصل
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+                }, { merge: true }).catch(err => errLog(`Firebase View Log Write Error: ${err.message}`));
                 
-                log("📝 Video view logged to Firebase successfully with await.");
+                log("📝 Video view logged to Firebase successfully in background.");
             }
         } catch (firebaseSetupErr) {
-            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
+            errLog(`Failed to setup Firebase log (Ignored): ${firebaseSetupErr.message}`);
         }
         // ================================================================
+
 
         // 4. الاتصال بالبروكسي (نظام السيرفر الأساسي + الاحتياطي)
         let result = null;
@@ -135,27 +127,29 @@ export default async (req, res) => {
             log(`➡️ Trying Primary Proxy...`);
             const primaryResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId }
+                // تم إزالة مهلة الانتظار، سينتظر الرد الطبيعي أو الخطأ
             });
             result = primaryResponse.data;
 
         } catch (primaryErr) {
             errLog(`⚠️ Primary Proxy Failed (${primaryErr.message}). Switching IMMEDIATELY to Backup Proxy...`);
             
+            // إذا لم يكن هناك رابط احتياطي في .env، ارمِ الخطأ فوراً
             if (!PROXY_BACKUP_URL) {
                 throw primaryErr; 
             }
 
-            // --- المحاولة الثانية: السيرفر الاحتياطي ---
+            // --- المحاولة الثانية: السيرفر الاحتياطي (تعمل فوراً عند حدوث خطأ في الأساسي) ---
             try {
                 const backupResponse = await axios.get(`${PROXY_BACKUP_URL}/extract`, {
                     params: { id: youtubeId }
                 });
                 result = backupResponse.data;
-                proxyMethodUsed = "local_vps_backup_api";
+                proxyMethodUsed = "local_vps_backup_api"; // لتمييز مصدر الرد في النهاية
                 log(`✅ Backup Proxy Succeeded!`);
             } catch (backupErr) {
                 errLog(`❌ Backup Proxy ALSO Failed: ${backupErr.message}`);
-                throw backupErr;
+                throw backupErr; // رمي الخطأ للـ catch الخارجية إذا فشل الاثنان
             }
         }
 
@@ -218,6 +212,7 @@ export default async (req, res) => {
             proxy_method: proxyMethodUsed
         });
 
+    // معالجة الأخطاء النهائية (لو فشل الأساسي والاحتياطي)
     } catch (proxyErr) {
         errLog(`VPS Proxy Error: ${proxyErr.message}`);
         
