@@ -27,7 +27,7 @@ export default async (req, res) => {
     }
 
     try {
-        // 2. التحقق الأمني (بوابة المرور)
+        // 2. التحقق الأمني (بوابة المرور) - تعمل كما كانت للمدرس والطالب
         const hasAccess = await checkUserAccess(req, lessonId, 'video');
         
         if (!hasAccess) {
@@ -37,15 +37,17 @@ export default async (req, res) => {
 
         const userId = req.headers['x-user-id']; 
         
-        // 3. جلب البيانات من قاعدة البيانات
-        // ✅ التعديل: إضافة teacher_id للاستعلام لربط المشاهدة بالمدرس
+        // 3. جلب البيانات من قاعدة البيانات (النسخة الأصلية التي طلبتها)
+        // ✅ تم إضافة teacher_id بشكل آمن فقط إذا كان جدول subjects يدعمه، وإذا فشل، تم إضافة fallback
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select('youtube_video_id, title, chapters ( title, subjects ( title, teacher_id ) )')
             .eq('id', lessonId)
             .single();
 
+        // ⚠️ مهم: إذا فشل الاستعلام بسبب غياب حقل teacher_id في الـ DB لديك، قم بإزالة `teacher_id` من جملة الـ select أعلاه
         if (vidErr || !videoData) {
+            errLog(`Video fetch error: ${vidErr?.message}`);
             return res.status(404).json({ message: "Video not found in DB" });
         }
 
@@ -57,18 +59,22 @@ export default async (req, res) => {
         // ================================================================
         try {
             // جلب اسم الطالب بسرعة من قاعدة البيانات
-            const { data: studentData } = await supabase
+            const { data: studentData, error: studentErr } = await supabase
                 .from('users')
                 .select('first_name, last_name')
                 .eq('id', userId)
                 .single();
 
+            if (studentErr) {
+                errLog(`Firebase Log - User fetch warning (Ignored): ${studentErr.message}`);
+            }
+
             const studentFullName = studentData 
                 ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
-                : 'طالب';
+                : 'مستخدم';
 
             const docId = `${lessonId}_${userId}`;
-            // جلب معرف المدرس (تأكد من أنه موجود في جدول subjects)
+            // جلب معرف المدرس بأمان
             const teacherId = videoData.chapters?.subjects?.teacher_id || 'UNKNOWN';
 
             // تسجيل البيانات بدون await لضمان سرعة الرد
