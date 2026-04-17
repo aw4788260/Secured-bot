@@ -1,39 +1,41 @@
 import { db } from '../../../../lib/firebaseAdmin';
-import { verifyTeacher } from '../../../../lib/teacherAuth'; //
+// ✅ استخدام دالة التحقق الصحيحة الخاصة بلوحة التحكم
+import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper'; 
 
 export default async function handler(req, res) {
-    // 1. السماح فقط بطلبات GET
     if (req.method !== 'GET') {
         return res.status(405).json({ message: 'Method Not Allowed' });
     }
 
     try {
-        // 2. التحقق من هوية وصلاحية المدرس
-        // الدالة verifyTeacher تتأكد من التوكن وترجع بيانات المدرس إذا كان صالحاً
-        const teacher = await verifyTeacher(req);
-        if (!teacher) {
-            return res.status(401).json({ message: 'Unauthorized: Teacher access required' });
-        }
+        // 1. التحقق من هوية المدرس أو الأدمن باستخدام الـ Cookies
+        const { user, error } = await requireTeacherOrAdmin(req, res);
+        
+        // إذا كان هناك خطأ في الصلاحيات، الدالة سترسل الرد التلقائي (401)
+        if (error) return; 
 
         const { videoId } = req.query;
-        const teacherId = teacher.id;
+        // جلب الـ ID الخاص بالمدرس من الجلسة
+        const teacherId = user.id; 
 
-        // 3. بناء الاستعلام من Firebase Firestore
-        // نبدأ بالبحث عن المشاهدات الخاصة بهذا المدرس فقط لضمان الخصوصية
+        // حماية إضافية لمنع تمرير undefined لفايربيز
+        if (!teacherId) {
+             return res.status(400).json({ message: "لم يتم العثور على معرف المدرس" });
+        }
+
+        // 2. بناء استعلام فايربيز (Firebase Query)
         let viewsQuery = db.collection('video_views').where('teacherId', '==', teacherId);
 
-        // إذا تم تمرير معرف فيديو محدد، نقوم بفلترة النتائج
         if (videoId) {
             viewsQuery = viewsQuery.where('videoId', '==', videoId);
         }
 
-        // ترتيب النتائج: الأحدث أولاً
-        // ملاحظة: قد يطلب منك Firebase إنشاء "Index" لهذا الاستعلام في أول مرة تشغيل
+        // الترتيب: الأحدث أولاً
         viewsQuery = viewsQuery.orderBy('lastViewedAt', 'desc');
 
         const snapshot = await viewsQuery.get();
 
-        // 4. تجميع البيانات وتنسيقها
+        // 3. تجميع البيانات
         const viewsList = [];
         snapshot.forEach((doc) => {
             const data = doc.data();
@@ -44,12 +46,11 @@ export default async function handler(req, res) {
                 videoTitle: data.videoTitle,
                 courseName: data.courseName,
                 chapterName: data.chapterName,
-                // تحويل طابع الوقت الخاص بـ Firebase إلى نص ISO قابل للقراءة
                 lastViewedAt: data.lastViewedAt ? data.lastViewedAt.toDate().toISOString() : null
             });
         });
 
-        // 5. إرسال الرد النهائي
+        // 4. إرسال الرد
         return res.status(200).json({ 
             success: true, 
             count: viewsList.length, 
