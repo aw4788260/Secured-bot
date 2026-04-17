@@ -1,38 +1,44 @@
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
-import jwt from 'jsonwebtoken'; // ✅ استيراد مكتبة التوكن لضمان استخراج الاسم كخطة بديلة
+import jwt from 'jsonwebtoken';
 
 // ✅ 1. استيراد مكتبات Firebase
 import { db } from '../../../lib/firebaseAdmin';
 import admin from 'firebase-admin';
-
-// تم تغيير اسم المتغير الاحتياطي لتجنب التعارض
-const PYTHON_PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
-const PYTHON_HLS_BACKUP_URL = process.env.PYTHON_HLS_BACKUP_URL; 
 
 export default async (req, res) => {
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    log("🚀 Start Request: get-video-id");
+    log("🚀 Start Request: get-stream-proxy");
 
-    const { lessonId } = req.query;
-    
-    if (!lessonId) {
-        return res.status(400).json({ message: "Missing Lesson ID" });
+    // 1. قراءة إعدادات البروكسي (الأساسي والاحتياطي)
+    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; 
+    const PROXY_BACKUP_URL = process.env.PYTHON_PROXY_BACKUP_URL; 
+
+    if (!PROXY_BASE_URL) {
+        errLog("CRITICAL: PYTHON_PROXY_URL is not defined in .env file");
+        return res.status(500).json({ message: "Server Config Error" });
     }
 
-    // 1. التحقق الأمني
-    const hasAccess = await checkUserAccess(req, lessonId, 'video');
-    if (!hasAccess) {
-        return res.status(403).json({ message: "Access Denied" });
+    const { lessonId } = req.query;
+
+    if (!lessonId) {
+        return res.status(400).json({ message: "Missing lessonId" });
     }
 
     try {
-        // 2. جلب بيانات الفيديو من قاعدة البيانات
-        // ✅ تم التعديل هنا: التدرج في جلب بيانات الفصل والمادة والكورس والمدرس بالكامل
+        // 2. التحقق الأمني (بوابة المرور)
+        const hasAccess = await checkUserAccess(req, lessonId, 'video');
+        
+        if (!hasAccess) {
+            errLog("⛔ Access Denied or Token Invalid.");
+            return res.status(403).json({ message: "Access Denied" });
+        }
+
+        // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select(`
@@ -60,7 +66,7 @@ export default async (req, res) => {
 
         const youtubeId = videoData.youtube_video_id;
 
-        // استخراج المتغيرات بأمان لتجنب أخطاء undefined
+        // استخراج تفاصيل الكورس والمدرس بشكل آمن
         const chapter = videoData.chapters;
         const subject = chapter?.subjects;
         const course = subject?.courses;
@@ -72,17 +78,16 @@ export default async (req, res) => {
         const teacherName = course?.teachers?.name || 'بدون مدرس';
 
         // ================================================================
-        // ✅ [مُحدّث] تسجيل المشاهدة في Firebase بدقة تامة وضمان اكتمال العملية
+        // ✅ 3.5 تسجيل المشاهدة في Firebase بدقة تامة
         // ================================================================
         try {
-            // 1. استخراج الـ ID والتأكد من أنه ليس مصفوفة (Array)
             const rawUserId = req.headers['x-user-id']; 
             const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
-            
+
             if (userId) {
                 let fallbackName = 'مستخدم';
                 
-                // 🟢 الخطة البديلة (Fallback): استخراج اسم المستخدم من التوكن مباشرة
+                // الخطة البديلة لجلب الاسم من التوكن
                 try {
                     const authHeader = req.headers['authorization'];
                     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -94,7 +99,7 @@ export default async (req, res) => {
                     errLog("Failed to decode JWT for fallback name.");
                 }
 
-                // 🟢 جلب بيانات الطالب (تحويل userId لرقم ليتطابق مع الـ bigint في الجدول)
+                // جلب بيانات الطالب (باستخدام parseInt لحل مشكلة الـ bigint)
                 const { data: studentData, error: studentErr } = await supabase
                     .from('users')
                     .select('first_name, username, phone')
@@ -105,14 +110,13 @@ export default async (req, res) => {
                     errLog(`Failed to fetch student data: ${studentErr.message}`);
                 }
 
-                // 🟢 تحديد الاسم النهائي (الأولوية: الاسم الأول -> اليوزرنيم -> الهاتف -> التوكن)
                 const studentFullName = studentData 
                     ? (studentData.first_name || studentData.username || studentData.phone || fallbackName) 
                     : fallbackName;
 
                 const docId = `${lessonId}_${userId}`;
 
-                // 4. ⚠️ استخدام await لضمان إتمام حفظ البيانات قبل أن تنهي بيئة السيرفر الدالة
+                // ⚠️ إضافة await لمنع Vercel من إغلاق الاتصال قبل الحفظ
                 await db.collection('video_views').doc(docId).set({
                     videoId: lessonId.toString(),
                     studentId: userId.toString(),
@@ -126,48 +130,43 @@ export default async (req, res) => {
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
                 
-                log(`📝 Logged view successfully. Student: ${studentFullName}`);
+                log(`📝 Video view logged to Firebase successfully for: ${studentFullName}`);
             }
         } catch (firebaseSetupErr) {
-            errLog(`Firebase Write Error: ${firebaseSetupErr.message}`);
+            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
         }
         // ================================================================
 
 
-        // 4. الاتصال بالبروكسي (الأساسي ثم الاحتياطي)
-        let proxyResult = { url: null, availableQualities: [] };
-        let isOfflineMode = true;
+        // 4. الاتصال بالبروكسي (نظام السيرفر الأساسي + الاحتياطي)
+        let proxyResult = null; // ✅ تم إزالة تعريف isOfflineMode من هنا لمنع التكرار
 
         try {
             // --- المحاولة الأولى: السيرفر الأساسي ---
             log(`➡️ Trying Primary Proxy...`);
-            const primaryResponse = await axios.get(`${PROXY_BASE_URL}/extract`, { 
+            const primaryResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId }
-                // تم إزالة مهلة الانتظار، سينتظر الرد الطبيعي أو الخطأ
             });
-            
             proxyResult = primaryResponse.data;
             log("✅ Primary Proxy Succeeded!");
 
         } catch (primaryErr) {
             errLog(`⚠️ Primary Proxy Failed (${primaryErr.message}). Switching IMMEDIATELY to Backup Proxy...`);
             
-            // إذا لم يكن هناك رابط احتياطي في .env، ارمِ الخطأ فوراً
             if (!PROXY_BACKUP_URL) {
                 throw primaryErr; 
             }
 
-            // --- المحاولة الثانية: السيرفر الاحتياطي (تعمل فوراً عند حدوث خطأ في الأساسي) ---
+            // --- المحاولة الثانية: السيرفر الاحتياطي ---
             try {
                 const backupResponse = await axios.get(`${PROXY_BACKUP_URL}/extract`, {
                     params: { id: youtubeId }
                 });
-                
                 proxyResult = backupResponse.data;
                 log(`✅ Backup Proxy Succeeded!`);
             } catch (backupErr) {
                 errLog(`❌ Backup Proxy ALSO Failed: ${backupErr.message}`);
-                throw backupErr; // رمي الخطأ للـ catch الخارجية إذا فشل الاثنان
+                throw backupErr;
             }
         }
 
@@ -206,6 +205,8 @@ export default async (req, res) => {
             ...Array.from(uniqueQualitiesMap.values()),
             ...audioStreams
         ];
+        
+        proxyResult.availableQualities = filteredQualities;
 
         // 6. تجهيز الرد
         const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
@@ -215,20 +216,22 @@ export default async (req, res) => {
             .select('value')
             .eq('key', 'offline_mode')
             .single();
+            
+        // ✅ يتم تعريف المتغير مرة واحدة فقط هنا
         const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
 
-        return res.status(200).json({ 
-            ...proxyResult, 
-            url: proxyResult.url || null, 
+        return res.status(200).json({
+            ...proxyResult,
+            url: proxyResult.url || null,
+            thumbnail: thumbnail,
             duration: "0",
-            youtube_video_id: youtubeId, 
+            youtube_video_id: youtubeId,
             db_video_title: videoData.title,
             subject_name: subjectName, 
-            chapter_name: chapterName, 
-            offline_mode: isOfflineMode 
+            chapter_name: chapterName,
+            offline_mode: isOfflineMode
         });
 
-    // معالجة الأخطاء النهائية (لو فشل الأساسي والاحتياطي)
     } catch (proxyErr) {
         errLog(`VPS Proxy Error: ${proxyErr.message}`);
         
