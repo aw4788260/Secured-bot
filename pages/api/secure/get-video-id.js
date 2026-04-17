@@ -2,6 +2,10 @@ import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
 
+// ✅ 1. استيراد مكتبات Firebase
+import { db } from '../../../lib/firebaseAdmin';
+import admin from 'firebase-admin';
+
 // تم تغيير اسم المتغير الاحتياطي لتجنب التعارض
 const PYTHON_PROXY_BASE_URL = process.env.PYTHON_PROXY_BASE_URL;
 const PYTHON_HLS_BACKUP_URL = process.env.PYTHON_HLS_BACKUP_URL; 
@@ -19,7 +23,7 @@ export default async (req, res) => {
         return res.status(400).json({ message: "Missing Lesson ID" });
     }
 
-    // 1. التحقق الأمني
+    // 1. التحقق الأمني (تقوم الدالة بحقن x-user-id في الـ headers إذا نجحت)
     const hasAccess = await checkUserAccess(req, lessonId, 'video');
     if (!hasAccess) {
         return res.status(403).json({ message: "Access Denied" });
@@ -27,9 +31,10 @@ export default async (req, res) => {
 
     try {
         // 2. جلب بيانات الفيديو من قاعدة البيانات
+        // ✅ تم إضافة جلب teacher_id إذا كان متوفراً في جدول subjects لديك
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
-            .select('youtube_video_id, title, chapters ( title, subjects ( title ) )')
+            .select('youtube_video_id, title, chapters ( title, subjects ( title, teacher_id ) )')
             .eq('id', lessonId)
             .single();
 
@@ -38,7 +43,47 @@ export default async (req, res) => {
         }
 
         // ================================================================
-        // 3. الاتصال بالبروكسي (الأساسي ثم الاحتياطي)
+        // ✅ [جديد] 3. تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
+        // ================================================================
+        try {
+            const studentId = req.headers['x-user-id']; // تم حقنه من authHelper
+
+            // جلب اسم الطالب بسرعة (يمكنك تجاهل هذا السطر إذا كنت تخزن الاسم في الـ JWT)
+            const { data: studentData } = await supabase
+                .from('users')
+                .select('first_name, last_name')
+                .eq('id', studentId)
+                .single();
+
+            const studentFullName = studentData 
+                ? `${studentData.first_name || ''} ${studentData.last_name || ''}`.trim() 
+                : 'طالب';
+
+            const docId = `${lessonId}_${studentId}`;
+            // تأكد من مسار جلب معرف المدرس بناءً على هيكل جداولك (قد تحتاج لتعديله إذا كان المدرس في جدول الكورسات)
+            const teacherId = videoData.chapters?.subjects?.teacher_id || 'UNKNOWN';
+
+            // لاحظ عدم استخدام await هنا لكي لا نؤخر الرد على تطبيق الطالب
+            db.collection('video_views').doc(docId).set({
+                videoId: lessonId,
+                studentId: studentId,
+                teacherId: teacherId,
+                studentName: studentFullName || 'بدون اسم',
+                videoTitle: videoData.title || 'بدون عنوان',
+                courseName: videoData.chapters?.subjects?.title || 'بدون مادة',
+                chapterName: videoData.chapters?.title || 'بدون فصل',
+                lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(err => errLog(`Firebase View Log Error: ${err.message}`));
+            
+            log("📝 Video view logged to Firebase successfully in background.");
+        } catch (firebaseSetupErr) {
+            errLog(`Failed to setup Firebase log: ${firebaseSetupErr.message}`);
+        }
+        // ================================================================
+
+
+        // ================================================================
+        // 4. الاتصال بالبروكسي (الأساسي ثم الاحتياطي)
         // ================================================================
         let proxyResult = { url: null, availableQualities: [] };
         let isOfflineMode = true;
@@ -93,7 +138,7 @@ export default async (req, res) => {
             errLog(`Proxy Failed (Ignored for Player 2): ${proxyErr.message}`);
         }
 
-        // 4. إرسال الرد النهائي
+        // 5. إرسال الرد النهائي
         res.status(200).json({ 
             ...proxyResult, 
             url: proxyResult.url || null, 
