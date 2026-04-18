@@ -58,13 +58,16 @@ export default function ContentManager() {
   const [deletedQIds, setDeletedQIds] = useState([]);
   const [uploadingImg, setUploadingImg] = useState(false);
   const [examStats, setExamStats] = useState(null);
-
-    // ✅ حالات إحصائيات المشاهدة
+// ✅ حالات إحصائيات المشاهدة
   const [isViewsModalOpen, setIsViewsModalOpen] = useState(false);
   const [mediaViews, setMediaViews] = useState([]);
   const [loadingViews, setLoadingViews] = useState(false);
   const [selectedMediaName, setSelectedMediaName] = useState("");
-
+  // -- الإضافات الجديدة --
+  const [currentMediaId, setCurrentMediaId] = useState(null); 
+  const [viewsPage, setViewsPage] = useState(1); 
+  const [totalViewsCount, setTotalViewsCount] = useState(0);
+ 
  const refreshView = async () => {
       try {
           const res = await fetch('/api/dashboard/teacher/content');
@@ -229,20 +232,25 @@ export default function ContentManager() {
       } catch (e) { showAlert('error', 'خطأ في الاتصال'); }
       setLoading(false);
   };
-
-    const fetchMediaViews = async (mediaId, mediaTitle) => {
-      setIsViewsModalOpen(true);
+const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
+      // نفتح النافذة إذا كنا في الصفحة الأولى فقط
+      if (pageNum === 1) setIsViewsModalOpen(true);
+      
       setLoadingViews(true);
       setSelectedMediaName(mediaTitle);
-      setMediaViews([]);
+      setCurrentMediaId(mediaId);
+      setViewsPage(pageNum);
+      
+      if (pageNum === 1) setMediaViews([]); // تصفير القائمة القديمة
       
       try {
-          // استدعاء الـ API الذي أنشأناه لفايربيز
-          const response = await fetch(`/api/dashboard/teacher/get-video-views?videoId=${mediaId}`);
+          // ✅ إرسال رقم الصفحة المطلوبة مع حد 100 سجل
+          const response = await fetch(`/api/dashboard/teacher/get-video-views?videoId=${mediaId}&page=${pageNum}&limit=100`);
           const data = await response.json();
 
           if (data.success) {
               setMediaViews(data.views);
+              setTotalViewsCount(data.total || 0); // حفظ العدد الإجمالي
           } else {
               showAlert('error', data.message || 'فشل جلب البيانات');
           }
@@ -252,6 +260,7 @@ export default function ContentManager() {
           setLoadingViews(false);
       }
   };
+    
 
   const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
       await apiCall('delete', type, { id });
@@ -890,6 +899,7 @@ export default function ContentManager() {
               </div>
           </div>
       )}
+
 {/* ✅ نافذة عرض الطلاب الذين شاهدوا الفيديو */}
       {isViewsModalOpen && (
           <div className="modal-overlay" onClick={() => setIsViewsModalOpen(false)}>
@@ -900,13 +910,13 @@ export default function ContentManager() {
                   </div>
 
                   {loadingViews ? (
-                      <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>جاري التحميل...</div>
+                      <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>جاري التحميل... ⏳</div>
                   ) : (
                       <>
-                          {/* عرض العدد الإجمالي */}
+                          {/* عرض العدد الإجمالي بدلاً من طول المصفوفة الحالية */}
                           <div style={{background: '#0f172a', padding: '15px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center', border: '1px solid #334155'}}>
-                              <span style={{color: '#94a3b8', fontSize: '0.9rem'}}>إجمالي عدد الطلاب الذين فتحوا الفيديو</span>
-                              <strong style={{display: 'block', fontSize: '1.8rem', color: '#22c55e'}}>{mediaViews.length}</strong>
+                              <span style={{color: '#94a3b8', fontSize: '0.9rem'}}>إجمالي المشاهدات</span>
+                              <strong style={{display: 'block', fontSize: '1.8rem', color: '#22c55e'}}>{totalViewsCount}</strong>
                           </div>
                           
                           {mediaViews.length > 0 ? (
@@ -935,9 +945,34 @@ export default function ContentManager() {
                           ) : (
                               <div style={{textAlign: 'center', padding: '30px', color: '#64748b'}}>لا توجد سجلات مشاهدة لهذا الفيديو بعد.</div>
                           )}
+
+                          {/* ✅ أزرار التقليب (Pagination) تظهر فقط إذا كان الإجمالي أكثر من 100 */}
+                          {Math.ceil(totalViewsCount / 100) > 1 && (
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '20px' }}>
+                                  <button
+                                      disabled={viewsPage === 1}
+                                      onClick={() => fetchMediaViews(currentMediaId, selectedMediaName, viewsPage - 1)}
+                                      className="btn-secondary"
+                                      style={{ padding: '8px 15px', opacity: viewsPage === 1 ? 0.5 : 1 }}
+                                  >
+                                      السابق
+                                  </button>
+                                  <span style={{ color: '#cbd5e1', display: 'flex', alignItems: 'center', fontSize: '0.9rem' }}>
+                                      صفحة {viewsPage} من {Math.ceil(totalViewsCount / 100)}
+                                  </span>
+                                  <button
+                                      disabled={viewsPage >= Math.ceil(totalViewsCount / 100)}
+                                      onClick={() => fetchMediaViews(currentMediaId, selectedMediaName, viewsPage + 1)}
+                                      className="btn-secondary"
+                                      style={{ padding: '8px 15px', opacity: viewsPage >= Math.ceil(totalViewsCount / 100) ? 0.5 : 1 }}
+                                  >
+                                      التالي
+                                  </button>
+                              </div>
+                          )}
                       </>
                   )}
-                  <div className="acts">
+                  <div className="acts" style={{ marginTop: '20px' }}>
                       <button className="btn-cancel" onClick={() => setIsViewsModalOpen(false)}>إغلاق</button>
                   </div>
               </div>
