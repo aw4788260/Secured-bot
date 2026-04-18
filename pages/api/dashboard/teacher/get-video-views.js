@@ -15,19 +15,27 @@ export default async function handler(req, res) {
         if (error) return; 
 
         const { videoId } = req.query;
-        // جلب الـ ID الخاص بالمدرس من الجلسة
-        const teacherId = user.id; 
+        
+        // ✅ التعديل الرئيسي هنا:
+        // جلب الـ ID الخاص ببروفايل المدرس (teacherId) وتحويله لنص ليطابق ما تم حفظه في فايربيز
+        // (الكود القديم كان يستخدم user.id وهو رقم حساب الدخول)
+        const teacherId = user.teacherId ? user.teacherId.toString() : null; 
 
-        // حماية إضافية لمنع تمرير undefined لفايربيز
-        if (!teacherId) {
-             return res.status(400).json({ message: "لم يتم العثور على معرف المدرس" });
+        // حماية إضافية لمنع تمرير بيانات فارغة لفايربيز
+        if (!teacherId && user.role !== 'super_admin') {
+             return res.status(400).json({ message: "لم يتم العثور على بروفايل المدرس" });
         }
 
         // 2. بناء استعلام فايربيز (Firebase Query)
-        let viewsQuery = db.collection('video_views').where('teacherId', '==', teacherId);
+        let viewsQuery = db.collection('video_views');
+
+        // إذا كان المستخدم مدرساً، نفلتر النتائج لتخصه فقط (السوبر أدمن يرى كل شيء)
+        if (user.role !== 'super_admin') {
+            viewsQuery = viewsQuery.where('teacherId', '==', teacherId);
+        }
 
         if (videoId) {
-            viewsQuery = viewsQuery.where('videoId', '==', videoId);
+            viewsQuery = viewsQuery.where('videoId', '==', videoId.toString());
         }
 
         // الترتيب: الأحدث أولاً
@@ -59,6 +67,8 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error("❌ Error in get-video-views API:", error);
+        
+        // ملاحظة: إذا طلب فايربيز بناء (Index) في الكونسول، سيظهر الخطأ هنا
         return res.status(500).json({ 
             message: 'Internal Server Error', 
             error: error.message 
