@@ -900,7 +900,7 @@ export default function ContentManager() {
                   </div>
 
                   {loadingViews ? (
-                      <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>جاري التحميل من فايربيز... ⏳</div>
+                      <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>جاري التحميل...</div>
                   ) : (
                       <>
                           {/* عرض العدد الإجمالي */}
