@@ -11,9 +11,10 @@ export default async (req, res) => {
     const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
     const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    // 1. قراءة إعدادات البروكسي (الأساسي والاحتياطي)
+    // 1. قراءة إعدادات البروكسي (الأساسي، الاحتياطي، والثالث)
     const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; 
     const PROXY_BACKUP_URL = process.env.PYTHON_PROXY_BACKUP_URL; 
+    const PROXY_THIRD_URL = process.env.PYTHON_PROXY_THIRD_URL; // ✅ السيرفر الثالث
 
     if (!PROXY_BASE_URL) {
         errLog("CRITICAL: PYTHON_PROXY_URL is not defined in .env file");
@@ -38,7 +39,6 @@ export default async (req, res) => {
         const userId = req.headers['x-user-id']; 
         
         // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
-        // ✅ تم التعديل هنا: جلب تفاصيل الشابتر، المادة، الكورس، والمدرس بالكامل
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select(`
@@ -79,11 +79,10 @@ export default async (req, res) => {
         const teacherName = course?.teachers?.name || 'بدون مدرس';
 
         // ================================================================
-        // ✅ [جديد] 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
+        // ✅ 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
         // ================================================================
         try {
             if (userId) {
-                // ✅ تم التعديل: جلب first_name و username لعدم وجود last_name في الـ Schema
                 const { data: studentData } = await supabase
                     .from('users')
                     .select('first_name, username')
@@ -96,17 +95,16 @@ export default async (req, res) => {
 
                 const docId = `${lessonId}_${userId}`;
 
-                // تسجيل البيانات بدون await لضمان سرعة الرد وعدم تعطيل الفيديو
                 db.collection('video_views').doc(docId).set({
                     videoId: lessonId,
                     studentId: userId,
-                    teacherId: teacherId.toString(), // ✅ تم وضع الـ ID الحقيقي للمدرس
-                    teacherName: teacherName,       // ✅ اسم المدرس الفعلي
-                    studentName: studentFullName,   // ✅ اسم الطالب الصحيح
+                    teacherId: teacherId.toString(),
+                    teacherName: teacherName,       
+                    studentName: studentFullName,   
                     videoTitle: videoData.title || 'بدون عنوان',
-                    courseName: courseName,         // ✅ اسم الكورس
-                    subjectName: subjectName,       // ✅ اسم المادة
-                    chapterName: chapterName,       // ✅ اسم الفصل
+                    courseName: courseName,         
+                    subjectName: subjectName,       
+                    chapterName: chapterName,       
                     lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true }).catch(err => errLog(`Firebase View Log Write Error: ${err.message}`));
                 
@@ -118,7 +116,7 @@ export default async (req, res) => {
         // ================================================================
 
 
-        // 4. الاتصال بالبروكسي (نظام السيرفر الأساسي + الاحتياطي)
+        // 4. الاتصال بالبروكسي (أساسي -> احتياطي -> ثالث)
         let result = null;
         let proxyMethodUsed = "local_vps_primary";
 
@@ -127,35 +125,47 @@ export default async (req, res) => {
             log(`➡️ Trying Primary Proxy...`);
             const primaryResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
                 params: { id: youtubeId }
-                // تم إزالة مهلة الانتظار، سينتظر الرد الطبيعي أو الخطأ
             });
             result = primaryResponse.data;
 
         } catch (primaryErr) {
-            errLog(`⚠️ Primary Proxy Failed (${primaryErr.message}). Switching IMMEDIATELY to Backup Proxy...`);
+            errLog(`⚠️ Primary Proxy Failed (${primaryErr.message}). Switching to Backup Proxy...`);
             
-            // إذا لم يكن هناك رابط احتياطي في .env، ارمِ الخطأ فوراً
-            if (!PROXY_BACKUP_URL) {
-                throw primaryErr; 
-            }
+            if (!PROXY_BACKUP_URL) throw primaryErr; 
 
-            // --- المحاولة الثانية: السيرفر الاحتياطي (تعمل فوراً عند حدوث خطأ في الأساسي) ---
+            // --- المحاولة الثانية: السيرفر الاحتياطي ---
             try {
                 const backupResponse = await axios.get(`${PROXY_BACKUP_URL}/extract`, {
                     params: { id: youtubeId }
                 });
                 result = backupResponse.data;
-                proxyMethodUsed = "local_vps_backup_api"; // لتمييز مصدر الرد في النهاية
+                proxyMethodUsed = "local_vps_backup_api";
                 log(`✅ Backup Proxy Succeeded!`);
+                
             } catch (backupErr) {
-                errLog(`❌ Backup Proxy ALSO Failed: ${backupErr.message}`);
-                throw backupErr; // رمي الخطأ للـ catch الخارجية إذا فشل الاثنان
+                errLog(`❌ Backup Proxy ALSO Failed: ${backupErr.message}. Switching to Third Proxy...`);
+                
+                if (!PROXY_THIRD_URL) throw backupErr;
+
+                // --- المحاولة الثالثة: السيرفر الثالث (الجديد) ---
+                try {
+                    const thirdResponse = await axios.get(`${PROXY_THIRD_URL}/extract`, {
+                        params: { id: youtubeId }
+                    });
+                    result = thirdResponse.data;
+                    proxyMethodUsed = "local_vps_third_api"; // ✅ تمييز السيرفر الثالث
+                    log(`✅ Third Proxy Succeeded!`);
+                    
+                } catch (thirdErr) {
+                    errLog(`🚨 All 3 Proxies Failed! Last Error: ${thirdErr.message}`);
+                    throw thirdErr; // رمي الخطأ إذا فشلت جميع السيرفرات
+                }
             }
         }
 
         // التأكد من وجود نتائج صالحة
         if (!result || !result.availableQualities || result.availableQualities.length === 0) {
-            throw new Error("No streams found from either proxy");
+            throw new Error("No streams found from any proxy");
         }
 
         // 5. فلترة وتنقية الروابط
@@ -209,10 +219,10 @@ export default async (req, res) => {
             subject_name: subjectName, 
             chapter_name: chapterName,
             offline_mode: isOfflineMode,
-            proxy_method: proxyMethodUsed
+            proxy_method: proxyMethodUsed // سيوضح أي سيرفر من الثلاثة تم استخدامه
         });
 
-    // معالجة الأخطاء النهائية (لو فشل الأساسي والاحتياطي)
+    // معالجة الأخطاء النهائية (لو فشلت السيرفرات الثلاثة)
     } catch (proxyErr) {
         errLog(`VPS Proxy Error: ${proxyErr.message}`);
         
