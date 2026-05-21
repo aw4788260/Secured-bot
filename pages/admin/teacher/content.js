@@ -40,7 +40,16 @@ export default function ContentManager() {
   // Modals & UI
   const [modalType, setModalType] = useState(null); 
   // ✅ أضفنا notifyStudents للفورم الافتراضي
-  const [formData, setFormData] = useState({ title: '', url: '', price: 0, description: '', notifyStudents: false });
+  const [formData, setFormData] = useState({ 
+    title: '', 
+    url: '', 
+    price: 0, 
+    description: '', 
+    notifyStudents: false,
+    durHours: '',     // 👈 إضافة الساعات
+    durMinutes: '',   // 👈 إضافة الدقائق
+    durSeconds: ''    // 👈 إضافة الثواني
+  });
   const [notifyPdf, setNotifyPdf] = useState(false); // ✅ حالة مستقلة للـ PDF
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
@@ -272,7 +281,10 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   // --- Modal Opening ---
   const openModal = async (type, data = {}) => {
       // ✅ تصفير بيانات الفورم وجعل التنبيه false افتراضياً
-      setFormData({ title: '', url: '', price: 0, description: '', notifyStudents: false }); 
+      setFormData({ 
+    title: '', url: '', price: 0, description: '', notifyStudents: false,
+    durHours: '', durMinutes: '', durSeconds: '' // 👈 تصفير الوقت
+});
       setNotifyPdf(false);
       
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
@@ -684,6 +696,54 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <label>رابط يوتيوب</label>
                       <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
                   </div>
+               {/* ✅ واجهة إدخال الوقت اليدوية */}
+                  <div className="form-group" style={{ marginTop: '15px' }}>
+                      <label style={{ marginBottom: '10px', display: 'block', color: '#38bdf8' }}>⏱️ مدة الفيديو الفعلية</label>
+                      <div className="duration-inputs-wrapper">
+                          {/* الساعات */}
+                          <div className="dur-col">
+                              <input 
+                                 type="number" 
+                                 className="input text-center" 
+                                 placeholder="00" 
+                                 min="0" max="99"
+                                 value={formData.durHours} 
+                                 onChange={e => setFormData({...formData, durHours: e.target.value})} 
+                              />
+                              <small>ساعات</small>
+                          </div>
+                          
+                          <span className="dur-colon">:</span>
+                          
+                          {/* الدقائق */}
+                          <div className="dur-col">
+                              <input 
+                                 type="number" 
+                                 className="input text-center" 
+                                 placeholder="00" 
+                                 min="0" max="59"
+                                 value={formData.durMinutes} 
+                                 onChange={e => setFormData({...formData, durMinutes: e.target.value})} 
+                              />
+                              <small>دقائق</small>
+                          </div>
+
+                          <span className="dur-colon">:</span>
+
+                          {/* الثواني */}
+                          <div className="dur-col">
+                              <input 
+                                 type="number" 
+                                 className="input text-center" 
+                                 placeholder="00" 
+                                 min="0" max="59"
+                                 value={formData.durSeconds} 
+                                 onChange={e => setFormData({...formData, durSeconds: e.target.value})} 
+                              />
+                              <small>ثواني</small>
+                          </div>
+                      </div>
+                  </div>
                   {/* ✅ خيار إرسال التنبيه عند إضافة فيديو */}
                   <div className="form-group" style={{marginTop: '15px'}}>
                       <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#cbd5e1'}}>
@@ -712,7 +772,24 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
                       
                       // ✅ إرسال قيمة التنبيه مع إضافة الفيديو
-                      else if (modalType === 'add_video') apiCall('create', 'videos', { chapter_id: selectedChapter.id, title: formData.title, url: formData.url, notifyStudents: formData.notifyStudents });
+                      // ✅ دمج وتنسيق الوقت بشكل صحيح قبل الإرسال
+                      else if (modalType === 'add_video') {
+                          // التأكد من وضع صفر على اليسار إذا كان الرقم أقل من 10 (مثل 5 تصبح 05)
+                          const h = formData.durHours ? String(formData.durHours).padStart(2, '0') : '00';
+                          const m = formData.durMinutes ? String(formData.durMinutes).padStart(2, '0') : '00';
+                          const s = formData.durSeconds ? String(formData.durSeconds).padStart(2, '0') : '00';
+                          
+                          // إذا كانت الساعات صفر، نرسل الدقائق والثواني فقط، وإلا نرسل الكل
+                          const finalDuration = h === '00' ? `${m}:${s}` : `${h}:${m}:${s}`;
+
+                          apiCall('create', 'videos', { 
+                              chapter_id: selectedChapter.id, 
+                              title: formData.title, 
+                              url: formData.url, 
+                              duration: finalDuration, // 👈 إرسال الوقت المدمج
+                              notifyStudents: formData.notifyStudents 
+                          });
+                      }
                   }}>حفظ</button>
               </div>
           </Modal>
@@ -995,6 +1072,62 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
       {alertData.show && <div className={`alert-toast ${alertData.type}`}>{alertData.msg}</div>}
 
       <style jsx>{`
+      /* --- Duration Inputs Styles --- */
+        .duration-inputs-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            background: #111827;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px dashed #334155;
+            direction: ltr; 
+        }
+        .dur-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 70px;
+        }
+        .dur-col input.text-center {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: monospace;
+            padding: 10px 5px;
+            border-color: #475569;
+            background: #0f172a;
+            color: #38bdf8;
+            border-radius: 8px;
+        }
+        .dur-col input.text-center:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+        }
+        .dur-col input[type=number]::-webkit-inner-spin-button, 
+        .dur-col input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        .dur-col small {
+            margin-top: 8px;
+            color: #94a3b8;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .dur-colon {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #475569;
+            margin-top: -20px;
+            animation: blink 2s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
         /* General Layout */
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .header-bar h1 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.6rem; }
