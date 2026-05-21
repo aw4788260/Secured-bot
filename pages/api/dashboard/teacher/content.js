@@ -16,53 +16,6 @@ const extractYouTubeID = (url) => {
   return match ? match[1] : url;
 };
 
-// 🚀 دالة جديدة: التحقق من يوتيوب وجلب مدة الفيديو
-const fetchYouTubeDetails = async (videoId) => {
-  try {
-      const apiKey = process.env.YOUTUBE_API_KEY;
-      
-      // حماية إضافية: إذا نسي المبرمج إضافة المفتاح، نسمح بمرور الفيديو بمدة 00:00 بدلاً من تعطيل النظام
-      if (!apiKey) {
-          console.warn("⚠️ لم يتم العثور على YOUTUBE_API_KEY. تم تخطي جلب المدة.");
-          return { isValid: true, duration: '00:00' };
-      }
-
-      const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=contentDetails,status&key=${apiKey}`;
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (!data.items || data.items.length === 0) {
-          return { isValid: false, error: '❌ الفيديو خاص او الرابط غير صحيح' };
-      }
-
-      const video = data.items[0];
-
-      // 1. التحقق من حالة الفيديو
-      if (video.status.privacyStatus === 'private') {
-          return { isValid: false, error: '❌ لا يمكن إضافة فيديو "خاص" (Private). يرجى تغييره في يوتيوب إلى "غير مدرج" (Unlisted).' };
-      }
-
-      // 2. استخراج المدة وتحويلها من صيغة ISO (PT12M30S) إلى صيغة عادية (12:30)
-      const isoDuration = video.contentDetails.duration;
-      const match = isoDuration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
-      
-      const hours = match[1] ? parseInt(match[1], 10) : 0;
-      const minutes = match[2] ? parseInt(match[2], 10) : 0;
-      const seconds = match[3] ? parseInt(match[3], 10) : 0;
-
-      let formattedDuration = '';
-      if (hours > 0) formattedDuration += `${hours}:`;
-      formattedDuration += `${hours > 0 ? minutes.toString().padStart(2, '0') : minutes}:`;
-      formattedDuration += seconds.toString().padStart(2, '0');
-
-      return { isValid: true, duration: formattedDuration };
-
-  } catch (err) {
-      console.error("YouTube API Error:", err);
-      return { isValid: false, error: 'حدث خطأ أثناء الاتصال بخوادم يوتيوب للتحقق من الفيديو.' };
-  }
-};
-
 export default async (req, res) => {
   // 1. التحقق من الصلاحية (مدرس أو أدمن)
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -191,20 +144,13 @@ export default async (req, res) => {
         data = { id: req.body.id };
     }
 
-    // ✅ معالجة فيديو اليوتيوب + التحقق من الخصوصية وجلب المدة
+    // ✅ معالجة فيديو اليوتيوب واستقبال المدة يدوياً
     if (type === 'videos' && data?.url) {
       data.youtube_video_id = extractYouTubeID(data.url);
       delete data.url; 
       
-      // 🚀 التحقق من يوتيوب
-      const ytCheck = await fetchYouTubeDetails(data.youtube_video_id);
-      if (!ytCheck.isValid) {
-          // إذا كان خاص أو الرابط خطأ، نرفض العملية فوراً
-          return res.status(400).json({ error: ytCheck.error });
-      }
-      
-      // إضافة المدة إلى البيانات التي سيتم حفظها
-      data.duration = ytCheck.duration;
+      // ✅ أخذ المدة التي أدخلها المدرس من الواجهة، وإذا كانت فارغة نضع قيمة افتراضية 00:00
+      data.duration = data.duration || '00:00';
     }
 
     const checkCourseOwnership = async (courseId) => {
@@ -246,6 +192,13 @@ export default async (req, res) => {
        } catch (e) { return null; }
     };
 
+    // 🛡️ دالة مساعدة للحصول على subject_id من chapter_id (للإشعارات)
+    const getSubjectIdFromChapter = async (chapterId) => {
+      if (!chapterId) return null;
+      const { data: chapter } = await supabase.from('chapters').select('subject_id, subjects!inner(courses!inner(title))').eq('id', chapterId).single();
+      return chapter ? { subjectId: chapter.subject_id, courseTitle: chapter.subjects?.courses?.title } : null;
+    };
+
     try {
       if (action === 'create') {
         let insertData = { ...data };
@@ -278,15 +231,11 @@ export default async (req, res) => {
         // إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
         if (type === 'videos' && shouldNotify && newItem) {
             try {
-                const { data: info } = await supabase
-                    .from('chapters')
-                    .select('subject_id, subjects(courses(title))')
-                    .eq('id', newItem.chapter_id)
-                    .single();
+                const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
 
-                if (info && info.subject_id) {
-                    const courseTitle = info.subjects?.courses?.title || 'تحديث جديد في الكورس';
-                    const subjectId = info.subject_id;
+                if (subjectInfo && subjectInfo.subjectId) {
+                    const courseTitle = subjectInfo.courseTitle || 'تحديث جديد في الكورس';
+                    const subjectId = subjectInfo.subjectId;
                     const videoTitle = newItem.title;
 
                     const message = {
@@ -341,6 +290,18 @@ export default async (req, res) => {
       if (action === 'update') {
          const { id, ...updates } = data;
          let isAuthorized = false;
+
+         // 🚀 معالجة الفيديو في حالة تعديل الرابط
+         const videoUrl = updates.url || updates.youtube_video_id;
+         if (type === 'videos' && videoUrl) {
+             updates.youtube_video_id = extractYouTubeID(videoUrl);
+             delete updates.url;
+
+             // ✅ تحديث المدة يدوياً إذا تم إرسالها
+             if (updates.duration === undefined || updates.duration === '') {
+                 updates.duration = '00:00';
+             }
+         }
 
          if (type === 'courses') {
             const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
