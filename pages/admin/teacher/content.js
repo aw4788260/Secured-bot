@@ -773,11 +773,27 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       
                       // ✅ إرسال قيمة التنبيه مع إضافة الفيديو
                       // ✅ دمج وتنسيق الوقت بشكل صحيح قبل الإرسال
+                      // ✅ دمج وتنسيق الوقت مع التحقق الإجباري
                       else if (modalType === 'add_video') {
-                          // التأكد من وضع صفر على اليسار إذا كان الرقم أقل من 10 (مثل 5 تصبح 05)
-                          const h = formData.durHours ? String(formData.durHours).padStart(2, '0') : '00';
-                          const m = formData.durMinutes ? String(formData.durMinutes).padStart(2, '0') : '00';
-                          const s = formData.durSeconds ? String(formData.durSeconds).padStart(2, '0') : '00';
+                          // تحويل القيم إلى أرقام صحيحة (وإذا كانت فارغة نعتبرها صفر)
+                          const hVal = parseInt(formData.durHours || 0);
+                          const mVal = parseInt(formData.durMinutes || 0);
+                          const sVal = parseInt(formData.durSeconds || 0);
+
+                          // 🛑 1. التحقق الإجباري: منع ترك الوقت فارغاً أو أصفاراً
+                          if (hVal === 0 && mVal === 0 && sVal === 0) {
+                              return showAlert('error', '⚠️ يرجى إدخال مدة الفيديو الفعلية (لا يمكن تركها أصفاراً).');
+                          }
+
+                          // 🛑 2. التحقق من المنطق: منع إدخال دقائق أو ثواني أكبر من 59
+                          if (mVal > 59 || sVal > 59) {
+                              return showAlert('error', '⚠️ الدقائق والثواني يجب ألا تتجاوز 59.');
+                          }
+
+                          // تنسيق الأرقام لتكون من خانتين (مثال: 5 تصبح 05)
+                          const h = String(hVal).padStart(2, '0');
+                          const m = String(mVal).padStart(2, '0');
+                          const s = String(sVal).padStart(2, '0');
                           
                           // إذا كانت الساعات صفر، نرسل الدقائق والثواني فقط، وإلا نرسل الكل
                           const finalDuration = h === '00' ? `${m}:${s}` : `${h}:${m}:${s}`;
@@ -786,7 +802,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               chapter_id: selectedChapter.id, 
                               title: formData.title, 
                               url: formData.url, 
-                              duration: finalDuration, // 👈 إرسال الوقت المدمج
+                              duration: finalDuration, 
                               notifyStudents: formData.notifyStudents 
                           });
                       }
