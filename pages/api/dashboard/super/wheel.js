@@ -47,8 +47,13 @@ export default async function handler(req, res) {
 
     try {
       // 1. إضافة أو تعديل جائزة
+      // 1. إضافة أو تعديل جائزة
       if (action === 'save_prize') {
-         const { error } = await supabase.from('wheel_prizes').upsert(payload);
+         // تأكد من حذف الـ id إذا كان فارغاً لضمان توليده تلقائياً من القاعدة
+         const prizeData = { ...payload };
+         if (!prizeData.id) delete prizeData.id; 
+
+         const { error } = await supabase.from('wheel_prizes').upsert(prizeData);
          if (error) throw error;
          return res.status(200).json({ success: true, message: 'تم حفظ الجائزة بنجاح' });
       }
