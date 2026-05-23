@@ -3,7 +3,7 @@ import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import fpPromise from '@fingerprintjs/fingerprintjs';
 
-// استيراد الصور
+// استيراد الصور من مجلد styles
 import medaadLogo from '../styles/medaad-logo.png';
 import starsBg from '../styles/stars-bg.jpg';
 
@@ -70,10 +70,18 @@ export default function LuckyWheelPage() {
         if (data.prizes && data.prizes.length > 0) {
           const activePrizes = data.prizes.filter(p => p.is_active);
           setPrizes(activePrizes);
-          const formattedWheel = activePrizes.map(p => ({
-            option: p.title,
-            style: { backgroundColor: p.color, textColor: 'white' }
-          }));
+          
+          // 🎯 التعديل الجوهري: فرض اللون الذهبي والأسود بدلاً من ألوان قاعدة البيانات
+          const formattedWheel = activePrizes.map((p, index) => {
+              const isGold = index % 2 === 0;
+              return {
+                  option: p.title,
+                  style: { 
+                      backgroundColor: isGold ? '#dca742' : '#181818', 
+                      textColor: isGold ? '#181818' : '#dca742' 
+                  }
+              };
+          });
           setWheelData(formattedWheel);
         }
       } catch (e) {
@@ -132,15 +140,15 @@ export default function LuckyWheelPage() {
     localStorage.setItem('wheel_has_played', 'true'); 
   };
 
-  if (loading) return <div className="loader-screen">جاري تجهيز عجلة مداد... 🎡</div>;
+  if (loading) return <div className="loader-screen">جاري التجهيز... 🎡</div>;
 
   if (isGloballyDisabled) {
       return (
           <div className="wheel-page">
               <div className="bg-fixed-layer" style={{ backgroundImage: `url(${starsBg.src})` }}></div>
               <div className="content-container centered">
-                  <h1 style={{ color: '#ef4444', textShadow: '0 0 20px rgba(239,68,68,0.8)' }}>🔴 المسابقة متوقفة حالياً</h1>
-                  <p className="subtitle" style={{ marginTop: '20px' }}>عذراً، تم إيقاف عجلة الحظ مؤقتاً من قِبل إدارة المنصة. ترقبوا انطلاقها مجدداً قريباً!</p>
+                  <h1 style={{ color: '#ef4444' }}>🔴 المسابقة متوقفة حالياً</h1>
+                  <p className="subtitle" style={{ marginTop: '20px' }}>عذراً، تم إيقاف عجلة الحظ مؤقتاً. ترقبوا انطلاقها مجدداً قريباً!</p>
               </div>
           </div>
       );
@@ -150,41 +158,62 @@ export default function LuckyWheelPage() {
     <div className="wheel-page">
       <Head><title>عجلة حظ مداد 🎡</title></Head>
 
-      {/* 🛑 حل مشكلة الخلفية: طبقة ثابتة تملأ الشاشة بالكامل */}
+      {/* 🛑 حل مشكلة الخلفية: طبقة ثابتة تغطي الشاشة 100% من جميع الجهات */}
       <div className="bg-fixed-layer" style={{ backgroundImage: `url(${starsBg.src})` }}></div>
 
-      {/* الحاوية الرئيسية التي تنقسم لقسمين */}
+      {/* 🎯 لوجو مداد في أعلى اليسار */}
+      <div className="brand-logo">
+         <img src={medaadLogo.src} alt="Medaad Logo" />
+      </div>
+
       <div className="split-layout">
         
         {/* ========================================= */}
-        {/* القسم الأيمن: النصوص ونموذج الإدخال والنتيجة */}
+        {/* القسم الأيمن: النصوص والفورم */}
         {/* ========================================= */}
         <div className="right-panel">
-          <h1 className="main-title">
-            جرب حظك واربح مع <span className="highlight-medaad">MedaaD</span>
-          </h1>
-          <p className="subtitle">عجلة الحظ لطلاب منصة مداد. أدخل بياناتك لتبدأ السحب المباشر.</p>
+          <h1 className="main-title">جرب حظك واربح!</h1>
+          <p className="subtitle">أدخل بياناتك ولف العجلة لتربح جوائز مذهلة</p>
 
           {errorMsg && <div className="error-alert">⚠️ {errorMsg}</div>}
 
           {!hasPlayedLocal && !mustSpin && !winResult ? (
-            <form onSubmit={handleSpinClick} className="spin-form">
-              <input type="text" placeholder="الاسم الثلاثي" value={studentName} onChange={e => setStudentName(e.target.value)} required disabled={spinning}/>
-              <input type="tel" dir="ltr" placeholder="رقم الهاتف" value={studentPhone} onChange={e => setStudentPhone(e.target.value)} required disabled={spinning}/>
-              <button type="submit" disabled={spinning || wheelData.length === 0} className={`spin-btn ${spinning ? 'spinning' : ''}`}>
-                {spinning ? 'جاري السحب...' : 'ابدأ الآن 🎲'}
-              </button>
-            </form>
+            <div className="elegant-form-card">
+              <h3 className="form-title">شارك الآن</h3>
+              <div className="form-divider"><span className="diamond"></span></div>
+
+              <form onSubmit={handleSpinClick} className="spin-form">
+                <div className="input-wrapper">
+                    <input type="text" placeholder="الاسم الكامل" value={studentName} onChange={e => setStudentName(e.target.value)} required disabled={spinning}/>
+                    <span className="input-icon">👤</span>
+                </div>
+                <div className="input-wrapper">
+                    <input type="tel" dir="ltr" placeholder="رقم الهاتف" value={studentPhone} onChange={e => setStudentPhone(e.target.value)} required disabled={spinning}/>
+                    <span className="input-icon" style={{left: 'auto', right: '15px'}}>📞</span>
+                </div>
+                
+                <button type="submit" disabled={spinning || wheelData.length === 0} className={`spin-btn ${spinning ? 'spinning' : ''}`}>
+                  {spinning ? 'جاري السحب...' : 'لف العجلة'}
+                </button>
+              </form>
+
+              <div className="secure-badge">
+                 <span style={{marginRight: '5px'}}>🛡️</span> بياناتك آمنة لدينا ولن يتم مشاركتها مع أي طرف آخر
+              </div>
+            </div>
+
           ) : hasPlayedLocal && !winResult ? (
-            <div className="already-played">
-                <h3>شكراً لمشاركتك! لقد قمت بتجربة حظك مسبقاً. 🎉</h3>
+            <div className="already-played-card">
+                <h3>شكراً لمشاركتك!</h3>
+                <p>لقد قمت بتجربة حظك مسبقاً. 🎉</p>
             </div>
           ) : null}
 
+          {/* 🎯 كارت الفوز الذهبي */}
           {winResult && !mustSpin && (
-            <div className="result-card" style={{borderColor: winResult.color, boxShadow: `0 0 30px ${winResult.color}80`}}>
+            <div className="result-card">
                 <h2>🎉 مبروووك! 🎉</h2>
-                <h3>لقد فزت بـ: <span style={{color: winResult.color}}>{winResult.title}</span></h3>
+                <h3>لقد فزت بـ: <span style={{color: '#dca742'}}>{winResult.title}</span></h3>
                 {winResult.type === 'coupon' && (
                     <div className="coupon-box">
                         <p>كود الخصم الخاص بك:</p>
@@ -197,10 +226,9 @@ export default function LuckyWheelPage() {
         </div>
 
         {/* ========================================= */}
-        {/* القسم الأيسر: عجلة الحظ المضيئة */}
+        {/* القسم الأيسر: العجلة الذهبية والمنصة (Stand) */}
         {/* ========================================= */}
         <div className="left-panel">
-          <div className="background-glow"></div>
           <div className="wheel-wrapper">
             {wheelData.length > 0 ? (
               <div className="roulette-box">
@@ -209,24 +237,55 @@ export default function LuckyWheelPage() {
                   prizeNumber={prizeNumber}
                   data={wheelData}
                   onStopSpinning={handleSpinStop}
-                  outerBorderColor="#facc15" 
-                  outerBorderWidth={12}
-                  innerBorderColor="#0f172a"
-                  innerBorderWidth={15}
-                  radiusLineColor="#facc15" 
+                  outerBorderColor="#dca742" // ذهبي
+                  outerBorderWidth={15}
+                  innerBorderColor="#dca742" // ذهبي
+                  innerBorderWidth={10}
+                  radiusLineColor="#dca742" // ذهبي
                   radiusLineWidth={3}
                   textColors={['#ffffff']}
-                  fontSize={20}
+                  fontSize={18}
                   spinDuration={0.8}
                 />
-                <div className="center-logo">
-                   <img src={medaadLogo.src} alt="Medaad Logo" />
+                {/* 🎯 زر "لف" في المنتصف بدلاً من اللوجو */}
+                <div className="wheel-center-btn">
+                   <span>لف</span>
                 </div>
               </div>
-            ) : <div className="no-prizes">عذراً، لا توجد جوائز متاحة حالياً.</div>}
+            ) : <div style={{color: '#dca742'}}>لا توجد جوائز متاحة حالياً.</div>}
+            
+            {/* القاعدة الـ 3D أسفل العجلة */}
+            <div className="wheel-stand"></div>
           </div>
         </div>
 
+      </div>
+
+      {/* ========================================= */}
+      {/* الفوتر: المميزات (سهل، موثوق، جوائز) */}
+      {/* ========================================= */}
+      <div className="bottom-features">
+          <div className="feature">
+              <div className="f-icon">🎁</div>
+              <div className="f-text">
+                  <strong>جوائز قيمة</strong>
+                  <span>بانتظارك</span>
+              </div>
+          </div>
+          <div className="feature">
+              <div className="f-icon">⭐</div>
+              <div className="f-text">
+                  <strong>سهل وسريع</strong>
+                  <span>جرب حظك الآن</span>
+              </div>
+          </div>
+          <div className="feature">
+              <div className="f-icon">🛡️</div>
+              <div className="f-text">
+                  <strong>موثوق وآمن</strong>
+                  <span>خصوصيتك تهمنا</span>
+              </div>
+          </div>
       </div>
 
       <style jsx>{`
@@ -234,53 +293,64 @@ export default function LuckyWheelPage() {
         .wheel-page { 
             position: relative;
             min-height: 100vh; 
-            width: 100%;
-            background-color: #0b1120;
+            width: 100vw;
+            background-color: #0d0d0d;
             display: flex; 
+            flex-direction: column;
             justify-content: center; 
             align-items: center; 
-            padding: 40px 20px; 
+            padding: 40px 20px 100px 20px; 
             font-family: 'Tajawal', sans-serif; 
             direction: rtl; 
             color: white;
             overflow-x: hidden;
         }
 
-        /* 🛑 حل مشكلة الخلفية هنا! طبقة ثابتة تغطي الشاشة 100% مهما كان حجمها */
+        /* 🛑 حل مشكلة الخلفية: طبقة ثابتة تغطي الشاشة 100% من كل الاتجاهات */
         .bg-fixed-layer {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
+            top: 0; left: 0; right: 0; bottom: 0;
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
             z-index: 0;
-            opacity: 0.9;
         }
 
-        /* 🎯 تصميم الشاشة المنقسمة (اليمين واليسار) */
+        /* لوجو الشركة في أعلى اليسار */
+        .brand-logo {
+            position: absolute;
+            top: 30px;
+            left: 40px;
+            z-index: 20;
+        }
+        .brand-logo img {
+            width: 150px;
+            height: auto;
+            filter: drop-shadow(0 0 10px rgba(220, 167, 66, 0.4));
+        }
+
+        /* 🎯 التخطيط الثنائي (اليمين للنموذج، اليسار للعجلة) */
         .split-layout {
             position: relative;
             z-index: 10;
             display: flex;
-            flex-direction: row; /* في الـ rtl، الـ row يضع العنصر الأول على اليمين والثاني على اليسار تلقائياً */
+            flex-direction: row; 
             align-items: center;
             justify-content: space-between;
             width: 100%;
-            max-width: 1200px;
-            gap: 60px;
+            max-width: 1100px;
+            gap: 40px;
+            margin-top: 20px;
         }
 
-        /* تنسيق القسم الأيمن (النموذج والنصوص) */
+        /* القسم الأيمن */
         .right-panel {
             flex: 1;
-            max-width: 550px;
+            max-width: 500px;
             text-align: right;
         }
 
-        /* تنسيق القسم الأيسر (العجلة) */
+        /* القسم الأيسر */
         .left-panel {
             flex: 1;
             position: relative;
@@ -289,115 +359,204 @@ export default function LuckyWheelPage() {
             align-items: center;
         }
 
-        .loader-screen { font-size: 1.5rem; color: #facc15; font-weight: bold; height: 100vh; display: flex; align-items: center; justify-content: center; background: #0b1120; width: 100%; }
+        .loader-screen { font-size: 1.5rem; color: #dca742; font-weight: bold; height: 100vh; display: flex; align-items: center; justify-content: center; background: #0d0d0d; width: 100%; }
 
         /* النصوص */
         .main-title { 
-            color: #ffffff; 
+            color: #dca742; /* ذهبي */
             margin: 0 0 10px 0; 
-            font-size: 2.8rem; 
+            font-size: 3.5rem; 
             font-weight: 900;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
-            line-height: 1.3;
+            text-shadow: 0 5px 15px rgba(0,0,0,0.8);
+            line-height: 1.2;
         }
-        .highlight-medaad {
-            color: #facc15;
-            text-shadow: 0 0 20px rgba(250, 204, 21, 0.8);
-            font-family: 'Arial', sans-serif;
-        }
-        .subtitle { color: #cbd5e1; margin-bottom: 40px; font-size: 1.2rem; text-shadow: 0 1px 5px rgba(0,0,0,0.8); line-height: 1.6; }
+        .subtitle { color: #cccccc; margin-bottom: 30px; font-size: 1.2rem; }
 
-        /* التوهج والعجلة */
-        .background-glow {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 120%;
-            height: 120%;
-            background: radial-gradient(circle, rgba(234, 179, 8, 0.15) 0%, transparent 60%);
-            z-index: 1;
-            pointer-events: none;
+        /* 🎯 تصميم كارت الفورم (الأسود ذو الإطار الذهبي) */
+        .elegant-form-card {
+            background: #111111;
+            border: 1px solid #dca742;
+            border-radius: 20px;
+            padding: 35px 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
         }
-        .wheel-wrapper { position: relative; z-index: 2; }
+        .form-title {
+            color: #dca742;
+            text-align: center;
+            font-size: 1.8rem;
+            margin: 0 0 10px 0;
+        }
+        .form-divider {
+            text-align: center;
+            color: #dca742;
+            margin-bottom: 25px;
+            font-size: 0.8rem;
+            letter-spacing: 5px;
+        }
+        .form-divider::before, .form-divider::after {
+            content: '♦';
+        }
+        .form-divider .diamond {
+            display: inline-block;
+            width: 8px; height: 8px;
+            background: #dca742;
+            transform: rotate(45deg);
+            margin: 0 15px;
+        }
+
+        .spin-form { display: flex; flex-direction: column; gap: 20px; }
+        
+        .input-wrapper { position: relative; }
+        .input-wrapper input { 
+            width: 100%; 
+            padding: 16px 45px 16px 16px; /* ترك مساحة للأيقونة */
+            border-radius: 12px; 
+            border: 1px solid #333333; 
+            background: #1a1a1a; 
+            color: white; 
+            font-size: 1.1rem; 
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        .input-wrapper input:focus { 
+            border-color: #dca742; 
+            box-shadow: 0 0 15px rgba(220, 167, 66, 0.2); 
+        }
+        .input-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #dca742;
+            font-size: 1.2rem;
+        }
+
+        /* 🎯 الزر الذهبي */
+        .spin-btn { 
+            background: linear-gradient(180deg, #fceebb 0%, #dca742 100%);
+            color: #000; 
+            border: none; 
+            padding: 18px; 
+            border-radius: 12px; 
+            font-size: 1.6rem; 
+            font-weight: 900; 
+            cursor: pointer; 
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            box-shadow: 0 10px 20px rgba(220, 167, 66, 0.3); 
+        }
+        .spin-btn:hover:not(:disabled) { 
+            transform: translateY(-3px); 
+            box-shadow: 0 15px 30px rgba(220, 167, 66, 0.5); 
+            filter: brightness(1.1);
+        }
+        .spin-btn:disabled { opacity: 0.7; cursor: not-allowed; filter: grayscale(0.5);}
+        .spin-btn.spinning { animation: pulseBtn 1s infinite alternate; }
+
+        .secure-badge {
+            margin-top: 25px;
+            text-align: center;
+            color: #888888;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* العجلة ومكوناتها */
+        .wheel-wrapper { position: relative; z-index: 2; padding-bottom: 30px;}
         .roulette-box { 
             position: relative;
-            transform: scale(1.05);
-            filter: drop-shadow(0 0 30px rgba(234, 179, 8, 0.4));
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 30px rgba(220, 167, 66, 0.3));
+            z-index: 2;
         }
 
-        .center-logo {
+        /* 🎯 زر "لف" في منتصف العجلة */
+        .wheel-center-btn {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 90px;
-            height: 90px;
-            background-color: #0f172a; 
-            border: 4px solid #eab308; 
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(180deg, #fceebb 0%, #dca742 100%); 
+            border: 4px solid #181818; 
             border-radius: 50%;
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 100;
-            box-shadow: 0 0 15px rgba(234, 179, 8, 0.8), inset 0 0 10px rgba(0,0,0,0.9);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.8);
         }
-        .center-logo img { width: 55px; height: auto; object-fit: contain; }
-
-        /* 🎯 نموذج الإدخال بتأثير الزجاج (Glassmorphism) */
-        .spin-form { display: flex; flex-direction: column; gap: 20px; }
-        .spin-form input { 
-            padding: 18px; 
-            border-radius: 12px; 
-            border: 1px solid rgba(255, 255, 255, 0.1); 
-            background: rgba(15, 23, 42, 0.5); /* زجاجي شفاف */
-            color: white; 
-            font-size: 1.1rem; 
-            text-align: right; 
-            outline: none;
-            backdrop-filter: blur(15px);
-            transition: all 0.3s ease;
-        }
-        .spin-form input:focus { 
-            border-color: #facc15; 
-            background: rgba(15, 23, 42, 0.8);
-            box-shadow: 0 0 15px rgba(250, 204, 21, 0.3); 
+        .wheel-center-btn span {
+            color: #000;
+            font-weight: 900;
+            font-size: 1.8rem;
         }
 
-        .spin-btn { 
-            background: linear-gradient(135deg, #facc15 0%, #ca8a04 100%);
-            color: #422006; 
-            border: none; 
-            padding: 20px; 
-            border-radius: 12px; 
-            font-size: 1.5rem; 
-            font-weight: 900; 
-            cursor: pointer; 
-            transition: all 0.3s ease;
-            box-shadow: 0 10px 25px rgba(202, 138, 4, 0.4); 
+        /* 🎯 القاعدة 3D أسفل العجلة */
+        .wheel-stand {
+            position: absolute;
+            bottom: 0px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            height: 40px;
+            background: radial-gradient(ellipse at center, #222 0%, #000 100%);
+            border-radius: 50%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.9);
+            border: 2px solid #dca742;
+            border-top: none;
+            z-index: 1;
         }
-        .spin-btn:hover:not(:disabled) { 
-            transform: translateY(-3px); 
-            box-shadow: 0 15px 35px rgba(250, 204, 21, 0.6); 
-            filter: brightness(1.1);
-        }
-        .spin-btn:disabled { opacity: 0.7; cursor: not-allowed; filter: grayscale(0.7);}
-        .spin-btn.spinning { animation: pulseBtn 1s infinite alternate; }
 
-        .error-alert { background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 15px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.4); margin-bottom: 20px; backdrop-filter: blur(5px); font-weight: bold;}
-        .already-played { background: rgba(250, 204, 21, 0.1); padding: 25px; border-radius: 15px; border: 1px dashed #facc15; color: #facc15; backdrop-filter: blur(10px); }
-        .result-card { background: rgba(15, 23, 42, 0.85); padding: 35px; border-radius: 20px; border: 2px solid; margin-top: 20px; backdrop-filter: blur(15px); }
-        .coupon-box .code { font-family: monospace; font-size: 2.2rem; font-weight: 900; color: #4ade80; margin: 20px 0; background: rgba(74, 222, 128, 0.1); padding: 15px; border-radius: 12px; text-shadow: 0 0 10px rgba(74, 222, 128, 0.4);}
+        /* كروت النتائج */
+        .error-alert { background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 15px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.4); margin-bottom: 20px; font-weight: bold;}
+        .already-played-card { background: #111; padding: 35px; border-radius: 15px; border: 1px dashed #dca742; color: #dca742; text-align: center; }
+        .result-card { background: #111; padding: 35px; border-radius: 20px; border: 2px solid #dca742; margin-top: 20px; text-align: center;}
+        .coupon-box .code { font-family: monospace; font-size: 2.2rem; font-weight: 900; color: #dca742; margin: 20px 0; background: rgba(220, 167, 66, 0.1); padding: 15px; border-radius: 12px; text-shadow: 0 0 10px rgba(220, 167, 66, 0.4);}
+
+        /* 🎯 شريط المميزات بالأسفل */
+        .bottom-features {
+            position: absolute;
+            bottom: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            width: 100%;
+            z-index: 10;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .f-icon {
+            font-size: 2rem;
+            color: #dca742;
+        }
+        .f-text {
+            display: flex;
+            flex-direction: column;
+            text-align: right;
+        }
+        .f-text strong { color: #ffffff; font-size: 1.1rem; }
+        .f-text span { color: #888888; font-size: 0.9rem; }
 
         /* 📱 دعم الهواتف المحمولة */
         @media (max-width: 900px) {
+            .brand-logo { position: relative; top: 0; left: 0; margin-bottom: 20px; text-align: center; width: 100%;}
+            .brand-logo img { width: 120px; }
             .split-layout { 
-                flex-direction: column; /* التكدس فوق بعض في الجوال */
+                flex-direction: column; 
                 text-align: center;
                 gap: 40px;
+                margin-top: 0;
             }
             .right-panel { text-align: center; max-width: 100%; }
-            .main-title { font-size: 2.2rem; }
+            .main-title { font-size: 2.5rem; }
+            .bottom-features { position: relative; bottom: 0; flex-direction: column; gap: 20px; margin-top: 50px; }
         }
 
         @keyframes pulseBtn { from { transform: scale(1); } to { transform: scale(1.02); } }
