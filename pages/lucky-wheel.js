@@ -366,21 +366,31 @@ export default function LuckyWheelPage() {
 
   const fetchWheelPrizes = async () => {
     try {
-      const res  = await fetch('/api/dashboard/super/wheel');
+      // 🛑 التعديل هنا: جلب البيانات من الـ API العام للطلاب بدلاً من لوحة التحكم المحمية
+      const res  = await fetch('/api/public/wheel-prizes');
       const data = await res.json();
-      if (data?.isWheelEnabled === false) setIsGloballyDisabled(true);
-      if (data?.prizes?.length > 0) {
-        const active = data.prizes.filter(p => p.is_active);
+      
+      if (data?.isWheelEnabled === false) {
+          setIsGloballyDisabled(true);
+      } else if (data?.prizes?.length > 0) {
+        const active = data.prizes; // البيانات تأتي مفعلة جاهزة من الـ API العام
         setPrizes(active);
         if (active.length >= 2) {
           setWheelData(active.map((p, i) => ({
             option: p.title,
             style: { backgroundColor: i%2===0 ? '#dca742':'#181818', textColor: i%2===0 ? '#181818':'#dca742' },
           })));
-        } else setIsGloballyDisabled(true);
-      } else setIsGloballyDisabled(true);
-    } catch { setErrorMsg('حدث خطأ في تحميل العجلة.'); }
-    finally  { setLoading(false); }
+        } else {
+            setIsGloballyDisabled(true);
+        }
+      } else {
+          setIsGloballyDisabled(true);
+      }
+    } catch { 
+        setErrorMsg('حدث خطأ في تحميل العجلة.'); 
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   const handleSpinClick = async (e) => {
