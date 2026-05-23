@@ -185,7 +185,9 @@ export default function LuckyWheelPage() {
           <div className="already-played">
               <h3>شكراً لمشاركتك! لقد قمت بتجربة حظك مسبقاً. 🎉</h3>
           </div>
-        )}
+        ) : null} {/* 👈 تم إغلاق القوس هنا بشكل صحيح */}
+
+        
 
         {/* نافذة عرض النتيجة (تظهر بعد التوقف) */}
         {winResult && !mustSpin && (
