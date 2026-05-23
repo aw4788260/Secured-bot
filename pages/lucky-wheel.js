@@ -9,9 +9,17 @@ import starsBg from '../styles/stars-bg.jpg';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
+// بيانات مبدئية لتظهر العجلة فوراً للمستخدم بدون أي شاشات تحميل
+const initialWheelData = [
+  { option: 'حظ سعيد', style: { backgroundColor: '#dca742', textColor: '#181818' } },
+  { option: 'حظ سعيد', style: { backgroundColor: '#181818', textColor: '#dca742' } },
+  { option: 'حظ سعيد', style: { backgroundColor: '#dca742', textColor: '#181818' } },
+  { option: 'حظ سعيد', style: { backgroundColor: '#181818', textColor: '#dca742' } }
+];
+
 export default function LuckyWheelPage() {
   const [prizes, setPrizes] = useState([]);
-  const [wheelData, setWheelData] = useState([]); 
+  const [wheelData, setWheelData] = useState(initialWheelData); 
   const [loading, setLoading] = useState(true);
 
   const [studentName, setStudentName] = useState('');
@@ -71,18 +79,23 @@ export default function LuckyWheelPage() {
           const activePrizes = data.prizes.filter(p => p.is_active);
           setPrizes(activePrizes);
           
-          // 🎯 التعديل الجوهري: فرض اللون الذهبي والأسود
-          const formattedWheel = activePrizes.map((p, index) => {
-              const isGold = index % 2 === 0;
-              return {
-                  option: p.title,
-                  style: { 
-                      backgroundColor: isGold ? '#dca742' : '#181818', 
-                      textColor: isGold ? '#181818' : '#dca742' // النص أسود على الذهبي وذهبي على الأسود
-                  }
-              };
-          });
-          setWheelData(formattedWheel);
+          if(activePrizes.length >= 2) {
+            const formattedWheel = activePrizes.map((p, index) => {
+                const isGold = index % 2 === 0;
+                return {
+                    option: p.title,
+                    style: { 
+                        backgroundColor: isGold ? '#dca742' : '#181818', 
+                        textColor: isGold ? '#181818' : '#dca742' 
+                    }
+                };
+            });
+            setWheelData(formattedWheel);
+          } else {
+            setIsGloballyDisabled(true);
+          }
+        } else {
+            setIsGloballyDisabled(true);
         }
       } catch (e) {
         setErrorMsg('حدث خطأ في تحميل العجلة.');
@@ -93,7 +106,7 @@ export default function LuckyWheelPage() {
 
   const handleSpinClick = async (e) => {
     e.preventDefault();
-    if (mustSpin || spinning || hasPlayedLocal || isGloballyDisabled) return;
+    if (mustSpin || spinning || hasPlayedLocal || isGloballyDisabled || loading) return;
 
     if (!studentName || !studentPhone) return setErrorMsg('يرجى إدخال اسمك ورقم هاتفك أولاً.');
 
@@ -140,27 +153,12 @@ export default function LuckyWheelPage() {
     localStorage.setItem('wheel_has_played', 'true'); 
   };
 
-  if (loading) return <div className="loader-screen">جاري التجهيز... 🎡</div>;
-
-  if (isGloballyDisabled) {
-      return (
-          <div className="wheel-page">
-              <div className="bg-fixed-layer" style={{ backgroundImage: `url(${starsBg.src})` }}></div>
-              <div className="content-container centered">
-                  <h1 style={{ color: '#ef4444' }}>🔴 المسابقة متوقفة حالياً</h1>
-                  <p className="subtitle" style={{ marginTop: '20px' }}>عذراً، تم إيقاف عجلة الحظ مؤقتاً. ترقبوا انطلاقها مجدداً قريباً!</p>
-              </div>
-          </div>
-      );
-  }
-
   return (
     <div className="wheel-page">
       <Head><title>عجلة حظ مداد 🎡</title></Head>
 
       <div className="bg-fixed-layer" style={{ backgroundImage: `url(${starsBg.src})` }}></div>
 
-      {/* 🎯 لوجو مداد مكبر */}
       <div className="brand-logo">
          <img src={medaadLogo.src} alt="Medaad Logo" />
       </div>
@@ -176,23 +174,31 @@ export default function LuckyWheelPage() {
 
           {errorMsg && <div className="error-alert">⚠️ {errorMsg}</div>}
 
-          {!hasPlayedLocal && !mustSpin && !winResult ? (
+          {/* إذا كانت المسابقة معطلة، نعرض رسالة التوقف بدلاً من النموذج */}
+          {isGloballyDisabled ? (
+            <div className="elegant-form-card" style={{ textAlign: 'center', borderColor: '#ef4444' }}>
+              <h3 style={{ color: '#ef4444', fontSize: '1.8rem', marginBottom: '15px' }}>🔴 المسابقة متوقفة</h3>
+              <p style={{ color: '#cccccc', fontSize: '1.1rem', lineHeight: '1.6' }}>
+                عذراً، تم إيقاف عجلة الحظ مؤقتاً. ترقبوا انطلاقها مجدداً قريباً لتتمكنوا من ربح جوائزنا!
+              </p>
+            </div>
+          ) : !hasPlayedLocal && !mustSpin && !winResult ? (
             <div className="elegant-form-card">
               <h3 className="form-title">شارك الآن</h3>
               <div className="form-divider"><span className="diamond"></span></div>
 
               <form onSubmit={handleSpinClick} className="spin-form">
                 <div className="input-wrapper">
-                    <input type="text" placeholder="الاسم الكامل" value={studentName} onChange={e => setStudentName(e.target.value)} required disabled={spinning}/>
+                    <input type="text" placeholder="الاسم الكامل" value={studentName} onChange={e => setStudentName(e.target.value)} required disabled={spinning || loading}/>
                     <span className="input-icon">👤</span>
                 </div>
                 <div className="input-wrapper">
-                    <input type="tel" dir="ltr" placeholder="رقم الهاتف" value={studentPhone} onChange={e => setStudentPhone(e.target.value)} required disabled={spinning}/>
+                    <input type="tel" dir="ltr" placeholder="رقم الهاتف" value={studentPhone} onChange={e => setStudentPhone(e.target.value)} required disabled={spinning || loading}/>
                     <span className="input-icon" style={{left: 'auto', right: '15px'}}>📞</span>
                 </div>
                 
-                <button type="submit" disabled={spinning || wheelData.length === 0} className={`spin-btn ${spinning ? 'spinning' : ''}`}>
-                  {spinning ? 'جاري السحب...' : 'لف العجلة'}
+                <button type="submit" disabled={spinning || loading} className={`spin-btn ${spinning ? 'spinning' : ''}`}>
+                  {spinning ? 'جاري السحب...' : loading ? 'تجهيز العجلة...' : 'لف العجلة'}
                 </button>
               </form>
 
@@ -208,7 +214,7 @@ export default function LuckyWheelPage() {
             </div>
           ) : null}
 
-          {/* 🎯 كارت الفوز الذهبي */}
+          {/* كارت الفوز */}
           {winResult && !mustSpin && (
             <div className="result-card">
                 <h2>🎉 مبروووك! 🎉</h2>
@@ -225,33 +231,31 @@ export default function LuckyWheelPage() {
         </div>
 
         {/* ========================================= */}
-        {/* القسم الأيسر: العجلة الذهبية والمنصة (Stand) */}
+        {/* القسم الأيسر: العجلة */}
         {/* ========================================= */}
         <div className="left-panel">
           <div className="wheel-wrapper">
-            {wheelData.length > 0 ? (
               <div className="roulette-box">
                 <Wheel
                   mustStartSpinning={mustSpin}
                   prizeNumber={prizeNumber}
                   data={wheelData}
                   onStopSpinning={handleSpinStop}
-                  outerBorderColor="#8b5a10" // لون برونزي غامق للحافة لتمييزها
+                  outerBorderColor="#8b5a10"
                   outerBorderWidth={15}
-                  innerBorderColor="#dca742" // ذهبي
+                  innerBorderColor="#dca742"
                   innerBorderWidth={10}
-                  radiusLineColor="#8b5a10" // برونزي للخطوط الفاصلة
+                  radiusLineColor="#8b5a10"
                   radiusLineWidth={3}
-                  fontSize={20}
+                  fontSize={16} // 🎯 تم التصغير ليتسع النص
                   spinDuration={0.8}
-                  perpendicularText={true} // الكتابة بالعرض
-                  textDistance={85} // النص في الطرف
+                  perpendicularText={true}
+                  textDistance={65} // 🎯 تم التقليل ليصبح النص داخل الدائرة
                 />
                 <div className="wheel-center-btn">
                    <span>لف</span>
                 </div>
               </div>
-            ) : <div style={{color: '#dca742'}}>لا توجد جوائز متاحة حالياً.</div>}
             
             <div className="wheel-stand"></div>
           </div>
@@ -260,7 +264,7 @@ export default function LuckyWheelPage() {
       </div>
 
       {/* ========================================= */}
-      {/* الفوتر: المميزات (سهل، موثوق، جوائز) */}
+      {/* الفوتر: المميزات */}
       {/* ========================================= */}
       <div className="bottom-features">
           <div className="feature">
@@ -287,7 +291,6 @@ export default function LuckyWheelPage() {
       </div>
 
       <style jsx>{`
-        /* 🎯 الإعدادات الأساسية للصفحة */
         .wheel-page { 
             position: relative;
             min-height: 100vh; 
@@ -313,7 +316,6 @@ export default function LuckyWheelPage() {
             z-index: 0;
         }
 
-        /* تكبير اللوجو */
         .brand-logo {
             position: absolute;
             top: 30px;
@@ -321,12 +323,11 @@ export default function LuckyWheelPage() {
             z-index: 20;
         }
         .brand-logo img {
-            width: 180px; /* تم التكبير */
+            width: 180px;
             height: auto;
             filter: drop-shadow(0 0 10px rgba(220, 167, 66, 0.4));
         }
 
-        /* 🎯 التخطيط الثنائي */
         .split-layout {
             position: relative;
             z-index: 10;
@@ -340,21 +341,8 @@ export default function LuckyWheelPage() {
             margin-top: 20px;
         }
 
-        .right-panel {
-            flex: 1;
-            max-width: 500px;
-            text-align: right;
-        }
-
-        .left-panel {
-            flex: 1;
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .loader-screen { font-size: 1.5rem; color: #dca742; font-weight: bold; height: 100vh; display: flex; align-items: center; justify-content: center; background: #0d0d0d; width: 100%; }
+        .right-panel { flex: 1; max-width: 500px; text-align: right; }
+        .left-panel { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; }
 
         .main-title { 
             color: #dca742; 
@@ -372,6 +360,7 @@ export default function LuckyWheelPage() {
             border-radius: 20px;
             padding: 35px 30px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            transition: all 0.3s;
         }
         .form-title {
             color: #dca742;
@@ -386,16 +375,8 @@ export default function LuckyWheelPage() {
             font-size: 0.8rem;
             letter-spacing: 5px;
         }
-        .form-divider::before, .form-divider::after {
-            content: '♦';
-        }
-        .form-divider .diamond {
-            display: inline-block;
-            width: 8px; height: 8px;
-            background: #dca742;
-            transform: rotate(45deg);
-            margin: 0 15px;
-        }
+        .form-divider::before, .form-divider::after { content: '♦'; }
+        .form-divider .diamond { display: inline-block; width: 8px; height: 8px; background: #dca742; transform: rotate(45deg); margin: 0 15px; }
 
         .spin-form { display: flex; flex-direction: column; gap: 20px; }
         
@@ -411,18 +392,9 @@ export default function LuckyWheelPage() {
             outline: none;
             transition: all 0.3s ease;
         }
-        .input-wrapper input:focus { 
-            border-color: #dca742; 
-            box-shadow: 0 0 15px rgba(220, 167, 66, 0.2); 
-        }
-        .input-icon {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #dca742;
-            font-size: 1.2rem;
-        }
+        .input-wrapper input:focus { border-color: #dca742; box-shadow: 0 0 15px rgba(220, 167, 66, 0.2); }
+        .input-wrapper input:disabled { opacity: 0.6; cursor: not-allowed; }
+        .input-icon { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #dca742; font-size: 1.2rem; }
 
         .spin-btn { 
             background: linear-gradient(180deg, #fceebb 0%, #dca742 100%);
@@ -445,24 +417,14 @@ export default function LuckyWheelPage() {
         .spin-btn:disabled { opacity: 0.7; cursor: not-allowed; filter: grayscale(0.5);}
         .spin-btn.spinning { animation: pulseBtn 1s infinite alternate; }
 
-        .secure-badge {
-            margin-top: 25px;
-            text-align: center;
-            color: #888888;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+        .secure-badge { margin-top: 25px; text-align: center; color: #888888; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
 
         .wheel-wrapper { position: relative; z-index: 2; padding-bottom: 30px;}
         
-        /* 🎯 تأثير 3D مجسم لحافة العجلة */
         .roulette-box { 
             position: relative;
             transform: scale(1.1);
             border-radius: 50%;
-            /* ظل تحتي لإعطاء سمك للعجلة (3D) وظل خارجي أسود */
             box-shadow: 0 12px 0px #633f07, 0 25px 40px rgba(0,0,0,0.9);
             z-index: 2;
         }
@@ -483,11 +445,7 @@ export default function LuckyWheelPage() {
             z-index: 100;
             box-shadow: 0 5px 15px rgba(0,0,0,0.8);
         }
-        .wheel-center-btn span {
-            color: #000;
-            font-weight: 900;
-            font-size: 1.8rem;
-        }
+        .wheel-center-btn span { color: #000; font-weight: 900; font-size: 1.8rem; }
 
         .wheel-stand {
             position: absolute;
@@ -509,39 +467,19 @@ export default function LuckyWheelPage() {
         .result-card { background: #111; padding: 35px; border-radius: 20px; border: 2px solid #dca742; margin-top: 20px; text-align: center;}
         .coupon-box .code { font-family: monospace; font-size: 2.2rem; font-weight: 900; color: #dca742; margin: 20px 0; background: rgba(220, 167, 66, 0.1); padding: 15px; border-radius: 12px; text-shadow: 0 0 10px rgba(220, 167, 66, 0.4);}
 
-        .bottom-features {
-            position: absolute;
-            bottom: 30px;
-            display: flex;
-            justify-content: center;
-            gap: 50px;
-            width: 100%;
-            z-index: 10;
-        }
-        .feature {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        .f-icon {
-            font-size: 2rem;
-            color: #dca742;
-        }
-        .f-text {
-            display: flex;
-            flex-direction: column;
-            text-align: right;
-        }
+        .bottom-features { position: absolute; bottom: 30px; display: flex; justify-content: center; gap: 50px; width: 100%; z-index: 10; }
+        .feature { display: flex; align-items: center; gap: 15px; }
+        .f-icon { font-size: 2rem; color: #dca742; }
+        .f-text { display: flex; flex-direction: column; text-align: right; }
         .f-text strong { color: #ffffff; font-size: 1.1rem; }
         .f-text span { color: #888888; font-size: 0.9rem; }
 
-        /* 📱 دعم الهواتف المحمولة */
         @media (max-width: 900px) {
             .brand-logo { position: relative; top: 0; left: 0; margin-bottom: 20px; text-align: center; width: 100%;}
-            .brand-logo img { width: 140px; } /* تم تكبير اللوجو في الموبايل */
+            .brand-logo img { width: 140px; }
             
             .split-layout { 
-                flex-direction: column-reverse; /* 🎯 إظهار العجلة فوق النموذج */
+                flex-direction: column-reverse; 
                 text-align: center;
                 gap: 60px;
                 margin-top: 0;
