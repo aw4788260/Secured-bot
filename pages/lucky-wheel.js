@@ -72,8 +72,13 @@ export default function LuckyWheelPage() {
           if(activePrizes.length >= 2) {
             const formattedWheel = activePrizes.map((p, index) => {
                 const isGold = index % 2 === 0;
+                
+                // 🎯 قص النص إذا كان طويلاً جداً لضمان عدم تداخله مع دائرة المركز
+                // نأخذ أول 18 حرف ونضع نقطتين في حال كان النص طويلاً
+                const shortTitle = p.title.length > 20 ? p.title.substring(0, 18) + '..' : p.title;
+
                 return {
-                    option: p.title,
+                    option: shortTitle,
                     style: { 
                         backgroundColor: isGold ? '#dca742' : '#181818', 
                         textColor: isGold ? '#181818' : '#dca742' 
@@ -237,9 +242,9 @@ export default function LuckyWheelPage() {
                   innerBorderWidth={10}
                   radiusLineColor="#8b5a10"
                   radiusLineWidth={3}
-                  fontSize={15} // 🎯 تم تصغير الخط درجة واحدة ليتسع بأناقة
+                  fontSize={14} // 🎯 تصغير الخط ليتسع بسلاسة
                   spinDuration={0.8}
-                  textDistance={82} // 🎯 تم الدفع بالنص ناحية الحافة الخارجية لمنع اختفائه تحت الزر
+                  textDistance={62} // 🎯 نقطة التمركز الهندسية الدقيقة تمنع الاحتكاك بالمركز تماماً
                 />
                 <div className="wheel-center-btn">
                    <span>{isGloballyDisabled ? '🔒' : 'لف'}</span>
