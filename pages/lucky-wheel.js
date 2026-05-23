@@ -11,7 +11,7 @@ const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Whee
 
 export default function LuckyWheelPage() {
   const [prizes, setPrizes] = useState([]);
-  const [wheelData, setWheelData] = useState([]); // تم حذف البيانات الوهمية
+  const [wheelData, setWheelData] = useState([]); 
   const [loading, setLoading] = useState(true);
 
   const [studentName, setStudentName] = useState('');
@@ -61,12 +61,10 @@ export default function LuckyWheelPage() {
         const res = await fetch('/api/dashboard/super/wheel'); 
         const data = await res.json();
         
-        // تسجيل حالة التعطيل إذا كانت معطلة (لكننا سنستمر في جلب وعرض الجوائز)
         if (data && data.isWheelEnabled === false) {
             setIsGloballyDisabled(true);
         }
 
-        // جلب وتنسيق الجوائز لتظهر على العجلة في جميع الحالات (مفعلة أو معطلة)
         if (data && data.prizes && data.prizes.length > 0) {
           const activePrizes = data.prizes.filter(p => p.is_active);
           setPrizes(activePrizes);
@@ -84,11 +82,9 @@ export default function LuckyWheelPage() {
             });
             setWheelData(formattedWheel);
           } else {
-            // إذا لم يكن هناك جوائز كافية للعجلة
             setIsGloballyDisabled(true);
           }
         } else {
-            // إذا لم يكن هناك جوائز من الأساس
             setIsGloballyDisabled(true);
         }
       } catch (e) {
@@ -168,7 +164,6 @@ export default function LuckyWheelPage() {
 
           {errorMsg && <div className="error-alert">⚠️ {errorMsg}</div>}
 
-          {/* في حالة تعطيل المسابقة يظهر كارت التوقف ولا يظهر نموذج إدخال البيانات */}
           {isGloballyDisabled ? (
             <div className="elegant-form-card" style={{ textAlign: 'center', borderColor: '#ef4444' }}>
               <h3 style={{ color: '#ef4444', fontSize: '1.8rem', marginBottom: '15px' }}>🔴 المسابقة متوقفة</h3>
@@ -242,12 +237,11 @@ export default function LuckyWheelPage() {
                   innerBorderWidth={10}
                   radiusLineColor="#8b5a10"
                   radiusLineWidth={3}
-                  fontSize={18} // 🎯 حجم خط مثالي للشكل الشعاعي
+                  fontSize={15} // 🎯 تم تصغير الخط درجة واحدة ليتسع بأناقة
                   spinDuration={0.8}
-                  textDistance={60} // 🎯 تم الإلغاء لـ perpendicular ليأخذ الشكل الطولي الاحترافي، ووضع مسافة 60 لتتمركز الكلمة تماماً
+                  textDistance={82} // 🎯 تم الدفع بالنص ناحية الحافة الخارجية لمنع اختفائه تحت الزر
                 />
                 <div className="wheel-center-btn">
-                   {/* تغيير كلمة "لف" لرمز قفل إذا كانت المسابقة معطلة */}
                    <span>{isGloballyDisabled ? '🔒' : 'لف'}</span>
                 </div>
               </div>
