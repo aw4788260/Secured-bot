@@ -52,7 +52,7 @@ export default async function handler(req, res) {
           if (blockedByFingerprint) {
               return res.status(403).json({ error: 'لقد قمت بتجربة حظك مسبقاً من هذا الجهاز!', needs_clear: true });
           }
-          if (ipSpinsCount >= 2) {
+          if (ipSpinsCount >= 1) {
               // إذا فتح المتصفح المخفي حاول اللعب للمرة الثالثة بنفس الإنترنت سيتم صده هنا
               return res.status(403).json({ error: 'تم استنفاد الحد الأقصى للمحاولات المسموح بها من شبكة الإنترنت الخاصة بك!', needs_clear: false });
           }
