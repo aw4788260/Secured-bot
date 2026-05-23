@@ -47,12 +47,25 @@ export default async function handler(req, res) {
 
     try {
       // 1. إضافة أو تعديل جائزة
-      // 1. إضافة أو تعديل جائزة
       if (action === 'save_prize') {
-         // تأكد من حذف الـ id إذا كان فارغاً لضمان توليده تلقائياً من القاعدة
          const prizeData = { ...payload };
-         if (!prizeData.id) delete prizeData.id; 
+         
+         // 🛑 الحل: التأكد من تحويل القيم الفارغة إلى null للـ ID
+         if (!prizeData.id) delete prizeData.id;
+         
+         // إذا كان teacher_id نصاً فارغاً، اجعله null
+         if (prizeData.teacher_id === '' || prizeData.teacher_id === undefined) {
+             prizeData.teacher_id = null;
+         } else {
+             // تأكد أنه رقم
+             prizeData.teacher_id = parseInt(prizeData.teacher_id);
+         }
 
+         // التأكد من أن القيم الرقمية ليست نصوصاً فارغة
+         prizeData.discount_value = parseFloat(prizeData.discount_value) || 0;
+         prizeData.total_stock = parseInt(prizeData.total_stock) || 0;
+         prizeData.validity_days = parseInt(prizeData.validity_days) || 0;
+         
          const { error } = await supabase.from('wheel_prizes').upsert(prizeData);
          if (error) throw error;
          return res.status(200).json({ success: true, message: 'تم حفظ الجائزة بنجاح' });
