@@ -7,40 +7,46 @@ export default async function handler(req, res) {
   if (authResult.error) return; 
 
   // ==========================================================
-  // 🟢 GET: جلب الجوائز والإحصائيات
+  // 🟢 GET: جلب الجوائز والإحصائيات (مُعدل لحل مشكلة الـ Schema Cache)
   // ==========================================================
   if (req.method === 'GET') {
     try {
-      // جلب قائمة الجوائز
+      // 1. جلب الجوائز (بدون الاعتماد على الربط المباشر لحل خطأ PGRST204)
       const { data: prizes, error: prizesError } = await supabase
         .from('wheel_prizes')
-        .select('*, teachers(name)')
+        .select('*')
         .order('id', { ascending: true });
 
       if (prizesError) throw prizesError;
 
-      // حساب التذاكر المتبقية في الصندوق
-      const { count: poolCount } = await supabase
-        .from('wheel_pool')
-        .select('id', { count: 'exact', head: true });
+      // 2. جلب المدرسين بشكل منفصل لدمج الأسماء يدوياً
+      const { data: teachers, error: teachersError } = await supabase
+        .from('teachers')
+        .select('id, name');
 
-      // حساب عدد الفائزين حتى الآن
-      const { count: spinsCount } = await supabase
-        .from('wheel_spins')
-        .select('id', { count: 'exact', head: true });
+      // 3. دمج البيانات (إضافة اسم المدرس لكل جائزة برمجياً)
+      const enrichedPrizes = prizes ? prizes.map(prize => ({
+          ...prize,
+          teachers: teachers?.find(t => t.id === prize.teacher_id) || null
+      })) : [];
+
+      // حساب الإحصائيات
+      const { count: poolCount } = await supabase.from('wheel_pool').select('id', { count: 'exact', head: true });
+      const { count: spinsCount } = await supabase.from('wheel_spins').select('id', { count: 'exact', head: true });
 
       return res.status(200).json({ 
-          prizes: prizes || [], 
+          prizes: enrichedPrizes, 
           poolCount: poolCount || 0,
           spinsCount: spinsCount || 0
       });
     } catch (err) {
+      console.error("Wheel Get Error:", err);
       return res.status(500).json({ error: 'فشل جلب بيانات عجلة الحظ' });
     }
   }
 
   // ==========================================================
-  // 🟠 POST: تنفيذ الإجراءات (إضافة، تنشيط الحملة، تصفير السجل)
+  // 🟠 POST: تنفيذ الإجراءات
   // ==========================================================
   if (req.method === 'POST') {
     const { action, payload } = req.body;
@@ -50,18 +56,17 @@ export default async function handler(req, res) {
       if (action === 'save_prize') {
          const prizeData = { ...payload };
          
-         // 🛑 الحل: التأكد من تحويل القيم الفارغة إلى null للـ ID
-         if (!prizeData.id) delete prizeData.id;
+         // إزالة الـ ID إذا كان غير موجود ليقوم Postgres بتوليده
+         if (!prizeData.id || prizeData.id === '') delete prizeData.id;
          
-         // إذا كان teacher_id نصاً فارغاً، اجعله null
-         if (prizeData.teacher_id === '' || prizeData.teacher_id === undefined) {
+         // تحويل القيم الفارغة للـ teacher_id إلى null
+         if (prizeData.teacher_id === '' || prizeData.teacher_id === undefined || prizeData.teacher_id === null) {
              prizeData.teacher_id = null;
          } else {
-             // تأكد أنه رقم
              prizeData.teacher_id = parseInt(prizeData.teacher_id);
          }
 
-         // التأكد من أن القيم الرقمية ليست نصوصاً فارغة
+         // تنظيف الأرقام
          prizeData.discount_value = parseFloat(prizeData.discount_value) || 0;
          prizeData.total_stock = parseInt(prizeData.total_stock) || 0;
          prizeData.validity_days = parseInt(prizeData.validity_days) || 0;
@@ -78,9 +83,8 @@ export default async function handler(req, res) {
          return res.status(200).json({ success: true, message: 'تم الحذف بنجاح' });
       }
 
-      // 3. 🚀 تنشيط الحملة (خلط الصندوق Pre-shuffled Pool)
+      // 3. تنشيط الحملة
       if (action === 'activate_campaign') {
-         // أ. جلب الجوائز المفعلة فقط
          const { data: activePrizes } = await supabase
             .from('wheel_prizes')
             .select('id, total_stock')
@@ -90,10 +94,8 @@ export default async function handler(req, res) {
              return res.status(400).json({ error: 'لا توجد جوائز مفعلة لبدء الحملة.' });
          }
 
-         // ب. مسح الصندوق القديم بالكامل
-         await supabase.from('wheel_pool').delete().neq('id', 0); // neq(0) لحذف كل شيء بأمان
+         await supabase.from('wheel_pool').delete().neq('id', 0);
 
-         // ج. تجهيز التذاكر
          let ticketsPool = [];
          activePrizes.forEach(prize => {
              for (let i = 0; i < prize.total_stock; i++) {
@@ -101,13 +103,11 @@ export default async function handler(req, res) {
              }
          });
 
-         // د. خلط التذاكر عشوائياً (Fisher-Yates Shuffle)
          for (let i = ticketsPool.length - 1; i > 0; i--) {
              const j = Math.floor(Math.random() * (i + 1));
              [ticketsPool[i], ticketsPool[j]] = [ticketsPool[j], ticketsPool[i]];
          }
 
-         // هـ. إدخال التذاكر في الصندوق
          if (ticketsPool.length > 0) {
              const { error: insertError } = await supabase.from('wheel_pool').insert(ticketsPool);
              if (insertError) throw insertError;
@@ -116,7 +116,7 @@ export default async function handler(req, res) {
          return res.status(200).json({ success: true, message: `تم تفعيل الحملة! يتوفر الآن ${ticketsPool.length} جائزة للسحب.` });
       }
 
-      // 4. تصفير سجل المشاركات (للسماح للطلاب باللعب من جديد)
+      // 4. تصفير السجل
       if (action === 'reset_spins') {
          await supabase.from('wheel_spins').delete().neq('id', 0);
          return res.status(200).json({ success: true, message: 'تم مسح سجل المشاركات القديم بنجاح.' });
