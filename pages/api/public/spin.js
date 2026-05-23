@@ -9,8 +9,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'الاسم، رقم الهاتف، وبصمة الجهاز مطلوبة.' });
   }
 
+  // 🛡️ جدار الحماية الأول: فلترة الأرقام الوهمية والعشوائية
+  const isValidEgyptian = /^01[0125][0-9]{8}$/.test(studentPhone);
+  const isSpamNumber = /^01[0125](\d)\1{7}$/.test(studentPhone); // يكتشف الأرقام المكررة مثل 01000000000
+
+  if (!isValidEgyptian || isSpamNumber) {
+      return res.status(400).json({ error: 'الرقم غير صالح! يرجى إدخال رقم مصري حقيقي (11 رقم) لتتمكن من استلام جائزتك.' });
+  }
+
+  // 🛡️ جدار الحماية الثاني: التقاط رقم شبكة الإنترنت (IP) للطالب
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+
   try {
-      // 🛑 التعديل المتقدم 🎯: التحقق من تفعيل العجلة عالمياً قبل معالجة أي طلب سحب
+      // التحقق من تفعيل العجلة عالمياً
       const { data: globalSettings } = await supabase
           .from('wheel_settings')
           .select('is_wheel_enabled')
@@ -21,24 +32,33 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'عذراً، لقد تم إيقاف مسابقة عجلة الحظ من قِبل الإدارة حالياً.' });
       }
 
-      // 1. التحقق من البصمة في قاعدة البيانات لضمان عدم اللعب المتكرر
-      const { data: existingSpin, error: spinCheckError } = await supabase
+      // 🛡️ جدار الحماية الثالث: فحص شامل (للبصمة، أو رقم الهاتف، أو الـ IP) في نفس اللحظة
+      const { data: existingSpins, error: spinCheckError } = await supabase
           .from('wheel_spins')
-          .select('id, prize_id, wheel_prizes(title)')
-          .eq('browser_fingerprint', fingerprint)
-          .maybeSingle();
+          .select('id, student_phone, browser_fingerprint, ip_address, wheel_prizes(title)')
+          .or(`browser_fingerprint.eq.${fingerprint},student_phone.eq.${studentPhone},ip_address.eq.${clientIp}`);
 
       if (spinCheckError) throw spinCheckError;
 
-      if (existingSpin) {
-          return res.status(403).json({ 
-              error: 'لقد قمت بتجربة حظك مسبقاً!',
-              previous_prize: existingSpin.wheel_prizes?.title,
-              needs_clear: false 
-          });
+      if (existingSpins && existingSpins.length > 0) {
+          // فحص سبب كشف الطالب للرد بالرسالة المناسبة
+          const blockedByPhone = existingSpins.some(spin => spin.student_phone === studentPhone);
+          const blockedByFingerprint = existingSpins.some(spin => spin.browser_fingerprint === fingerprint);
+          const ipSpinsCount = existingSpins.filter(spin => spin.ip_address === clientIp).length;
+
+          if (blockedByPhone) {
+              return res.status(403).json({ error: 'تم استخدام رقم الهاتف هذا مسبقاً في السحب!', needs_clear: false });
+          }
+          if (blockedByFingerprint) {
+              return res.status(403).json({ error: 'لقد قمت بتجربة حظك مسبقاً من هذا الجهاز!', needs_clear: true });
+          }
+          if (ipSpinsCount >= 2) {
+              // إذا فتح المتصفح المخفي حاول اللعب للمرة الثالثة بنفس الإنترنت سيتم صده هنا
+              return res.status(403).json({ error: 'تم استنفاد الحد الأقصى للمحاولات المسموح بها من شبكة الإنترنت الخاصة بك!', needs_clear: false });
+          }
       }
 
-      // 2. سحب وتأمين الجائزة من الصندوق المخلوط (معالجة التزامن)
+      // 🎲 سحب الجائزة من الصندوق
       let claimedPrizeId = null;
       let retries = 3;
 
@@ -68,7 +88,7 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: 'ضغط عالي على الخادم، يرجى إعادة المحاولة بعد قليل.' });
       }
 
-      // 3. جلب تفاصيل الجائزة المربوحة للتحقق من بيانات الكتالوج
+      // 🎁 جلب تفاصيل الجائزة
       const { data: prize, error: prizeError } = await supabase
           .from('wheel_prizes')
           .select('*')
@@ -77,8 +97,7 @@ export default async function handler(req, res) {
 
       if (prizeError) throw prizeError;
 
-      // 🎯 التعديل المتقدم المطلوب: تقليل عدد الـ Stock الخاص بهذه الجائزة بمقدار 1 في جدول wheel_prizes
-      // نضع حد أدنى ليكون 0 لمنع تحوله لأرقام سالبة
+      // تقليل المخزون (Stock)
       const nextStock = Math.max(0, (prize.total_stock - 1));
       await supabase
           .from('wheel_prizes')
@@ -87,7 +106,7 @@ export default async function handler(req, res) {
 
       let generatedCouponCode = null;
 
-      // 4. توليد كود الخصم الفعلي إذا كان نوع الجائزة كوبون
+      // 🎟️ توليد الكوبون
       if (prize.type === 'coupon') {
           generatedCouponCode = `WIN-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
           const expiryDate = new Date(Date.now() + (prize.validity_days * 24 * 60 * 60 * 1000)).toISOString();
@@ -102,11 +121,12 @@ export default async function handler(req, res) {
           });
       }
 
-      // 5. حفظ الفوز بشكل نهائي في السجل المخصص
+      // 📝 حفظ الفوز مع تسجيل الـ IP الجديد
       const { error: spinError } = await supabase.from('wheel_spins').insert({
           student_name: studentName,
           student_phone: studentPhone,
           browser_fingerprint: fingerprint,
+          ip_address: clientIp, // <-- تم إضافته لضرب التصفح المخفي
           prize_id: prize.id,
           coupon_code: generatedCouponCode
       });
