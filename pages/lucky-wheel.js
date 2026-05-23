@@ -73,7 +73,7 @@ export default function LuckyWheelPage() {
           const formattedWheel = activePrizes.map((p, index) => {
             const isGold     = index % 2 === 0;
             // trim long titles so they fit within the wedge
-            const shortTitle = p.title.length > 18
+            const shortTitle = p.title.length > 35
               ? p.title.substring(0, 16) + '..'
               : p.title;
 
