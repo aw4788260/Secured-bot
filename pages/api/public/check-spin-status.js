@@ -1,14 +1,15 @@
-// أضف هذه الدالة داخل الصفحة
-  const checkStatus = async () => {
-      // نرسل البصمة للسيرفر لنتأكد هل هو مسجل في جدول wheel_spins أم لا
-      const res = await fetch(`/api/public/check-spin-status?fingerprint=${fingerprint}`);
-      const data = await res.json();
-      
-      if (!data.hasPlayed) {
-          localStorage.removeItem('wheel_has_played');
-          setHasPlayedLocal(false);
-      } else {
-          localStorage.setItem('wheel_has_played', 'true');
-          setHasPlayedLocal(true);
-      }
-  };
+import { supabase } from '../../../lib/supabaseClient';
+
+export default async function handler(req, res) {
+    const { fingerprint } = req.query;
+    if (!fingerprint) return res.status(400).json({ hasPlayed: false });
+
+    const { data } = await supabase
+        .from('wheel_spins')
+        .select('id')
+        .eq('browser_fingerprint', fingerprint)
+        .maybeSingle();
+
+    // إذا وجدنا سجلاً، الطالب قد لعب (true)، إذا لم نجد (false)
+    return res.status(200).json({ hasPlayed: !!data });
+}
