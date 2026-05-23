@@ -6,18 +6,12 @@ import medaadLogo from '../styles/medaad-logo.png';
 import starsBg    from '../styles/stars-bg.jpg';
 
 /* ═══════════════════════════════════════════════════════════
-   SpinWheel — Canvas-drawn, matches reference image exactly:
-   • Thick gold outer rim with rivet studs
-   • Alternating gold / black segments
-   • Gold 3-D hub (centre circle) with ring
-   • Gold teardrop pointer at top
-   • Black platform / base
-   • Smooth physics spin, backend-controlled winner
+   SpinWheel — Canvas-drawn, matches reference image exactly
 ═══════════════════════════════════════════════════════════ */
 function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
   const canvasRef = useRef(null);
   const rafRef    = useRef(null);
-  const state     = useRef({ angle: -Math.PI / 2, velocity: 0, spinning: false, targetAngle: 0 });
+  const state     = useRef({ angle: -Math.PI / 2, spinning: false, targetAngle: 0 });
 
   /* ── palette ── */
   const GOLD       = '#c8880a';
@@ -37,28 +31,25 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     const W   = canvas.width;
     const H   = canvas.height;
     const cx  = W / 2;
-    const cy  = H / 2 - 18;          // shift up slightly to leave room for base
-    const R   = W / 2 - 14;          // outer edge of rim
+    const cy  = H / 2 - 18;          
+    const R   = W / 2 - 14;          
     const n   = segments.length || 6;
     const arc = (Math.PI * 2) / n;
 
     ctx.clearRect(0, 0, W, H);
 
-    /* ─── 1. Platform / base (ellipse at bottom) ─── */
+    /* ─── 1. Platform / base ─── */
     const bx = cx, by = H - 30, bw = R * 0.72, bh = 22;
-    /* outer black ellipse */
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(bx, by, bw, bh, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#0a0a0a';
     ctx.fill();
-    /* gold rim on platform */
     ctx.beginPath();
     ctx.ellipse(bx, by, bw, bh, 0, 0, Math.PI * 2);
     ctx.strokeStyle = GOLD_MID;
     ctx.lineWidth = 3;
     ctx.stroke();
-    /* inner highlight */
     ctx.beginPath();
     ctx.ellipse(bx, by - 4, bw * 0.65, bh * 0.55, 0, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(220,167,66,0.25)';
@@ -77,17 +68,15 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     ctx.fill();
     ctx.restore();
 
-    /* ─── 3. Outer gold rim (multi-layer for 3-D effect) ─── */
-    const rimW = R * 0.115;          // rim thickness
-    const segR = R - rimW;           // inner edge of rim = outer edge of segments
+    /* ─── 3. Outer gold rim ─── */
+    const rimW = R * 0.115;          
+    const segR = R - rimW;           
 
-    /* darkest outer ring */
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.fillStyle = RIM_DARK;
     ctx.fill();
 
-    /* main gold band */
     const rimGrad = ctx.createRadialGradient(cx, cy, segR, cx, cy, R);
     rimGrad.addColorStop(0,   '#b07010');
     rimGrad.addColorStop(0.3, GOLD_LIGHT);
@@ -107,12 +96,10 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       const a  = (Math.PI * 2 * i) / studCount;
       const sx = cx + Math.cos(a) * studRing;
       const sy = cy + Math.sin(a) * studRing;
-      /* stud body */
       ctx.beginPath();
       ctx.arc(sx, sy, studR, 0, Math.PI * 2);
       ctx.fillStyle = '#f5e08a';
       ctx.fill();
-      /* stud shadow */
       ctx.beginPath();
       ctx.arc(sx + studR * 0.4, sy + studR * 0.4, studR * 0.7, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -132,19 +119,16 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       ctx.closePath();
 
       if (isGold) {
-        /* gold segment — subtle radial gradient for depth */
         const sg = ctx.createRadialGradient(cx, cy, 0, cx, cy, segR);
         sg.addColorStop(0,   '#e8b84b');
         sg.addColorStop(0.5, GOLD_MID);
         sg.addColorStop(1,   '#a06808');
         ctx.fillStyle = sg;
       } else {
-        /* black segment */
         ctx.fillStyle = BLACK_SEG;
       }
       ctx.fill();
 
-      /* segment divider lines */
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, segR, start, end);
@@ -160,7 +144,7 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       const start    = angle + i * arc;
       const midAngle = start + arc / 2;
       const isGold   = i % 2 === 0;
-      const textR    = segR * 0.60;   // 60% from centre
+      const textR    = segR * 0.60;   
       const tx       = cx + Math.cos(midAngle) * textR;
       const ty       = cy + Math.sin(midAngle) * textR;
 
@@ -175,7 +159,6 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
 
-      /* 2-line word wrap */
       const maxW  = arc * segR * 0.72;
       const words = label.split(' ');
       let line1 = '', line2 = '', built = '', wrapped = false;
@@ -195,11 +178,10 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       ctx.restore();
     }
 
-    /* ─── 7. Hub (centre circle) — 3-D gold dome ─── */
+    /* ─── 7. Hub (centre circle) ─── */
     const hubR  = segR * 0.14;
-    const hub2  = hubR * 1.45;   // outer ring radius
+    const hub2  = hubR * 1.45;
 
-    /* outer ring of hub */
     const ringGrad = ctx.createRadialGradient(cx - hub2*0.2, cy - hub2*0.2, 1, cx, cy, hub2);
     ringGrad.addColorStop(0,   GOLD_LIGHT);
     ringGrad.addColorStop(0.5, GOLD_MID);
@@ -212,7 +194,6 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     ctx.lineWidth   = 2.5;
     ctx.stroke();
 
-    /* inner dome */
     const domeGrad = ctx.createRadialGradient(cx - hubR*0.35, cy - hubR*0.4, 1, cx, cy, hubR);
     domeGrad.addColorStop(0,   '#fff8d0');
     domeGrad.addColorStop(0.3, GOLD_LIGHT);
@@ -223,25 +204,22 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     ctx.fillStyle = domeGrad;
     ctx.fill();
 
-    /* hub text */
     ctx.font      = `bold ${Math.max(9, hubR * 0.65)}px Tajawal, Arial`;
     ctx.fillStyle = '#3a2800';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(disabled ? '🔒' : 'لف', cx, cy + 1);
 
-    /* ─── 8. Teardrop pointer at top (like reference image) ─── */
-    const pTipY  = cy - R + 2;       // just touches the outer rim
+    /* ─── 8. Teardrop pointer at top ─── */
+    const pTipY  = cy - R + 2;       
     const pBaseY = pTipY + 44;
-    const pW     = 18;               // half-width at base
+    const pW     = 18;               
 
     ctx.save();
-    /* outer dark drop shadow */
     ctx.shadowColor   = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur    = 10;
     ctx.shadowOffsetY = 3;
 
-    /* teardrop body */
     const tGrad = ctx.createLinearGradient(cx - pW, pTipY, cx + pW, pBaseY);
     tGrad.addColorStop(0,   GOLD_LIGHT);
     tGrad.addColorStop(0.4, GOLD_MID);
@@ -257,64 +235,73 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     ctx.stroke();
     ctx.restore();
 
-    /* black inner hole of pointer (as in reference) */
     const holeR = pW * 0.38;
     const holeY = pTipY + 28;
     ctx.beginPath();
     ctx.arc(cx, holeY, holeR, 0, Math.PI * 2);
     ctx.fillStyle = '#0d0d0d';
     ctx.fill();
-    /* gold ring around hole */
     ctx.strokeStyle = GOLD_MID;
     ctx.lineWidth   = 1.5;
     ctx.stroke();
 
   }, [segments, disabled]);
 
-  /* ── animation loop ── */
-  const animate = useCallback(() => {
-    const s = state.current;
-    if (!s.spinning) return;
-
-    s.angle    += s.velocity;
-    s.velocity *= 0.983;
-
-    draw(s.angle);
-
-    const diff = Math.abs(((s.targetAngle - s.angle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2));
-    if (s.velocity < 0.0015 && (diff < 0.06 || diff > Math.PI * 2 - 0.06)) {
-      s.spinning = false;
-      s.angle    = s.targetAngle;
-      draw(s.angle);
-      onSpinStop();
-      return;
-    }
-
-    rafRef.current = requestAnimationFrame(animate);
-  }, [draw, onSpinStop]);
-
-  /* ── trigger spin ── */
+  /* ── trigger spin (Fixed Physics) ── */
   useEffect(() => {
     if (!mustSpin || !segments.length) return;
 
     const n         = segments.length;
     const arc       = (Math.PI * 2) / n;
-    const s         = state.current;
-
-    /* pointer is at top = -π/2. Winning segment centre must land there. */
+    
+    // Calculate the target angle so the winning segment lands under the pointer (-PI/2)
     const winMid    = prizeIndex * arc + arc / 2;
-    const spins     = 7 + Math.floor(Math.random() * 3);
-    const base      = -Math.PI / 2 - winMid;
-    s.targetAngle   = base + Math.PI * 2 * spins
-                      + Math.ceil((s.angle - (base + Math.PI * 2 * spins)) / (Math.PI * 2) + 1) * Math.PI * 2;
-    s.velocity      = 0.40 + Math.random() * 0.07;
-    s.spinning      = true;
+    const baseTarget = -Math.PI / 2 - winMid;
+
+    // Add extra spins (e.g. 5 to 7 full rotations)
+    const extraSpins = Math.PI * 2 * (5 + Math.floor(Math.random() * 3));
+    
+    // Ensure we rotate forward
+    let finalTarget = baseTarget;
+    while (finalTarget <= state.current.angle) {
+        finalTarget += Math.PI * 2;
+    }
+    finalTarget += extraSpins;
+
+    state.current.targetAngle = finalTarget;
+    state.current.spinning = true;
+
+    const duration = 5000; // 5 seconds spin
+    const start = performance.now();
+    const startAngle = state.current.angle;
+    const changeInAngle = finalTarget - startAngle;
+
+    const animate = (time) => {
+      let elapsed = time - start;
+      if (elapsed > duration) elapsed = duration;
+
+      // easeOutQuart formula for smooth deceleration
+      const t = elapsed / duration;
+      const ease = 1 - Math.pow(1 - t, 4);
+
+      state.current.angle = startAngle + changeInAngle * ease;
+      draw(state.current.angle);
+
+      if (elapsed < duration) {
+        rafRef.current = requestAnimationFrame(animate);
+      } else {
+        state.current.spinning = false;
+        // Fix rounding issues at the end to keep it normalized
+        state.current.angle = state.current.angle % (Math.PI * 2);
+        onSpinStop(); // Trigger win screen immediately
+      }
+    };
 
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(animate);
 
     return () => cancelAnimationFrame(rafRef.current);
-  }, [mustSpin]);
+  }, [mustSpin, segments.length, prizeIndex, draw, onSpinStop]);
 
   /* ── initial draw ── */
   useEffect(() => {
@@ -419,10 +406,13 @@ export default function LuckyWheelPage() {
     } catch { setErrorMsg('خطأ في الاتصال بالسيرفر.'); setSpinning(false); }
   };
 
-  const handleSpinStop = () => {
-    setMustSpin(false); setSpinning(false); setHasPlayedLocal(true);
+  // يتم استدعاؤها فور توقف العجلة بنجاح
+  const handleSpinStop = useCallback(() => {
+    setMustSpin(false); 
+    setSpinning(false); 
+    setHasPlayedLocal(true);
     localStorage.setItem('wheel_has_played','true');
-  };
+  }, []);
 
   const handleCopyCoupon = async (code) => {
     try { await navigator.clipboard.writeText(code); }
