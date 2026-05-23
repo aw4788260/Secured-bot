@@ -8,7 +8,7 @@ const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Whee
 
 export default function LuckyWheelPage() {
   const [prizes, setPrizes] = useState([]);
-  const [wheelData, setWheelData] = useState([]); // البيانات المنسقة لمكتبة العجلة
+  const [wheelData, setWheelData] = useState([]); 
   const [loading, setLoading] = useState(true);
 
   // حالة الطالب والفورم
@@ -28,16 +28,15 @@ export default function LuckyWheelPage() {
 
   // 1. التهيئة وجلب البيانات
   useEffect(() => {
-    // التحقق مما إذا كان الطالب قد لعب مسبقاً في هذا المتصفح
-    if (localStorage.getItem('wheel_has_played')) {
-        setHasPlayedLocal(true);
-    }
-
-    // توليد بصمة الجهاز
+    // توليد بصمة الجهاز أولاً
     const loadFingerprint = async () => {
       const fp = await fpPromise.load();
       const result = await fp.get();
-      setFingerprint(result.visitorId);
+      const visitorId = result.visitorId;
+      setFingerprint(visitorId);
+      
+      // بعد الحصول على البصمة، نتحقق من حالة السيرفر
+      checkServerStatus(visitorId);
     };
     loadFingerprint();
 
@@ -49,7 +48,6 @@ export default function LuckyWheelPage() {
         
         if (data.success && data.prizes.length > 0) {
           setPrizes(data.prizes);
-          // تنسيق البيانات لتناسب مكتبة react-custom-roulette
           const formattedWheel = data.prizes.map(p => ({
             option: p.title,
             style: { backgroundColor: p.color, textColor: 'white' }
@@ -64,6 +62,24 @@ export default function LuckyWheelPage() {
     };
     fetchWheelPrizes();
   }, []);
+
+  // دالة المزامنة بين السيرفر والـ localStorage
+  const checkServerStatus = async (fp) => {
+      try {
+          const res = await fetch(`/api/public/check-spin-status?fingerprint=${fp}`);
+          const data = await res.json();
+          if (data.hasPlayed) {
+              localStorage.setItem('wheel_has_played', 'true');
+              setHasPlayedLocal(true);
+          } else {
+              localStorage.removeItem('wheel_has_played');
+              setHasPlayedLocal(false);
+          }
+      } catch (e) {
+          // في حال فشل السيرفر، نعتمد على ما هو موجود محلياً كخطة بديلة
+          if (localStorage.getItem('wheel_has_played')) setHasPlayedLocal(true);
+      }
+  };
 
   // 2. دالة إرسال الطلب للسيرفر والبدء باللف
   const handleSpinClick = async (e) => {
@@ -87,13 +103,12 @@ export default function LuckyWheelPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // حجزنا الجائزة بنجاح، نبحث عن رقمها (index) في المصفوفة لكي تتوقف العجلة عندها
         const winningIndex = prizes.findIndex(p => p.id === data.prize.id);
         
         if (winningIndex !== -1) {
             setWinResult(data.prize);
             setPrizeNumber(winningIndex);
-            setMustSpin(true); // هذا الأمر يبدأ بتدوير العجلة فعلياً
+            setMustSpin(true); 
         } else {
             setErrorMsg('خطأ في مزامنة الجائزة.');
             setSpinning(false);
@@ -101,7 +116,8 @@ export default function LuckyWheelPage() {
       } else {
         setErrorMsg(data.error || 'حدث خطأ غير متوقع');
         setSpinning(false);
-        if (data.error === 'تم تسجيل مشاركتك مسبقاً.') {
+        // ✅ الحل الجذري: إذا أشار السيرفر بضرورة المسح أو كان الخطأ هو المشاركة مسبقاً
+        if (data.error === 'تم تسجيل مشاركتك مسبقاً.' || data.needs_clear) {
             localStorage.setItem('wheel_has_played', 'true');
             setHasPlayedLocal(true);
         }
@@ -117,7 +133,7 @@ export default function LuckyWheelPage() {
     setMustSpin(false);
     setSpinning(false);
     setHasPlayedLocal(true);
-    localStorage.setItem('wheel_has_played', 'true'); // حفظ في المتصفح
+    localStorage.setItem('wheel_has_played', 'true'); 
   };
 
   if (loading) {
@@ -157,7 +173,6 @@ export default function LuckyWheelPage() {
           )}
         </div>
 
-        {/* نموذج الإدخال (يختفي عندما يبدأ اللعب أو إذا لعب مسبقاً) */}
         {!hasPlayedLocal && !mustSpin && !winResult ? (
           <form onSubmit={handleSpinClick} className="spin-form">
             <input 
@@ -185,11 +200,8 @@ export default function LuckyWheelPage() {
           <div className="already-played">
               <h3>شكراً لمشاركتك! لقد قمت بتجربة حظك مسبقاً. 🎉</h3>
           </div>
-        ) : null} {/* 👈 تم إغلاق القوس هنا بشكل صحيح */}
+        ) : null}
 
-        
-
-        {/* نافذة عرض النتيجة (تظهر بعد التوقف) */}
         {winResult && !mustSpin && (
           <div className="result-card" style={{borderColor: winResult.color}}>
               <h2>🎉 مبروووك! 🎉</h2>
@@ -212,53 +224,33 @@ export default function LuckyWheelPage() {
               )}
           </div>
         )}
-
       </div>
 
       <style jsx>{`
         .wheel-page { min-height: 100vh; background: #0f172a; display: flex; justify-content: center; align-items: center; padding: 20px; font-family: 'Tajawal', sans-serif; direction: rtl; color: white;}
         .loader { font-size: 1.5rem; color: #38bdf8; font-weight: bold; animation: pulse 1s infinite alternate; }
         @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
-
         .wheel-container { background: #1e293b; padding: 40px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 600px; width: 100%; text-align: center; border: 1px solid #334155; }
         .main-title { color: #facc15; margin: 0 0 10px 0; font-size: 2rem; }
         .subtitle { color: #cbd5e1; margin-bottom: 30px; line-height: 1.5; }
-
         .error-alert { background: rgba(239, 68, 68, 0.1); color: #fca5a5; padding: 12px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); margin-bottom: 20px; font-weight: bold; }
-
         .wheel-wrapper { display: flex; justify-content: center; margin-bottom: 30px; position: relative; overflow: hidden;}
-        .roulette-box { transform: scale(1.1); margin: 20px 0; } /* تكبير العجلة قليلاً */
-
+        .roulette-box { transform: scale(1.1); margin: 20px 0; }
         .spin-form { display: flex; flex-direction: column; gap: 15px; }
         .spin-form input { padding: 15px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; font-size: 1.1rem; outline: none; transition: 0.3s; text-align: center; }
         .spin-form input:focus { border-color: #38bdf8; box-shadow: 0 0 10px rgba(56,189,248,0.2); }
-        
         .spin-btn { background: linear-gradient(135deg, #facc15, #f59e0b); color: #422006; border: none; padding: 15px; border-radius: 10px; font-size: 1.3rem; font-weight: 900; cursor: pointer; transition: 0.3s; box-shadow: 0 10px 20px rgba(245, 158, 11, 0.3); }
         .spin-btn:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(245, 158, 11, 0.5); }
         .spin-btn:disabled { opacity: 0.7; cursor: not-allowed; }
-        .spin-btn.spinning { animation: pulse 1s infinite alternate; }
-
         .already-played { background: rgba(56, 189, 248, 0.1); padding: 20px; border-radius: 12px; border: 1px dashed #38bdf8; color: #38bdf8; }
-
         .result-card { background: #0f172a; padding: 30px; border-radius: 16px; border: 2px solid; margin-top: 20px; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .result-card h2 { margin: 0 0 10px; color: #f8fafc; font-size: 2.5rem; }
         .result-card h3 { margin: 0 0 20px; color: #cbd5e1; }
-        
         .coupon-box { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px dashed #475569; }
         .coupon-box .code { font-family: monospace; font-size: 2.5rem; font-weight: 900; color: #4ade80; letter-spacing: 3px; margin: 15px 0; background: rgba(74, 222, 128, 0.1); padding: 10px; border-radius: 8px; }
         .coupon-box small { color: #94a3b8; display: block; line-height: 1.5; }
-
         .no-prizes { padding: 40px; color: #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 12px; width: 100%; border: 1px dashed #ef4444; }
-
         @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-        @media(max-width: 500px) {
-            .wheel-container { padding: 20px; }
-            .roulette-box { transform: scale(0.9); }
-            .main-title { font-size: 1.5rem; }
-            .result-card h2 { font-size: 2rem; }
-            .coupon-box .code { font-size: 1.8rem; }
-        }
       `}</style>
     </div>
   );
