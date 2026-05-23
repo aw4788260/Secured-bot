@@ -71,14 +71,14 @@ export default function LuckyWheelPage() {
           const activePrizes = data.prizes.filter(p => p.is_active);
           setPrizes(activePrizes);
           
-          // 🎯 التعديل الجوهري: فرض اللون الذهبي والأسود بدلاً من ألوان قاعدة البيانات
+          // 🎯 التعديل الجوهري: فرض اللون الذهبي والأسود
           const formattedWheel = activePrizes.map((p, index) => {
               const isGold = index % 2 === 0;
               return {
                   option: p.title,
                   style: { 
                       backgroundColor: isGold ? '#dca742' : '#181818', 
-                      textColor: isGold ? '#181818' : '#dca742' 
+                      textColor: isGold ? '#181818' : '#dca742' // النص أسود على الذهبي وذهبي على الأسود
                   }
               };
           });
@@ -158,10 +158,9 @@ export default function LuckyWheelPage() {
     <div className="wheel-page">
       <Head><title>عجلة حظ مداد 🎡</title></Head>
 
-      {/* 🛑 حل مشكلة الخلفية: طبقة ثابتة تغطي الشاشة 100% من جميع الجهات */}
       <div className="bg-fixed-layer" style={{ backgroundImage: `url(${starsBg.src})` }}></div>
 
-      {/* 🎯 لوجو مداد في أعلى اليسار */}
+      {/* 🎯 لوجو مداد مكبر */}
       <div className="brand-logo">
          <img src={medaadLogo.src} alt="Medaad Logo" />
       </div>
@@ -237,24 +236,23 @@ export default function LuckyWheelPage() {
                   prizeNumber={prizeNumber}
                   data={wheelData}
                   onStopSpinning={handleSpinStop}
-                  outerBorderColor="#dca742" // ذهبي
+                  outerBorderColor="#8b5a10" // لون برونزي غامق للحافة لتمييزها
                   outerBorderWidth={15}
                   innerBorderColor="#dca742" // ذهبي
                   innerBorderWidth={10}
-                  radiusLineColor="#dca742" // ذهبي
+                  radiusLineColor="#8b5a10" // برونزي للخطوط الفاصلة
                   radiusLineWidth={3}
-                  textColors={['#ffffff']}
-                  fontSize={18}
+                  fontSize={20}
                   spinDuration={0.8}
+                  perpendicularText={true} // الكتابة بالعرض
+                  textDistance={85} // النص في الطرف
                 />
-                {/* 🎯 زر "لف" في المنتصف بدلاً من اللوجو */}
                 <div className="wheel-center-btn">
                    <span>لف</span>
                 </div>
               </div>
             ) : <div style={{color: '#dca742'}}>لا توجد جوائز متاحة حالياً.</div>}
             
-            {/* القاعدة الـ 3D أسفل العجلة */}
             <div className="wheel-stand"></div>
           </div>
         </div>
@@ -306,7 +304,6 @@ export default function LuckyWheelPage() {
             overflow-x: hidden;
         }
 
-        /* 🛑 حل مشكلة الخلفية: طبقة ثابتة تغطي الشاشة 100% من كل الاتجاهات */
         .bg-fixed-layer {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -316,7 +313,7 @@ export default function LuckyWheelPage() {
             z-index: 0;
         }
 
-        /* لوجو الشركة في أعلى اليسار */
+        /* تكبير اللوجو */
         .brand-logo {
             position: absolute;
             top: 30px;
@@ -324,12 +321,12 @@ export default function LuckyWheelPage() {
             z-index: 20;
         }
         .brand-logo img {
-            width: 150px;
+            width: 180px; /* تم التكبير */
             height: auto;
             filter: drop-shadow(0 0 10px rgba(220, 167, 66, 0.4));
         }
 
-        /* 🎯 التخطيط الثنائي (اليمين للنموذج، اليسار للعجلة) */
+        /* 🎯 التخطيط الثنائي */
         .split-layout {
             position: relative;
             z-index: 10;
@@ -343,14 +340,12 @@ export default function LuckyWheelPage() {
             margin-top: 20px;
         }
 
-        /* القسم الأيمن */
         .right-panel {
             flex: 1;
             max-width: 500px;
             text-align: right;
         }
 
-        /* القسم الأيسر */
         .left-panel {
             flex: 1;
             position: relative;
@@ -361,9 +356,8 @@ export default function LuckyWheelPage() {
 
         .loader-screen { font-size: 1.5rem; color: #dca742; font-weight: bold; height: 100vh; display: flex; align-items: center; justify-content: center; background: #0d0d0d; width: 100%; }
 
-        /* النصوص */
         .main-title { 
-            color: #dca742; /* ذهبي */
+            color: #dca742; 
             margin: 0 0 10px 0; 
             font-size: 3.5rem; 
             font-weight: 900;
@@ -372,7 +366,6 @@ export default function LuckyWheelPage() {
         }
         .subtitle { color: #cccccc; margin-bottom: 30px; font-size: 1.2rem; }
 
-        /* 🎯 تصميم كارت الفورم (الأسود ذو الإطار الذهبي) */
         .elegant-form-card {
             background: #111111;
             border: 1px solid #dca742;
@@ -409,7 +402,7 @@ export default function LuckyWheelPage() {
         .input-wrapper { position: relative; }
         .input-wrapper input { 
             width: 100%; 
-            padding: 16px 45px 16px 16px; /* ترك مساحة للأيقونة */
+            padding: 16px 45px 16px 16px; 
             border-radius: 12px; 
             border: 1px solid #333333; 
             background: #1a1a1a; 
@@ -431,7 +424,6 @@ export default function LuckyWheelPage() {
             font-size: 1.2rem;
         }
 
-        /* 🎯 الزر الذهبي */
         .spin-btn { 
             background: linear-gradient(180deg, #fceebb 0%, #dca742 100%);
             color: #000; 
@@ -463,16 +455,18 @@ export default function LuckyWheelPage() {
             justify-content: center;
         }
 
-        /* العجلة ومكوناتها */
         .wheel-wrapper { position: relative; z-index: 2; padding-bottom: 30px;}
+        
+        /* 🎯 تأثير 3D مجسم لحافة العجلة */
         .roulette-box { 
             position: relative;
             transform: scale(1.1);
-            filter: drop-shadow(0 0 30px rgba(220, 167, 66, 0.3));
+            border-radius: 50%;
+            /* ظل تحتي لإعطاء سمك للعجلة (3D) وظل خارجي أسود */
+            box-shadow: 0 12px 0px #633f07, 0 25px 40px rgba(0,0,0,0.9);
             z-index: 2;
         }
 
-        /* 🎯 زر "لف" في منتصف العجلة */
         .wheel-center-btn {
             position: absolute;
             top: 50%;
@@ -495,7 +489,6 @@ export default function LuckyWheelPage() {
             font-size: 1.8rem;
         }
 
-        /* 🎯 القاعدة 3D أسفل العجلة */
         .wheel-stand {
             position: absolute;
             bottom: 0px;
@@ -511,13 +504,11 @@ export default function LuckyWheelPage() {
             z-index: 1;
         }
 
-        /* كروت النتائج */
         .error-alert { background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 15px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.4); margin-bottom: 20px; font-weight: bold;}
         .already-played-card { background: #111; padding: 35px; border-radius: 15px; border: 1px dashed #dca742; color: #dca742; text-align: center; }
         .result-card { background: #111; padding: 35px; border-radius: 20px; border: 2px solid #dca742; margin-top: 20px; text-align: center;}
         .coupon-box .code { font-family: monospace; font-size: 2.2rem; font-weight: 900; color: #dca742; margin: 20px 0; background: rgba(220, 167, 66, 0.1); padding: 15px; border-radius: 12px; text-shadow: 0 0 10px rgba(220, 167, 66, 0.4);}
 
-        /* 🎯 شريط المميزات بالأسفل */
         .bottom-features {
             position: absolute;
             bottom: 30px;
@@ -547,11 +538,12 @@ export default function LuckyWheelPage() {
         /* 📱 دعم الهواتف المحمولة */
         @media (max-width: 900px) {
             .brand-logo { position: relative; top: 0; left: 0; margin-bottom: 20px; text-align: center; width: 100%;}
-            .brand-logo img { width: 120px; }
+            .brand-logo img { width: 140px; } /* تم تكبير اللوجو في الموبايل */
+            
             .split-layout { 
-                flex-direction: column; 
+                flex-direction: column-reverse; /* 🎯 إظهار العجلة فوق النموذج */
                 text-align: center;
-                gap: 40px;
+                gap: 60px;
                 margin-top: 0;
             }
             .right-panel { text-align: center; max-width: 100%; }
