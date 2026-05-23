@@ -208,7 +208,7 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     ctx.fillStyle = '#3a2800';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(disabled ? '🔒' : 'لف', cx, cy + 1);
+    ctx.fillText(disabled ? '🔒' : '🎁', cx, cy + 1);
 
     /* ─── 8. Teardrop pointer at top ─── */
     const pTipY  = cy - R + 2;       
@@ -271,7 +271,7 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     state.current.targetAngle = finalTarget;
     state.current.spinning = true;
 
-    const duration = 5000; // 5 seconds spin
+    const duration = 10000; // 10 seconds spin
     const start = performance.now();
     const startAngle = state.current.angle;
     const changeInAngle = finalTarget - startAngle;
