@@ -9,17 +9,9 @@ import starsBg from '../styles/stars-bg.jpg';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// بيانات مبدئية لتظهر العجلة فوراً للمستخدم بدون أي شاشات تحميل
-const initialWheelData = [
-  { option: 'حظ سعيد', style: { backgroundColor: '#dca742', textColor: '#181818' } },
-  { option: 'حظ سعيد', style: { backgroundColor: '#181818', textColor: '#dca742' } },
-  { option: 'حظ سعيد', style: { backgroundColor: '#dca742', textColor: '#181818' } },
-  { option: 'حظ سعيد', style: { backgroundColor: '#181818', textColor: '#dca742' } }
-];
-
 export default function LuckyWheelPage() {
   const [prizes, setPrizes] = useState([]);
-  const [wheelData, setWheelData] = useState(initialWheelData); 
+  const [wheelData, setWheelData] = useState([]); // تم حذف البيانات الوهمية
   const [loading, setLoading] = useState(true);
 
   const [studentName, setStudentName] = useState('');
@@ -69,13 +61,13 @@ export default function LuckyWheelPage() {
         const res = await fetch('/api/dashboard/super/wheel'); 
         const data = await res.json();
         
+        // تسجيل حالة التعطيل إذا كانت معطلة (لكننا سنستمر في جلب وعرض الجوائز)
         if (data && data.isWheelEnabled === false) {
             setIsGloballyDisabled(true);
-            setLoading(false);
-            return;
         }
 
-        if (data.prizes && data.prizes.length > 0) {
+        // جلب وتنسيق الجوائز لتظهر على العجلة في جميع الحالات (مفعلة أو معطلة)
+        if (data && data.prizes && data.prizes.length > 0) {
           const activePrizes = data.prizes.filter(p => p.is_active);
           setPrizes(activePrizes);
           
@@ -92,9 +84,11 @@ export default function LuckyWheelPage() {
             });
             setWheelData(formattedWheel);
           } else {
+            // إذا لم يكن هناك جوائز كافية للعجلة
             setIsGloballyDisabled(true);
           }
         } else {
+            // إذا لم يكن هناك جوائز من الأساس
             setIsGloballyDisabled(true);
         }
       } catch (e) {
@@ -174,12 +168,12 @@ export default function LuckyWheelPage() {
 
           {errorMsg && <div className="error-alert">⚠️ {errorMsg}</div>}
 
-          {/* إذا كانت المسابقة معطلة، نعرض رسالة التوقف بدلاً من النموذج */}
+          {/* في حالة تعطيل المسابقة يظهر كارت التوقف ولا يظهر نموذج إدخال البيانات */}
           {isGloballyDisabled ? (
             <div className="elegant-form-card" style={{ textAlign: 'center', borderColor: '#ef4444' }}>
               <h3 style={{ color: '#ef4444', fontSize: '1.8rem', marginBottom: '15px' }}>🔴 المسابقة متوقفة</h3>
               <p style={{ color: '#cccccc', fontSize: '1.1rem', lineHeight: '1.6' }}>
-                عذراً، تم إيقاف عجلة الحظ مؤقتاً. ترقبوا انطلاقها مجدداً قريباً لتتمكنوا من ربح جوائزنا!
+                عذراً، تم إيقاف عجلة الحظ مؤقتاً. ترقبوا انطلاقها مجدداً قريباً لتتمكنوا من ربح هذه الجوائز الرائعة!
               </p>
             </div>
           ) : !hasPlayedLocal && !mustSpin && !winResult ? (
@@ -235,6 +229,7 @@ export default function LuckyWheelPage() {
         {/* ========================================= */}
         <div className="left-panel">
           <div className="wheel-wrapper">
+            {wheelData.length > 0 ? (
               <div className="roulette-box">
                 <Wheel
                   mustStartSpinning={mustSpin}
@@ -247,15 +242,18 @@ export default function LuckyWheelPage() {
                   innerBorderWidth={10}
                   radiusLineColor="#8b5a10"
                   radiusLineWidth={3}
-                  fontSize={16} // 🎯 تم التصغير ليتسع النص
+                  fontSize={18} // 🎯 حجم خط مثالي للشكل الشعاعي
                   spinDuration={0.8}
-                  perpendicularText={true}
-                  textDistance={65} // 🎯 تم التقليل ليصبح النص داخل الدائرة
+                  textDistance={60} // 🎯 تم الإلغاء لـ perpendicular ليأخذ الشكل الطولي الاحترافي، ووضع مسافة 60 لتتمركز الكلمة تماماً
                 />
                 <div className="wheel-center-btn">
-                   <span>لف</span>
+                   {/* تغيير كلمة "لف" لرمز قفل إذا كانت المسابقة معطلة */}
+                   <span>{isGloballyDisabled ? '🔒' : 'لف'}</span>
                 </div>
               </div>
+            ) : (
+               <div style={{color: '#dca742', display: loading ? 'block' : 'none'}}>جاري تحميل الجوائز...</div>
+            )}
             
             <div className="wheel-stand"></div>
           </div>
