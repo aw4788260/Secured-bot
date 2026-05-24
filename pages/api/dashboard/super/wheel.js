@@ -11,19 +11,13 @@ export default async function handler(req, res) {
   // ==========================================================
   if (req.method === 'GET') {
     try {
+      // ✅ جلب الجوائز مع ارتباطاتها (مدرس، كورس، مادة) مباشرة عبر العلاقات
       const { data: prizes, error: prizesError } = await supabase
         .from('wheel_prizes')
-        .select('*')
+        .select('*, teachers(name), courses(title), subjects(title)')
         .order('id', { ascending: true });
 
       if (prizesError) throw prizesError;
-
-      const { data: teachers } = await supabase.from('teachers').select('id, name');
-
-      const enrichedPrizes = prizes ? prizes.map(prize => ({
-          ...prize,
-          teachers: teachers?.find(t => t.id === prize.teacher_id) || null
-      })) : [];
 
       const { data: winners, error: winnersError } = await supabase
         .from('wheel_spins')
@@ -40,7 +34,7 @@ export default async function handler(req, res) {
       const { count: spinsCount } = await supabase.from('wheel_spins').select('id', { count: 'exact', head: true });
 
       return res.status(200).json({ 
-          prizes: enrichedPrizes, 
+          prizes: prizes || [], 
           winners: winners || [],
           isWheelEnabled: globalSettings ? globalSettings.is_wheel_enabled : true,
           poolCount: poolCount || 0,
@@ -103,19 +97,24 @@ export default async function handler(req, res) {
       // 1. إضافة أو تعديل جائزة (وتطبيق الخلط التلقائي)
       if (action === 'save_prize') {
          const prizeData = { ...payload };
+         
+         // إزالة الكائنات المرتبطة لتجنب أخطاء الإدخال في قاعدة البيانات
          if ('teachers' in prizeData) delete prizeData.teachers;
+         if ('courses' in prizeData) delete prizeData.courses;
+         if ('subjects' in prizeData) delete prizeData.subjects;
+
          if (!prizeData.id || prizeData.id === '') delete prizeData.id;
          
-         if (prizeData.teacher_id === '' || prizeData.teacher_id === undefined || prizeData.teacher_id === null) {
-             prizeData.teacher_id = null;
-         } else {
-             prizeData.teacher_id = parseInt(prizeData.teacher_id);
-         }
+         // ✅ تحديث الحقول الجديدة وتصفير غير المرتبط بنوع الربط
+         prizeData.teacher_id = prizeData.link_type === 'teacher' ? (parseInt(prizeData.teacher_id) || null) : null;
+         prizeData.course_id = prizeData.link_type === 'course' ? (parseInt(prizeData.course_id) || null) : null;
+         prizeData.subject_id = prizeData.link_type === 'subject' ? (parseInt(prizeData.subject_id) || null) : null;
 
          prizeData.discount_value = parseFloat(prizeData.discount_value) || 0;
          prizeData.total_stock = parseInt(prizeData.total_stock) || 0;
          prizeData.validity_days = parseInt(prizeData.validity_days) || 0;
          
+         // إذا لم تكن الجائزة من نوع كوبون، نحذف قيم الخصم
          if (prizeData.type !== 'coupon') prizeData.discount_type = null;
 
          const { error } = await supabase.from('wheel_prizes').upsert(prizeData);
