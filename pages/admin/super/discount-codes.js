@@ -5,14 +5,14 @@ import SuperLayout from '../../../components/SuperLayout';
 export default function DiscountCodes() {
   const [isClient, setIsClient] = useState(false);
   const [teachers, setTeachers] = useState([]);
-  const [courses, setCourses] = useState([]); // ✅ لتخزين الكورسات والمواد
+  const [courses, setCourses] = useState([]); 
   const [codes, setCodes] = useState([]);
   const [totalCodes, setTotalCodes] = useState(0);
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   
   // الفورم الأساسي للتوليد
-  const [linkType, setLinkType] = useState('teacher'); // ✅ نوع الربط: 'teacher', 'course', 'subject'
+  const [linkType, setLinkType] = useState('teacher'); 
   const [teacherId, setTeacherId] = useState('');
   const [courseId, setCourseId] = useState('');
   const [subjectId, setSubjectId] = useState('');
@@ -62,19 +62,32 @@ export default function DiscountCodes() {
       newHasExpiration: false, newExpirationDate: ''
   });
 
+  // ✅ نافذة اختيار (المدرس / الكورس / المادة)
+  const [targetSelectionModal, setTargetSelectionModal] = useState({ show: false, type: '' });
+
   // دالة التحقق من الانتهاء
   const isExpired = (dateString) => {
       if (!dateString) return false;
       return new Date() > new Date(dateString);
   };
 
+  // استخراج أسماء العناصر المحددة لعرضها في الواجهة
+  const selectedTeacherName = teachers.find(t => t.id == teacherId)?.name || '';
+  const selectedCourseName = courses.find(c => c.id == courseId)?.title || '';
+  let selectedSubjectName = '';
+  if (subjectId) {
+      courses.forEach(c => {
+          const s = c.subjects?.find(sub => sub.id == subjectId);
+          if (s) selectedSubjectName = s.title;
+      });
+  }
+
   // -------------------------------------------------------------
-  // جلب البيانات (مع دعم الفلاتر المباشرة)
+  // جلب البيانات
   // -------------------------------------------------------------
   const fetchData = async (overridePage = page, overrideFilters = filters) => {
     setTableLoading(true);
     try {
-      // ✅ جلب الكورسات والمواد لاستخدامها في القوائم المنسدلة
       const resContent = await fetch('/api/dashboard/super/content?type=all');
       if (resContent.ok) {
         const contentData = await resContent.json();
@@ -95,8 +108,6 @@ export default function DiscountCodes() {
         setTeachers(data.teachers || []);
         
         let fetchedCodes = data.codes || [];
-        
-        // فلترة إضافية في الفرونت إند لدعم حالة (منتهي)
         if (overrideFilters.status === 'expired') {
             fetchedCodes = fetchedCodes.filter(c => c.expires_at && isExpired(c.expires_at) && !c.is_used);
         } else if (overrideFilters.status === 'active') {
@@ -142,7 +153,6 @@ export default function DiscountCodes() {
     setNewlyGeneratedCodes([]);
     setCopiedBulk(false);
 
-    // ✅ التحقق من اختيار الهدف الصحيح بناءً على نوع الربط
     if (linkType === 'teacher' && !teacherId) return showToast('يرجى اختيار المدرس', 'error');
     if (linkType === 'course' && !courseId) return showToast('يرجى اختيار الكورس', 'error');
     if (linkType === 'subject' && !subjectId) return showToast('يرجى اختيار المادة', 'error');
@@ -264,6 +274,21 @@ export default function DiscountCodes() {
       executeBulkApi(apiPayload);
   };
 
+  // ✅ النسخ الجماعي من الجدول (كل كود في سطر)
+  const handleTableBulkCopy = () => {
+      if (selectedCodes.length === 0) return;
+      const codesToCopy = codes
+          .filter(c => selectedCodes.includes(c.id))
+          .map(c => c.code)
+          .join('\n');
+      
+      navigator.clipboard.writeText(codesToCopy).then(() => {
+          showToast(`تم نسخ ${selectedCodes.length} كود بنجاح!`, 'success');
+      }).catch(() => {
+          showToast('فشل النسخ', 'error');
+      });
+  };
+
   const copySingleCode = (codeStr) => {
     navigator.clipboard.writeText(codeStr);
     showToast(`تم نسخ الكود: ${codeStr}`, 'success');
@@ -306,7 +331,7 @@ export default function DiscountCodes() {
                 <h3 className="card-title">⚙️ إنشاء كوبونات جديدة</h3>
                 <form onSubmit={handleGenerate} className="generate-form">
                   
-                  {/* ✅ تحديد نوع الارتباط */}
+                  {/* تحديد نوع الارتباط */}
                   <div className="form-group" style={{gridColumn: '1 / -1'}}>
                     <label>الهدف من الكوبون (نطاق الخصم):</label>
                     <div style={{display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap'}}>
@@ -315,29 +340,23 @@ export default function DiscountCodes() {
                         <label className="checkbox-label" style={{color:'#facc15'}}><input type="radio" name="linkType" checked={linkType === 'subject'} onChange={() => setLinkType('subject')} /> مخصص لمادة محددة</label>
                     </div>
 
+                    {/* ✅ الزر الاحترافي لاختيار الهدف */}
                     {linkType === 'teacher' && (
-                        <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} className="form-input" required>
-                          <option value="">-- اختر المدرس --</option>
-                          {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'teacher' })}>
+                            {selectedTeacherName ? <span style={{color: '#38bdf8'}}>👨‍🏫 {selectedTeacherName}</span> : '🔍 اضغط لاختيار المدرس...'}
+                        </div>
                     )}
 
                     {linkType === 'course' && (
-                        <select value={courseId} onChange={(e) => setCourseId(e.target.value)} className="form-input" required>
-                          <option value="">-- اختر الكورس --</option>
-                          {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                        </select>
+                        <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'course' })}>
+                            {selectedCourseName ? <span style={{color: '#4ade80'}}>📦 {selectedCourseName}</span> : '🔍 اضغط لاختيار الكورس...'}
+                        </div>
                     )}
 
                     {linkType === 'subject' && (
-                        <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className="form-input" required>
-                          <option value="">-- اختر المادة --</option>
-                          {courses.map(c => (
-                              <optgroup key={c.id} label={`كورس: ${c.title}`}>
-                                  {c.subjects?.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                              </optgroup>
-                          ))}
-                        </select>
+                        <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'subject' })}>
+                            {selectedSubjectName ? <span style={{color: '#facc15'}}>📚 {selectedSubjectName}</span> : '🔍 اضغط لاختيار المادة...'}
+                        </div>
                     )}
                   </div>
 
@@ -462,6 +481,8 @@ export default function DiscountCodes() {
                {selectedCodes.length > 0 && (
                    <div className="bulk-actions-bar">
                        <span className="selected-count">{selectedCodes.length} محدد</span>
+                       {/* ✅ زر النسخ الجماعي الجديد */}
+                       <button className="btn outline-blue" onClick={handleTableBulkCopy} style={{background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8'}}>📋 نسخ</button>
                        <button className="btn green" onClick={() => handleTableBulkAction('activate')}>تفعيل</button>
                        <button className="btn orange" onClick={() => handleTableBulkAction('deactivate')}>تعطيل</button>
                        <button className="btn blue" onClick={() => handleTableBulkAction('change_teacher')}>نقل</button>
@@ -501,7 +522,7 @@ export default function DiscountCodes() {
                             </div>
                         </td>
                         
-                        {/* ✅ عرض الهدف والارتباط */}
+                        {/* عرض الهدف والارتباط */}
                         <td className="teacher-name">
                             {code.link_type === 'teacher' && <span style={{color: '#38bdf8'}}>👨‍🏫 {code.teachers?.name}</span>}
                             {code.link_type === 'course' && <span style={{color: '#4ade80'}}>📦 {code.courses?.title}</span>}
@@ -564,6 +585,50 @@ export default function DiscountCodes() {
                       <button className={`btn-save ${confirmModal.type}`} onClick={() => { confirmModal.action(); setConfirmModal({...confirmModal, show: false}); }}>
                           تأكيد التنفيذ
                       </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* ✅ نافذة اختيار الهدف الاحترافية (Target Selection Modal) */}
+      {targetSelectionModal.show && (
+          <div className="modal-overlay blur-bg" onClick={() => setTargetSelectionModal({ show: false, type: '' })}>
+              <div className="modal-box target-selection-box" onClick={e => e.stopPropagation()}>
+                  <div className="modal-header-glass">
+                      <h3 className="modal-title">
+                          {targetSelectionModal.type === 'teacher' ? '👨‍🏫 اختر المدرس' :
+                           targetSelectionModal.type === 'course' ? '📦 اختر الكورس' : '📚 اختر المادة'}
+                      </h3>
+                      <button className="close-x" onClick={() => setTargetSelectionModal({ show: false, type: '' })}>✕</button>
+                  </div>
+                  
+                  <div className="target-list">
+                      {targetSelectionModal.type === 'teacher' && teachers.map(t => (
+                          <div key={t.id} className={`target-item ${teacherId == t.id ? 'active' : ''}`} onClick={() => { setTeacherId(t.id); setTargetSelectionModal({show: false, type: ''}); }}>
+                              <span>{t.name}</span>
+                          </div>
+                      ))}
+
+                      {targetSelectionModal.type === 'course' && courses.map(c => (
+                          <div key={c.id} className={`target-item ${courseId == c.id ? 'active' : ''}`} onClick={() => { setCourseId(c.id); setTargetSelectionModal({show: false, type: ''}); }}>
+                              <span>{c.title}</span>
+                          </div>
+                      ))}
+
+                      {targetSelectionModal.type === 'subject' && courses.map(c => (
+                          <div key={c.id} className="subject-group">
+                              <div className="subject-group-title">كورس: {c.title}</div>
+                              {c.subjects?.map(s => (
+                                  <div key={s.id} className={`target-item subject ${subjectId == s.id ? 'active' : ''}`} onClick={() => { setSubjectId(s.id); setTargetSelectionModal({show: false, type: ''}); }}>
+                                      <span>{s.title}</span>
+                                  </div>
+                              ))}
+                          </div>
+                      ))}
+                      
+                      {/* رسائل توجيهية في حال عدم وجود بيانات */}
+                      {targetSelectionModal.type === 'teacher' && teachers.length === 0 && <p style={{textAlign:'center', color:'#94a3b8'}}>لا يوجد مدرسين مسجلين.</p>}
+                      {['course', 'subject'].includes(targetSelectionModal.type) && courses.length === 0 && <p style={{textAlign:'center', color:'#94a3b8'}}>لا توجد كورسات مسجلة حالياً.</p>}
                   </div>
               </div>
           </div>
@@ -693,6 +758,26 @@ export default function DiscountCodes() {
         .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(37,99,235,0.3); }
         .submit-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37,99,235,0.4); }
         .submit-btn.loading { background: #475569; box-shadow: none; cursor: not-allowed; }
+
+        /* ✅ التنسيقات الخاصة بالزر الجديد للاختيار */
+        .selection-trigger {
+            width: 100%; padding: 15px; border-radius: 8px; border: 1px dashed #38bdf8;
+            background: rgba(56,189,248,0.05); color: #94a3b8; cursor: pointer;
+            text-align: center; font-weight: bold; transition: 0.3s; font-size: 1rem;
+        }
+        .selection-trigger:hover { background: rgba(56,189,248,0.1); border-style: solid; }
+        
+        .target-selection-box { max-width: 550px !important; max-height: 85vh; display: flex; flex-direction: column; }
+        .target-list { overflow-y: auto; margin-top: 15px; display: flex; flex-direction: column; gap: 8px; padding-right: 5px; }
+        .target-list::-webkit-scrollbar { width: 6px; }
+        .target-list::-webkit-scrollbar-track { background: #0f172a; border-radius: 10px; }
+        .target-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .target-item { padding: 12px 15px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; cursor: pointer; transition: 0.2s; color: #e2e8f0; font-weight: bold; display: flex; align-items: center;}
+        .target-item:hover { border-color: #38bdf8; background: rgba(56,189,248,0.05); color: white;}
+        .target-item.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+        .subject-group { margin-bottom: 12px; background: #162032; padding: 15px; border-radius: 12px; border: 1px solid #1e293b;}
+        .subject-group-title { font-size: 0.95rem; color: #38bdf8; margin-bottom: 12px; font-weight: bold; border-bottom: 1px dashed #334155; padding-bottom: 8px;}
+        .target-item.subject { margin-bottom: 8px; background: rgba(15, 23, 42, 0.5); }
 
         /* ==================== New Codes Box ==================== */
         .new-codes-container { background: linear-gradient(to right, rgba(56,189,248,0.05), rgba(56,189,248,0.01)); padding: 25px; border-radius: 16px; border: 1px solid rgba(56,189,248,0.3); margin-bottom: 30px; animation: slideDown 0.4s ease-out; }
