@@ -111,9 +111,13 @@ export default async function handler(req, res) {
           generatedCouponCode = `WIN-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
           const expiryDate = new Date(Date.now() + (prize.validity_days * 24 * 60 * 60 * 1000)).toISOString();
 
+          // ✅ التعديل هنا: توريث خصائص الارتباط (مدرس، كورس، مادة) للكوبون الجديد
           await supabase.from('discount_codes').insert({
               code: generatedCouponCode,
-              teacher_id: prize.teacher_id,
+              link_type: prize.link_type || 'teacher', // نوع الارتباط
+              teacher_id: prize.teacher_id,            // معرف المدرس إن وجد
+              course_id: prize.course_id,              // معرف الكورس إن وجد
+              subject_id: prize.subject_id,            // معرف المادة إن وجدت
               discount_type: prize.discount_type,
               discount_value: prize.discount_value,
               expires_at: expiryDate,
@@ -144,7 +148,7 @@ export default async function handler(req, res) {
               id: prize.id,
               title: prize.title,
               type: prize.type,
-              color: prize.color,
+              color: prize.color || '#38bdf8', // إرسال لون افتراضي في حال إزالته من لوحة التحكم لمنع تعطل العجلة في الواجهة الأمامية
               coupon_code: generatedCouponCode,
               validity_days: prize.validity_days
           }
