@@ -70,7 +70,7 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
 
     /* ─── 3. Outer gold rim ─── */
     const rimW = R * 0.115;          
-    const segR = R - rimW;           
+    const segR = R - rimW;            
 
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
@@ -139,49 +139,109 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       ctx.restore();
     }
 
-    /* ─── 6. Segment text ─── */
+    /* ─── 6. Segment text (Radial Multiline Text) ─── */
+    const hubR  = segR * 0.14;
+    const hub2  = hubR * 1.45;
+    const paddingRight = 18; 
+    const maxTextWidth = segR - paddingRight - hub2 - 10;
+
+    let globalFsize = 20;
+    const segmentLines = []; 
+
+    // First Pass: Auto-scale font size to fit all segments gracefully
+    while (globalFsize >= 9) {
+      ctx.font = `bold ${globalFsize}px Tajawal, Arial, sans-serif`;
+      const lineHeight = globalFsize * 1.25;
+      let allFit = true;
+      segmentLines.length = 0;
+
+      for (let i = 0; i < n; i++) {
+        const label = (segments[i] && segments[i].option) ? segments[i].option : '';
+        const words = label.split(' ');
+        const lines = [];
+        let currentLine = '';
+
+        for (let w of words) {
+          const testLine = currentLine ? currentLine + ' ' + w : w;
+          if (ctx.measureText(testLine).width > maxTextWidth && currentLine !== '') {
+            lines.push(currentLine);
+            currentLine = w;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine) lines.push(currentLine);
+
+        const totalHeight = lines.length * lineHeight;
+        const innerX = (segR - paddingRight) - maxTextWidth;
+        const availableHeight = innerX * arc * 0.85;
+
+        if (totalHeight > availableHeight) {
+          allFit = false;
+          break; 
+        }
+        
+        segmentLines.push(lines);
+      }
+
+      if (allFit) break; 
+      globalFsize -= 1;
+    }
+    
+    // Fallback if maximum compression fails
+    if (segmentLines.length < n) {
+      ctx.font = `bold 9px Tajawal, Arial, sans-serif`;
+      segmentLines.length = 0;
+      for (let i = 0; i < n; i++) {
+        const label = (segments[i] && segments[i].option) ? segments[i].option : '';
+        const words = label.split(' ');
+        const lines = [];
+        let currentLine = '';
+        for (let w of words) {
+          const testLine = currentLine ? currentLine + ' ' + w : w;
+          if (ctx.measureText(testLine).width > maxTextWidth && currentLine !== '') {
+            lines.push(currentLine);
+            currentLine = w;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine) lines.push(currentLine);
+        segmentLines.push(lines);
+      }
+    }
+
+    const finalLineHeight = globalFsize * 1.25;
+
+    // Second Pass: Drawing the wrapped text
     for (let i = 0; i < n; i++) {
       const start    = angle + i * arc;
       const midAngle = start + arc / 2;
       const isGold   = i % 2 === 0;
-      const textR    = segR * 0.60;   
-      const tx       = cx + Math.cos(midAngle) * textR;
-      const ty       = cy + Math.sin(midAngle) * textR;
 
       ctx.save();
-      ctx.translate(tx, ty);
-      ctx.rotate(midAngle + Math.PI / 2);
+      ctx.translate(cx, cy);
+      ctx.rotate(midAngle);
 
-      const label  = (segments[i] && segments[i].option) ? segments[i].option : '';
-      const fsize  = Math.max(10, Math.min(14, 280 / n));
-      ctx.font     = `bold ${fsize}px Tajawal, Arial, sans-serif`;
+      ctx.font         = `bold ${globalFsize}px Tajawal, Arial, sans-serif`;
       ctx.fillStyle    = isGold ? '#111' : GOLD_MID;
-      ctx.textAlign    = 'center';
+      ctx.textAlign    = 'right'; 
       ctx.textBaseline = 'middle';
 
-      const maxW  = arc * segR * 0.72;
-      const words = label.split(' ');
-      let line1 = '', line2 = '', built = '', wrapped = false;
-      for (const w of words) {
-        const test = built ? built + ' ' + w : w;
-        if (!wrapped && ctx.measureText(test).width > maxW) {
-          line1   = built; built = w; wrapped = true;
-        } else { built = test; }
+      const lines = segmentLines[i];
+      const totalHeight = lines.length * finalLineHeight;
+      const startY = -(totalHeight / 2) + (finalLineHeight / 2);
+      const textX = segR - paddingRight;
+
+      for (let j = 0; j < lines.length; j++) {
+        const textY = startY + (j * finalLineHeight);
+        ctx.fillText(lines[j], textX, textY);
       }
-      if (wrapped) {
-        line2 = built;
-        ctx.fillText(line1, 0, -fsize * 0.65);
-        ctx.fillText(line2, 0,  fsize * 0.65);
-      } else {
-        ctx.fillText(built, 0, 0);
-      }
+
       ctx.restore();
     }
 
     /* ─── 7. Hub (centre circle) ─── */
-    const hubR  = segR * 0.14;
-    const hub2  = hubR * 1.45;
-
     const ringGrad = ctx.createRadialGradient(cx - hub2*0.2, cy - hub2*0.2, 1, cx, cy, hub2);
     ringGrad.addColorStop(0,   GOLD_LIGHT);
     ringGrad.addColorStop(0.5, GOLD_MID);
@@ -213,7 +273,7 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     /* ─── 8. Teardrop pointer at top ─── */
     const pTipY  = cy - R + 2;       
     const pBaseY = pTipY + 44;
-    const pW     = 18;               
+    const pW     = 18;                
 
     ctx.save();
     ctx.shadowColor   = 'rgba(0,0,0,0.6)';
