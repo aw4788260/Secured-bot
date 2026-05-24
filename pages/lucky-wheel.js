@@ -254,14 +254,11 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     const n         = segments.length;
     const arc       = (Math.PI * 2) / n;
     
-    // Calculate the target angle so the winning segment lands under the pointer (-PI/2)
     const winMid    = prizeIndex * arc + arc / 2;
     const baseTarget = -Math.PI / 2 - winMid;
 
-    // Add extra spins (e.g. 5 to 7 full rotations)
     const extraSpins = Math.PI * 2 * (5 + Math.floor(Math.random() * 3));
     
-    // Ensure we rotate forward
     let finalTarget = baseTarget;
     while (finalTarget <= state.current.angle) {
         finalTarget += Math.PI * 2;
@@ -271,7 +268,7 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
     state.current.targetAngle = finalTarget;
     state.current.spinning = true;
 
-    const duration = 10000; // 10 seconds spin
+    const duration = 10000; 
     const start = performance.now();
     const startAngle = state.current.angle;
     const changeInAngle = finalTarget - startAngle;
@@ -280,7 +277,6 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
       let elapsed = time - start;
       if (elapsed > duration) elapsed = duration;
 
-      // easeOutQuart formula for smooth deceleration
       const t = elapsed / duration;
       const ease = 1 - Math.pow(1 - t, 4);
 
@@ -291,9 +287,8 @@ function SpinWheel({ segments, mustSpin, prizeIndex, onSpinStop, disabled }) {
         rafRef.current = requestAnimationFrame(animate);
       } else {
         state.current.spinning = false;
-        // Fix rounding issues at the end to keep it normalized
         state.current.angle = state.current.angle % (Math.PI * 2);
-        onSpinStop(); // Trigger win screen immediately
+        onSpinStop();
       }
     };
 
@@ -366,14 +361,13 @@ export default function LuckyWheelPage() {
 
   const fetchWheelPrizes = async () => {
     try {
-      // 🛑 التعديل هنا: جلب البيانات من الـ API العام للطلاب بدلاً من لوحة التحكم المحمية
       const res  = await fetch('/api/public/wheel-prizes');
       const data = await res.json();
       
       if (data?.isWheelEnabled === false) {
           setIsGloballyDisabled(true);
       } else if (data?.prizes?.length > 0) {
-        const active = data.prizes; // البيانات تأتي مفعلة جاهزة من الـ API العام
+        const active = data.prizes; 
         setPrizes(active);
         if (active.length >= 2) {
           setWheelData(active.map((p, i) => ({
@@ -416,7 +410,6 @@ export default function LuckyWheelPage() {
     } catch { setErrorMsg('خطأ في الاتصال بالسيرفر.'); setSpinning(false); }
   };
 
-  // يتم استدعاؤها فور توقف العجلة بنجاح
   const handleSpinStop = useCallback(() => {
     setMustSpin(false); 
     setSpinning(false); 
@@ -500,24 +493,69 @@ export default function LuckyWheelPage() {
             <div className="result-card">
               <div className="confetti-emoji">🎉</div>
               <h2 className="congrats-title">مبروووك!</h2>
-              <p className="congrats-sub">لقد فزت بـ: <span className="prize-name">{winResult.title}</span></p>
+
+              {/* 1. بيانات الطالب والجائزة المدمجة */}
+              <div className="student-details-box">
+                  <p><strong>الاسم:</strong> {studentName}</p>
+                  <p><strong>رقم الهاتف:</strong> <span dir="ltr">{studentPhone}</span></p>
+                  <p><strong>الجائزة:</strong> <span className="prize-name">{winResult.title}</span></p>
+              </div>
+
+              {/* 2. تحذير التقاط لقطة الشاشة */}
+              <div className="screenshot-alert">
+                 📸 <strong>هام جداً:</strong> يرجى أخذ لقطة شاشة (سكرين شوت) لهذه البيانات فوراً للاحتفاظ بها!
+              </div>
+
+              {/* 3. حالة الكوبون وخطوات الاستخدام */}
               {winResult.type === 'coupon' && (
-                <div className="coupon-box">
-                  <p className="coupon-label">🎟️ كود الخصم الخاص بك</p>
-                  <div className="copy-wrapper">
-                    <div className="code-display">{winResult.coupon_code}</div>
-                    <button className={`copy-btn ${copied?'copied':''}`}
-                      onClick={()=>handleCopyCoupon(winResult.coupon_code)}>
-                      {copied ? (
-                        <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>تم النسخ!</>
-                      ) : (
-                        <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>انسخ الكود</>
-                      )}
-                    </button>
+                <>
+                  <div className="coupon-box">
+                    <p className="coupon-label">🎟️ كود الخصم الخاص بك</p>
+                    <div className="copy-wrapper">
+                      <div className="code-display">{winResult.coupon_code}</div>
+                      <button className={`copy-btn ${copied?'copied':''}`}
+                        onClick={()=>handleCopyCoupon(winResult.coupon_code)}>
+                        {copied ? (
+                          <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>تم النسخ!</>
+                        ) : (
+                          <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>انسخ الكود</>
+                        )}
+                      </button>
+                    </div>
+                    <div className="gold-validity">
+                        ⏳ صالح لمدة {winResult.validity_days} يوم
+                    </div>
                   </div>
-                  <small className="validity-note">⏳ صالح لمدة {winResult.validity_days} يوم — احتفظ به جيداً!</small>
+
+                  <div className="instructions-box">
+                     <h4>خطوات استخدام الجائزة:</h4>
+                     <ol>
+                       <li>
+                         قم بتنزيل تطبيق مداد:
+                         <div className="app-download-links">
+                           <a href="https://play.google.com/store/apps/details?id=medaad.app.com" target="_blank" rel="noreferrer">أندرويد</a>
+                           <a href="https://apps.apple.com/eg/app/medaad-%D9%85%D9%80%D9%80%D9%80%D8%AF%D8%A7%D8%AF/id6758565779" target="_blank" rel="noreferrer">آيفون</a>
+                         </div>
+                       </li>
+                       <li>قم بإنشاء حساب باستخدام <strong>نفس الاسم</strong> ونفس <strong>رقم الهاتف</strong>.</li>
+                       <li>قم بتسجيل الدخول في التطبيق.</li>
+                       <li>اختر الكورس المراد شرائه.</li>
+                       <li>اذهب لصفحة الدفع (Checkout).</li>
+                       <li>سيطلب منك وضع كوبون الخصم، قم بلصقه واضغط على <strong>Apply</strong>.</li>
+                       <li>قم برفع الإسكرين شوت الخاصة بالفوز (الاسم ورقم الهاتف والكوبون).</li>
+                       <li className="final-congrats">ثم مبرووك! 🎉</li>
+                     </ol>
+                  </div>
+                </>
+              )}
+
+              {/* 4. حالة الجائزة المادية */}
+              {winResult.type === 'material' && (
+                <div className="instructions-box material-box">
+                  <p>🎁 <strong>يرجى أخذ إسكرين شوت لهذه الصفحة التي تحتوي على بياناتك والجائزة، والتواصل مع المدرس لاستلام جائزتك!</strong></p>
                 </div>
               )}
+
             </div>
           )}
         </div>
@@ -608,6 +646,7 @@ export default function LuckyWheelPage() {
         .error-alert { background:rgba(239,68,68,.2); color:#fca5a5; padding:15px; border-radius:12px; border:1px solid rgba(239,68,68,.4); margin-bottom:20px; font-weight:bold; }
         .already-played-card { background:#111; padding:35px; border-radius:15px; border:1px dashed #dca742; color:#dca742; text-align:center; }
 
+        /* 🏆 كارت الفوز الشامل وتنسيقاته 🏆 */
         .result-card {
           background:linear-gradient(145deg,#111,#1a1500);
           padding:35px 30px; border-radius:20px; border:2px solid #dca742;
@@ -616,17 +655,34 @@ export default function LuckyWheelPage() {
         }
         .confetti-emoji { font-size:3rem; margin-bottom:5px; animation:bounce .6s ease infinite alternate; }
         .congrats-title { color:#dca742; font-size:2.2rem; font-weight:900; margin:0 0 8px 0; }
-        .congrats-sub   { color:#ccc; font-size:1.1rem; margin:0 0 20px 0; }
-        .prize-name     { color:#dca742; font-weight:900; }
+        
+        .student-details-box { background:rgba(0,0,0,0.5); border:1px solid #333; padding:15px 20px; border-radius:12px; margin:20px 0; text-align:right; }
+        .student-details-box p { margin:8px 0; font-size:1.1rem; color:#eee; }
+        .student-details-box strong { color:#dca742; margin-left:8px; }
+        .prize-name { font-weight:900; color:#dca742; }
 
-        .coupon-box { background:rgba(220,167,66,.07); border:1px dashed rgba(220,167,66,.5); border-radius:16px; padding:25px 20px; }
+        .screenshot-alert { background:rgba(220,167,66,0.15); border:1px dashed #dca742; color:#dca742; padding:12px; border-radius:10px; font-size:1.05rem; margin-bottom:20px; font-weight:bold; line-height:1.6; }
+
+        .coupon-box { background:rgba(220,167,66,.07); border:1px solid rgba(220,167,66,.3); border-radius:16px; padding:25px 20px; margin-bottom: 20px;}
         .coupon-label { color:#aaa; font-size:.95rem; margin:0 0 15px 0; }
         .copy-wrapper { display:flex; align-items:center; gap:10px; background:#0d0d0d; border:2px solid #dca742; border-radius:12px; padding:6px 6px 6px 12px; margin-bottom:15px; direction:ltr; }
         .code-display { flex:1; font-family:'Courier New',monospace; font-size:1.6rem; font-weight:900; color:#dca742; letter-spacing:3px; text-align:center; text-shadow:0 0 12px rgba(220,167,66,.5); word-break:break-all; user-select:all; cursor:text; }
         .copy-btn { display:flex; align-items:center; gap:6px; background:linear-gradient(180deg,#fceebb 0%,#dca742 100%); color:#000; border:none; border-radius:9px; padding:10px 16px; font-size:.95rem; font-weight:900; cursor:pointer; white-space:nowrap; transition:all .2s ease; font-family:'Tajawal',sans-serif; flex-shrink:0; }
         .copy-btn:hover  { filter:brightness(1.15); transform:scale(1.03); }
         .copy-btn.copied { background:linear-gradient(180deg,#6ee7a0 0%,#22c55e 100%); }
-        .validity-note   { color:#888; font-size:.85rem; display:block; margin-top:8px; }
+        
+        .gold-validity { color:#dca742; font-size:1.2rem; font-weight:bold; margin-top:15px; text-shadow:0 0 10px rgba(220,167,66,0.4); }
+
+        .instructions-box { background:rgba(0,0,0,0.4); border-radius:12px; padding:20px; text-align:right; border:1px solid #333; }
+        .instructions-box h4 { color:#dca742; margin:0 0 15px 0; font-size:1.2rem; border-bottom:1px dashed #444; padding-bottom:10px;}
+        .instructions-box ol { margin:0; padding-right:20px; color:#ccc; line-height:1.8; font-size:1rem; }
+        .instructions-box li { margin-bottom:12px; }
+        .app-download-links { display:flex; gap:10px; margin-top:10px; }
+        .app-download-links a { display:inline-block; background:#222; color:#dca742; padding:6px 15px; border-radius:8px; text-decoration:none; border:1px solid #dca742; transition:all .2s; font-weight:bold; }
+        .app-download-links a:hover { background:#dca742; color:#000; }
+        .final-congrats { color:#dca742; font-weight:bold; font-size:1.2rem; list-style:none; margin-top:20px; }
+
+        .material-box { text-align: center; }
 
         .loading-wheel { display:flex; flex-direction:column; align-items:center; gap:20px; color:#dca742; }
         .loader-ring   { width:80px; height:80px; border:6px solid rgba(220,167,66,.2); border-top-color:#dca742; border-radius:50%; animation:spin 1s linear infinite; }
@@ -648,6 +704,10 @@ export default function LuckyWheelPage() {
           .copy-wrapper { flex-direction:column; direction:rtl; padding:15px; }
           .code-display { font-size:1.3rem; }
           .copy-btn     { width:100%; justify-content:center; }
+          .student-details-box { text-align:center; }
+          .instructions-box { text-align:center; }
+          .instructions-box ol { padding-right:0; list-style-position:inside; }
+          .app-download-links { justify-content:center; }
         }
 
         @keyframes pulseBtn { from{transform:scale(1);}      to{transform:scale(1.02);} }
