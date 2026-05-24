@@ -8,14 +8,16 @@ export default function WheelManager() {
   const [winners, setWinners] = useState([]); 
   const [isWheelEnabled, setIsWheelEnabled] = useState(true); 
   const [teachers, setTeachers] = useState([]);
-  const [courses, setCourses] = useState([]); // ✅ تخزين الكورسات والمواد
+  const [courses, setCourses] = useState([]); 
   const [stats, setStats] = useState({ poolCount: 0, spinsCount: 0 });
 
   const [showModal, setShowModal] = useState(false);
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', action: null });
   const [toast, setToast] = useState({ show: false, msg: '', type: 'success' });
 
-  // ✅ تحديث النموذج الافتراضي (إزالة color وإضافة ارتباطات الكوبون)
+  // ✅ نافذة اختيار الهدف (Target Selection)
+  const [targetSelectionModal, setTargetSelectionModal] = useState({ show: false, type: '' });
+
   const [formData, setFormData] = useState({
     id: null, title: '', type: 'coupon', discount_type: 'percentage',
     discount_value: 0, validity_days: 7, total_stock: 10, 
@@ -37,7 +39,6 @@ export default function WheelManager() {
       const tRes = await fetch('/api/dashboard/super/teachers');
       if (tRes.ok) setTeachers(await tRes.json() || []);
 
-      // ✅ جلب الكورسات والمواد
       const cRes = await fetch('/api/dashboard/super/content?type=all');
       if (cRes.ok) {
           const cData = await cRes.json();
@@ -99,7 +100,7 @@ export default function WheelManager() {
     if (prize) {
       setFormData({
           ...prize,
-          link_type: prize.link_type || 'teacher', // ضمان وجود قيمة افتراضية
+          link_type: prize.link_type || 'teacher',
       });
     } else {
       setFormData({
@@ -113,7 +114,6 @@ export default function WheelManager() {
 
   const handleSave = (e) => {
     e.preventDefault();
-    // ✅ التحقق من صحة الارتباط قبل الحفظ
     if (formData.type === 'coupon') {
         if (formData.link_type === 'teacher' && !formData.teacher_id) return showToast('يجب اختيار المدرس!', 'error');
         if (formData.link_type === 'course' && !formData.course_id) return showToast('يجب اختيار الكورس!', 'error');
@@ -121,6 +121,17 @@ export default function WheelManager() {
     }
     executeAction('save_prize', formData);
   };
+
+  // ✅ استخراج الأسماء لعرضها في زر الاختيار
+  const selectedTeacherName = teachers.find(t => t.id == formData.teacher_id)?.name || '';
+  const selectedCourseName = courses.find(c => c.id == formData.course_id)?.title || '';
+  let selectedSubjectName = '';
+  if (formData.subject_id) {
+      courses.forEach(c => {
+          const s = c.subjects?.find(sub => sub.id == formData.subject_id);
+          if (s) selectedSubjectName = s.title;
+      });
+  }
 
   return (
     <SuperLayout title="إدارة عجلة الحظ المتقدمة">
@@ -136,7 +147,7 @@ export default function WheelManager() {
             {isWheelEnabled ? '🛑 إلغاء تفعيل العجلة بالكامل' : '🟢 تشغيل وتفعيل العجلة'}
           </button>
           <button className="btn warning" onClick={() => showConfirm('هل أنت متأكد من مسح سجل المشاركات؟ سيتمكن الطلاب من اللعب مرة أخرى.', () => executeAction('reset_spins'))}>
-             🧹 تصفير السجل
+              🧹 تصفير السجل
           </button>
           <button className="btn success" onClick={() => showConfirm('هل أنت متأكد من تفعيل الحملة؟ سيتم خلط التذاكر بناءً على الجوائز الحالية المتاحة بالمخزون.', () => executeAction('activate_campaign'))}>
             🚀 تفعيل الحملة وخلط الصندوق
@@ -144,7 +155,6 @@ export default function WheelManager() {
         </div>
       </div>
 
-      {/* الإحصائيات */}
       <div className="stats-grid">
          <div className="stat-card">
             <h3>⚙️ حالة نظام العجلة</h3>
@@ -164,7 +174,6 @@ export default function WheelManager() {
          </div>
       </div>
 
-      {/* جدول الجوائز */}
       <div className="panel" style={{ marginBottom: '30px' }}>
         <div className="panel-header">
            <h2>كتالوج وإعدادات الجوائز المتاحة</h2>
@@ -192,7 +201,6 @@ export default function WheelManager() {
                   </td>
                   <td><span className="stock-badge">{p.total_stock}</span></td>
                   
-                  {/* ✅ عرض نوع الارتباط المحدث */}
                   <td className="sub-txt">
                       {p.type === 'coupon' ? (
                           <>
@@ -218,7 +226,6 @@ export default function WheelManager() {
         </div>
       </div>
 
-      {/* جدول الفائزين */}
       <div className="panel">
         <div className="panel-header" style={{ background: '#0f172a' }}>
            <h2>👥 سجل الطلاب الفائزين (المشاركات)</h2>
@@ -266,7 +273,7 @@ export default function WheelManager() {
         </div>
       </div>
 
-      {/* مودال الإضافة والتعديل */}
+      {/* ✅ المودال الأساسي لإضافة وتعديل الجائزة */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
            <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -294,7 +301,6 @@ export default function WheelManager() {
                     </div>
                  </div>
 
-                 {/* ✅ صندوق إعدادات الكوبون المحدث للارتباطات الجديدة */}
                  {formData.type === 'coupon' && (
                      <div className="coupon-box">
                          <h4>⚙️ إعدادات توليد الكوبون التلقائي</h4>
@@ -307,27 +313,23 @@ export default function WheelManager() {
                                 <label className="checkbox-label" style={{color:'#facc15'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'subject'} onChange={() => setFormData({...formData, link_type: 'subject', teacher_id: '', course_id: ''})} /> مادة</label>
                              </div>
                              
+                             {/* ✅ أزرار الاختيار الاحترافية */}
                              {formData.link_type === 'teacher' && (
-                                 <select className="input" required value={formData.teacher_id || ''} onChange={e => setFormData({...formData, teacher_id: e.target.value})}>
-                                     <option value="">-- اختر المدرس --</option>
-                                     {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                 </select>
+                                 <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'teacher' })}>
+                                     {selectedTeacherName ? <span style={{color: '#38bdf8'}}>👨‍🏫 {selectedTeacherName}</span> : '🔍 اضغط لاختيار المدرس...'}
+                                 </div>
                              )}
+
                              {formData.link_type === 'course' && (
-                                 <select className="input" required value={formData.course_id || ''} onChange={e => setFormData({...formData, course_id: e.target.value})}>
-                                     <option value="">-- اختر الكورس --</option>
-                                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                                 </select>
+                                 <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'course' })}>
+                                     {selectedCourseName ? <span style={{color: '#4ade80'}}>📦 {selectedCourseName}</span> : '🔍 اضغط لاختيار الكورس...'}
+                                 </div>
                              )}
+
                              {formData.link_type === 'subject' && (
-                                 <select className="input" required value={formData.subject_id || ''} onChange={e => setFormData({...formData, subject_id: e.target.value})}>
-                                     <option value="">-- اختر المادة --</option>
-                                     {courses.map(c => (
-                                         <optgroup key={c.id} label={c.title}>
-                                             {c.subjects?.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                                         </optgroup>
-                                     ))}
-                                 </select>
+                                 <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'subject' })}>
+                                     {selectedSubjectName ? <span style={{color: '#facc15'}}>📚 {selectedSubjectName}</span> : '🔍 اضغط لاختيار المادة...'}
+                                 </div>
                              )}
                          </div>
 
@@ -351,7 +353,6 @@ export default function WheelManager() {
                      </div>
                  )}
 
-                 {/* ✅ إزالة خيارات اللون وترك زر التفعيل فقط */}
                  <div className="form-group mt-2">
                      <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', padding:'12px', background:'rgba(255,255,255,0.05)', borderRadius:'8px', width:'100%'}}>
                          <input type="checkbox" style={{width:'20px', height:'20px', accentColor: '#4ade80'}} checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} />
@@ -368,9 +369,52 @@ export default function WheelManager() {
         </div>
       )}
 
-      {/* نافذة التأكيد الدائرية */}
+      {/* ✅ نافذة اختيار الهدف الاحترافية (Target Selection Modal) */}
+      {targetSelectionModal.show && (
+          <div className="modal-overlay blur-bg" style={{ zIndex: 1100 }} onClick={() => setTargetSelectionModal({ show: false, type: '' })}>
+              <div className="modal-box target-selection-box" onClick={e => e.stopPropagation()}>
+                  <div className="modal-head" style={{borderBottom: '1px solid #334155', paddingBottom: '15px', background: 'transparent'}}>
+                      <h3 style={{margin: 0, fontSize: '1.2rem'}}>
+                          {targetSelectionModal.type === 'teacher' ? '👨‍🏫 اختر المدرس' :
+                           targetSelectionModal.type === 'course' ? '📦 اختر الكورس' : '📚 اختر المادة'}
+                      </h3>
+                      <button className="close-btn" onClick={() => setTargetSelectionModal({ show: false, type: '' })}>✕</button>
+                  </div>
+                  
+                  <div className="target-list">
+                      {targetSelectionModal.type === 'teacher' && teachers.map(t => (
+                          <div key={t.id} className={`target-item ${formData.teacher_id == t.id ? 'active' : ''}`} onClick={() => { setFormData({...formData, teacher_id: t.id}); setTargetSelectionModal({show: false, type: ''}); }}>
+                              <span>{t.name}</span>
+                          </div>
+                      ))}
+
+                      {targetSelectionModal.type === 'course' && courses.map(c => (
+                          <div key={c.id} className={`target-item ${formData.course_id == c.id ? 'active' : ''}`} onClick={() => { setFormData({...formData, course_id: c.id}); setTargetSelectionModal({show: false, type: ''}); }}>
+                              <span>{c.title}</span>
+                          </div>
+                      ))}
+
+                      {targetSelectionModal.type === 'subject' && courses.map(c => (
+                          <div key={c.id} className="subject-group">
+                              <div className="subject-group-title">كورس: {c.title}</div>
+                              {c.subjects?.map(s => (
+                                  <div key={s.id} className={`target-item subject ${formData.subject_id == s.id ? 'active' : ''}`} onClick={() => { setFormData({...formData, subject_id: s.id}); setTargetSelectionModal({show: false, type: ''}); }}>
+                                      <span>{s.title}</span>
+                                  </div>
+                              ))}
+                          </div>
+                      ))}
+                      
+                      {targetSelectionModal.type === 'teacher' && teachers.length === 0 && <p style={{textAlign:'center', color:'#94a3b8', padding: '20px'}}>لا يوجد مدرسين مسجلين.</p>}
+                      {['course', 'subject'].includes(targetSelectionModal.type) && courses.length === 0 && <p style={{textAlign:'center', color:'#94a3b8', padding: '20px'}}>لا توجد كورسات مسجلة حالياً.</p>}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* نافذة التأكيد */}
       {confirmData.show && (
-          <div className="modal-overlay">
+          <div className="modal-overlay" style={{ zIndex: 1200 }}>
               <div className="modal-box confirm-box">
                   <h3>⚠️ تأكيد الإجراء الأمني</h3>
                   <p>{confirmData.msg}</p>
@@ -414,12 +458,12 @@ export default function WheelManager() {
         .icon-btn { background: rgba(255,255,255,0.05); border: none; width: 35px; height: 35px; border-radius: 8px; cursor: pointer; }
         .icon-btn.edit { background: rgba(250, 204, 21, 0.1); } .icon-btn.delete { background: rgba(239, 68, 68, 0.1); }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
-        .modal-box { background: #0f172a; width: 95%; max-width: 600px; border-radius: 16px; border: 1px solid #334155; overflow: hidden; max-height: 90vh; overflow-y: auto; }
-        .confirm-box { max-width: 400px; padding: 25px; text-align: center; }
-        .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #334155; background: #1e293b; }
+        .modal-box { background: #0f172a; width: 95%; max-width: 600px; border-radius: 16px; border: 1px solid #334155; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+        .confirm-box { max-width: 400px; padding: 25px; text-align: center; display: block; }
+        .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #334155; background: #1e293b; flex-shrink: 0; }
         .modal-head h3 { margin: 0; color: white; }
         .close-btn { background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; }
-        .modal-body { padding: 20px; }
+        .modal-body { padding: 20px; overflow-y: auto; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; color: #94a3b8; margin-bottom: 8px; font-size: 0.9rem; }
         .input { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #475569; border-radius: 8px; color: white; }
@@ -427,12 +471,32 @@ export default function WheelManager() {
         .mt-2 { margin-top: 15px; }
         .coupon-box { background: rgba(56, 189, 248, 0.05); border: 1px dashed rgba(56, 189, 248, 0.3); padding: 15px; border-radius: 12px; margin-top: 15px; }
         .coupon-box h4 { margin: 0 0 15px 0; color: #38bdf8; }
-        .modal-footer { padding-top: 20px; margin-top: 10px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-footer { padding-top: 20px; margin-top: 10px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
         .modal-footer.centered { justify-content: center; border: none; }
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #333; color: white; padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 2000; transition: 0.4s; opacity: 0; }
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
         .toast.success { background: #22c55e; color: #0f172a; }
         .toast.error { background: #ef4444; color: white; }
+
+        /* ✅ تنسيقات نافذة الاختيار الاحترافية */
+        .selection-trigger {
+            width: 100%; padding: 15px; border-radius: 8px; border: 1px dashed #38bdf8;
+            background: rgba(56,189,248,0.05); color: #94a3b8; cursor: pointer;
+            text-align: center; font-weight: bold; transition: 0.3s; font-size: 1rem;
+        }
+        .selection-trigger:hover { background: rgba(56,189,248,0.1); border-style: solid; }
+        
+        .target-selection-box { max-width: 550px !important; padding: 20px; background: #1e293b; }
+        .target-list { overflow-y: auto; margin-top: 15px; display: flex; flex-direction: column; gap: 8px; padding-right: 5px; max-height: 60vh; }
+        .target-list::-webkit-scrollbar { width: 6px; }
+        .target-list::-webkit-scrollbar-track { background: #0f172a; border-radius: 10px; }
+        .target-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .target-item { padding: 12px 15px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; cursor: pointer; transition: 0.2s; color: #e2e8f0; font-weight: bold; display: flex; align-items: center;}
+        .target-item:hover { border-color: #38bdf8; background: rgba(56,189,248,0.05); color: white;}
+        .target-item.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+        .subject-group { margin-bottom: 12px; background: #162032; padding: 15px; border-radius: 12px; border: 1px solid #1e293b;}
+        .subject-group-title { font-size: 0.95rem; color: #38bdf8; margin-bottom: 12px; font-weight: bold; border-bottom: 1px dashed #334155; padding-bottom: 8px;}
+        .target-item.subject { margin-bottom: 8px; background: rgba(15, 23, 42, 0.5); }
       `}</style>
     </SuperLayout>
   );
