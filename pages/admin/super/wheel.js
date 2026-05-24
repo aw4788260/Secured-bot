@@ -5,18 +5,21 @@ import SuperLayout from '../../../components/SuperLayout';
 export default function WheelManager() {
   const [loading, setLoading] = useState(true);
   const [prizes, setPrizes] = useState([]);
-  const [winners, setWinners] = useState([]); // 🎯 مصفوفة الفائزين الجديدة
-  const [isWheelEnabled, setIsWheelEnabled] = useState(true); // 🎯 حالة العجلة العامة
+  const [winners, setWinners] = useState([]); 
+  const [isWheelEnabled, setIsWheelEnabled] = useState(true); 
   const [teachers, setTeachers] = useState([]);
+  const [courses, setCourses] = useState([]); // ✅ تخزين الكورسات والمواد
   const [stats, setStats] = useState({ poolCount: 0, spinsCount: 0 });
 
   const [showModal, setShowModal] = useState(false);
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', action: null });
   const [toast, setToast] = useState({ show: false, msg: '', type: 'success' });
 
+  // ✅ تحديث النموذج الافتراضي (إزالة color وإضافة ارتباطات الكوبون)
   const [formData, setFormData] = useState({
     id: null, title: '', type: 'coupon', discount_type: 'percentage',
-    discount_value: 0, validity_days: 7, total_stock: 10, color: '#38bdf8', teacher_id: '', is_active: true
+    discount_value: 0, validity_days: 7, total_stock: 10, 
+    link_type: 'teacher', teacher_id: '', course_id: '', subject_id: '', is_active: true
   });
 
   const showToast = (msg, type = 'success') => {
@@ -32,14 +35,21 @@ export default function WheelManager() {
     setLoading(true);
     try {
       const tRes = await fetch('/api/dashboard/super/teachers');
-      if (tRes.ok) setTeachers(await tRes.ok ? await tRes.json() : []);
+      if (tRes.ok) setTeachers(await tRes.json() || []);
+
+      // ✅ جلب الكورسات والمواد
+      const cRes = await fetch('/api/dashboard/super/content?type=all');
+      if (cRes.ok) {
+          const cData = await cRes.json();
+          setCourses(cData.courses || []);
+      }
 
       const wRes = await fetch('/api/dashboard/super/wheel');
       if (wRes.ok) {
         const data = await wRes.json();
         setPrizes(data.prizes || []);
-        setWinners(data.winners || []); // جلب الفائزين
-        setIsWheelEnabled(data.isWheelEnabled); // جلب حالة التفعيل
+        setWinners(data.winners || []); 
+        setIsWheelEnabled(data.isWheelEnabled); 
         setStats({ poolCount: data.poolCount, spinsCount: data.spinsCount });
       }
     } catch (err) {
@@ -68,7 +78,7 @@ export default function WheelManager() {
         setShowModal(false);
         fetchData();
       } else {
-        showToast(data.error, 'error');
+        showToast(data.error || data.message, 'error');
       }
     } catch (e) {
       showToast('خطأ في الاتصال', 'error');
@@ -87,11 +97,15 @@ export default function WheelManager() {
 
   const openForm = (prize = null) => {
     if (prize) {
-      setFormData(prize);
+      setFormData({
+          ...prize,
+          link_type: prize.link_type || 'teacher', // ضمان وجود قيمة افتراضية
+      });
     } else {
       setFormData({
         id: null, title: '', type: 'coupon', discount_type: 'percentage',
-        discount_value: 0, validity_days: 7, total_stock: 10, color: '#38bdf8', teacher_id: '', is_active: true
+        discount_value: 0, validity_days: 7, total_stock: 10, 
+        link_type: 'teacher', teacher_id: '', course_id: '', subject_id: '', is_active: true
       });
     }
     setShowModal(true);
@@ -99,8 +113,11 @@ export default function WheelManager() {
 
   const handleSave = (e) => {
     e.preventDefault();
-    if (formData.type === 'coupon' && !formData.teacher_id) {
-        return showToast('يجب اختيار المدرس لربط الكوبون به!', 'error');
+    // ✅ التحقق من صحة الارتباط قبل الحفظ
+    if (formData.type === 'coupon') {
+        if (formData.link_type === 'teacher' && !formData.teacher_id) return showToast('يجب اختيار المدرس!', 'error');
+        if (formData.link_type === 'course' && !formData.course_id) return showToast('يجب اختيار الكورس!', 'error');
+        if (formData.link_type === 'subject' && !formData.subject_id) return showToast('يجب اختيار المادة!', 'error');
     }
     executeAction('save_prize', formData);
   };
@@ -115,12 +132,11 @@ export default function WheelManager() {
           <p>تجهيز الكتالوج، متابعة الفائزين، والتحكم في حالة الحملة</p>
         </div>
         <div className="header-actions">
-          {/* 🎯 زر تفعيل/إلغاء تفعيل العجلة بالكامل */}
           <button className={`btn ${isWheelEnabled ? 'danger-btn' : 'success'}`} onClick={handleToggleWheel}>
             {isWheelEnabled ? '🛑 إلغاء تفعيل العجلة بالكامل' : '🟢 تشغيل وتفعيل العجلة'}
           </button>
           <button className="btn warning" onClick={() => showConfirm('هل أنت متأكد من مسح سجل المشاركات؟ سيتمكن الطلاب من اللعب مرة أخرى.', () => executeAction('reset_spins'))}>
-            Clarify 🧹 تصفير السجل
+             🧹 تصفير السجل
           </button>
           <button className="btn success" onClick={() => showConfirm('هل أنت متأكد من تفعيل الحملة؟ سيتم خلط التذاكر بناءً على الجوائز الحالية المتاحة بالمخزون.', () => executeAction('activate_campaign'))}>
             🚀 تفعيل الحملة وخلط الصندوق
@@ -158,11 +174,10 @@ export default function WheelManager() {
           <table>
             <thead>
               <tr>
-                <th>اللون</th>
                 <th>الجائزة</th>
                 <th>النوع والخصم</th>
-                <th>المخزون الحالي (Stock)</th>
-                <th>المدرس المرتبط</th>
+                <th>المخزون الحالي</th>
+                <th>الارتباط (الهدف)</th>
                 <th>حالة القطعة</th>
                 <th>إجراءات</th>
               </tr>
@@ -170,14 +185,25 @@ export default function WheelManager() {
             <tbody>
               {prizes.map(p => (
                 <tr key={p.id}>
-                  <td><div className="color-box" style={{backgroundColor: p.color}}></div></td>
                   <td style={{fontWeight:'bold', color:'white'}}>{p.title}</td>
                   <td>
                       {p.type === 'coupon' ? '🎟️ كوبون خصم' : p.type === 'material' ? '🎁 جائزة مادية' : '😢 حظ أوفر'}
                       {p.type === 'coupon' && <div className="sub-txt">{p.discount_value} {p.discount_type === 'percentage' ? '%' : 'ج.م'}</div>}
                   </td>
                   <td><span className="stock-badge">{p.total_stock}</span></td>
-                  <td className="sub-txt">{p.teachers?.name || '-'}</td>
+                  
+                  {/* ✅ عرض نوع الارتباط المحدث */}
+                  <td className="sub-txt">
+                      {p.type === 'coupon' ? (
+                          <>
+                              {p.link_type === 'teacher' && <span style={{color: '#38bdf8'}}>👨‍🏫 مدرس: {p.teachers?.name || 'غير محدد'}</span>}
+                              {p.link_type === 'course' && <span style={{color: '#4ade80'}}>📦 كورس: {p.courses?.title || 'غير محدد'}</span>}
+                              {p.link_type === 'subject' && <span style={{color: '#facc15'}}>📚 مادة: {p.subjects?.title || 'غير محدد'}</span>}
+                              {!p.link_type && (p.teachers?.name || '-')}
+                          </>
+                      ) : '-'}
+                  </td>
+                  
                   <td>{p.is_active ? '✅ مفعلة بالعجلة' : '❌ معطلة'}</td>
                   <td>
                     <div className="actions-cell">
@@ -192,7 +218,7 @@ export default function WheelManager() {
         </div>
       </div>
 
-      {/* 🎯 جدول الفائزين الجديد والمطلوب */}
+      {/* جدول الفائزين */}
       <div className="panel">
         <div className="panel-header" style={{ background: '#0f172a' }}>
            <h2>👥 سجل الطلاب الفائزين (المشاركات)</h2>
@@ -268,22 +294,43 @@ export default function WheelManager() {
                     </div>
                  </div>
 
+                 {/* ✅ صندوق إعدادات الكوبون المحدث للارتباطات الجديدة */}
                  {formData.type === 'coupon' && (
                      <div className="coupon-box">
                          <h4>⚙️ إعدادات توليد الكوبون التلقائي</h4>
-                         <div className="grid-2">
-                             <div className="form-group">
-                                 <label>المدرس المرتبط به الكوبون</label>
+                         
+                         <div className="form-group">
+                             <label>الهدف من الكوبون (نطاق الخصم):</label>
+                             <div style={{display: 'flex', gap: '15px', marginBottom: '10px', flexWrap: 'wrap'}}>
+                                <label className="checkbox-label" style={{color:'#38bdf8'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'teacher'} onChange={() => setFormData({...formData, link_type: 'teacher', course_id: '', subject_id: ''})} /> مدرس</label>
+                                <label className="checkbox-label" style={{color:'#4ade80'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'course'} onChange={() => setFormData({...formData, link_type: 'course', teacher_id: '', subject_id: ''})} /> كورس</label>
+                                <label className="checkbox-label" style={{color:'#facc15'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'subject'} onChange={() => setFormData({...formData, link_type: 'subject', teacher_id: '', course_id: ''})} /> مادة</label>
+                             </div>
+                             
+                             {formData.link_type === 'teacher' && (
                                  <select className="input" required value={formData.teacher_id || ''} onChange={e => setFormData({...formData, teacher_id: e.target.value})}>
                                      <option value="">-- اختر المدرس --</option>
                                      {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                  </select>
-                             </div>
-                             <div className="form-group">
-                                 <label>صلاحية الكوبون بعد الفوز (أيام)</label>
-                                 <input className="input" type="number" min="1" required value={formData.validity_days} onChange={e => setFormData({...formData, validity_days: e.target.value})} />
-                             </div>
+                             )}
+                             {formData.link_type === 'course' && (
+                                 <select className="input" required value={formData.course_id || ''} onChange={e => setFormData({...formData, course_id: e.target.value})}>
+                                     <option value="">-- اختر الكورس --</option>
+                                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                 </select>
+                             )}
+                             {formData.link_type === 'subject' && (
+                                 <select className="input" required value={formData.subject_id || ''} onChange={e => setFormData({...formData, subject_id: e.target.value})}>
+                                     <option value="">-- اختر المادة --</option>
+                                     {courses.map(c => (
+                                         <optgroup key={c.id} label={c.title}>
+                                             {c.subjects?.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                                         </optgroup>
+                                     ))}
+                                 </select>
+                             )}
                          </div>
+
                          <div className="grid-2 mt-2">
                              <div className="form-group">
                                  <label>نوع قيمة الخصم</label>
@@ -296,25 +343,22 @@ export default function WheelManager() {
                                  <label>القيمة المخصومة</label>
                                  <input className="input" type="number" min="1" required value={formData.discount_value} onChange={e => setFormData({...formData, discount_value: e.target.value})} />
                              </div>
+                             <div className="form-group" style={{gridColumn: '1 / -1'}}>
+                                 <label>صلاحية الكوبون بعد الفوز (أيام)</label>
+                                 <input className="input" type="number" min="1" required value={formData.validity_days} onChange={e => setFormData({...formData, validity_days: e.target.value})} />
+                             </div>
                          </div>
                      </div>
                  )}
 
-                 <div className="grid-2 mt-2">
-                     <div className="form-group">
-                         <label>لون القطعة في الرسمة</label>
-                         <div style={{display:'flex', gap:'10px'}}>
-                             <input type="color" className="color-picker" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} />
-                             <input className="input" type="text" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} />
-                         </div>
-                     </div>
-                     <div className="form-group" style={{display:'flex', alignItems:'flex-end'}}>
-                         <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', padding:'12px', background:'rgba(255,255,255,0.05)', borderRadius:'8px', width:'100%'}}>
-                             <input type="checkbox" style={{width:'20px', height:'20px'}} checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} />
-                             تفعيل الجائزة ضمن السحب المباشر
-                         </label>
-                     </div>
+                 {/* ✅ إزالة خيارات اللون وترك زر التفعيل فقط */}
+                 <div className="form-group mt-2">
+                     <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', padding:'12px', background:'rgba(255,255,255,0.05)', borderRadius:'8px', width:'100%'}}>
+                         <input type="checkbox" style={{width:'20px', height:'20px', accentColor: '#4ade80'}} checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} />
+                         تفعيل الجائزة ضمن السحب المباشر
+                     </label>
                  </div>
+                 
                  <div className="modal-footer">
                     <button type="button" className="btn cancel" onClick={() => setShowModal(false)}>إلغاء</button>
                     <button type="submit" className="btn primary">حفظ التغييرات 💾</button>
@@ -361,7 +405,6 @@ export default function WheelManager() {
         table { width: 100%; border-collapse: collapse; text-align: right; }
         th { padding: 15px; color: #94a3b8; font-size: 0.9rem; background: #0f172a; border-bottom: 1px solid #334155; }
         td { padding: 15px; border-bottom: 1px solid #334155; color: #cbd5e1; vertical-align: middle; }
-        .color-box { width: 30px; height: 30px; border-radius: 6px; }
         .sub-txt { font-size: 0.85em; color: #94a3b8; }
         .stock-badge { background: rgba(56, 189, 248, 0.1); color: #38bdf8; padding: 4px 12px; border-radius: 20px; font-weight: bold; }
         .type-tag { padding: 4px 8px; border-radius: 6px; font-size: 0.9rem; font-weight: bold; background: #334155; }
@@ -371,7 +414,7 @@ export default function WheelManager() {
         .icon-btn { background: rgba(255,255,255,0.05); border: none; width: 35px; height: 35px; border-radius: 8px; cursor: pointer; }
         .icon-btn.edit { background: rgba(250, 204, 21, 0.1); } .icon-btn.delete { background: rgba(239, 68, 68, 0.1); }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
-        .modal-box { background: #0f172a; width: 95%; max-width: 600px; border-radius: 16px; border: 1px solid #334155; overflow: hidden; }
+        .modal-box { background: #0f172a; width: 95%; max-width: 600px; border-radius: 16px; border: 1px solid #334155; overflow: hidden; max-height: 90vh; overflow-y: auto; }
         .confirm-box { max-width: 400px; padding: 25px; text-align: center; }
         .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #334155; background: #1e293b; }
         .modal-head h3 { margin: 0; color: white; }
@@ -384,7 +427,6 @@ export default function WheelManager() {
         .mt-2 { margin-top: 15px; }
         .coupon-box { background: rgba(56, 189, 248, 0.05); border: 1px dashed rgba(56, 189, 248, 0.3); padding: 15px; border-radius: 12px; margin-top: 15px; }
         .coupon-box h4 { margin: 0 0 15px 0; color: #38bdf8; }
-        .color-picker { width: 45px; height: 45px; padding: 0; border: none; border-radius: 8px; cursor: pointer; background: transparent; }
         .modal-footer { padding-top: 20px; margin-top: 10px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 10px; }
         .modal-footer.centered { justify-content: center; border: none; }
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #333; color: white; padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 2000; transition: 0.4s; opacity: 0; }
