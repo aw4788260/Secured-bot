@@ -70,8 +70,8 @@ export default async (req, res) => {
 
       // استقبال البيانات
       const selectedItemsStr = getValue('selectedItems');
-      let userNote = getValue('user_note') || ''; // تم التعديل إلى let لتمكين الإضافة عليها
-      const appliedCode = getValue('discount_code'); // استقبال كود الخصم (إن وُجد)
+      let userNote = getValue('user_note') || ''; 
+      const appliedCode = getValue('discount_code'); 
       const receiptFile = getFile('receiptFile');
       
       if (!selectedItemsStr) return res.status(400).json({ error: 'لا توجد عناصر مختارة' });
@@ -83,7 +83,6 @@ export default async (req, res) => {
       // =========================================================
       // 🛡️ 1. التحقق من عدم وجود طلبات مكررة قيد الانتظار (Pending)
       // =========================================================
-      // ✅ دمج نوع العنصر مع الـ ID لضمان عدم حدوث تداخل (مثال: course_1, subject_1)
       const selectedItemKeys = selectedItems.map(item => `${item.type}_${item.id}`);
       
       const { data: pendingRequests } = await supabase
@@ -95,7 +94,6 @@ export default async (req, res) => {
       if (pendingRequests && pendingRequests.length > 0) {
         let isDuplicate = false;
         
-        // فحص التطابق التام بناءً على (النوع + رقم العنصر) معاً
         for (const reqData of pendingRequests) {
           const items = reqData.requested_data || [];
           for (const item of items) {
@@ -109,7 +107,6 @@ export default async (req, res) => {
         }
 
         if (isDuplicate) {
-          // ⚠️ نحذف صورة الإيصال المرفوعة لتوفير مساحة السيرفر لأن الطلب مرفوض
           try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
           return res.status(400).json({ error: 'لديك طلب قيد المراجعة بالفعل يحتوي على هذا المحتوى تحديداً.' });
         }
@@ -119,24 +116,23 @@ export default async (req, res) => {
       const fileName = path.basename(receiptFile.filepath);
 
       // المتغيرات النهائية
-      let originalTotalPrice = 0; // السعر الأصلي
-      let finalTotalPrice = null; // ✅ السعر الفعلي يبدأ بـ null
+      let originalTotalPrice = 0;
+      let finalTotalPrice = null; 
       let titleList = [];
       const requestedData = [];
       let detectedTeacherId = null; 
-      let discountCodeId = null;  // لحفظ الـ ID الخاص بالكود
+      let discountCodeId = null;  
 
       // ---------------------------------------------------------
-      // حلقة التكرار لدعم العمليات غير المتزامنة
+      // حلقة التكرار لدعم العمليات غير المتزامنة وتجهيز سلة المشتريات
       // ---------------------------------------------------------
       for (const [index, item] of selectedItems.entries()) {
           const price = parseInt(item.price) || 0;
-          originalTotalPrice += price; // جمع السعر الأصلي
+          originalTotalPrice += price; 
           
           let parentCourseName = null;
           let formattedTitle = '';
 
-          // أ) إذا كان العنصر كورس
           if (item.type === 'course') {
               formattedTitle = `📦 كورس شامل: ${item.title}`;
               parentCourseName = item.title;
@@ -146,7 +142,6 @@ export default async (req, res) => {
                   if (courseData) detectedTeacherId = courseData.teacher_id;
               }
           } 
-          // ب) إذا كان العنصر مادة
           else if (item.type === 'subject') {
               try {
                   const { data: subjectData } = await supabase.from('subjects').select('course_id, courses(title, teacher_id)').eq('id', item.id).single();
@@ -165,7 +160,6 @@ export default async (req, res) => {
                   formattedTitle += `\n   ⬅️ تابع لكورس: ${parentCourseName}`;
               }
           } 
-          // ج) أي نوع آخر
           else {
               formattedTitle = `🔖 عنصر: ${item.title}`;
           }
@@ -189,17 +183,15 @@ export default async (req, res) => {
             .from('discount_codes')
             .select('*')
             .eq('code', appliedCode.trim().toUpperCase())
-            .eq('teacher_id', detectedTeacherId) // تأكيد أن الكود يخص مدرس المادة
             .eq('is_used', false)
             .single();
 
          if (!discountData) {
-            // الكود غير صالح أو تم استخدامه، يجب إيقاف العملية وحذف الصورة المرفوعة
             try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
             return res.status(400).json({ error: 'كود الخصم المدخل غير صحيح أو تم استخدامه مسبقاً.' });
          }
 
-         // ✅ التحقق النهائي من الصلاحية أثناء طلب الاشتراك
+         // التحقق النهائي من الصلاحية (التاريخ)
          if (discountData.expires_at) {
              const now = new Date();
              const expiryDate = new Date(discountData.expires_at);
@@ -209,13 +201,33 @@ export default async (req, res) => {
              }
          }
 
+         // ✅ التحقق من نطاق (الهدف من) الكوبون ومطابقته لسلة المشتريات
+         const linkType = discountData.link_type || 'teacher';
+         let isValidForCart = false;
+
+         if (linkType === 'teacher') {
+             // يجب أن يكون الكوبون تابعاً لمدرس أول عنصر في السلة
+             if (discountData.teacher_id == detectedTeacherId) isValidForCart = true;
+         } else if (linkType === 'course') {
+             // يجب أن تحتوي السلة على الكورس المربوط به الكوبون
+             isValidForCart = requestedData.some(item => item.type === 'course' && item.id == discountData.course_id);
+         } else if (linkType === 'subject') {
+             // يجب أن تحتوي السلة على المادة المربوط بها الكوبون
+             isValidForCart = requestedData.some(item => item.type === 'subject' && item.id == discountData.subject_id);
+         }
+
+         if (!isValidForCart) {
+             try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
+             return res.status(400).json({ error: 'عذراً، كود الخصم غير صالح للعناصر الموجودة في سلة مشترياتك.' });
+         }
+
          discountCodeId = discountData.id;
 
-         // 🔴 إضافة الجملة داخل الملاحظة
+         // إضافة الجملة داخل الملاحظة
          const usedCouponText = `(تم استخدام الكوبون: ${appliedCode.trim().toUpperCase()})`;
          userNote = userNote.trim() !== '' ? `${userNote}\n${usedCouponText}` : usedCouponText;
 
-         // ✅ حساب السعر النهائي وتحديثه فقط في حالة وجود كود خصم
+         // حساب السعر النهائي
          if (discountData.discount_type === 'percentage') {
             finalTotalPrice = originalTotalPrice - (originalTotalPrice * (discountData.discount_value / 100));
          } else if (discountData.discount_type === 'fixed') {
@@ -228,7 +240,6 @@ export default async (req, res) => {
       }
       // =========================================================
 
-      // إضافة فاصل واضح بين العناصر في النص النهائي
       const finalTitle = titleList.join('\n──────────────────────\n');
       
       // 3. الحفظ في القاعدة
@@ -239,11 +250,11 @@ export default async (req, res) => {
         phone: user.phone,
         
         course_title: finalTitle,
-        total_price: originalTotalPrice,       // 👈 السعر الأصلي
-        actual_paid_price: finalTotalPrice,    // 👈 null إذا لم يكن هناك خصم، أو قيمة الخصم
-        discount_code_id: discountCodeId,      // 👈 ربط الطلب بالكوبون المستخدم
+        total_price: originalTotalPrice,       
+        actual_paid_price: finalTotalPrice,    
+        discount_code_id: discountCodeId,      
         
-        user_note: userNote,                   // 👈 الملاحظة تحتوي على الجملة الجديدة بجانب كلام الطالب
+        user_note: userNote,                   
         payment_file_path: fileName,
         status: 'pending',
         requested_data: requestedData,
