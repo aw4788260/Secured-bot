@@ -14,9 +14,10 @@ export default async function handler(req, res) {
     try {
       const { data: teachers } = await supabase.from('teachers').select('id, name');
 
+      // ✅ التعديل هنا: جلب أسماء الكورسات والمواد مع الكوبون
       let query = supabase
         .from('discount_codes')
-        .select('*, teachers(name)', { count: 'exact' });
+        .select('*, teachers(name), courses(title), subjects(title)', { count: 'exact' });
 
       if (teacherId && teacherId !== 'all') query = query.eq('teacher_id', teacherId);
       if (type && type !== 'all') query = query.eq('discount_type', type);
@@ -45,7 +46,6 @@ export default async function handler(req, res) {
   // 🟠 POST: توليد أو إدارة الكوبونات
   // ==========================================================
   if (req.method === 'POST') {
-    // ✅ استقبال expires_at مع باقي البيانات من الـ Request
     const { action, ids, codes, is_used, teacher_id, discount_type, discount_value, expires_at } = req.body;
 
     // 🛠️ دالة مساعدة لتطبيق التحديث/الحذف إما بالـ ID أو بالنص (Codes)
@@ -58,11 +58,11 @@ export default async function handler(req, res) {
     try {
       // --- أ. توليد أكواد جديدة ---
       if (action === 'generate') {
-        // ✅ استقبال expires_at الخاص بالتوليد
-        const { teacher_id: genTeacherId, discount_type: genType, discount_value: genValue, quantity, expires_at: genExpiresAt } = req.body;
+        // ✅ التعديل هنا: استقبال الحقول الجديدة الخاصة بنوع الارتباط
+        const { link_type, teacher_id, course_id, subject_id, discount_type, discount_value, quantity, expires_at } = req.body;
         
-        if (!genTeacherId || !genType || genValue === undefined || !quantity) {
-          return res.status(400).json({ message: 'جميع الحقول مطلوبة' });
+        if (!discount_type || discount_value === undefined || !quantity) {
+          return res.status(400).json({ message: 'الحقول الأساسية مطلوبة' });
         }
 
         const codesToInsert = [];
@@ -70,10 +70,13 @@ export default async function handler(req, res) {
           const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
           codesToInsert.push({
             code: `MED-${randomString}`,
-            teacher_id: genTeacherId,
-            discount_type: genType, 
-            discount_value: genValue,
-            expires_at: genExpiresAt || null // ✅ حفظ تاريخ الانتهاء (لو فارغ هيكون null أي مفتوح)
+            link_type: link_type || 'teacher',
+            teacher_id: teacher_id,
+            course_id: course_id,
+            subject_id: subject_id,
+            discount_type: discount_type, 
+            discount_value: discount_value,
+            expires_at: expires_at || null 
           });
         }
 
@@ -95,13 +98,20 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, message: 'تم تحديث حالة الكوبونات بنجاح' });
       }
 
-      // --- ج. تعديل خصائص متقدمة (تغيير المدرس، القيمة، أو الصلاحية) ---
+      // --- ج. تعديل خصائص متقدمة ---
       if (action === 'update_advanced') {
         const updates = {};
-        if (teacher_id !== undefined && teacher_id !== '') updates.teacher_id = teacher_id;
+        
+        // إذا قام بتغيير المدرس، نقوم بإلغاء ارتباط الكورس والمادة لضمان سلامة البيانات
+        if (teacher_id !== undefined && teacher_id !== '') {
+            updates.link_type = 'teacher';
+            updates.teacher_id = teacher_id;
+            updates.course_id = null;
+            updates.subject_id = null;
+        }
+        
         if (discount_type !== undefined && discount_type !== '') updates.discount_type = discount_type;
         if (discount_value !== undefined && discount_value !== '') updates.discount_value = discount_value;
-        // ✅ تحديث تاريخ الانتهاء
         if (expires_at !== undefined) updates.expires_at = expires_at; 
 
         if (Object.keys(updates).length === 0) {
