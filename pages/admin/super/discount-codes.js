@@ -5,18 +5,22 @@ import SuperLayout from '../../../components/SuperLayout';
 export default function DiscountCodes() {
   const [isClient, setIsClient] = useState(false);
   const [teachers, setTeachers] = useState([]);
+  const [courses, setCourses] = useState([]); // ✅ لتخزين الكورسات والمواد
   const [codes, setCodes] = useState([]);
   const [totalCodes, setTotalCodes] = useState(0);
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   
   // الفورم الأساسي للتوليد
+  const [linkType, setLinkType] = useState('teacher'); // ✅ نوع الربط: 'teacher', 'course', 'subject'
   const [teacherId, setTeacherId] = useState('');
+  const [courseId, setCourseId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
   const [discountType, setDiscountType] = useState('percentage');
   const [discountValue, setDiscountValue] = useState('');
   const [quantity, setQuantity] = useState(10);
   
-  // ✅ حالات تاريخ الانتهاء
+  // حالات تاريخ الانتهاء
   const [hasExpiration, setHasExpiration] = useState(false);
   const [expirationDate, setExpirationDate] = useState('');
   
@@ -39,7 +43,7 @@ export default function DiscountCodes() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  // ✅ الفلاتر (تم استبدال isUsed بـ status ليدعم الانتهاء)
+  // الفلاتر
   const [filters, setFilters] = useState({ teacherId: 'all', type: 'all', value: '', status: 'all' });
 
   // العمليات الجماعية (Table)
@@ -55,10 +59,10 @@ export default function DiscountCodes() {
   const [advancedModal, setAdvancedModal] = useState({
       show: false, sourceTxt: '', payload: {}, actionType: '', 
       newTeacher: '', newType: 'percentage', newValue: '',
-      newHasExpiration: false, newExpirationDate: '' // ✅ للتعديل الجماعي
+      newHasExpiration: false, newExpirationDate: ''
   });
 
-  // ✅ دالة التحقق من الانتهاء
+  // دالة التحقق من الانتهاء
   const isExpired = (dateString) => {
       if (!dateString) return false;
       return new Date() > new Date(dateString);
@@ -70,12 +74,19 @@ export default function DiscountCodes() {
   const fetchData = async (overridePage = page, overrideFilters = filters) => {
     setTableLoading(true);
     try {
+      // ✅ جلب الكورسات والمواد لاستخدامها في القوائم المنسدلة
+      const resContent = await fetch('/api/dashboard/super/content?type=all');
+      if (resContent.ok) {
+        const contentData = await resContent.json();
+        setCourses(contentData.courses || []);
+      }
+
       const queryParams = new URLSearchParams({
         page: overridePage, limit,
         teacherId: overrideFilters.teacherId, 
         type: overrideFilters.type,
         value: overrideFilters.value, 
-        status: overrideFilters.status // ✅ نرسل الحالة (all, active, used, expired)
+        status: overrideFilters.status
       }).toString();
 
       const res = await fetch(`/api/dashboard/super/generate-discount-codes?${queryParams}`);
@@ -85,7 +96,7 @@ export default function DiscountCodes() {
         
         let fetchedCodes = data.codes || [];
         
-        // ✅ فلترة إضافية في الفرونت إند لدعم حالة (منتهي) في حال لم يتم تطبيقها في الباك إند
+        // فلترة إضافية في الفرونت إند لدعم حالة (منتهي)
         if (overrideFilters.status === 'expired') {
             fetchedCodes = fetchedCodes.filter(c => c.expires_at && isExpired(c.expires_at) && !c.is_used);
         } else if (overrideFilters.status === 'active') {
@@ -131,12 +142,15 @@ export default function DiscountCodes() {
     setNewlyGeneratedCodes([]);
     setCopiedBulk(false);
 
-    if (!teacherId || !discountValue || !quantity) return showToast('يرجى تعبئة جميع الحقول المطلوبة', 'error');
+    // ✅ التحقق من اختيار الهدف الصحيح بناءً على نوع الربط
+    if (linkType === 'teacher' && !teacherId) return showToast('يرجى اختيار المدرس', 'error');
+    if (linkType === 'course' && !courseId) return showToast('يرجى اختيار الكورس', 'error');
+    if (linkType === 'subject' && !subjectId) return showToast('يرجى اختيار المادة', 'error');
+    if (!discountValue || !quantity) return showToast('يرجى تعبئة جميع الحقول المطلوبة', 'error');
     if (hasExpiration && !expirationDate) return showToast('يرجى تحديد تاريخ الانتهاء', 'error');
 
     setLoading(true);
     try {
-      // ✅ ضبط الوقت ليكون نهاية اليوم المحدد
       const finalExpiry = hasExpiration && expirationDate ? new Date(expirationDate + 'T23:59:59').toISOString() : null;
 
       const res = await fetch('/api/dashboard/super/generate-discount-codes', {
@@ -144,11 +158,14 @@ export default function DiscountCodes() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'generate',
-          teacher_id: parseInt(teacherId),
+          link_type: linkType,
+          teacher_id: linkType === 'teacher' ? parseInt(teacherId) : null,
+          course_id: linkType === 'course' ? parseInt(courseId) : null,
+          subject_id: linkType === 'subject' ? parseInt(subjectId) : null,
           discount_type: discountType,
           discount_value: parseFloat(discountValue),
           quantity: parseInt(quantity),
-          expires_at: finalExpiry // ✅ إرسال التاريخ للباك إند
+          expires_at: finalExpiry
         })
       });
 
@@ -241,7 +258,6 @@ export default function DiscountCodes() {
           apiPayload.discount_type = newType;
           apiPayload.discount_value = newValue;
       } else if (actionType === 'change_expiry') {
-          // ✅ التعامل مع تحديث تاريخ الانتهاء الجماعي
           if (newHasExpiration && !newExpirationDate) return showToast('الرجاء تحديد التاريخ', 'error');
           apiPayload.expires_at = newHasExpiration ? new Date(newExpirationDate + 'T23:59:59').toISOString() : null;
       }
@@ -270,7 +286,6 @@ export default function DiscountCodes() {
     <SuperLayout>
       <Head><title>إدارة الكوبونات | الإدارة العليا</title></Head>
 
-      {/* ✅ نظام الـ Toast الأنيق العائم */}
       <div className={`smart-toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           <div className="toast-icon">
               {toast.type === 'success' ? '✅' : '⚠️'}
@@ -290,13 +305,42 @@ export default function DiscountCodes() {
               <div className="card-container border-glass">
                 <h3 className="card-title">⚙️ إنشاء كوبونات جديدة</h3>
                 <form onSubmit={handleGenerate} className="generate-form">
-                  <div className="form-group">
-                    <label>المدرس المرتبط:</label>
-                    <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} className="form-input" required>
-                      <option value="">-- اختر المدرس --</option>
-                      {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                  
+                  {/* ✅ تحديد نوع الارتباط */}
+                  <div className="form-group" style={{gridColumn: '1 / -1'}}>
+                    <label>الهدف من الكوبون (نطاق الخصم):</label>
+                    <div style={{display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap'}}>
+                        <label className="checkbox-label" style={{color:'#38bdf8'}}><input type="radio" name="linkType" checked={linkType === 'teacher'} onChange={() => setLinkType('teacher')} /> مخصص لمدرس (على كل محتواه)</label>
+                        <label className="checkbox-label" style={{color:'#4ade80'}}><input type="radio" name="linkType" checked={linkType === 'course'} onChange={() => setLinkType('course')} /> مخصص لكورس محدد</label>
+                        <label className="checkbox-label" style={{color:'#facc15'}}><input type="radio" name="linkType" checked={linkType === 'subject'} onChange={() => setLinkType('subject')} /> مخصص لمادة محددة</label>
+                    </div>
+
+                    {linkType === 'teacher' && (
+                        <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} className="form-input" required>
+                          <option value="">-- اختر المدرس --</option>
+                          {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                    )}
+
+                    {linkType === 'course' && (
+                        <select value={courseId} onChange={(e) => setCourseId(e.target.value)} className="form-input" required>
+                          <option value="">-- اختر الكورس --</option>
+                          {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                        </select>
+                    )}
+
+                    {linkType === 'subject' && (
+                        <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className="form-input" required>
+                          <option value="">-- اختر المادة --</option>
+                          {courses.map(c => (
+                              <optgroup key={c.id} label={`كورس: ${c.title}`}>
+                                  {c.subjects?.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                              </optgroup>
+                          ))}
+                        </select>
+                    )}
                   </div>
+
                   <div className="form-group">
                     <label>نوع الخصم:</label>
                     <select value={discountType} onChange={(e) => setDiscountType(e.target.value)} className="form-input">
@@ -313,7 +357,7 @@ export default function DiscountCodes() {
                     <input type="number" min="1" max="1000" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="form-input" required />
                   </div>
 
-                  {/* ✅ حقل تاريخ الانتهاء (اختياري) */}
+                  {/* تحديد تاريخ الانتهاء */}
                   <div className="form-group" style={{gridColumn: '1 / -1'}}>
                     <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', background: 'rgba(56, 189, 248, 0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)'}}>
                         <input type="checkbox" style={{width: '18px', height: '18px', accentColor: '#38bdf8'}} checked={hasExpiration} onChange={(e) => setHasExpiration(e.target.checked)} />
@@ -377,7 +421,7 @@ export default function DiscountCodes() {
           <div className="filters-container mt-4 border-glass">
               <div className="filters-grid">
                   <div className="filter-item">
-                      <label>المدرس</label>
+                      <label>بحث وارتباط بالمدرس</label>
                       <select className="filter-input" value={filters.teacherId} onChange={e=>setFilters({...filters, teacherId: e.target.value})}>
                           <option value="all">الكل</option>
                           {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -434,7 +478,7 @@ export default function DiscountCodes() {
                   <tr>
                     <th style={{width: '40px'}}><input type="checkbox" onChange={(e) => setSelectedCodes(e.target.checked ? codes.map(c => c.id) : [])} checked={codes.length > 0 && selectedCodes.length === codes.length} /></th>
                     <th>الكود</th>
-                    <th>المدرس</th>
+                    <th>الارتباط</th>
                     <th>الخصم</th>
                     <th>الإنشاء</th>
                     <th>تاريخ الانتهاء</th>
@@ -456,17 +500,23 @@ export default function DiscountCodes() {
                                 <button className="icon-btn" onClick={() => copySingleCode(code.code)} title="نسخ الكود">📋</button>
                             </div>
                         </td>
-                        <td className="teacher-name">{code.teachers?.name || 'غير محدد'}</td>
+                        
+                        {/* ✅ عرض الهدف والارتباط */}
+                        <td className="teacher-name">
+                            {code.link_type === 'teacher' && <span style={{color: '#38bdf8'}}>👨‍🏫 {code.teachers?.name}</span>}
+                            {code.link_type === 'course' && <span style={{color: '#4ade80'}}>📦 {code.courses?.title}</span>}
+                            {code.link_type === 'subject' && <span style={{color: '#facc15'}}>📚 {code.subjects?.title}</span>}
+                            {!code.link_type && (code.teachers?.name || 'غير محدد')}
+                        </td>
+                        
                         <td className="discount-value">{renderDiscountValue(code.discount_type, code.discount_value)}</td>
                         <td className="date-text">{new Date(code.created_at).toLocaleDateString('ar-EG')}</td>
                         
-                        {/* ✅ عرض تاريخ الانتهاء */}
                         <td className="date-text" style={{fontWeight: 'bold', color: code.expires_at ? (isExpired(code.expires_at) ? '#fca5a5' : '#e2e8f0') : '#4ade80'}}>
                             {code.expires_at ? new Date(code.expires_at).toLocaleDateString('ar-EG') : 'مفتوح (دائم)'}
                         </td>
 
                         <td>
-                          {/* ✅ منطق عرض الحالة المحدث */}
                           {code.is_used ? (
                             <span className="status-badge used">🔥 معطل/مستخدم</span>
                           ) : isExpired(code.expires_at) ? (
@@ -519,13 +569,13 @@ export default function DiscountCodes() {
           </div>
       )}
 
-      {/* ✅ نافذة التعديل المتقدم (Advanced Modal) - تشمل الصلاحية */}
+      {/* ✅ نافذة التعديل المتقدم (Advanced Modal) */}
       {advancedModal.show && (
           <div className="modal-overlay blur-bg" onClick={() => setAdvancedModal({...advancedModal, show: false})}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
                   <div className="modal-header-glass">
                       <h3 className="modal-title m-0">
-                          {advancedModal.actionType === 'change_teacher' ? '👨‍🏫 نقل الكوبونات' : 
+                          {advancedModal.actionType === 'change_teacher' ? '👨‍🏫 نقل الكوبونات (لمدرس فقط)' : 
                            advancedModal.actionType === 'change_value' ? '💰 تعديل القيمة' : '⏳ تعديل الصلاحية'}
                       </h3>
                       <button className="close-x" onClick={() => setAdvancedModal({...advancedModal, show: false})}>✕</button>
@@ -537,7 +587,7 @@ export default function DiscountCodes() {
 
                   {advancedModal.actionType === 'change_teacher' && (
                       <div className="form-group mt-4">
-                          <label>اختر المدرس الجديد:</label>
+                          <label>اختر المدرس الجديد (هذا سيحذف ارتباط الكورس/المادة إن وجد):</label>
                           <select className="form-input" value={advancedModal.newTeacher} onChange={e => setAdvancedModal({...advancedModal, newTeacher: e.target.value})}>
                               <option value="">-- يرجى الاختيار --</option>
                               {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -561,7 +611,6 @@ export default function DiscountCodes() {
                       </>
                   )}
 
-                  {/* ✅ خيار تعديل الصلاحية للمودال */}
                   {advancedModal.actionType === 'change_expiry' && (
                       <div className="form-group mt-4">
                         <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: 'white'}}>
