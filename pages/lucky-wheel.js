@@ -492,19 +492,28 @@ export default function LuckyWheelPage() {
           {winResult && !mustSpin && (
             <div className="result-card">
               <div className="confetti-emoji">🎉</div>
-              <h2 className="congrats-title">مبروووك!</h2>
+              
+              {/* تعديل العنوان إذا كان حظ أوفر أو فوز */}
+              <h2 className="congrats-title">
+                {winResult.type === 'nothing' ? 'لا بأس!' : 'مبروووك!'}
+              </h2>
 
               {/* 1. بيانات الطالب والجائزة المدمجة */}
               <div className="student-details-box">
                   <p><strong>الاسم:</strong> {studentName}</p>
                   <p><strong>رقم الهاتف:</strong> <span dir="ltr">{studentPhone}</span></p>
-                  <p><strong>الجائزة:</strong> <span className="prize-name">{winResult.title}</span></p>
+                  <p>
+                    <strong>{winResult.type === 'nothing' ? 'النتيجة:' : 'الجائزة:'}</strong> 
+                    <span className="prize-name"> {winResult.title}</span>
+                  </p>
               </div>
 
-              {/* 2. تحذير التقاط لقطة الشاشة */}
-              <div className="screenshot-alert">
-                 📸 <strong>هام جداً:</strong> يرجى أخذ لقطة شاشة (سكرين شوت) لهذه البيانات فوراً للاحتفاظ بها!
-              </div>
+              {/* إخفاء تحذير السكرين شوت في حالة عدم الفوز */}
+              {winResult.type !== 'nothing' && (
+                <div className="screenshot-alert">
+                  📸 <strong>هام جداً:</strong> يرجى أخذ لقطة شاشة (سكرين شوت) لهذه البيانات فوراً للاحتفاظ بها!
+                </div>
+              )}
 
               {/* 3. حالة الكوبون وخطوات الاستخدام */}
               {winResult.type === 'coupon' && (
@@ -522,7 +531,8 @@ export default function LuckyWheelPage() {
                         )}
                       </button>
                     </div>
-                    <div className="gold-validity">
+                    {/* تعديل لون مدة الصلاحية إلى الأحمر */}
+                    <div className="red-validity">
                         ⏳ صالح لمدة {winResult.validity_days} يوم
                     </div>
                   </div>
@@ -553,6 +563,16 @@ export default function LuckyWheelPage() {
               {winResult.type === 'material' && (
                 <div className="instructions-box material-box">
                   <p>🎁 <strong>يرجى أخذ إسكرين شوت لهذه الصفحة التي تحتوي على بياناتك والجائزة، والتواصل مع المدرس لاستلام جائزتك!</strong></p>
+                </div>
+              )}
+
+              {/* 5. حالة جائزة الترضية (حظ أوفر) */}
+              {winResult.type === 'nothing' && (
+                <div className="instructions-box material-box" style={{ borderColor: '#ef4444', background: 'rgba(239,68,68,0.1)' }}>
+                  <p style={{ color: '#fca5a5', fontSize: '1.2rem', margin: 0, fontWeight: 'bold' }}>
+                    😢 حظ أوفر المرة القادمة! <br/>
+                    نتمنى لك التوفيق في السحوبات والمسابقات القادمة.
+                  </p>
                 </div>
               )}
 
@@ -671,7 +691,8 @@ export default function LuckyWheelPage() {
         .copy-btn:hover  { filter:brightness(1.15); transform:scale(1.03); }
         .copy-btn.copied { background:linear-gradient(180deg,#6ee7a0 0%,#22c55e 100%); }
         
-        .gold-validity { color:#dca742; font-size:1.2rem; font-weight:bold; margin-top:15px; text-shadow:0 0 10px rgba(220,167,66,0.4); }
+        /* لون مدة الصلاحية الأحمر الجديد */
+        .red-validity { color:#ef4444; font-size:1.2rem; font-weight:bold; margin-top:15px; text-shadow:0 0 10px rgba(239,68,68,0.4); }
 
         .instructions-box { background:rgba(0,0,0,0.4); border-radius:12px; padding:20px; text-align:right; border:1px solid #333; }
         .instructions-box h4 { color:#dca742; margin:0 0 15px 0; font-size:1.2rem; border-bottom:1px dashed #444; padding-bottom:10px;}
