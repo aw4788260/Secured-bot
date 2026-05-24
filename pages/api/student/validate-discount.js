@@ -12,8 +12,8 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Unauthorized Access' });
   }
 
-  // ✅ استقبال الكورس والمادة بجانب المدرس لدعم كافة أنواع الكوبونات
-  const { code, teacher_id, course_id, subject_id } = req.body;
+  // ✅ استقبال الكود والمدرس والسلة (selectedItems)
+  const { code, teacher_id, selectedItems } = req.body;
 
   if (!code) {
     return res.status(400).json({ message: 'كود الخصم مطلوب' });
@@ -24,11 +24,10 @@ export default async function handler(req, res) {
     const { data, error } = await supabase
       .from('discount_codes')
       .select('id, code, discount_type, discount_value, expires_at, link_type, teacher_id, course_id, subject_id')
-      .eq('code', code.trim().toUpperCase()) // تجاهل المسافات وحالة الأحرف
-      .eq('is_used', false)                  // يجب أن يكون غير مستخدم
+      .eq('code', code.trim().toUpperCase())
+      .eq('is_used', false)
       .single();
 
-    // إذا لم يجد الكود أو كان هناك خطأ
     if (error || !data) {
       return res.status(400).json({ 
         success: false, 
@@ -36,12 +35,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. التحقق من تاريخ انتهاء الصلاحية (إذا كان الكوبون محدد بتاريخ)
+    // 3. التحقق من تاريخ انتهاء الصلاحية
     if (data.expires_at) {
         const now = new Date();
         const expiryDate = new Date(data.expires_at);
         
-        // إذا كان الوقت الحالي أكبر من وقت الانتهاء، نرفض الكوبون
         if (now > expiryDate) {
             return res.status(400).json({
                 success: false,
@@ -50,23 +48,29 @@ export default async function handler(req, res) {
         }
     }
 
-    // ✅ 4. التحقق من نطاق (الهدف من) الكوبون بناءً على نوع الارتباط
-    const linkType = data.link_type || 'teacher'; // توافق رجعي للأكواد القديمة التي لم يكن بها link_type
+    // ✅ 4. التحقق من تطابق الكوبون مع سلة المشتريات الممررة
+    const linkType = data.link_type || 'teacher'; 
+    const items = selectedItems || [];
+    let isValidForCart = false;
 
     if (linkType === 'teacher') {
-        // إذا كان الكوبون مرتبط بمدرس، يجب أن يتطابق معرف المدرس الممرر من التطبيق
         if (!teacher_id || data.teacher_id != teacher_id) {
             return res.status(400).json({ success: false, message: 'عذراً، هذا الكوبون غير مخصص لهذا المدرس.' });
         }
-    } else if (linkType === 'course') {
-        // إذا كان الكوبون مرتبط بكورس معين
-        if (!course_id || data.course_id != course_id) {
-            return res.status(400).json({ success: false, message: 'عذراً، هذا الكوبون غير صالح للاستخدام مع هذا الكورس.' });
+        isValidForCart = true;
+    } 
+    else if (linkType === 'course') {
+        // التحقق مما إذا كان الكورس المطلوب متاحاً داخل السلة
+        isValidForCart = items.some(item => item.type === 'course' && item.id == data.course_id);
+        if (!isValidForCart) {
+            return res.status(400).json({ success: false, message: 'عذراً، هذا الكوبون غير صالح للاستخدام مع الكورس المحدد.' });
         }
-    } else if (linkType === 'subject') {
-        // إذا كان الكوبون مرتبط بمادة معينة
-        if (!subject_id || data.subject_id != subject_id) {
-            return res.status(400).json({ success: false, message: 'عذراً، هذا الكوبون غير صالح للاستخدام مع هذه المادة.' });
+    } 
+    else if (linkType === 'subject') {
+        // التحقق مما إذا كانت المادة المطلوبة متاحة داخل السلة
+        isValidForCart = items.some(item => item.type === 'subject' && item.id == data.subject_id);
+        if (!isValidForCart) {
+            return res.status(400).json({ success: false, message: 'عذراً، هذا الكوبون غير صالح للاستخدام مع المادة المحددة.' });
         }
     }
 
