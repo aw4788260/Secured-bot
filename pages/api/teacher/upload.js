@@ -4,6 +4,7 @@ import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد فايرب
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto'; // ✅ استدعاء مكتبة التشفير لحساب بصمة الملف
 
 // إعدادات الكونفج الخاصة بـ Next.js
 export const config = {
@@ -27,7 +28,7 @@ const storage = multer.diskStorage({
     if (['.png', '.jpg', '.jpeg'].includes(ext)) {
         folder = 'exam_images'; 
     } else if (ext === '.pdf') {
-        folder = 'pdfs';       
+        folder = 'pdfs';        
     }
 
     const uploadDir = path.join(process.cwd(), 'storage', folder);
@@ -107,6 +108,21 @@ export default async (req, res) => {
     console.log(`   -> Size:          ${(req.file.size / 1024 / 1024).toFixed(2)} MB`);
 
     // ============================================================
+    // ✅ [FIX F-13] توليد البصمة (SHA-256) للملف المرفوع
+    // ============================================================
+    let contentHash = null;
+    try {
+        console.log(`[Upload Step 6.1] Calculating SHA-256 hash for file integrity...`);
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const hashSum = crypto.createHash('sha256');
+        hashSum.update(fileBuffer);
+        contentHash = hashSum.digest('hex'); // استخراج البصمة
+        console.log(`[Upload Step 6.2] File Hash Generated: ${contentHash}`);
+    } catch (hashErr) {
+        console.error("[Error] Failed to calculate file hash:", hashErr.message);
+    }
+
+    // ============================================================
     // ✅🚀 إرسال الإشعارات إذا تم طلب ذلك عبر الـ FormData (خاص بملفات الـ PDF)
     // ============================================================
     const { notifyStudents, chapterId, title } = req.body || {};
@@ -153,7 +169,8 @@ export default async (req, res) => {
     return res.status(200).json({ 
         success: true, 
         url: req.file.filename,
-        fileId: req.file.filename
+        fileId: req.file.filename,
+        contentHash: contentHash // ✅ يتم إرسال البصمة في الرد للوحة التحكم لحفظها في الداتا بيز
     });
 
   } catch (err) {
