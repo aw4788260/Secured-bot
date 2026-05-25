@@ -7,7 +7,6 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   // ✅ 2. التحقق من App Secret (طبقة الحماية الأولى)
-  // يمنع أي طلب لا يحمل الرمز السري الخاص بالتطبيق
   const appSecret = req.headers['x-app-secret'];
   if (appSecret !== process.env.APP_SECRET) {
     return res.status(403).json({ success: false, message: 'غير مصرح لك باستخدام هذا الرابط (Invalid App Secret)' });
@@ -17,10 +16,10 @@ export default async (req, res) => {
 
   try {
     // 3. البحث عن المستخدم
-    // ✅ جلب teacher_profile_id للوصول لبيانات المدرس
+    // ✅ جلب أعمدة failed_attempts و lockout_until بالإضافة للحقول السابقة
     const { data: user } = await supabase
       .from('users')
-      .select('id, password, first_name, username, is_admin, is_blocked, role, teacher_profile_id') 
+      .select('id, password, first_name, username, is_admin, is_blocked, role, teacher_profile_id, failed_attempts, lockout_until') 
       .or(`username.eq.${identifier},phone.eq.${identifier}`)
       .maybeSingle();
 
@@ -32,10 +31,43 @@ export default async (req, res) => {
       return res.status(403).json({ success: false, message: 'هذا الحساب محظور. تواصل مع الدعم.' });
     }
 
+    // ✅ [FIX F-09] التحقق مما إذا كان الحساب في فترة الحظر المؤقت
+    if (user.lockout_until && new Date(user.lockout_until) > new Date()) {
+      const remainingMinutes = Math.ceil((new Date(user.lockout_until) - new Date()) / 60000);
+      return res.status(429).json({ 
+        success: false, 
+        message: `تم حظر الدخول مؤقتاً لحماية الحساب. يرجى المحاولة بعد ${remainingMinutes} دقيقة.` 
+      });
+    }
+
     // 4. التحقق من كلمة المرور
     const isMatch = await bcrypt.compare(password, user.password);
+    
+    // ✅ [FIX F-09] معالجة حالة كلمة المرور الخاطئة وتطبيق التراجع الأسي
     if (!isMatch) {
+      const newAttempts = (user.failed_attempts || 0) + 1;
+      let lockoutUntil = null;
+
+      // تطبيق الحظر المتزايد بعد 5 محاولات (5 دقائق، 10 دقائق، 20 دقيقة...)
+      if (newAttempts >= 5) {
+        const lockoutMinutes = Math.pow(2, newAttempts - 5) * 5; 
+        lockoutUntil = new Date(Date.now() + lockoutMinutes * 60000).toISOString();
+      }
+
+      await supabase.from('users').update({
+        failed_attempts: newAttempts,
+        lockout_until: lockoutUntil
+      }).eq('id', user.id);
+
       return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+    }
+
+    // ✅ [FIX F-09] تصفير عداد الأخطاء عند تسجيل الدخول الناجح
+    if (user.failed_attempts > 0 || user.lockout_until) {
+      await supabase.from('users').update({ 
+        failed_attempts: 0, 
+        lockout_until: null 
+      }).eq('id', user.id);
     }
 
     // 5. إدارة بصمة الجهاز (Device Lock)
