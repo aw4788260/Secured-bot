@@ -23,7 +23,6 @@ export default async (req, res) => {
 
   try {
     // 1. التحقق الأمني (Haras)
-    // نمرر الـ Request والـ ID والنوع ليقوم الحارس بالتحقق من التوكن والاشتراك
     const hasAccess = await checkUserAccess(req, pdfId, 'pdf');
     
     if (!hasAccess) {
@@ -33,9 +32,10 @@ export default async (req, res) => {
     }
 
     // 2. جلب مسار الملف من الداتا بيز
+    // ✅ [FIX F-13] جلب حقل content_hash من قاعدة البيانات
     const { data: pdfDoc, error } = await supabase
       .from('pdfs')
-      .select('file_path, title')
+      .select('file_path, title, content_hash')
       .eq('id', pdfId)
       .single();
 
@@ -51,16 +51,10 @@ export default async (req, res) => {
       return res.status(404).json({ message: "File content missing on server" });
     }
 
-    // =================================================================
-    // 4. ✅ منطق الـ Streaming الذكي (يدعم النفق X-Alt-Range)
-    // =================================================================
-    
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
 
-    // 🔥 الحل الجذري: البحث عن Range العادي، أو البديل (X-Alt-Range) لتجاوز الحجب
     const range = req.headers.range || req.headers['x-alt-range'];
-
     const filename = encodeURIComponent(pdfDoc.title).replace(/['()]/g, escape);
 
     // إعدادات إجبارية لمنع الضغط ودعم التجزئة
@@ -68,10 +62,13 @@ export default async (req, res) => {
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'no-cache'); 
 
+    // ✅ [FIX F-13] حقن بصمة الملف (SHA-256) في الهيدر لكي يقرأها التطبيق
+    if (pdfDoc.content_hash) {
+        res.setHeader('X-File-Hash', pdfDoc.content_hash);
+    }
+
     if (range) {
-      // ✅ حالة الـ Streaming (206 Partial Content)
-      // console.log(`${apiName} ✂️ Serving PARTIAL content`);
-      
+      // حالة الـ Streaming (206 Partial Content)
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
@@ -90,9 +87,7 @@ export default async (req, res) => {
       file.pipe(res);
 
     } else {
-      // ❌ حالة التحميل الكامل (200 OK)
-      // console.log(`${apiName} ⚠️ Serving FULL content`);
-      
+      // حالة التحميل الكامل (200 OK)
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': 'application/pdf',
