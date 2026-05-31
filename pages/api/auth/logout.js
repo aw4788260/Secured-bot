@@ -1,33 +1,40 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { checkUserAccess } from '../../../lib/authHelper'; // 1. استيراد الحارس
+import { checkUserAccess } from '../../../lib/authHelper'; // 1. الحارس الأساسي (الذي يحتوي الآن على فحص App Check)
 import { serialize } from 'cookie';
 
 export default async (req, res) => {
-  // 2. محاولة التعرف على المستخدم
-  // حتى لو كان التوكن منتهي الصلاحية، نحاول استخراج المعرف لإبطال الجلسة في القاعدة
-  // لكن checkUserAccess سيعيد false إذا كان التوكن غير صالح، لذا نعتمد عليه للتحقق الأولي
+  // 1. السماح فقط بطلبات POST (ممارسة أمنية أفضل لتسجيل الخروج)
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method Not Allowed' });
+  }
+
+  // 2. التحقق من App Check وباقي الصلاحيات (المصدر، التوكن، بصمة الجهاز)
+  // الدالة ستتولى التحقق من توكن فايربيز تلقائياً لأننا حدثناها مسبقاً في authHelper
+  const isAuthorized = await checkUserAccess(req); 
   
-  // ملاحظة: في حالة تسجيل الخروج، لا يهمنا بصمة الجهاز بقدر ما يهمنا إبطال التوكن
-  await checkUserAccess(req); 
-  
-  // نستقبل المعرف (قد يكون undefined إذا فشل التحقق، وهذا مقبول في حالة الخروج)
+  if (!isAuthorized) {
+      // إذا فشل فحص App Check أو التوكن، نرفض الطلب فوراً
+      return res.status(401).json({ success: false, message: "Unauthorized access or Invalid App Check" });
+  }
+
+  // 3. نستقبل المعرف (الذي تم حقنه بأمان بواسطة checkUserAccess بعد نجاح كل الفحوصات)
   const userId = req.headers['x-user-id'];
 
   if (userId) {
       try {
-          // 3. حذف التوكن من قاعدة البيانات (إبطال الجلسة تماماً)
+          // 4. حذف التوكن من قاعدة البيانات (إبطال الجلسة تماماً)
           await supabase
               .from('users')
               .update({ jwt_token: null }) // تصفير التوكن
               .eq('id', userId);
               
-          console.log(`User ${userId} logged out and token revoked.`);
+          console.log(`✅ User ${userId} logged out and token revoked.`);
       } catch (err) {
-          console.error("Logout DB Error:", err.message);
+          console.error("❌ Logout DB Error:", err.message);
       }
   }
 
-  // 4. مسح الكوكيز (الخاصة بلوحة التحكم Admin)
+  // 5. مسح الكوكيز (إن وجدت، مثل الخاصة بلوحة التحكم Admin)
   const cookie = serialize('admin_session', '', {
     httpOnly: true,
     secure: process.env.NODE_ENV !== 'development',
