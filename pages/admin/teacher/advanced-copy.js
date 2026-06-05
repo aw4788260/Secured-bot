@@ -194,10 +194,7 @@ export default function AdvancedCopyPage() {
   const executeCopy = async () => {
     if (!sourceCourseId || !targetCourseId) return showToast('يرجى اختيار الكورس المصدري والهدف', 'error');
     
-    const hasIndividualMedia = selected.videos.length > 0 || selected.pdfs.length > 0;
-    if (hasIndividualMedia && targetSubjectId && !targetChapterId) {
-        return showToast('لنسخ فيديوهات أو ملفات بشكل فردي داخل مادة موجودة، يجب اختيار الفصل الوجهة', 'error');
-    }
+    
 
     const hasIndividualChaptersOrExams = selected.chapters.length > 0 || selected.exams.length > 0;
     if (hasIndividualChaptersOrExams && !targetSubjectId && selected.subjects.length === 0) {
