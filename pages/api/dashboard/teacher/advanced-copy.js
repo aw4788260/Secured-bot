@@ -15,11 +15,9 @@ export default async function handler(req, res) {
     if (!courseId) return res.status(400).json({ error: 'Course ID required' });
 
     try {
-      // التحقق من ملكية الكورس
       const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', courseId).single();
       if (!course || course.teacher_id !== teacherId) return res.status(403).json({ error: 'غير مصرح' });
 
-      // جلب شجرة البيانات
       const { data: subjects } = await supabase
         .from('subjects')
         .select(`
@@ -122,14 +120,26 @@ export default async function handler(req, res) {
 
           // 3. نسخ الفيديوهات والملفات الفردية
           if ((selected.videos && selected.videos.length > 0) || (selected.pdfs && selected.pdfs.length > 0)) {
-              if (!targetChapterId) return res.status(400).json({ error: 'يجب اختيار فصل وجهة لنسخ الفيديوهات والملفات الفردية' });
+              
+              let finalChapterId = targetChapterId;
+              
+              // إذا لم يتم تحديد فصل، قم بإنشاء فصل جديد تلقائياً
+              if (!finalChapterId) {
+                  const { data: autoChapter } = await supabase.from('chapters').insert({
+                      subject_id: targetSubjectId,
+                      title: 'فصل جديد', // اسم محايد لا يدل على أنه منسوخ
+                      sort_order: 999
+                  }).select().single();
+                  
+                  finalChapterId = autoChapter.id;
+              }
 
               if (selected.videos && selected.videos.length > 0) {
                   const { data: vids } = await supabase.from('videos').select('*').in('id', selected.videos);
                   if (vids && vids.length > 0) {
                       const vidsToCopy = vids.map(v => ({
                           title: v.title, // الاسم الأصلي
-                          youtube_video_id: v.youtube_video_id, sort_order: v.sort_order, chapter_id: targetChapterId
+                          youtube_video_id: v.youtube_video_id, sort_order: v.sort_order, chapter_id: finalChapterId
                       }));
                       await supabase.from('videos').insert(vidsToCopy);
                   }
@@ -140,7 +150,7 @@ export default async function handler(req, res) {
                   if (pdfs && pdfs.length > 0) {
                       const pdfsToCopy = pdfs.map(p => ({
                           title: p.title, // الاسم الأصلي
-                          file_path: p.file_path, sort_order: p.sort_order, chapter_id: targetChapterId
+                          file_path: p.file_path, sort_order: p.sort_order, chapter_id: finalChapterId
                       }));
                       await supabase.from('pdfs').insert(pdfsToCopy);
                   }
