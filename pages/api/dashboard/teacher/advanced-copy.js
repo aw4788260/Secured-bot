@@ -2,18 +2,24 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 
 export default async function handler(req, res) {
+  // 1. التحقق من صلاحية المعلم
   const { user, error } = await requireTeacherOrAdmin(req, res);
   if (error) return res.status(401).json({ error: 'Unauthorized' });
   const teacherId = user.teacherId;
 
+  // ==========================================================
+  // GET: جلب شجرة المحتوى الخاصة بالكورس (لعرضها في الواجهة)
+  // ==========================================================
   if (req.method === 'GET') {
     const { courseId } = req.query;
     if (!courseId) return res.status(400).json({ error: 'Course ID required' });
 
     try {
+      // التحقق من ملكية الكورس
       const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', courseId).single();
       if (!course || course.teacher_id !== teacherId) return res.status(403).json({ error: 'غير مصرح' });
 
+      // جلب شجرة البيانات
       const { data: subjects } = await supabase
         .from('subjects')
         .select(`
@@ -30,6 +36,9 @@ export default async function handler(req, res) {
     }
   }
 
+  // ==========================================================
+  // POST: خوارزمية النسخ الذكي (متوافقة 100% مع الجداول)
+  // ==========================================================
   if (req.method === 'POST') {
     const { sourceCourseId, targetCourseId, targetSubjectId, targetChapterId, selected } = req.body;
 
@@ -38,17 +47,16 @@ export default async function handler(req, res) {
     }
 
     try {
-      // التحقق من ملكية الكورسات
+      // 1. التحقق من ملكية الكورسات
       const courseIdsToCheck = sourceCourseId === targetCourseId ? [sourceCourseId] : [sourceCourseId, targetCourseId];
       const { data: courses } = await supabase.from('courses').select('id, teacher_id').in('id', courseIdsToCheck);
+      
       if (!courses || courses.length !== courseIdsToCheck.length || courses.some(c => c.teacher_id !== teacherId)) {
           return res.status(403).json({ error: 'أنت لا تملك صلاحية على هذه الكورسات' });
       }
 
-      const isSameCourse = sourceCourseId === targetCourseId;
-
       // ==========================================
-      // مسار أ: النسخ داخل مادة موجودة
+      // مسار أ: النسخ داخل مادة موجودة بالفعل
       // ==========================================
       if (targetSubjectId) {
           
@@ -56,11 +64,10 @@ export default async function handler(req, res) {
           if (selected.exams && selected.exams.length > 0) {
               const { data: examsToCopy } = await supabase.from('exams').select('*').in('id', selected.exams);
               for (const oldExam of (examsToCopy || [])) {
-                  const newTitle = isSameCourse ? `${oldExam.title} (نسخة)` : oldExam.title;
                   const { data: newExam } = await supabase.from('exams').insert({
                       subject_id: targetSubjectId,
                       teacher_id: teacherId,
-                      title: newTitle,
+                      title: oldExam.title, // الاسم الأصلي
                       duration_minutes: oldExam.duration_minutes,
                       start_time: oldExam.start_time,
                       end_time: oldExam.end_time,
@@ -93,9 +100,8 @@ export default async function handler(req, res) {
           if (selected.chapters && selected.chapters.length > 0) {
               const { data: chaptersToCopy } = await supabase.from('chapters').select('*, videos(*), pdfs(*)').in('id', selected.chapters);
               for (const oldChap of (chaptersToCopy || [])) {
-                  const newTitle = isSameCourse ? `${oldChap.title} (نسخة)` : oldChap.title;
                   const { data: newChap } = await supabase.from('chapters').insert({
-                      subject_id: targetSubjectId, title: newTitle, sort_order: oldChap.sort_order
+                      subject_id: targetSubjectId, title: oldChap.title, sort_order: oldChap.sort_order // الاسم الأصلي
                   }).select().single();
 
                   if (oldChap.videos && oldChap.videos.length > 0) {
@@ -122,7 +128,7 @@ export default async function handler(req, res) {
                   const { data: vids } = await supabase.from('videos').select('*').in('id', selected.videos);
                   if (vids && vids.length > 0) {
                       const vidsToCopy = vids.map(v => ({
-                          title: isSameCourse ? `${v.title} (نسخة)` : v.title, 
+                          title: v.title, // الاسم الأصلي
                           youtube_video_id: v.youtube_video_id, sort_order: v.sort_order, chapter_id: targetChapterId
                       }));
                       await supabase.from('videos').insert(vidsToCopy);
@@ -133,7 +139,7 @@ export default async function handler(req, res) {
                   const { data: pdfs } = await supabase.from('pdfs').select('*').in('id', selected.pdfs);
                   if (pdfs && pdfs.length > 0) {
                       const pdfsToCopy = pdfs.map(p => ({
-                          title: isSameCourse ? `${p.title} (نسخة)` : p.title, 
+                          title: p.title, // الاسم الأصلي
                           file_path: p.file_path, sort_order: p.sort_order, chapter_id: targetChapterId
                       }));
                       await supabase.from('pdfs').insert(pdfsToCopy);
@@ -143,7 +149,7 @@ export default async function handler(req, res) {
 
       } 
       // ==========================================
-      // مسار ب: النسخ العادي (إنشاء مواد جديدة)
+      // مسار ب: النسخ العادي (إنشاء مواد جديدة كاملة)
       // ==========================================
       else {
           const { data: sourceSubjects } = await supabase.from('subjects')
@@ -151,9 +157,8 @@ export default async function handler(req, res) {
             .in('id', selected.subjects);
 
           for (const oldSub of (sourceSubjects || [])) {
-              const newTitle = isSameCourse ? `${oldSub.title} (نسخة)` : oldSub.title;
               const { data: newSub } = await supabase.from('subjects').insert({
-                  course_id: targetCourseId, title: newTitle, price: oldSub.price, sort_order: oldSub.sort_order
+                  course_id: targetCourseId, title: oldSub.title, price: oldSub.price, sort_order: oldSub.sort_order // الاسم الأصلي
               }).select().single();
 
               const chaptersToCopy = oldSub.chapters.filter(ch => selected.chapters.includes(ch.id));
