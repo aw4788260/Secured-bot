@@ -9,12 +9,19 @@ export default function AdvancedCopyPage() {
   const [treeLoading, setTreeLoading] = useState(false);
   const [copying, setCopying] = useState(false);
 
+  // الخيارات الأساسية
   const [sourceCourseId, setSourceCourseId] = useState('');
   const [targetCourseId, setTargetCourseId] = useState('');
   
+  // الخيارات المتقدمة (النسخ لمادة/فصل موجود)
+  const [targetSubjectId, setTargetSubjectId] = useState('');
+  const [targetChapterId, setTargetChapterId] = useState('');
+  const [targetTree, setTargetTree] = useState([]);
+
   const [sourceTree, setSourceTree] = useState([]);
-  // التحديد يقتصر على المواد، الفصول، والامتحانات
-  const [selected, setSelected] = useState({ subjects: [], chapters: [], exams: [] });
+  
+  // شملنا الفيديوهات والملفات في هيكل التحديد
+  const [selected, setSelected] = useState({ subjects: [], chapters: [], exams: [], videos: [], pdfs: [] });
 
   const [toast, setToast] = useState({ show: false, msg: '', type: '' });
 
@@ -23,6 +30,7 @@ export default function AdvancedCopyPage() {
     setTimeout(() => setToast({ show: false, msg: '', type: '' }), 4000);
   };
 
+  // جلب الكورسات عند التحميل
   useEffect(() => {
     const fetchCourses = async () => {
       try {
@@ -38,10 +46,11 @@ export default function AdvancedCopyPage() {
     fetchCourses();
   }, []);
 
+  // جلب شجرة المصدر
   useEffect(() => {
     if (!sourceCourseId) {
         setSourceTree([]);
-        setSelected({ subjects: [], chapters: [], exams: [] });
+        setSelected({ subjects: [], chapters: [], exams: [], videos: [], pdfs: [] });
         return;
     }
     const fetchTree = async () => {
@@ -62,52 +71,95 @@ export default function AdvancedCopyPage() {
     fetchTree();
   }, [sourceCourseId]);
 
+  // جلب شجرة الهدف (لإظهار المواد والفصول الموجودة)
+  useEffect(() => {
+    if (!targetCourseId) {
+        setTargetTree([]);
+        setTargetSubjectId('');
+        setTargetChapterId('');
+        return;
+    }
+    const fetchTargetTree = async () => {
+        try {
+            const res = await fetch(`/api/dashboard/teacher/advanced-copy?courseId=${targetCourseId}`);
+            const data = await res.json();
+            if (res.ok) setTargetTree(data.subjects || []);
+        } catch(e) {}
+    };
+    fetchTargetTree();
+  }, [targetCourseId]);
+
   const selectAll = (subjects) => {
-    const newSelected = { subjects: [], chapters: [], exams: [] };
+    const newSelected = { subjects: [], chapters: [], exams: [], videos: [], pdfs: [] };
     subjects.forEach(sub => {
       newSelected.subjects.push(sub.id);
       sub.exams?.forEach(ex => newSelected.exams.push(ex.id));
-      sub.chapters?.forEach(ch => newSelected.chapters.push(ch.id));
+      sub.chapters?.forEach(ch => {
+          newSelected.chapters.push(ch.id);
+          ch.videos?.forEach(v => newSelected.videos.push(v.id));
+          ch.pdfs?.forEach(p => newSelected.pdfs.push(p.id));
+      });
     });
     setSelected(newSelected);
   };
 
-  // دوال التحديد الذكي
+  // --- دوال التحديد الذكي ---
   const toggleSubject = (sub) => {
     setSelected(prev => {
         const isSelected = prev.subjects.includes(sub.id);
         let newSubjects = [...prev.subjects];
         let newChapters = [...prev.chapters];
         let newExams = [...prev.exams];
+        let newVideos = [...prev.videos];
+        let newPdfs = [...prev.pdfs];
 
         if (isSelected) {
-            // إلغاء التحديد يلغي الفروع
             newSubjects = newSubjects.filter(id => id !== sub.id);
             const subChapterIds = sub.chapters?.map(c => c.id) || [];
             const subExamIds = sub.exams?.map(e => e.id) || [];
+            
             newChapters = newChapters.filter(id => !subChapterIds.includes(id));
             newExams = newExams.filter(id => !subExamIds.includes(id));
+            
+            sub.chapters?.forEach(ch => {
+                const vIds = ch.videos?.map(v => v.id) || [];
+                const pIds = ch.pdfs?.map(p => p.id) || [];
+                newVideos = newVideos.filter(id => !vIds.includes(id));
+                newPdfs = newPdfs.filter(id => !pIds.includes(id));
+            });
         } else {
-            // التحديد يحدد الفروع
             newSubjects.push(sub.id);
-            sub.chapters?.forEach(c => { if(!newChapters.includes(c.id)) newChapters.push(c.id); });
+            sub.chapters?.forEach(c => { 
+                if(!newChapters.includes(c.id)) newChapters.push(c.id); 
+                c.videos?.forEach(v => { if(!newVideos.includes(v.id)) newVideos.push(v.id); });
+                c.pdfs?.forEach(p => { if(!newPdfs.includes(p.id)) newPdfs.push(p.id); });
+            });
             sub.exams?.forEach(e => { if(!newExams.includes(e.id)) newExams.push(e.id); });
         }
-        return { subjects: newSubjects, chapters: newChapters, exams: newExams };
+        return { subjects: newSubjects, chapters: newChapters, exams: newExams, videos: newVideos, pdfs: newPdfs };
     });
   };
 
-  const toggleChapter = (chapterId, subjectId) => {
+  const toggleChapter = (chapterId, subjectId, videos, pdfs) => {
     setSelected(prev => {
         const isSelected = prev.chapters.includes(chapterId);
         let newChapters = isSelected ? prev.chapters.filter(id => id !== chapterId) : [...prev.chapters, chapterId];
         let newSubjects = [...prev.subjects];
+        let newVideos = [...prev.videos];
+        let newPdfs = [...prev.pdfs];
         
-        // التحديد التلقائي للمادة الأب
-        if (!isSelected && !newSubjects.includes(subjectId)) {
-            newSubjects.push(subjectId);
+        if (isSelected) {
+            const vIds = videos?.map(v => v.id) || [];
+            const pIds = pdfs?.map(p => p.id) || [];
+            newVideos = newVideos.filter(id => !vIds.includes(id));
+            newPdfs = newPdfs.filter(id => !pIds.includes(id));
+        } else {
+            videos?.forEach(v => { if(!newVideos.includes(v.id)) newVideos.push(v.id); });
+            pdfs?.forEach(p => { if(!newPdfs.includes(p.id)) newPdfs.push(p.id); });
+            if (!newSubjects.includes(subjectId)) newSubjects.push(subjectId);
         }
-        return { ...prev, chapters: newChapters, subjects: newSubjects };
+        
+        return { ...prev, chapters: newChapters, subjects: newSubjects, videos: newVideos, pdfs: newPdfs };
     });
   };
 
@@ -124,36 +176,77 @@ export default function AdvancedCopyPage() {
     });
   };
 
+  const toggleVideo = (videoId) => {
+    setSelected(prev => ({
+        ...prev,
+        videos: prev.videos.includes(videoId) ? prev.videos.filter(v => v !== videoId) : [...prev.videos, videoId]
+    }));
+  };
+
+  const togglePdf = (pdfId) => {
+    setSelected(prev => ({
+        ...prev,
+        pdfs: prev.pdfs.includes(pdfId) ? prev.pdfs.filter(p => p !== pdfId) : [...prev.pdfs, pdfId]
+    }));
+  };
+
+  // --- التنفيذ للنسخ المتقدم ---
   const executeCopy = async () => {
     if (!sourceCourseId || !targetCourseId) return showToast('يرجى اختيار الكورس المصدري والهدف', 'error');
-    if (sourceCourseId === targetCourseId) return showToast('لا يمكن النسخ لنفس الكورس', 'error');
-    if (selected.subjects.length === 0) return showToast('يرجى تحديد مادة واحدة على الأقل للنسخ', 'error');
+    
+    const hasIndividualMedia = selected.videos.length > 0 || selected.pdfs.length > 0;
+    if (hasIndividualMedia && targetSubjectId && !targetChapterId) {
+        return showToast('لنسخ فيديوهات أو ملفات بشكل فردي داخل مادة موجودة، يجب اختيار الفصل الوجهة', 'error');
+    }
 
-    // بناء مصفوفة الفيديوهات والملفات بناءً على الفصول المحددة ليتم إرسالها للسيرفر
-    const finalPayload = { ...selected, videos: [], pdfs: [] };
+    const hasIndividualChaptersOrExams = selected.chapters.length > 0 || selected.exams.length > 0;
+    if (hasIndividualChaptersOrExams && !targetSubjectId && selected.subjects.length === 0) {
+        return showToast('يجب اختيار المادة الوجهة لنسخ الفصول والامتحانات الفردية', 'error');
+    }
+
+    // تصفية الفيديوهات لتجنب النسخ المزدوج (لو الشابتر كامل متحدد، بنشيل الفيديوهات الفردية منه)
+    let filteredVideos = [...selected.videos];
+    let filteredPdfs = [...selected.pdfs];
     
     sourceTree.forEach(sub => {
         sub.chapters?.forEach(ch => {
             if (selected.chapters.includes(ch.id)) {
-                ch.videos?.forEach(v => finalPayload.videos.push(v.id));
-                ch.pdfs?.forEach(p => finalPayload.pdfs.push(p.id));
+                filteredVideos = filteredVideos.filter(vid => !ch.videos?.some(v => v.id === vid));
+                filteredPdfs = filteredPdfs.filter(pid => !ch.pdfs?.some(p => p.id === pid));
             }
         });
     });
+
+    const finalPayload = { 
+        subjects: [...selected.subjects],
+        chapters: [...selected.chapters],
+        exams: [...selected.exams],
+        videos: filteredVideos, 
+        pdfs: filteredPdfs 
+    };
+
+    if (finalPayload.subjects.length === 0 && finalPayload.chapters.length === 0 && finalPayload.exams.length === 0 && finalPayload.videos.length === 0 && finalPayload.pdfs.length === 0) {
+        return showToast('يرجى تحديد عنصر واحد على الأقل للنسخ', 'error');
+    }
 
     setCopying(true);
     try {
       const res = await fetch('/api/dashboard/teacher/advanced-copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceCourseId, targetCourseId, selected: finalPayload })
+        body: JSON.stringify({ 
+            sourceCourseId, 
+            targetCourseId, 
+            targetSubjectId, 
+            targetChapterId, 
+            selected: finalPayload 
+        })
       });
       const data = await res.json();
       
       if (res.ok) {
         showToast('🎉 تم النسخ بنجاح!', 'success');
-        // تصفير التحديدات دون تحديث الصفحة
-        setSelected({ subjects: [], chapters: [], exams: [] });
+        setSelected({ subjects: [], chapters: [], exams: [], videos: [], pdfs: [] });
       } else {
         showToast(data.error || 'حدث خطأ أثناء النسخ', 'error');
       }
@@ -166,19 +259,17 @@ export default function AdvancedCopyPage() {
 
   return (
     <TeacherLayout title="النسخ المتقدم">
-      {/* التنبيهات العائمة */}
       <div className={`custom-toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           <span className="toast-icon">{toast.type === 'success' ? '✅' : '⚠️'}</span>
           <span>{toast.msg}</span>
       </div>
 
-      {/* الهيدر العلوي */}
       <div className="page-header">
           <div className="header-info">
               <div className="header-icon">🚀</div>
               <div>
                   <h1>النسخ الذكي للمحتوى</h1>
-                  <p>أداة احترافية وسريعة لنقل المحتوى (مواد، فصول، امتحانات) بين كورساتك.</p>
+                  <p>يمكنك نسخ محتويات كاملة أو فردية إلى كورسات ومواد وفصول موجودة بالفعل.</p>
               </div>
           </div>
           <button className="back-button" onClick={() => router.push('/admin/teacher/content')}>
@@ -194,7 +285,6 @@ export default function AdvancedCopyPage() {
       ) : (
         <div className="main-layout">
             
-            {/* 1. العمود الأيمن (الإعدادات والتنفيذ) */}
             <div className="config-sidebar">
                 <div className="sticky-box">
                     
@@ -221,10 +311,33 @@ export default function AdvancedCopyPage() {
                         </div>
                         <div className="step-content">
                             <label>🎯 الكورس الهدف (يُنسخ إليه):</label>
-                            <select className="elegant-select target" value={targetCourseId} onChange={e => setTargetCourseId(e.target.value)}>
+                            <select className="elegant-select target" value={targetCourseId} onChange={e => { setTargetCourseId(e.target.value); setTargetSubjectId(''); setTargetChapterId(''); }}>
                                 <option value="">-- اختر الكورس الهدف --</option>
-                                {courses.filter(c => String(c.id) !== sourceCourseId).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                {/* تم السماح باختيار نفس الكورس هنا */}
+                                {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                             </select>
+
+                            {targetCourseId && (
+                                <>
+                                    <label className="mt-3">📚 المادة الوجهة (اختياري - للنسخ بداخلها):</label>
+                                    <select className="elegant-select target" value={targetSubjectId} onChange={e => { setTargetSubjectId(e.target.value); setTargetChapterId(''); }}>
+                                        <option value="">-- إنشاء مواد جديدة --</option>
+                                        {targetTree.map(sub => <option key={sub.id} value={sub.id}>{sub.title}</option>)}
+                                    </select>
+                                </>
+                            )}
+
+                            {targetSubjectId && (
+                                <>
+                                    <label className="mt-3">📂 الفصل الوجهة (اختياري - لنقل الفيديوهات والملفات):</label>
+                                    <select className="elegant-select target" value={targetChapterId} onChange={e => setTargetChapterId(e.target.value)}>
+                                        <option value="">-- إنشاء فصول جديدة --</option>
+                                        {targetTree.find(s => String(s.id) === String(targetSubjectId))?.chapters?.map(ch => (
+                                            <option key={ch.id} value={ch.id}>{ch.title}</option>
+                                        ))}
+                                    </select>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -238,10 +351,10 @@ export default function AdvancedCopyPage() {
                                 <div className="tag"><span>📚 مواد</span><strong>{selected.subjects.length}</strong></div>
                                 <div className="tag"><span>📂 فصول</span><strong>{selected.chapters.length}</strong></div>
                                 <div className="tag"><span>📝 امتحانات</span><strong>{selected.exams.length}</strong></div>
-                                <div className="tag muted"><span>🎬 مرفقات</span><strong>تلقائي</strong></div>
+                                <div className="tag"><span>🎬 فردي</span><strong>{selected.videos.length + selected.pdfs.length}</strong></div>
                             </div>
 
-                            <button className="execute-btn" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId || selected.subjects.length === 0}>
+                            <button className="execute-btn" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId}>
                                 {copying ? '⏳ جاري النسخ...' : '🚀 تأكيد وبدء النسخ'}
                             </button>
                         </div>
@@ -250,11 +363,10 @@ export default function AdvancedCopyPage() {
                 </div>
             </div>
 
-            {/* 2. العمود الأيسر (شجرة المحتوى) */}
             <div className="tree-main-panel">
                 <div className="panel-header">
                     <h2>هيكل الكورس والمحتوى</h2>
-                    <span className="info-badge">قم بتحديد/إلغاء تحديد ما تريد نسخه</span>
+                    <span className="info-badge">قم بتحديد/إلغاء تحديد ما تريد نسخه بدقة</span>
                 </div>
                 
                 <div className="panel-body custom-scrollbar">
@@ -293,7 +405,7 @@ export default function AdvancedCopyPage() {
                                             <div key={ch.id} className={`chapter-block ${selected.chapters.includes(ch.id) ? 'selected' : ''}`}>
                                                 <div className="chapter-item">
                                                     <label className="custom-checkbox">
-                                                        <input type="checkbox" checked={selected.chapters.includes(ch.id)} onChange={() => toggleChapter(ch.id, sub.id)} />
+                                                        <input type="checkbox" checked={selected.chapters.includes(ch.id)} onChange={() => toggleChapter(ch.id, sub.id, ch.videos, ch.pdfs)} />
                                                         <span className="checkmark sub"></span>
                                                         <div className="item-text">
                                                             <span className="icon" style={{color: '#38bdf8'}}>📂</span>
@@ -302,17 +414,25 @@ export default function AdvancedCopyPage() {
                                                     </label>
                                                 </div>
                                                 
-                                                {/* المرفقات (قراءة فقط) */}
+                                                {/* المرفقات (تحويلها لأزرار تحديد) */}
                                                 <div className="attachments-area">
                                                     {(ch.videos?.length > 0 || ch.pdfs?.length > 0) ? (
                                                         <div className="attachments-flex">
                                                             {ch.videos?.map(v => (
-                                                                <div key={`v-${v.id}`} className="attach-pill video">
+                                                                <div 
+                                                                    key={`v-${v.id}`} 
+                                                                    className={`attach-pill video ${selected.videos.includes(v.id) ? 'selected-pill' : ''}`}
+                                                                    onClick={() => toggleVideo(v.id)}
+                                                                >
                                                                     🎬 <span className="trunc">{v.title}</span>
                                                                 </div>
                                                             ))}
                                                             {ch.pdfs?.map(p => (
-                                                                <div key={`p-${p.id}`} className="attach-pill pdf">
+                                                                <div 
+                                                                    key={`p-${p.id}`} 
+                                                                    className={`attach-pill pdf ${selected.pdfs.includes(p.id) ? 'selected-pill' : ''}`}
+                                                                    onClick={() => togglePdf(p.id)}
+                                                                >
                                                                     📄 <span className="trunc">{p.title}</span>
                                                                 </div>
                                                             ))}
@@ -349,6 +469,12 @@ export default function AdvancedCopyPage() {
       )}
 
       <style jsx>{`
+        .mt-3 { margin-top: 15px; display: block; }
+        
+        .attach-pill { cursor: pointer; border: 2px solid transparent !important; }
+        .attach-pill:hover { filter: brightness(1.2); }
+        .attach-pill.selected-pill { border-color: #a855f7 !important; background: rgba(168, 85, 247, 0.2) !important; color: white !important; }
+
         /* ================= General Layout ================= */
         .page-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; margin-bottom: 25px; }
         .header-info { display: flex; align-items: center; gap: 15px; }
