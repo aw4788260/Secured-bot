@@ -47,9 +47,11 @@ export default async function handler(req, res) {
     }
 
     try {
-      // 1. التحقق من ملكية الكورسين
-      const { data: courses } = await supabase.from('courses').select('id, teacher_id').in('id', [sourceCourseId, targetCourseId]);
-      if (!courses || courses.length !== 2 || courses.some(c => c.teacher_id !== teacherId)) {
+      // 1. التحقق من ملكية الكورسين (سواء كانا كورسين مختلفين أو نفس الكورس)
+      const courseIdsToCheck = sourceCourseId === targetCourseId ? [sourceCourseId] : [sourceCourseId, targetCourseId];
+      const { data: courses } = await supabase.from('courses').select('id, teacher_id').in('id', courseIdsToCheck);
+      
+      if (!courses || courses.length !== courseIdsToCheck.length || courses.some(c => c.teacher_id !== teacherId)) {
           return res.status(403).json({ error: 'أنت لا تملك صلاحية على هذه الكورسات' });
       }
 
@@ -63,12 +65,16 @@ export default async function handler(req, res) {
         `)
         .in('id', selected.subjects);
 
+      const isSameCourse = sourceCourseId === targetCourseId;
+
       for (const oldSub of sourceSubjects) {
           
-          // أ. نسخ المادة (Subject) بدون إضافة كلمة (نسخة)
+          // أ. نسخ المادة (Subject) - إضافة "(نسخة)" إذا كان النسخ في نفس الكورس لتجنب تطابق الأسماء
+          const newTitle = isSameCourse ? `${oldSub.title} (نسخة)` : oldSub.title;
+
           const { data: newSub } = await supabase.from('subjects').insert({
               course_id: targetCourseId,
-              title: oldSub.title, 
+              title: newTitle, 
               price: oldSub.price,
               sort_order: oldSub.sort_order
           }).select().single();
@@ -88,7 +94,6 @@ export default async function handler(req, res) {
               const newChapId = newChap.id;
 
               // ج. نسخ الفيديوهات (نسخ تلقائي لجميع فيديوهات الشابتر المنسوخ)
-              // متوافق تماماً مع هيكل جدول الفيديوهات الخاص بك
               if (oldChap.videos && oldChap.videos.length > 0) {
                   const videosToCopy = oldChap.videos.map(v => ({
                       title: v.title,
