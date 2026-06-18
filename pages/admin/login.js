@@ -9,6 +9,7 @@ const UserIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="no
 const LockIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>);
 const SunIcon = () => (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>);
 const MoonIcon = () => (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>);
+const WarningIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>);
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -132,7 +133,7 @@ export default function AdminLogin() {
           
           {error && (
             <div className="error-alert">
-              <span className="error-icon">⚠️</span>
+              <span className="error-icon"><WarningIcon /></span>
               {error}
             </div>
           )}
@@ -163,7 +164,7 @@ export default function AdminLogin() {
             </div>
 
             <button type="submit" disabled={loading} className={`submit-btn ${loading ? 'loading' : ''}`}>
-              {loading ? <span className="spinner"></span> : 'تسجيل الدخول 🚀'}
+              {loading ? <span className="spinner"></span> : 'تسجيل الدخول'}
             </button>
           </form>
         </div>
@@ -276,7 +277,7 @@ export default function AdminLogin() {
         /* ── CONTAINER & CARD ── */
         .login-container {
           width: 100%;
-          max-width: 440px; /* تم تكبيرها قليلاً لتناسب العرض الجديد */
+          max-width: 440px; 
           z-index: 2;
           display: flex;
           flex-direction: column;
@@ -301,7 +302,7 @@ export default function AdminLogin() {
 
         /* ── LOGO SECTION ── */
         .logo-wrap {
-          width: 100%; /* العرض يطابق المربعات */
+          width: 100%; 
           margin-bottom: 25px;
           display: flex;
           justify-content: center;
@@ -309,7 +310,7 @@ export default function AdminLogin() {
         }
         .brand-logo {
           width: 100%;
-          max-height: 110px; /* لضمان عدم زيادة الطول بشكل مفرط */
+          max-height: 150px; /* تم زيادة الطول الأقصى ليصبح اللوجو أكبر وأكثر وضوحاً */
           object-fit: contain;
           filter: drop-shadow(0 8px 15px rgba(201,168,76,0.25));
         }
@@ -349,6 +350,10 @@ export default function AdminLogin() {
           display: flex; align-items: center; justify-content: center; gap: 8px;
           font-weight: 600; font-size: 0.9rem;
           animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        .error-icon {
+          display: flex;
+          align-items: center;
         }
         @keyframes shake {
           10%, 90% { transform: translate3d(-1px, 0, 0); }
