@@ -31,8 +31,6 @@ export default function SuperStudentsPage() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeFilters, setActiveFilters] = useState({ courses: [], subjects: [] });
   const [tempFilters, setTempFilters] = useState({ courses: [], subjects: [] });
-  // حالة القوائم المنسدلة للفلتر
-  const [expandedFilters, setExpandedFilters] = useState({});
 
   // التصفح (Pagination)
   const [currentPage, setCurrentPage] = useState(1);
@@ -51,10 +49,8 @@ export default function SuperStudentsPage() {
 
   // للمنح
   const [showGrantModal, setShowGrantModal] = useState(false);
-  const [grantTarget, setGrantTarget] = useState(null); // 'bulk' OR user object
+  const [grantTarget, setGrantTarget] = useState(null);
   const [selectedGrantItems, setSelectedGrantItems] = useState({ courses: [], subjects: [] });
-  // حالة القوائم المنسدلة للمنح
-  const [expandedGrants, setExpandedGrants] = useState({});
 
   const [confirmData, setConfirmData] = useState({ show: false, message: '', onConfirm: null });
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
@@ -71,15 +67,10 @@ export default function SuperStudentsPage() {
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const toggleExpand = (id, stateSetter) => {
-      stateSetter(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
   // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
     try {
-        // جلب كل الكورسات في النظام لأغراض الفلترة والمنح
         if (allCourses.length === 0) {
             const resCourses = await fetch('/api/dashboard/super/content?type=all'); 
             if (resCourses.ok) {
@@ -88,12 +79,10 @@ export default function SuperStudentsPage() {
             }
         }
 
-        // بناء رابط الـ API مع الفلاتر
         let url = `/api/dashboard/super/students?page=${currentPage}&limit=${itemsPerPage}`;
         
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
-        // إرسال الفلاتر بنفس صيغة الباك اند
         if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
         if (activeFilters.subjects.length > 0) params.append('subjects_filter', activeFilters.subjects.join(','));
         
@@ -170,13 +159,13 @@ export default function SuperStudentsPage() {
                   }
                   fetchData(); 
               }
-          } else { showToast(resData.error || 'حدث خطأ', 'error'); }
+          } else { showToast(resData.error, 'error'); }
       } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   };
 
   // --- إجراءات الأدمن الخاصة ---
   const handleResetDevice = () => {
-      showConfirm('هل أنت متأكد من تصفير بصمة الجهاز لهذا الطالب؟', () => {
+      showConfirm('هل أنت متأكد من تصفير بصمة الجهاز لهذا الطالب؟ سيتمكن من الدخول من جهاز جديد.', () => {
           runApiCall('reset_device', { userId: viewUser.id });
       });
   };
@@ -190,7 +179,7 @@ export default function SuperStudentsPage() {
   };
 
   const handleDeleteUser = () => {
-      showConfirm('⚠️ تحذير: هل أنت متأكد تماماً من حذف هذا الحساب؟', () => {
+      showConfirm('⚠️ تحذير: هل أنت متأكد تماماً من حذف هذا الحساب؟ سيتم مسح جميع بياناته واشتراكاته ولا يمكن التراجع.', () => {
           runApiCall('delete_user', { userId: viewUser.id }, true);
       });
   };
@@ -207,6 +196,7 @@ export default function SuperStudentsPage() {
               ...(editFormData.password ? { password: editFormData.password } : {}) 
           }
       };
+
       runApiCall('update_profile', payload);
       setIsEditing(false);
   };
@@ -215,44 +205,18 @@ export default function SuperStudentsPage() {
   const openGrantModal = (target) => {
       setGrantTarget(target);
       setSelectedGrantItems({ courses: [], subjects: [] });
-      setExpandedGrants({});
       setShowGrantModal(true);
   };
-
   const toggleGrantItem = (type, id) => {
       const list = selectedGrantItems[type];
       const newList = list.includes(id) ? list.filter(x => x !== id) : [...list, id];
       setSelectedGrantItems({ ...selectedGrantItems, [type]: newList });
   };
-
   const submitGrant = () => {
       if (!selectedGrantItems.courses.length && !selectedGrantItems.subjects.length) return showToast("اختر شيئاً واحداً على الأقل", 'error');
       const isBulk = grantTarget === 'bulk';
       runApiCall('grant_access', { userIds: isBulk ? selectedUsers : [grantTarget.id], grantList: selectedGrantItems }, false);
       setShowGrantModal(false);
-  };
-
-  // التحقق مما إذا كان العنصر مملوكاً بالفعل (للتعطيل في المودال)
-  const isOwned = (type, id) => {
-      if (grantTarget === 'bulk') return false; 
-      if (!userSubs || !userSubs.courses) return false;
-
-      if (type === 'course') {
-          return userSubs.courses.some(c => c.course_id === id);
-      }
-      if (type === 'subject') {
-          const subjectOwned = userSubs.subjects.some(s => s.subject_id === id);
-          let parentCourseId = null;
-          for (let c of allCourses) {
-              if (c.subjects?.some(s => s.id === id)) {
-                  parentCourseId = c.id;
-                  break;
-              }
-          }
-          const parentOwned = parentCourseId ? userSubs.courses.some(c => c.course_id === parentCourseId) : false;
-          return subjectOwned || parentOwned;
-      }
-      return false;
   };
 
   // --- منطق الفلترة ---
@@ -310,7 +274,7 @@ export default function SuperStudentsPage() {
              />
           </div>
           
-          <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => { setTempFilters(activeFilters); setExpandedFilters({}); setShowFilterModal(true); }}>
+          <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => { setTempFilters(activeFilters); setShowFilterModal(true); }}>
               🌪️ فلترة
           </button>
 
@@ -335,7 +299,7 @@ export default function SuperStudentsPage() {
                         <th style={{width:'40px'}}><input type="checkbox" onChange={toggleSelectAll} checked={students.length > 0 && selectedUsers.length === students.length} /></th>
                         <th style={{width:'60px'}}>ID</th>
                         <th style={{textAlign:'right'}}>الاسم</th>
-                        <th style={{textAlign:'center'}}>اسم المستخدم</th>
+                        <th style={{textAlign:'center'}}>المستخدم</th>
                         <th style={{textAlign:'center'}}>الهاتف</th>
                         <th style={{textAlign:'center'}}>الجهاز</th>
                         <th style={{textAlign:'center', width:'100px'}}>الحالة</th>
@@ -348,7 +312,7 @@ export default function SuperStudentsPage() {
                             <td style={{fontFamily:'monospace', color:'var(--text-muted)'}}>{std.id}</td>
                             <td style={{fontWeight:'700', color:'var(--text-primary)'}}>
                                 {std.first_name}
-                                {['admin', 'moderator'].includes(std.role) && <span className="admin-tag">{std.role === 'admin' ? 'مدير' : 'مشرف'}</span>}
+                                {std.role === 'admin' && <span className="admin-tag">مشرف</span>}
                             </td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'var(--gold)'}}>@{std.username}</td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'var(--text-secondary)'}}>{std.phone}</td>
@@ -387,37 +351,18 @@ export default function SuperStudentsPage() {
                   </div>
                   <div className="modal-content scrollable custom-scrollbar">
                       {allCourses.map(course => (
-                          <div key={course.id} className={`expandable-group ${expandedFilters[course.id] ? 'open' : ''}`}>
-                              <div className="group-header">
-                                  <button 
-                                      className={`expand-btn ${expandedFilters[course.id] ? 'rotated' : ''}`} 
-                                      onClick={() => toggleExpand(course.id, setExpandedFilters)}
-                                  >
-                                      <ChevronIcon />
-                                  </button>
-                                  
-                                  <label className="checkbox-row main">
-                                      <input 
-                                          type="checkbox" 
-                                          checked={tempFilters.courses.includes(String(course.id))} 
-                                          onChange={() => toggleTempFilter('courses', String(course.id))} 
-                                      />
-                                      <span className="label-text">📦 {course.title}</span>
-                                  </label>
-                              </div>
-                              
-                              <div className={`group-body ${expandedFilters[course.id] ? 'show' : ''}`}>
-                                  {course.subjects?.length > 0 ? course.subjects.map(subject => (
+                          <div key={course.id} className="filter-group">
+                              <label className="checkbox-row main">
+                                  <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
+                                  <span>📦 {course.title}</span>
+                              </label>
+                              <div className="filter-subs">
+                                  {course.subjects?.map(subject => (
                                       <label key={subject.id} className="checkbox-row sub">
-                                          <div className="tree-line"></div>
-                                          <input 
-                                              type="checkbox" 
-                                              checked={tempFilters.subjects.includes(String(subject.id))} 
-                                              onChange={() => toggleTempFilter('subjects', String(subject.id))} 
-                                          />
-                                          <span className="label-text">{subject.title}</span>
+                                          <input type="checkbox" checked={tempFilters.subjects.includes(String(subject.id))} onChange={() => toggleTempFilter('subjects', String(subject.id))} />
+                                          <span>{subject.title}</span>
                                       </label>
-                                  )) : <div className="empty-sub">لا توجد مواد</div>}
+                                  ))}
                               </div>
                           </div>
                       ))}
@@ -430,7 +375,7 @@ export default function SuperStudentsPage() {
           </div>
       )}
 
-      {/* --- Profile Modal --- */}
+      {/* --- Profile Modal (Edit & Actions) --- */}
       {viewUser && (
           <div className="modal-overlay" onClick={() => setViewUser(null)}>
               <div className="modal-box profile-modal" onClick={e => e.stopPropagation()}>
@@ -438,19 +383,20 @@ export default function SuperStudentsPage() {
                       <div className="user-avatar-placeholder">{viewUser.first_name?.[0]}</div>
                       <div className="head-info">
                           <h3>{viewUser.first_name}</h3>
-                          <span className="sub-text">تاريخ الانضمام: {formatDate(viewUser.created_at)}</span>
+                          <span className="sub-text">انضم: {formatDate(viewUser.created_at)}</span>
                       </div>
                       <div className="head-actions">
                           {!isEditing ? (
-                              <button className="edit-btn-icon" onClick={() => setIsEditing(true)}>✏️ تعديل البيانات</button>
+                              <button className="edit-btn-icon" onClick={() => setIsEditing(true)}>✏️ تعديل</button>
                           ) : (
-                              <button className="edit-btn-icon cancel" onClick={() => setIsEditing(false)}>إلغاء التعديل</button>
+                              <button className="edit-btn-icon cancel" onClick={() => setIsEditing(false)}>إلغاء</button>
                           )}
                           <button className="close-icon" onClick={() => setViewUser(null)}>✕</button>
                       </div>
                   </div>
                   
                   <div className="modal-content custom-scrollbar">
+                      {/* بيانات المستخدم / نموذج التعديل */}
                       <div className="data-form">
                           <div className="data-row">
                               <div className="data-item">
@@ -462,7 +408,7 @@ export default function SuperStudentsPage() {
                                   )}
                               </div>
                               <div className="data-item">
-                                  <label>اسم المستخدم (للدخول)</label>
+                                  <label>اسم المستخدم (Login)</label>
                                   {isEditing ? (
                                       <input className="input-field ltr" value={editFormData.username} onChange={e => setEditFormData({...editFormData, username: e.target.value})} />
                                   ) : (
@@ -501,21 +447,26 @@ export default function SuperStudentsPage() {
 
                       <hr className="divider" />
 
+                      {/* أزرار التحكم الخطيرة */}
                       <div className="admin-actions-grid">
-                          <button className="admin-btn yellow" onClick={handleResetDevice}>🔓 تصفير البصمة</button>
+                          <button className="admin-btn yellow" onClick={handleResetDevice}>
+                              🔓 تصفير البصمة
+                          </button>
+                          
                           <button className={`admin-btn ${viewUser.is_blocked ? 'green' : 'orange'}`} onClick={handleToggleBlock}>
                               {viewUser.is_blocked ? '✅ فك الحظر' : '🚫 حظر الطالب'}
                           </button>
-                          <button className="admin-btn red" onClick={handleDeleteUser}>🗑️ حذف الحساب</button>
+
+                          <button className="admin-btn red" onClick={handleDeleteUser}>
+                              🗑️ حذف الحساب
+                          </button>
                       </div>
 
                       <hr className="divider" />
 
+                      {/* الاشتراكات */}
                       <div className="subs-wrapper">
-                          <div className="subs-header">
-                            <h4>الاشتراكات الحالية</h4>
-                            <button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ إضافة صلاحية</button>
-                          </div>
+                          <div className="subs-header"><h4>الاشتراكات الحالية</h4><button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ منح صلاحية</button></div>
                           {loadingSubs ? <div className="loader-line"></div> : (
                               <div className="subs-grid">
                                   <div className="sub-column">
@@ -523,18 +474,18 @@ export default function SuperStudentsPage() {
                                       {userSubs.courses.length > 0 ? userSubs.courses.map(c => (
                                           <div key={c.course_id} className="sub-chip">
                                               <span>{c.courses?.title}</span>
-                                              <button onClick={() => showConfirm('تأكيد سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>✕</button>
+                                              <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>✕</button>
                                           </div>
-                                      )) : <p className="empty-text">لا يوجد اشتراكات بكورسات</p>}
+                                      )) : <p className="empty-text">لا يوجد</p>}
                                   </div>
                                   <div className="sub-column">
                                       <h5>📄 المواد الفردية</h5>
                                       {userSubs.subjects.length > 0 ? userSubs.subjects.map(s => (
                                           <div key={s.subject_id} className="sub-chip">
                                               <span>{s.subjects?.title}</span>
-                                              <button onClick={() => showConfirm('تأكيد سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>✕</button>
+                                              <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>✕</button>
                                           </div>
-                                      )) : <p className="empty-text">لا يوجد اشتراكات بمواد</p>}
+                                      )) : <p className="empty-text">لا يوجد</p>}
                                   </div>
                               </div>
                           )}
@@ -548,90 +499,47 @@ export default function SuperStudentsPage() {
       {showGrantModal && (
           <div className="modal-overlay" onClick={() => setShowGrantModal(false)}>
               <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
-                  <div className="modal-head">
-                    <h3>➕ منح صلاحيات {grantTarget === 'bulk' ? 'جماعية' : ''}</h3>
-                    <button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button>
-                  </div>
+                  <div className="modal-head"><h3>➕ إضافة صلاحيات {grantTarget === 'bulk' ? 'جماعية' : ''}</h3><button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button></div>
                   <div className="modal-content scrollable custom-scrollbar">
-                      {allCourses.map(course => {
-                          const courseOwned = isOwned('course', course.id);
-                          const isOpen = expandedGrants[course.id];
-                          
-                          return (
-                              <div key={course.id} className={`expandable-group ${isOpen ? 'open' : ''} ${courseOwned ? 'owned' : ''}`}>
-                                  <div className="group-header">
-                                      <button 
-                                          className={`expand-btn ${isOpen ? 'rotated' : ''}`} 
-                                          onClick={() => toggleExpand(course.id, setExpandedGrants)}
-                                      >
-                                          <ChevronIcon />
-                                      </button>
-                                      
-                                      <label className="checkbox-row main">
-                                          <input 
-                                              type="checkbox" 
-                                              checked={selectedGrantItems.courses.includes(course.id)} 
-                                              onChange={() => toggleGrantItem('courses', course.id)} 
-                                              disabled={courseOwned}
-                                          />
-                                          <span className="label-text">
-                                              📦 {course.title} 
-                                              {courseOwned && <span className="owned-badge">مملوك</span>}
-                                          </span>
+                      {allCourses.map(course => (
+                          <div key={course.id} className="course-group">
+                              <label className="checkbox-row main">
+                                  <input type="checkbox" checked={selectedGrantItems.courses.includes(course.id)} onChange={() => toggleGrantItem('courses', course.id)} />
+                                  <span>📦 {course.title} (كامل)</span>
+                              </label>
+                              <div className="filter-subs">
+                                  {course.subjects?.map(subject => (
+                                      <label key={subject.id} className="checkbox-row sub">
+                                          <input type="checkbox" checked={selectedGrantItems.subjects.includes(subject.id)} onChange={() => toggleGrantItem('subjects', subject.id)} disabled={selectedGrantItems.courses.includes(course.id)} />
+                                          <span>{subject.title}</span>
                                       </label>
-                                  </div>
-                                  
-                                  <div className={`group-body ${isOpen ? 'show' : ''}`}>
-                                      {course.subjects?.length > 0 ? course.subjects.map(subject => {
-                                          const subjectOwned = isOwned('subject', subject.id) || selectedGrantItems.courses.includes(course.id);
-                                          return (
-                                              <label key={subject.id} className="checkbox-row sub">
-                                                  <div className="tree-line"></div>
-                                                  <input 
-                                                      type="checkbox" 
-                                                      checked={selectedGrantItems.subjects.includes(subject.id)} 
-                                                      onChange={() => toggleGrantItem('subjects', subject.id)} 
-                                                      disabled={subjectOwned || courseOwned} 
-                                                  />
-                                                  <span className="label-text">
-                                                      {subject.title}
-                                                      {isOwned('subject', subject.id) && <span className="check-icon">✔</span>}
-                                                  </span>
-                                              </label>
-                                          );
-                                      }) : <div className="empty-sub">لا توجد مواد داخلية</div>}
-                                  </div>
+                                  ))}
                               </div>
-                          );
-                      })}
+                          </div>
+                      ))}
                   </div>
-                  <div className="modal-footer"><button className="cancel-btn" onClick={() => setShowGrantModal(false)}>إلغاء</button><button className="confirm-btn" onClick={submitGrant}>تأكيد المنح ✅</button></div>
+                  <div className="modal-footer"><button className="cancel-btn" onClick={() => setShowGrantModal(false)}>إلغاء</button><button className="confirm-btn" onClick={submitGrant}>تأكيد ✅</button></div>
               </div>
           </div>
       )}
 
       {/* --- Alerts --- */}
       {confirmData.show && (
-          <div className="modal-overlay alert-overlay">
-              <div className="modal-box alert-box">
-                  <h3>⚠️ تأكيد الإجراء</h3>
-                  <p>{confirmData.message}</p>
-                  <div className="alert-actions">
-                      <button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button>
-                      <button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، متأكد</button>
-                  </div>
-              </div>
+        <div className="modal-overlay alert-overlay">
+          <div className="modal-box alert-box">
+            <h3>⚠️ تأكيد الإجراء</h3>
+            <p>{confirmData.message}</p>
+            <div className="alert-actions">
+              <button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button>
+              <button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، تأكيد</button>
+            </div>
           </div>
+        </div>
       )}
 
       <style jsx>{`
         /* ================= Theme-Aware & Responsive Styling ================= */
-        
-        .toast { 
-          position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; font-weight: bold; 
-          transform: translateX(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 99999999; 
-          box-shadow: var(--shadow); background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); 
-        }
+        .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; font-weight: bold; transform: translateX(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 99999999; box-shadow: var(--shadow); background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); }
         .toast.show { transform: translateX(0); } 
         .toast.success { border-right: 4px solid #22c55e; } 
         .toast.error { border-right: 4px solid #ef4444; }
@@ -657,7 +565,7 @@ export default function SuperStudentsPage() {
         .filter-btn:hover, .filter-btn.active { background: var(--gold); color: #111009; border-color: var(--gold-light); }
 
         /* Bulk Actions Bar */
-        .bulk-glass-bar { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 850px; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid var(--gold); padding: 12px 25px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); z-index: 50; animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .bulk-glass-bar { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 850px; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid var(--gold); padding: 12px 25px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); z-index: 50; animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .bulk-info { display: flex; align-items: center; color: white; font-weight: 600; }
         .count-badge { background: var(--gold); color: #111009; padding: 2px 10px; border-radius: 20px; font-weight: 800; margin-left: 8px; font-size: 1.1rem; }
         .bulk-actions { display: flex; gap: 10px; }
@@ -666,9 +574,9 @@ export default function SuperStudentsPage() {
         .glass-btn.danger { border-color: #ef4444; color: #fca5a5; } 
         .glass-btn.danger:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fecaca; }
 
-        /* Main Table - Mobile Optimized */
+        /* Main Table - Scrollable gracefully on mobile */
         .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow-x: auto; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
-        .std-table { width: 100%; border-collapse: collapse; min-width: 850px; }
+        .std-table { width: 100%; border-collapse: collapse; min-width: 800px; }
         .std-table th { background: var(--bg-elevated); padding: 16px 20px; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 0.9em; text-transform: uppercase; font-weight: 700; }
         .std-table td { padding: 16px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
         .std-table tr:last-child td { border-bottom: none; }
@@ -693,11 +601,11 @@ export default function SuperStudentsPage() {
         
         .loading-state { padding: 50px; text-align: center; color: var(--gold); font-weight: bold; font-size: 1.1rem; }
 
-        /* General Modals - Mobile Optimized */
+        /* General Modals */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-box { background: var(--bg-surface); width: 90%; border-radius: 16px; border: 1px solid var(--border-accent); overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0,0,0,0.6); animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .profile-modal { max-width: 650px; max-height: 90vh; }
-        .grant-modal, .filter-modal { max-width: 550px; max-height: 85vh; }
+        .grant-modal, .filter-modal { max-width: 650px; max-height: 85vh; }
         .alert-box { max-width: 420px; padding: 30px; text-align: center; } 
         .alert-box h3 { margin: 0 0 15px 0; color: var(--gold); font-size: 1.4rem; }
         .alert-box p { color: var(--text-secondary); margin-bottom: 25px; font-size: 1rem; line-height: 1.5; }
@@ -723,38 +631,18 @@ export default function SuperStudentsPage() {
         .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
         .modal-footer { padding: 18px 25px; background: var(--bg-elevated); display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); }
 
-        /* Modern Expandable List Styles */
-        .expandable-group { background: var(--bg-elevated); border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--border); overflow: hidden; transition: 0.2s; }
-        .expandable-group:hover { border-color: var(--border-accent); }
-        .expandable-group.open { border-color: var(--gold); background: var(--bg-surface); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .expandable-group.owned { opacity: 0.5; border-color: var(--border); pointer-events: none; }
-        .expandable-group.owned .expand-btn { pointer-events: auto; }
-
-        .group-header { display: flex; align-items: center; padding: 12px; background: transparent; cursor: pointer; }
+        /* Grid Layout for Courses/Subjects (Based on User Structure) */
+        .filter-group, .course-group { margin-bottom: 18px; background: var(--bg-elevated); padding: 18px; border-radius: 12px; border: 1px solid var(--border); transition: 0.2s; }
+        .filter-group:hover, .course-group:hover { border-color: var(--border-accent); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         
-        .expand-btn { background: rgba(255, 255, 255, 0.05); border: none; color: var(--text-muted); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-left: 12px; transition: all 0.3s ease; cursor: pointer; }
-        .expand-btn:hover { background: var(--gold-dimmer); color: var(--gold); }
-        .expand-btn.rotated { transform: rotate(180deg); background: var(--gold-dim); color: var(--gold); }
-
-        .group-body { max-height: 0; opacity: 0; overflow: hidden; background: var(--bg-hover); transition: all 0.3s ease; }
-        .group-body.show { max-height: 800px; opacity: 1; padding: 5px 0 15px 0; border-top: 1px dashed var(--border); overflow-y: auto; }
-
-        .checkbox-row { display: flex; align-items: center; cursor: pointer; position: relative; user-select: none; }
-        .checkbox-row.main { flex: 1; gap: 12px; min-height: 44px; }
-        .checkbox-row.sub { padding: 12px 15px 12px 0; margin-right: 28px; border-radius: 8px; transition: 0.2s; color: var(--text-secondary); min-height: 44px; }
-        .checkbox-row.sub:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
-
-        /* Tree Line Effect */
-        .tree-line { position: absolute; right: -18px; top: -15px; bottom: 50%; width: 2px; background: var(--border); border-bottom-left-radius: 6px; }
-        .checkbox-row.sub::before { content: ''; position: absolute; right: -18px; top: 50%; width: 14px; height: 2px; background: var(--border); }
-
-        .label-text { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; }
+        .checkbox-row { display: flex; align-items: center; gap: 12px; padding: 5px; cursor: pointer; }
+        .checkbox-row.main { font-weight: 700; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px dashed var(--border); padding-bottom: 12px; margin-bottom: 15px; }
+        .checkbox-row.sub { margin-right: 0; font-size: 0.95em; font-weight: 500; color: var(--text-secondary); background: var(--bg-surface); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); transition: 0.2s; }
+        .checkbox-row.sub:hover { border-color: var(--gold); color: var(--text-primary); }
         
+        .filter-subs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+
         input:disabled + span { color: var(--text-muted); text-decoration: line-through; }
-        
-        .owned-badge { font-size: 0.7em; background: rgba(16, 185, 129, 0.1); color: #34d399; padding: 2px 8px; border-radius: 6px; margin-right: 10px; border: 1px solid rgba(16, 185, 129, 0.2); }
-        .check-icon { color: #34d399; font-weight: bold; margin-right: 8px; }
-        .empty-sub { padding: 15px; text-align: center; color: var(--text-muted); font-size: 0.85em; font-style: italic; }
 
         /* Profile Data Form */
         .user-avatar-placeholder { width: 56px; height: 56px; background: var(--gold-dim); color: var(--gold); border: 2px solid var(--border-accent); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.6em; font-weight: bold; }
@@ -775,7 +663,7 @@ export default function SuperStudentsPage() {
         
         /* Profile Admin Actions */
         .admin-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 25px 0; }
-        .admin-btn { padding: 12px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.9em; display: flex; justify-content: center; align-items: center; gap: 6px; min-height: 44px; }
+        .admin-btn { padding: 12px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.9em; display: flex; justify-content: center; align-items: center; gap: 6px; min-height: 46px; }
         .admin-btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .admin-btn.yellow { background: #eab308; color: #422006; }
         .admin-btn.orange { background: #f97316; }
@@ -799,11 +687,11 @@ export default function SuperStudentsPage() {
         .empty-text { color: var(--text-muted); font-size: 0.9em; text-align: center; font-style: italic; background: var(--bg-hover); padding: 15px; border-radius: 10px; border: 1px dashed var(--border); }
         
         /* General Buttons */
-        .confirm-btn { background: var(--gold); color: #111009; border: none; padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.95rem; transition: 0.2s; min-height: 44px; display: flex; align-items: center; justify-content: center;}
+        .confirm-btn { background: var(--gold); color: #111009; border: none; padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.95rem; transition: 0.2s; min-height: 46px; display: flex; align-items: center; justify-content: center;}
         .confirm-btn:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 5px 15px var(--gold-dim); }
         .confirm-btn.red { background: #ef4444; color: white; }
         .confirm-btn.red:hover { background: #dc2626; box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3); }
-        .cancel-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.95rem; transition: 0.2s; min-height: 44px; display: flex; align-items: center; justify-content: center;}
+        .cancel-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.95rem; transition: 0.2s; min-height: 46px; display: flex; align-items: center; justify-content: center;}
         .cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
         .danger-text { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
         .danger-text:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #fca5a5; }
@@ -811,39 +699,42 @@ export default function SuperStudentsPage() {
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
         
-        /* ================= Mobile Media Queries ================= */
+        /* ================= Mobile Layout & Dimensions Fixes ================= */
         @media (max-width: 768px) {
             .page-title { flex-direction: column; text-align: center; }
             .page-title h1 { font-size: 1.5rem; }
             
-            .controls-container { flex-direction: column; align-items: stretch; gap: 10px; }
+            .controls-container { flex-direction: column; align-items: stretch; gap: 12px; }
             .search-wrapper { width: 100%; min-width: auto; }
             .filter-btn, .btn-refresh { width: 100%; justify-content: center; }
             
             .bulk-glass-bar { flex-direction: column; gap: 12px; border-radius: 20px; padding: 15px; bottom: 20px; width: 92%; }
             .bulk-actions { flex-wrap: wrap; justify-content: center; width: 100%; }
-            .glass-btn { flex: 1; text-align: center; min-width: 120px; }
+            .glass-btn { flex: 1; text-align: center; min-width: 130px; }
             
             .std-table th, .std-table td { padding: 12px 10px; font-size: 0.85rem; }
             
-            .modal-box { width: 95%; max-height: 90dvh; }
-            .modal-head.profile-head { flex-direction: column; text-align: center; padding: 15px; }
+            .modal-box { width: 95%; max-height: 90dvh; margin: 15px auto; }
+            .modal-head.profile-head { flex-direction: column; text-align: center; padding: 20px 15px; }
             .head-actions { width: 100%; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
             
             .modal-content { padding: 15px; }
-            .data-row { flex-direction: column; gap: 12px; margin-bottom: 12px; }
+            .data-row { flex-direction: column; gap: 15px; margin-bottom: 15px; }
             
-            .admin-actions-grid { grid-template-columns: 1fr; gap: 10px; }
+            .admin-actions-grid { grid-template-columns: 1fr; gap: 12px; }
             
-            .subs-grid { grid-template-columns: 1fr; gap: 15px; }
-            .subs-header { flex-direction: column; align-items: stretch; }
-            .add-sub-btn { width: 100%; text-align: center; }
+            .subs-grid { grid-template-columns: 1fr; gap: 20px; }
+            .subs-header { flex-direction: column; align-items: stretch; gap: 15px; }
+            .add-sub-btn { width: 100%; text-align: center; padding: 12px; }
             
-            .modal-footer { padding: 15px; flex-wrap: wrap; justify-content: stretch; flex-direction: column-reverse; gap: 10px; }
-            .modal-footer button { width: 100%; flex: none; }
+            /* Responsive Grid inside Modals */
+            .filter-subs { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
             
-            /* Toast Fix */
-            .toast { top: 10px; left: 10px; right: 10px; text-align: center; transform: translateY(-150%); }
+            .modal-footer { padding: 15px; flex-wrap: wrap; justify-content: stretch !important; flex-direction: column-reverse; gap: 10px; }
+            .modal-footer button { width: 100%; flex: none; margin: 0; }
+            
+            /* Fix Toast Position */
+            .toast { top: 15px; left: 15px; right: 15px; text-align: center; transform: translateY(-150%); }
             .toast.show { transform: translateY(0); }
         }
       `}</style>
