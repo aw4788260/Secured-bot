@@ -1,222 +1,179 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import SuperLayout from '../../../components/SuperLayout';
-import {
-  BarChart, Bar, AreaChart, Area,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell
-} from 'recharts';
+import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-// ── SVG Icons ─────────────────────────────────────────────
-const UsersIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>);
-const MoneyIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
-const CourseIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>);
-const ContentIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>);
-const TeachIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>);
-const CalIcon = () => (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>);
-
-// ── Custom Tooltip ────────────────────────────────────────
-const GoldTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div style={{
-        background: '#1C1F26', border: '1px solid rgba(229,192,92,0.3)',
-        borderRadius: '8px', padding: '10px 16px',
-        color: '#fff', fontSize: '0.85rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-        direction: 'rtl'
-      }}>
-        <div style={{ color: '#8B949E', marginBottom: 4 }}>{label}</div>
-        <div style={{ fontWeight: 700, color: '#E5C05C' }}>{payload[0].value?.toLocaleString()}</div>
-      </div>
-    );
-  }
-  return null;
+// أيقونات SVG بسيطة
+const Icons = {
+  users: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
+  money: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>,
+  course: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>,
+  activity: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>,
+  pulse: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
 };
 
-// ── Main Component ────────────────────────────────────────
 export default function SuperDashboard() {
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalTeachers: 0,
     totalRevenue: 0,
     activeCourses: 0,
-    contentToday: 0, // إضافة وهمية للتوافق مع التصميم
+    activeUsersToday: 0, // ✅ تهيئة النشطين اليوم
     recentUsers: [],
-    chartData: [],
-    activeUsersChartData: []
+    chartData: [], 
+    activeUsersChartData: [] // ✅ تهيئة بيانات رسم النشاط
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/dashboard/super/stats');
+        const res = await fetch('/api/dashboard/super/stats'); 
+        
         if (res.ok) {
-            const data = await res.json();
-            // إضافة رقم عشوائي للمحتوى اليومي لمطابقة التصميم
-            setStats({ ...data, contentToday: 26 });
+          const data = await res.json();
+          setStats(data);
+        } else {
+          console.error("فشل جلب الإحصائيات (API Error):", res.status, res.statusText);
         }
-      } catch (e) {
-        console.error('Network error', e);
+      } catch (error) {
+        console.error("Failed to load stats (Network Error)", error);
       } finally {
         setLoading(false);
       }
     };
+
     fetchStats();
   }, []);
 
-  const todayStr = new Date().toLocaleDateString('ar-EG', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  });
-
   return (
     <SuperLayout>
-      <Head><title>لوحة القيادة | مداد</title></Head>
+      <Head>
+        <title>لوحة التحكم الرئيسية | Super Admin</title>
+      </Head>
 
-      <div className="dash">
-        
-        {/* ── Page Header ── */}
-        <div className="page-header">
-          <div className="header-text">
-            <div className="header-greeting">مرحباً، المشرف العام 👋</div>
-            <div className="header-sub">إليك نظرة عامة على أداء المنصة اليوم.</div>
+      <div className="dashboard-container">
+        <header className="page-header">
+          <div>
+            <h1>👋 مرحباً، المشرف العام</h1>
+            <p>إليك نظرة عامة على أداء المنصة اليوم.</p>
           </div>
-          <div className="date-pill">
-            <CalIcon />
-            <span>{todayStr}</span>
+          <div className="date-badge">
+            {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
-        </div>
+        </header>
 
         {loading ? (
-          <div className="loading-state">جاري تحميل البيانات...</div>
+          <div className="loading-spinner">جاري التحميل...</div>
         ) : (
           <>
-            {/* ── Stats Grid (Matched to Image Structure) ── */}
+            {/* بطاقات الإحصائيات (أصبحت 5 بطاقات) */}
             <div className="stats-grid">
-              
-              {/* Card 1: Total Income (Tall Card Left) */}
-              <div className="stat-card tall-card income">
-                 <div className="stat-head">
-                    <span className="stat-title">إجمالي الدخل</span>
-                    <div className="stat-icon"><MoneyIcon /></div>
-                 </div>
-                 <div className="stat-value huge">
-                    {(stats.totalRevenue || 0).toLocaleString()}
-                 </div>
-                 <div className="stat-currency">ج.م</div>
+              <div className="stat-card blue">
+                <div className="icon">{Icons.users}</div>
+                <div className="info">
+                  <h3>الطلاب المسجلين</h3>
+                  <p>{stats.totalUsers || 0}</p>
+                </div>
               </div>
 
-              {/* Card 2: Content Today (Top Middle) */}
-              <div className="stat-card">
-                 <div className="stat-head">
-                    <span className="stat-title">المحتوى اليوم</span>
-                    <div className="stat-icon"><ContentIcon /></div>
-                 </div>
-                 <div className="stat-value">{(stats.contentToday || 26)}</div>
+              <div className="stat-card pink">
+                <div className="icon">{Icons.pulse}</div>
+                <div className="info">
+                  <h3>النشطون اليوم</h3>
+                  <p>{stats.activeUsersToday || 0}</p>
+                </div>
               </div>
 
-              {/* Card 3: Registered Students (Top Right) */}
-              <div className="stat-card">
-                 <div className="stat-head">
-                    <span className="stat-title">الطلاب المسجلين</span>
-                    <div className="stat-icon"><UsersIcon /></div>
-                 </div>
-                 <div className="stat-value">{(stats.totalUsers || 0).toLocaleString()}</div>
+              <div className="stat-card green">
+                <div className="icon">{Icons.money}</div>
+                <div className="info">
+                  <h3>إجمالي الدخل</h3>
+                  <p>{(stats.totalRevenue || 0).toLocaleString()} ج.م</p>
+                </div>
               </div>
 
-              {/* Card 4: Active Courses (Bottom Middle) */}
-              <div className="stat-card">
-                 <div className="stat-head">
-                    <span className="stat-title">الكورسات النشطة</span>
-                    <div className="stat-icon"><CourseIcon /></div>
-                 </div>
-                 <div className="stat-value">{(stats.activeCourses || 0).toLocaleString()}</div>
+              <div className="stat-card purple">
+                <div className="icon">{Icons.course}</div>
+                <div className="info">
+                  <h3>الكورسات النشطة</h3>
+                  <p>{stats.activeCourses || 0}</p>
+                </div>
               </div>
 
-              {/* Card 5: Number of Teachers (Bottom Right) */}
-              <div className="stat-card">
-                 <div className="stat-head">
-                    <span className="stat-title">عدد المدرسين</span>
-                    <div className="stat-icon"><TeachIcon /></div>
-                 </div>
-                 <div className="stat-value">{(stats.totalTeachers || 0).toLocaleString()}</div>
+              <div className="stat-card orange">
+                <div className="icon">{Icons.users}</div>
+                <div className="info">
+                  <h3>عدد المدرسين</h3>
+                  <p>{stats.totalTeachers || 0}</p>
+                </div>
               </div>
-
             </div>
 
-            {/* ── Charts ── */}
+            {/* ✅ قسم الرسوم البيانية المتجاورة */}
             <div className="charts-container">
-              {/* Revenue Bar Chart */}
-              <div className="chart-panel">
-                <div className="chart-head">
-                  <span className="chart-title">نمو الإيرادات (آخر 7 أيام)</span>
-                  <div className="chart-icon">📊</div>
+                {/* رسم الإيرادات */}
+                <div className="chart-section">
+                    <h3>📊 نمو الإيرادات (آخر 7 أيام)</h3>
+                    <div className="chart-wrapper">
+                        {stats.chartData && stats.chartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={stats.chartData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <Tooltip 
+                                        contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
+                                        cursor={{fill: 'rgba(56, 189, 248, 0.1)'}}
+                                    />
+                                    <Bar dataKey="sales" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={30} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="empty-chart">
+                                لا توجد بيانات مبيعات في آخر 7 أيام
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div className="chart-body">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats.chartData} barSize={20} margin={{top: 10, right: 0, left: -25, bottom: 0}}>
-                      <defs>
-                        <linearGradient id="barGold" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#E5C05C" />
-                          <stop offset="100%" stopColor="#C99B2D" />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false}/>
-                      <XAxis dataKey="name" stroke="#8B949E" tick={{ fill:'#8B949E', fontSize:12 }} axisLine={false} tickLine={false} dy={10}/>
-                      <YAxis stroke="#8B949E" tick={{ fill:'#8B949E', fontSize:12 }} axisLine={false} tickLine={false}/>
-                      <Tooltip content={<GoldTooltip />} cursor={{ fill:'rgba(229,192,92,0.05)' }}/>
-                      <Bar dataKey="sales" radius={[4,4,0,0]}>
-                         {stats.chartData?.map((entry, index) => (
-                             <Cell key={`cell-${index}`} fill={entry.name === 'اليوم' ? 'url(#barGold)' : '#DCA742'} opacity={entry.name === 'اليوم' ? 1 : 0.6} />
-                         ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
 
-              {/* Users Area Chart */}
-              <div className="chart-panel">
-                <div className="chart-head">
-                  <span className="chart-title">نشاط المستخدمين (آخر 7 أيام)</span>
+                {/* رسم نشاط المستخدمين */}
+                <div className="chart-section">
+                    <h3>🚀 نشاط المستخدمين (آخر 7 أيام)</h3>
+                    <div className="chart-wrapper">
+                        {stats.activeUsersChartData && stats.activeUsersChartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={stats.activeUsersChartData}>
+                                    <defs>
+                                        <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3}/>
+                                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <YAxis stroke="#94a3b8" tick={{fontSize: 12}} />
+                                    <Tooltip 
+                                        contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff'}} 
+                                    />
+                                    <Area type="monotone" dataKey="users" stroke="#ec4899" strokeWidth={3} fillOpacity={1} fill="url(#colorUsers)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="empty-chart">لا توجد بيانات نشاط متاحة</div>
+                        )}
+                    </div>
                 </div>
-                <div className="chart-body">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={stats.activeUsersChartData} margin={{top: 10, right: 0, left: -25, bottom: 0}}>
-                      <defs>
-                        <linearGradient id="areaGold" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#E5C05C" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#E5C05C" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false}/>
-                      <XAxis dataKey="name" stroke="#8B949E" tick={{ fill:'#8B949E', fontSize:12 }} axisLine={false} tickLine={false} dy={10}/>
-                      <YAxis stroke="#8B949E" tick={{ fill:'#8B949E', fontSize:12 }} axisLine={false} tickLine={false}/>
-                      <Tooltip content={<GoldTooltip />}/>
-                      <Area
-                        type="monotone"
-                        dataKey="users"
-                        stroke="#E5C05C"
-                        strokeWidth={3}
-                        fill="url(#areaGold)"
-                        dot={{ fill:'#1C1F26', stroke:'#E5C05C', r:5, strokeWidth:2 }}
-                        activeDot={{ r:7, fill:'#E5C05C', strokeWidth:0 }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
             </div>
 
-            {/* ── Bottom Section ── */}
-            <div className="bottom-section">
-              
-              {/* Recent Registrations Table */}
-              <div className="table-panel">
-                <div className="panel-head">
-                  <div className="panel-title">🗂️ أحدث التسجيلات</div>
-                  <button className="view-all" onClick={() => window.location.href='/admin/super/students'}>عرض الكل</button>
+            {/* القسم السفلي: جدول وجراف */}
+            <div className="content-grid">
+              <div className="panel">
+                <div className="panel-header">
+                  <h3>🆕 أحدث التسجيلات</h3>
+                  <button className="btn-text" onClick={() => window.location.href='/admin/super/students'}>عرض الكل</button>
                 </div>
-                <div className="table-wrap">
+                <div className="table-responsive">
                   <table>
                     <thead>
                       <tr>
@@ -227,248 +184,115 @@ export default function SuperDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {stats.recentUsers?.length > 0 ? stats.recentUsers.map((user, i) => (
-                        <tr key={i}>
+                      {stats.recentUsers && stats.recentUsers.length > 0 ? stats.recentUsers.map((user, index) => (
+                        <tr key={index}>
                           <td>
                             <div className="user-cell">
-                              <div className="avatar">{user.name?.[0]?.toUpperCase() || '?'}</div>
+                              <div className="avatar-circle">{user.name ? user.name[0] : '?'}</div>
                               <span>{user.name}</span>
                             </div>
                           </td>
                           <td>
-                            <span className={`role-badge ${user.role}`}>
+                            <span className={`badge ${user.role === 'teacher' ? 'teacher' : 'student'}`}>
                               {user.role === 'teacher' ? 'مدرس' : 'طالب'}
                             </span>
                           </td>
-                          <td className="date-cell">
-                            {user.date ? new Date(user.date).toLocaleDateString('en-GB') : '—'}
-                          </td>
-                          <td>
-                            <span className="status-active">
-                              <span className="dot" />نشط
-                            </span>
-                          </td>
+                          <td>{user.date ? new Date(user.date).toLocaleDateString('ar-EG') : '-'}</td>
+                          <td><span className="status-dot active"></span> نشط</td>
                         </tr>
                       )) : (
-                        <tr><td colSpan="4" style={{ textAlign:'center', padding:'30px' }}>لا توجد تسجيلات</td></tr>
+                        <tr><td colSpan="4" style={{textAlign:'center', padding:'20px', color:'#64748b'}}>لا توجد بيانات حديثة</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Quick Actions */}
-              <div className="quick-actions-panel">
-                <div className="panel-head">
-                  <div className="panel-title">⚡ إجراءات سريعة</div>
+              <div className="panel actions-panel">
+                <div className="panel-header">
+                  <h3>⚡ إجراءات سريعة</h3>
                 </div>
-                <div className="actions-grid">
-                   <button className="action-btn" onClick={() => window.location.href='/admin/super/teachers'}>
-                      <div className="action-icon"><TeachIcon /></div>
-                      <span>إضافة مدرس جديد</span>
-                   </button>
-                   <button className="action-btn" onClick={() => window.location.href='/admin/super/requests'}>
-                      <div className="action-icon">📈</div>
-                      <span>مراجعة الطلبات</span>
-                   </button>
-                   <button className="action-btn" onClick={() => window.location.href='/admin/super/finance'}>
-                      <div className="action-icon" style={{color:'#E5C05C'}}>$</div>
-                      <span>تقارير مالية</span>
-                   </button>
+                <div className="quick-actions">
+                  <button className="action-btn" onClick={() => window.location.href='/admin/super/teachers'}>
+                    <span>{Icons.users}</span>
+                    إضافة مدرس جديد
+                  </button>
+                  <button className="action-btn" onClick={() => window.location.href='/admin/super/requests'}>
+                    <span>{Icons.activity}</span>
+                    مراجعة الطلبات
+                  </button>
+                  <button className="action-btn" onClick={() => window.location.href='/admin/super/finance'}>
+                    <span>{Icons.money}</span>
+                    تقارير مالية
+                  </button>
                 </div>
               </div>
-
             </div>
           </>
         )}
       </div>
 
       <style jsx>{`
-        /* ── Base & Header ── */
-        .dash { padding-bottom: 40px; max-width: 1400px; margin: 0 auto; }
-
-        .page-header {
-          display: flex; justify-content: space-between; align-items: flex-start;
-          margin-bottom: 25px;
-        }
-        .header-greeting {
-          font-size: 1.8rem; font-weight: 800; color: #fff;
-          margin-bottom: 6px;
-        }
-        .header-sub { color: #8B949E; font-size: 0.95rem; }
+        .dashboard-container { padding-bottom: 40px; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #334155; padding-bottom: 20px; }
+        .page-header h1 { margin: 0 0 5px 0; color: #f8fafc; font-size: 1.8rem; }
+        .page-header p { margin: 0; color: #94a3b8; }
+        .date-badge { background: #1e293b; color: #cbd5e1; padding: 8px 16px; border-radius: 20px; border: 1px solid #334155; font-size: 0.9rem; }
         
-        .date-pill {
-          display: flex; align-items: center; gap: 8px;
-          background: transparent;
-          border: 1px solid rgba(229,192,92,0.3);
-          border-radius: 20px;
-          padding: 8px 16px;
-          color: #E5C05C; font-size: 0.85rem; font-weight: bold;
-        }
+        .loading-spinner { text-align: center; padding: 50px; color: #38bdf8; font-size: 1.2rem; }
 
-        .loading-state { text-align: center; padding: 50px; color: var(--gold-light); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #1e293b; padding: 20px; border-radius: 16px; display: flex; align-items: center; gap: 15px; border: 1px solid #334155; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-5px); border-color: #475569; }
+        .stat-card .icon { width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .stat-card .info h3 { margin: 0 0 5px 0; font-size: 0.85rem; color: #94a3b8; font-weight: normal; }
+        .stat-card .info p { margin: 0; font-size: 1.4rem; font-weight: bold; color: #f8fafc; }
+        
+        .stat-card.blue .icon { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
+        .stat-card.green .icon { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+        .stat-card.purple .icon { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+        .stat-card.orange .icon { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+        .stat-card.pink .icon { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
 
-        /* ── Stats Grid (Matched to Image) ── */
-        .stats-grid {
-          display: grid;
-          /* الأعمدة: العمود الأول لليمين، الثاني للوسط، الثالث لليسار */
-          grid-template-columns: 1fr 1fr 1.2fr; 
-          grid-template-areas: 
-             "right-top mid-top left-tall"
-             "right-bot mid-bot left-tall";
-          gap: 16px;
-          margin-bottom: 25px;
-        }
+        .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .chart-section { background: #1e293b; padding: 20px; border-radius: 16px; border: 1px solid #334155; }
+        .chart-section h3 { margin: 0 0 20px 0; color: #f8fafc; font-size: 1.05rem; }
+        .chart-wrapper { height: 260px; width: 100%; }
+        .empty-chart { display: flex; justify-content: center; align-items: center; height: 100%; color: #64748b; font-size: 0.9rem; }
 
-        /* توجيه الكروت لأماكنها في الشبكة */
-        .stats-grid > div:nth-child(1) { grid-area: left-tall; } /* الدخل */
-        .stats-grid > div:nth-child(2) { grid-area: mid-top; }   /* المحتوى */
-        .stats-grid > div:nth-child(3) { grid-area: right-top; } /* الطلاب */
-        .stats-grid > div:nth-child(4) { grid-area: mid-bot; }   /* الكورسات */
-        .stats-grid > div:nth-child(5) { grid-area: right-bot; } /* المدرسين */
+        .content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .panel { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; display: flex; flex-direction: column; }
+        .panel-header { padding: 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .panel-header h3 { margin: 0; color: #f8fafc; font-size: 1.1rem; }
+        .btn-text { background: none; border: none; color: #38bdf8; cursor: pointer; font-size: 0.9rem; }
 
-        .stat-card {
-          background: #1C1F26;
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 16px;
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-          transition: transform 0.2s, border-color 0.2s;
-        }
-        .stat-card:hover { border-color: rgba(229,192,92,0.3); transform: translateY(-3px); }
-
-        .stat-head {
-          display: flex; justify-content: space-between; align-items: flex-start;
-          margin-bottom: 15px;
-        }
-        .stat-title { color: #8B949E; font-size: 0.95rem; font-weight: 600; }
-        .stat-icon {
-          width: 40px; height: 40px;
-          background: rgba(255,255,255,0.03);
-          border-radius: 10px;
-          display: flex; align-items: center; justify-content: center;
-          color: #E5C05C;
-        }
-
-        .stat-value {
-          font-size: 2rem; font-weight: 700; color: #fff;
-          text-align: center;
-        }
-
-        /* كارت الدخل المرتفع */
-        .stat-card.tall-card {
-          background: linear-gradient(145deg, #1C1F26, #16181D);
-          border: 1px solid rgba(229,192,92,0.15);
-          justify-content: flex-start;
-        }
-        .stat-card.tall-card .stat-icon {
-           background: rgba(229,192,92,0.1);
-        }
-        .stat-value.huge {
-          font-size: 2.8rem; margin-top: auto; margin-bottom: 5px;
-        }
-        .stat-currency { text-align: center; color: #8B949E; font-size: 1.1rem; margin-bottom: auto; }
-
-        /* ── Charts ── */
-        .charts-container {
-          display: flex; flex-direction: column; gap: 20px;
-          margin-bottom: 25px;
-        }
-        .chart-panel {
-          background: #1C1F26;
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 16px;
-          padding: 20px;
-        }
-        .chart-head {
-          display: flex; justify-content: space-between; align-items: center;
-          margin-bottom: 20px;
-        }
-        .chart-title { color: #E5C05C; font-size: 1.05rem; font-weight: bold; }
-        .chart-icon { color: #8B949E; }
-        .chart-body { height: 260px; }
-
-        /* ── Bottom Section ── */
-        .bottom-section {
-          display: grid;
-          grid-template-columns: 2fr 1fr;
-          gap: 20px;
-        }
-
-        .table-panel, .quick-actions-panel {
-          background: #1C1F26;
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 16px;
-          padding: 20px;
-        }
-
-        .panel-head {
-          display: flex; justify-content: space-between; align-items: center;
-          margin-bottom: 20px;
-        }
-        .panel-title { color: #fff; font-size: 1.1rem; font-weight: bold; }
-        .view-all { background: transparent; border: none; color: #E5C05C; cursor: pointer; font-weight: 600; font-family: inherit;}
-
-        /* Table */
-        .table-wrap { overflow-x: auto; }
+        .table-responsive { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
-        thead th { text-align: right; padding: 10px 15px; color: #8B949E; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: normal; }
-        tbody tr { transition: background 0.2s; border-bottom: 1px solid rgba(255,255,255,0.02); }
-        tbody tr:hover { background: rgba(255,255,255,0.02); }
-        td { padding: 12px 15px; color: #fff; font-size: 0.95rem; }
+        th { text-align: right; padding: 15px 20px; color: #94a3b8; font-size: 0.85rem; background: #162032; }
+        td { padding: 15px 20px; color: #e2e8f0; border-bottom: 1px solid #334155; font-size: 0.95rem; }
+        tr:last-child td { border-bottom: none; }
         
-        .user-cell { display: flex; align-items: center; gap: 12px; }
-        .avatar { width: 32px; height: 32px; background: #2D333B; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #8B949E; font-size: 0.85rem; font-weight: bold;}
-        .role-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; border: 1px solid rgba(229,192,92,0.3); color: #E5C05C; }
-        .role-badge.teacher { border-color: rgba(56, 189, 248, 0.3); color: #38bdf8; }
-        .date-cell { color: #8B949E; font-size: 0.9rem; }
+        .user-cell { display: flex; align-items: center; gap: 10px; }
+        .avatar-circle { width: 32px; height: 32px; background: #334155; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-weight: bold; }
         
-        .status-active { display: flex; align-items: center; gap: 6px; color: #4ade80; font-size: 0.85rem; font-weight: bold;}
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        .badge.student { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
+        .badge.teacher { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+        
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 5px; }
+        .status-dot.active { background: #22c55e; }
 
-        /* Quick Actions */
-        .actions-grid {
-           display: grid; grid-template-columns: 1fr; gap: 12px;
-        }
-        .action-btn {
-           background: transparent;
-           border: 1px solid rgba(255,255,255,0.05);
-           border-radius: 12px;
-           padding: 20px;
-           display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-           color: #fff; cursor: pointer; transition: 0.2s; font-family: inherit; font-size: 1rem; font-weight: 600;
-        }
-        .action-btn:hover { border-color: rgba(229,192,92,0.4); background: rgba(255,255,255,0.02); transform: translateY(-2px); }
-        .action-icon { font-size: 1.5rem; color: #8B949E; display: flex;}
-        .action-btn:hover .action-icon { color: #E5C05C; }
+        .quick-actions { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        .action-btn { background: #0f172a; border: 1px solid #334155; color: #cbd5e1; padding: 15px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 15px; transition: 0.2s; text-align: right; font-size: 1rem; }
+        .action-btn:hover { border-color: #38bdf8; color: #38bdf8; background: #162032; }
+        .action-btn span { color: #94a3b8; }
 
-        /* ── Responsive ── */
         @media (max-width: 1024px) {
-          .stats-grid {
-             grid-template-columns: 1fr 1fr;
-             grid-template-areas: 
-                "left-tall right-top"
-                "left-tall mid-top"
-                "right-bot mid-bot";
-          }
-          .bottom-section { grid-template-columns: 1fr; }
-          .actions-grid { grid-template-columns: repeat(3, 1fr); }
+          .content-grid, .charts-container { grid-template-columns: 1fr; }
         }
-        @media (max-width: 640px) {
-          .page-header { flex-direction: column; gap: 15px; }
-          .stats-grid {
-             grid-template-columns: 1fr;
-             grid-template-areas: 
-                "left-tall"
-                "right-top"
-                "mid-top"
-                "right-bot"
-                "mid-bot";
-          }
-          .actions-grid { grid-template-columns: 1fr; }
+        @media (max-width: 600px) {
+          .page-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+          .stats-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </SuperLayout>
