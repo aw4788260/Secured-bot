@@ -13,8 +13,7 @@ const Icons = {
   key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>,
   warn: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>,
   check: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
-  user: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
-  teachers: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+  user: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
 };
 
 // --- مكون Toast للإشعارات ---
@@ -31,11 +30,11 @@ const Toast = ({ message, type, onClose }) => {
       <style jsx>{`
         .toast {
           position: fixed; top: 20px; left: 20px; z-index: 2000;
-          background: var(--bg-surface); color: var(--text-primary); padding: 12px 20px;
+          background: #1e293b; color: white; padding: 12px 20px;
           border-radius: 12px; display: flex; align-items: center; gap: 12px;
           box-shadow: 0 10px 30px rgba(0,0,0,0.5);
           animation: slideIn 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
-          border: 1px solid var(--border); min-width: 300px;
+          border: 1px solid #334155; min-width: 300px;
         }
         .toast.success { border-right: 4px solid #22c55e; }
         .toast.error { border-right: 4px solid #ef4444; }
@@ -71,13 +70,13 @@ export default function SuperTeachers() {
 
   const [formData, setFormData] = useState({
     name: '', phone: '', specialty: '', bio: '', whatsapp_number: '',
-    cash_numbers: '', instapay_numbers: '', instapay_links: '',
+    cash_numbers: '', instapay_numbers: '', instapay_links: '', // إضافة حقل الروابط
     dashboard_username: '', dashboard_password: '', 
     app_username: '', app_password: ''
   });
   // حالة مودال تسجيل الدخول
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [teacherToLogin, setTeacherToLogin] = useState(null);
+const [loginModalOpen, setLoginModalOpen] = useState(false);
+const [teacherToLogin, setTeacherToLogin] = useState(null);
 
   const fetchTeachers = async () => {
     setLoading(true);
@@ -102,10 +101,11 @@ export default function SuperTeachers() {
   const handleViewStats = async (teacher) => {
     setStatsModalOpen(true);
     setLoadingStats(true);
-    // دمج البيانات الأساسية فوراً
+    // دمج البيانات الأساسية فوراً (بما فيها قائمة المشرفين الموجودة أصلاً في الرد الرئيسي)
     setSelectedStats({ ...teacher }); 
     
     try {
+      // جلب الإحصائيات المالية والطلاب
       const res = await fetch(`/api/dashboard/super/teacher-stats?id=${teacher.id}`);
       if (res.ok) {
         const statsData = await res.json();
@@ -122,6 +122,7 @@ export default function SuperTeachers() {
       setEditingId(teacher.id);
       const pd = teacher.payment_details || {};
       
+      // تحويل المصفوفات لنصوص للعرض
       const cashStr = Array.isArray(pd.cash_numbers) ? pd.cash_numbers.join(', ') : '';
       const instaNumStr = Array.isArray(pd.instapay_numbers) ? pd.instapay_numbers.join(', ') : '';
       const instaLinkStr = Array.isArray(pd.instapay_links) ? pd.instapay_links.join(', ') : '';
@@ -134,7 +135,7 @@ export default function SuperTeachers() {
         whatsapp_number: teacher.whatsapp_number || '',
         cash_numbers: cashStr,
         instapay_numbers: instaNumStr,
-        instapay_links: instaLinkStr,
+        instapay_links: instaLinkStr, // تعبئة الروابط
         dashboard_username: teacher.dashboard_username || '', 
         dashboard_password: '', 
         app_username: teacher.app_username || '', 
@@ -160,6 +161,7 @@ export default function SuperTeachers() {
       const url = '/api/dashboard/super/teachers';
       const method = editingId ? 'PUT' : 'POST';
 
+      // تحويل النصوص إلى مصفوفات نظيفة
       const payment_details = {
           cash_numbers: formData.cash_numbers.split(',').map(s => s.trim()).filter(Boolean),
           instapay_numbers: formData.instapay_numbers.split(',').map(s => s.trim()).filter(Boolean),
@@ -186,6 +188,7 @@ export default function SuperTeachers() {
           showToast(editingId ? 'تم تعديل البيانات بنجاح' : 'تم إضافة المدرس بنجاح', 'success');
       } else {
           setFormError(data.error || 'حدث خطأ غير معروف');
+          // لا نغلق المودال ليتمكن المستخدم من تصحيح الخطأ
       }
     } catch (error) { 
       setFormError('خطأ في الاتصال بالشبكة');
@@ -215,49 +218,56 @@ export default function SuperTeachers() {
     }
   };
 
-  // --- دوال الدخول الفرعي لحساب المدرس ---
-  const confirmLogin = (teacher) => {
-    setTeacherToLogin(teacher);
-    setLoginModalOpen(true);
-  };
+  // 1. فتح نافذة التأكيد
+const confirmLogin = (teacher) => {
+  setTeacherToLogin(teacher);
+  setLoginModalOpen(true);
+};
 
-  const executeLogin = async () => {
-    if (!teacherToLogin) return;
-    
-    try {
-        const res = await fetch('/api/auth/super-login-as', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: teacherToLogin.dashboard_username })
-        });
+// 2. تنفيذ الدخول الفعلي
+// استبدل دالة executeLogin القديمة بهذه النسخة المحسنة
+// ... داخل Teachers.js
 
-        if (res.ok) {
-            const data = await res.json();
-            
-            localStorage.removeItem('admin_user_id');
-            localStorage.removeItem('admin_name');
-            localStorage.removeItem('is_admin_session');
+const executeLogin = async () => {
+  if (!teacherToLogin) return;
+  
+  try {
+      const res = await fetch('/api/auth/super-login-as', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: teacherToLogin.dashboard_username })
+      });
 
-            localStorage.setItem('admin_user_id', data.user.id);
-            localStorage.setItem('admin_name', data.user.name);
-            localStorage.setItem('is_admin_session', 'true');
-            
-            showToast(`تم الدخول لحساب ${teacherToLogin.name} بنجاح`, 'success');
-            setLoginModalOpen(false);
+      if (res.ok) {
+          const data = await res.json();
+          
+          // 1. تنظيف بيانات السوبر أدمن القديمة
+          localStorage.removeItem('admin_user_id');
+          localStorage.removeItem('admin_name');
+          localStorage.removeItem('is_admin_session');
 
-            setTimeout(() => {
-                window.location.href = '/admin/teacher';
-            }, 500);
-            
-        } else {
-            const errData = await res.json();
-            showToast(errData.error || 'فشل الدخول، تأكد من البيانات', 'error');
-        }
-    } catch (err) { 
-        console.error(err);
-        showToast('خطأ في الاتصال بالسيرفر', 'error');
-    }
-  };
+          // 2. تخزين بيانات المدرس الجديدة
+          localStorage.setItem('admin_user_id', data.user.id);
+          localStorage.setItem('admin_name', data.user.name);
+          localStorage.setItem('is_admin_session', 'true');
+          
+          showToast(`تم الدخول لحساب ${teacherToLogin.name} بنجاح`, 'success');
+          setLoginModalOpen(false);
+
+          // 3. التوجيه في نفس الصفحة (أكثر استقراراً للكوكيز)
+          setTimeout(() => {
+              window.location.href = '/admin/teacher';
+          }, 500);
+          
+      } else {
+          const errData = await res.json();
+          showToast(errData.error || 'فشل الدخول، تأكد من البيانات', 'error');
+      }
+  } catch (err) { 
+      console.error(err);
+      showToast('خطأ في الاتصال بالسيرفر', 'error');
+  }
+};
   
   const filteredTeachers = teachers.filter(t => 
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -267,17 +277,14 @@ export default function SuperTeachers() {
 
   return (
     <SuperLayout>
-      <Head><title>إدارة المدرسين | الإدارة العليا</title></Head>
+      <Head><title>إدارة المدرسين | Super Admin</title></Head>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="page-container">
         <div className="top-bar">
           <div>
-            <div className="page-title">
-              <div className="title-icon">{Icons.teachers}</div>
-              <h1>إدارة المدرسين</h1>
-            </div>
+            <h1>👨‍🏫 إدارة المدرسين</h1>
             <p>إدارة الحسابات، المشرفين، والبيانات المالية.</p>
           </div>
           <button className="btn-primary" onClick={() => handleOpenForm()}>
@@ -326,25 +333,19 @@ export default function SuperTeachers() {
                         </div>
                     </td>
                     <td><span className="badge">{t.specialty}</span></td>
-                    <td dir="ltr" className="phone-col">{t.phone}</td>
+                    <td dir="ltr" style={{color:'#cbd5e1', fontSize:'0.9rem'}}>{t.phone}</td>
                     <td>
-                      <div className="actions-wrapper">
-                        <div className="main-actions">
-                          <button className="btn-icon view" onClick={() => handleViewStats(t)} title="التفاصيل والمشرفين">{Icons.eye}</button>
-                          <button className="btn-icon edit" onClick={() => handleOpenForm(t)} title="تعديل">{Icons.edit}</button>
-                          <button className="btn-icon login" onClick={() => confirmLogin(t)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
-                        </div>
-                        
-                        {/* خط فاصل لفصل زر الحذف وتجنب الخطأ */}
-                        <div className="action-divider"></div>
-                        
-                        <button className="btn-icon delete separated" onClick={() => confirmDelete(t)} title="حذف">{Icons.trash}</button>
+                      <div className="actions">
+                        <button className="btn-icon view" onClick={() => handleViewStats(t)} title="التفاصيل والمشرفين">{Icons.eye}</button>
+                        <button className="btn-icon edit" onClick={() => handleOpenForm(t)} title="تعديل">{Icons.edit}</button>
+                        <button className="btn-icon login" onClick={() => confirmLogin(t)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
+                        <button className="btn-icon delete" onClick={() => confirmDelete(t)} title="حذف">{Icons.trash}</button>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filteredTeachers.length === 0 && (
-                  <tr><td colSpan="5" className="empty-row">لا يوجد نتائج.</td></tr>
+                  <tr><td colSpan="5" style={{textAlign:'center', padding:'40px', color:'#94a3b8'}}>لا يوجد نتائج.</td></tr>
                 )}
               </tbody>
             </table>
@@ -361,6 +362,7 @@ export default function SuperTeachers() {
               <button onClick={() => setFormModalOpen(false)}>{Icons.close}</button>
             </div>
             
+            {/* عرض الخطأ داخل المودال */}
             {formError && (
                 <div className="error-banner">
                     ⚠️ {formError}
@@ -382,7 +384,7 @@ export default function SuperTeachers() {
                         <input type="text" required value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}/>
                     </div>
                     <div className="form-group">
-                        <label>رقم الهاتف (للدخول)</label>
+                        <label>هاتف الهاتف (للدخول)</label>
                         <input type="text" required dir="ltr" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})}/>
                     </div>
                 </div>
@@ -398,7 +400,7 @@ export default function SuperTeachers() {
                 </div>
               </div>
 
-              {/* 2. البيانات المالية */}
+              {/* 2. البيانات المالية - تم فصل الأرقام عن الروابط */}
               <div className="form-section">
                 <h4>2. بيانات الدفع (Payment Details)</h4>
                 <div className="form-group">
@@ -456,7 +458,7 @@ export default function SuperTeachers() {
         </div>
       )}
 
-      {/* --- نافذة الحذف --- */}
+      {/* --- نافذة الحذف الأنيقة --- */}
       {deleteModalOpen && teacherToDelete && (
         <div className="modal-overlay">
             <div className="modal delete-modal">
@@ -475,7 +477,7 @@ export default function SuperTeachers() {
         </div>
       )}
 
-      {/* --- نافذة الإحصائيات --- */}
+      {/* --- نافذة الإحصائيات والتفاصيل والمشرفين --- */}
       {statsModalOpen && selectedStats && (
         <div className="modal-overlay">
           <div className="modal stats-modal">
@@ -493,7 +495,7 @@ export default function SuperTeachers() {
                  <div className="stat-box purple"><h4>📚 كورسات</h4><span className="val">{selectedStats.courses_count || 0}</span></div>
                </div>
 
-               {/* المشرفون المساعدون */}
+               {/* قسم المشرفين المساعدين */}
                <div className="moderators-section">
                   <h4>👥 فريق العمل والمشرفين</h4>
                   {selectedStats.moderators && selectedStats.moderators.length > 0 ? (
@@ -520,183 +522,152 @@ export default function SuperTeachers() {
         </div>
       )}
 
-      {/* --- نافذة تأكيد الدخول لحساب المدرس --- */}
-      {loginModalOpen && teacherToLogin && (
-        <div className="modal-overlay">
-            <div className="modal login-modal">
-                <div className="login-icon-box">
-                    {Icons.key}
-                </div>
-                <h3>تأكيد الدخول</h3>
-                <p>هل أنت متأكد من الدخول إلى لوحة تحكم المدرس <strong>{teacherToLogin.name}</strong>؟</p>
-                <p className="info-text">سيتم فتح لوحة التحكم الخاصة به في تبويب جديد بصلاحيات كاملة.</p>
-                
-                <div className="modal-actions centered">
-                    <button className="btn-cancel" onClick={() => setLoginModalOpen(false)}>إلغاء</button>
-                    <button className="btn-confirm" onClick={executeLogin}>نعم، دخول</button>
-                </div>
-            </div>
-        </div>
-      )}
+        {/* --- نافذة تأكيد الدخول الأنيقة --- */}
+{loginModalOpen && teacherToLogin && (
+  <div className="modal-overlay">
+      <div className="modal login-modal">
+          <div className="login-icon-box">
+              {Icons.key}
+          </div>
+          <h3>تأكيد الدخول</h3>
+          <p>هل أنت متأكد من الدخول إلى لوحة تحكم المدرس <strong>{teacherToLogin.name}</strong>؟</p>
+          <p className="info-text">سيتم فتح لوحة التحكم الخاصة به في تبويب جديد بصلاحيات كاملة.</p>
+          
+          <div className="modal-actions centered">
+              <button className="btn-cancel" onClick={() => setLoginModalOpen(false)}>إلغاء</button>
+              <button className="btn-confirm" onClick={executeLogin}>نعم، دخول</button>
+          </div>
+      </div>
+  </div>
+)}
   
       <style jsx>{`
-        /* ================= Theme-Aware Styling ================= */
+        /* Styles */
         .page-container { padding-bottom: 50px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 20px; }
+        .top-bar h1 { margin: 0 0 5px 0; color: #f8fafc; font-size: 1.6rem; }
+        .top-bar p { margin: 0; color: #94a3b8; font-size: 0.95rem; }
         
-        /* Title and Icon */
-        .page-title { display: flex; align-items: center; gap: 12px; margin-bottom: 5px; }
-        .title-icon { 
-            color: var(--gold); 
-            display: flex; align-items: center; justify-content: center; 
-            background: var(--gold-dimmer); 
-            padding: 8px; 
-            border-radius: 10px; 
-            border: 1px solid var(--border-accent);
-        }
-        
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
-        .top-bar h1 { margin: 0; color: var(--text-primary); font-size: 1.75rem; font-weight: 800; }
-        .top-bar p { margin: 0; color: var(--text-muted); font-size: 0.95rem; }
-        
-        .btn-primary { background: var(--gold); color: #111009; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 8px; align-items: center; transition: 0.2s; }
-        .btn-primary:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 4px 12px var(--gold-dim); }
+        .btn-primary { background: #38bdf8; color: #0f172a; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 8px; align-items: center; transition: 0.2s; }
+        .btn-primary:hover { background: #0ea5e9; }
 
         .search-bar { margin-bottom: 20px; }
-        .search-input { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 15px; display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
-        .search-input input { background: transparent; border: none; color: var(--text-primary); font-size: 1rem; width: 100%; outline: none; }
+        .search-input { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px 15px; display: flex; align-items: center; gap: 10px; color: #94a3b8; }
+        .search-input input { background: transparent; border: none; color: white; font-size: 1rem; width: 100%; outline: none; }
 
-        .table-wrapper { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow, 0 4px 24px rgba(0,0,0,0.1)); }
+        .table-wrapper { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; }
         table { width: 100%; border-collapse: collapse; }
-        thead { background: var(--bg-elevated); }
-        th { text-align: right; padding: 15px 20px; color: var(--text-muted); font-size: 0.9rem; font-weight: 700; border-bottom: 1px solid var(--border); text-transform: uppercase; }
-        td { padding: 15px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
+        thead { background: #0f172a; }
+        th { text-align: right; padding: 15px 20px; color: #94a3b8; font-size: 0.9rem; font-weight: 600; border-bottom: 1px solid #334155; }
+        td { padding: 15px 20px; border-bottom: 1px solid #334155; color: #e2e8f0; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: var(--bg-hover); }
-        
-        .empty-row { text-align: center; padding: 40px !important; color: var(--text-muted) !important; }
-        .phone-col { color: var(--text-secondary); font-size: 0.9rem; }
+        tr:hover { background: #263345; }
 
         .user-info { display: flex; align-items: center; gap: 12px; }
-        .avatar { width: 40px; height: 40px; background: var(--gold-dim); color: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; border: 1px solid var(--border-accent); }
-        .name { font-weight: bold; font-size: 0.95rem; color: var(--text-primary); }
+        .avatar { width: 40px; height: 40px; background: #334155; color: #38bdf8; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; }
+        .name { font-weight: bold; font-size: 0.95rem; }
 
-        .credentials-cell { display: flex; flex-direction: column; gap: 5px; font-size: 0.85rem; }
+        .credentials-cell { display: flex; flexDirection: column; gap: 5px; font-size: 0.85rem; }
         .cred-row { display: flex; gap: 8px; align-items: center; }
-        .cred-row .lbl { color: var(--text-muted); font-size: 0.75rem; width: 35px; }
-        .cred-row .val { font-family: monospace; color: var(--text-secondary); background: var(--bg-elevated); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
-        .cred-row .val.highlight { color: var(--gold); border-color: var(--border-accent); background: var(--gold-dimmer); }
+        .cred-row .lbl { color: #64748b; font-size: 0.75rem; width: 35px; }
+        .cred-row .val { font-family: monospace; color: #cbd5e1; background: #0f172a; padding: 2px 6px; border-radius: 4px; }
+        .cred-row .val.highlight { color: #38bdf8; }
 
-        .badge { background: var(--gold-dimmer); color: var(--gold); padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; border: 1px solid var(--border-accent); }
+        .badge { background: rgba(56, 189, 248, 0.1); color: #38bdf8; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; }
         
-        /* Actions Layout */
-        .actions-wrapper { display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .main-actions { display: flex; gap: 6px; }
-        .action-divider { width: 2px; height: 26px; background-color: var(--border); border-radius: 2px; margin: 0 4px; }
-        
-        .btn-icon { background: var(--bg-elevated); border: 1px solid var(--border); width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
-        .view { color: var(--gold); } .view:hover { background: var(--gold-dim); border-color: var(--gold); }
-        .edit { color: #facc15; } .edit:hover { background: rgba(250, 204, 21, 0.1); border-color: #facc15; }
-        .login { color: #a855f7; } .login:hover { background: rgba(168, 85, 247, 0.1); border-color: #a855f7; }
-        
-        /* Delete Button */
-        .delete { color: #ef4444; } 
-        .delete.separated { border: 1px dashed rgba(239, 68, 68, 0.4); margin-right: 4px; }
-        .delete.separated:hover { background: rgba(239, 68, 68, 0.2); border-style: solid; }
-        
+        .actions { display: flex; gap: 6px; justify-content: center; }
+        .btn-icon { width: 34px; height: 34px; border-radius: 8px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+        .view { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        .edit { background: rgba(250, 204, 21, 0.1); color: #facc15; }
+        .login { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+        .delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
         .btn-icon:hover { transform: scale(1.1); filter: brightness(1.2); }
 
-        /* Modals */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(5px); }
-        .modal { background: var(--bg-surface); border: 1px solid var(--border-accent); width: 90%; border-radius: 16px; padding: 25px; box-shadow: 0 30px 60px rgba(0,0,0,0.5); animation: popIn 0.2s ease-out; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+        .modal { background: #1e293b; border: 1px solid #334155; width: 90%; border-radius: 16px; padding: 25px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); animation: popIn 0.2s ease-out; }
         .form-modal { max-width: 650px; max-height: 90vh; overflow-y: auto; }
         
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
-        .modal-header h3 { margin: 0; color: var(--gold); font-size: 1.35rem; }
-        .modal-header button { background: none; border: none; color: var(--text-muted); cursor: pointer; transition: 0.2s; }
-        .modal-header button:hover { color: var(--text-primary); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+        .modal-header h3 { margin: 0; color: white; font-size: 1.1rem; }
+        .modal-header button { background: none; border: none; color: #94a3b8; cursor: pointer; }
 
-        .form-section { margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .form-section { margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
         .form-section:last-child { border-bottom: none; }
-        .form-section h4 { margin: 0 0 15px 0; color: var(--gold); font-size: 0.9rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-section h4 { margin: 0 0 15px 0; color: #94a3b8; font-size: 0.9rem; font-weight: normal; text-transform: uppercase; letter-spacing: 0.5px; }
         
         .form-group { margin-bottom: 12px; }
         .form-row { display: flex; gap: 15px; }
         .form-row .form-group { flex: 1; }
-        label { display: block; color: var(--text-secondary); margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; }
-        input { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text-primary); outline: none; transition: 0.2s; }
-        input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
-        .input-dash:focus { border-color: var(--gold-light); }
-        .input-app:focus { border-color: var(--gold-light); }
+        label { display: block; color: #cbd5e1; margin-bottom: 6px; font-size: 0.85rem; }
+        input { width: 100%; background: #0f172a; border: 1px solid #334155; padding: 10px; border-radius: 8px; color: white; outline: none; transition: 0.2s; }
+        input:focus { border-color: #38bdf8; }
+        .input-dash { border-color: rgba(168, 85, 247, 0.3); }
+        .input-dash:focus { border-color: #a855f7; }
+        .input-app { border-color: rgba(56, 189, 248, 0.3); }
+        .input-app:focus { border-color: #38bdf8; }
 
         .error-banner { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; }
 
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
         .modal-actions.centered { justify-content: center; margin-top: 20px; }
-        .btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; }
-        .btn-cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .btn-submit { background: var(--gold); border: none; color: #111009; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .btn-submit:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 4px 12px var(--gold-dim); }
-        .btn-danger { background: #ef4444; border: none; color: white; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .btn-danger:hover { background: #dc2626; transform: translateY(-2px); }
+        .btn-cancel { background: transparent; border: 1px solid #475569; color: #cbd5e1; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+        .btn-submit { background: #22c55e; border: none; color: #0f172a; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-danger { background: #ef4444; border: none; color: white; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
         .delete-modal { max-width: 400px; text-align: center; border: 1px solid #ef4444; }
         .delete-icon { background: rgba(239, 68, 68, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto; }
-        .warning-text { color: #fca5a5; font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px; border: 1px dashed rgba(239, 68, 68, 0.3); }
+        .warning-text { color: #f87171; font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px; }
 
-        /* Stats Modal */
         .stats-grid-modal { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .stat-box { background: var(--bg-elevated); padding: 15px; border-radius: 12px; border: 1px solid var(--border); text-align: center; }
-        .stat-box h4 { margin: 0 0 5px 0; color: var(--text-muted); font-size: 0.85rem; font-weight: normal; }
-        .stat-box .val { font-size: 1.5rem; font-weight: bold; display: block; color: var(--text-primary); }
-        .blue .val { color: var(--gold); } .green .val { color: #4ade80; }
+        .stat-box { background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155; text-align: center; }
+        .stat-box h4 { margin: 0 0 5px 0; color: #94a3b8; font-size: 0.85rem; font-weight: normal; }
+        .stat-box .val { font-size: 1.5rem; font-weight: bold; display: block; }
+        .blue .val { color: #38bdf8; } .green .val { color: #4ade80; }
         .yellow .val { color: #facc15; } .purple .val { color: #c084fc; }
         .full { width: 100%; }
 
-        .moderators-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
-        .moderators-section h4 { color: var(--text-primary); font-size: 0.95rem; margin-bottom: 10px; }
+         /* تنسيقات مودال الدخول */
+.login-modal { max-width: 400px; text-align: center; border: 1px solid #a855f7; }
+.login-icon-box { 
+    background: rgba(168, 85, 247, 0.1); 
+    width: 60px; height: 60px; 
+    border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; 
+    margin: 0 auto 15px auto; 
+    color: #a855f7;
+}
+.info-text { 
+    color: #a855f7; 
+    font-size: 0.85rem; 
+    background: rgba(168, 85, 247, 0.05); 
+    padding: 10px; 
+    border-radius: 8px; 
+    margin-top: 10px; 
+    border: 1px dashed rgba(168, 85, 247, 0.3);
+}
+.btn-confirm { 
+    background: #a855f7; 
+    border: none; 
+    color: white; 
+    padding: 8px 25px; 
+    border-radius: 8px; 
+    font-weight: bold; 
+    cursor: pointer; 
+    transition: 0.2s;
+}
+.btn-confirm:hover { background: #9333ea; }
+
+        .moderators-section { margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px; }
+        .moderators-section h4 { color: #cbd5e1; font-size: 0.95rem; margin-bottom: 10px; }
         .mods-list { display: grid; grid-template-columns: 1fr; gap: 10px; max-height: 150px; overflow-y: auto; }
-        .mod-item { display: flex; align-items: center; gap: 10px; background: var(--bg-elevated); padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
-        .mod-icon { color: var(--text-muted); }
+        .mod-item { display: flex; align-items: center; gap: 10px; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
+        .mod-icon { color: #64748b; }
         .mod-info { flex: 1; display: flex; flex-direction: column; }
-        .mod-name { color: var(--text-primary); font-size: 0.9rem; font-weight: 600; }
-        .mod-user { color: var(--text-muted); font-size: 0.8rem; font-family: monospace; }
-        .mod-role { background: var(--gold-dimmer); color: var(--gold); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-accent); font-weight: bold; }
-        .no-mods { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 10px; font-style: italic; }
-
-        /* Login Modal */
-        .login-modal { max-width: 400px; text-align: center; border: 1px solid var(--border-accent); }
-        .login-icon-box { 
-            background: var(--gold-dim); 
-            width: 60px; height: 60px; 
-            border-radius: 50%; 
-            display: flex; align-items: center; justify-content: center; 
-            margin: 0 auto 15px auto; 
-            color: var(--gold);
-            border: 1px solid var(--border-accent);
-        }
-        .info-text { 
-            color: var(--text-secondary); 
-            font-size: 0.85rem; 
-            background: var(--bg-elevated); 
-            padding: 10px; 
-            border-radius: 8px; 
-            margin-top: 10px; 
-            border: 1px dashed var(--border);
-        }
-        .btn-confirm { 
-            background: var(--gold); 
-            border: none; 
-            color: #111009; 
-            padding: 8px 25px; 
-            border-radius: 8px; 
-            font-weight: bold; 
-            cursor: pointer; 
-            transition: 0.2s;
-        }
-        .btn-confirm:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 4px 12px var(--gold-dim); }
+        .mod-name { color: #e2e8f0; font-size: 0.9rem; font-weight: 500; }
+        .mod-user { color: #64748b; font-size: 0.8rem; font-family: monospace; }
+        .mod-role { background: rgba(56, 189, 248, 0.1); color: #38bdf8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; }
+        .no-mods { color: #64748b; font-size: 0.85rem; text-align: center; padding: 10px; font-style: italic; }
         
-        .loading { color: var(--gold); text-align: center; padding: 40px; font-weight: bold; }
-
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         
         @media (max-width: 768px) {
