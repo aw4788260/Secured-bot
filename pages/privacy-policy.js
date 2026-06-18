@@ -16,6 +16,9 @@ export default function PrivacyPolicy() {
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
+    // إزالة خلفية الـ body الزرقاء القادمة من globals.css
+    document.body.style.backgroundColor = 'transparent';
+    
     const savedTheme = localStorage.getItem('medaad_theme');
     if (savedTheme) {
       setIsDark(savedTheme === 'dark');
@@ -210,16 +213,23 @@ export default function PrivacyPolicy() {
           margin: 0; 
           font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
           direction: rtl; 
-          background-color: var(--bg-base);
         }
 
-        /* ── LAYOUT ── */
+        /* ── LAYOUT (FIX FOR BLUE BACKGROUND) ── */
         .policy-layout {
           min-height: 100vh;
+          width: 100%;
+          background-color: var(--bg-base) !important; /* هذا السطر يفرض لون الخلفية الجديد بقوة */
           color: var(--text-primary);
           transition: background 0.4s ease, color 0.4s ease;
           position: relative;
           overflow-x: hidden;
+          padding-bottom: 20px;
+        }
+
+        /* تغطية كامل الشاشة إذا كان هناك عناصر أب زرقاء */
+        #__next {
+           background-color: transparent !important;
         }
 
         /* ── BACKGROUND ANIMATIONS ── */
@@ -292,7 +302,7 @@ export default function PrivacyPolicy() {
           font-weight: 900;
           color: var(--gold);
           letter-spacing: 1px;
-          display: none; /* يتم إظهارها فقط إذا فشل تحميل الصورة */
+          display: none;
         }
         img.brand-logo[style*="display: none"] + .logo-fallback {
           display: block;
