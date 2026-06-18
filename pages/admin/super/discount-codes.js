@@ -1,6 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import SuperLayout from '../../../components/SuperLayout';
+
+// ─── SVG ICONS ─────────────────────────────────────────────────────────
+const IconTicket = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5.88V3c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v2.88c.59.35 1 .98 1 1.62s-.41 1.27-1 1.62V12c0 .55.45 1 1 1h10c.55 0 1-.45 1-1v-2.88c-.59-.35-1-.98-1-1.62s.41-1.27 1-1.62z"></path><line x1="20" y1="14" x2="20" y2="21"></line><line x1="16" y1="18" x2="24" y2="18"></line><line x1="8" y1="5" x2="8" y2="10"></line></svg>);
+const IconSettings = ({ size = 20, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>);
+const IconFlash = ({ size = 20, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>);
+const IconTrash = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>);
+const IconCheck = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>);
+const IconBlock = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>);
+const IconTeacher = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
+const IconCourse = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>);
+const IconSubject = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>);
+const IconMoney = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>);
+const IconTime = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>);
+const IconCopy = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>);
+const IconSearch = ({ size = 18, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>);
+const IconX = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
+const IconWarning = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>);
+// ───────────────────────────────────────────────────────────────────────
 
 export default function DiscountCodes() {
   const [isClient, setIsClient] = useState(false);
@@ -43,15 +61,13 @@ export default function DiscountCodes() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  // الفلاتر
-  const [filters, setFilters] = useState({ teacherId: 'all', type: 'all', value: '', status: 'all' });
+  // الفلاتر - تمت إضافة البحث بكود
+  const [filters, setFilters] = useState({ teacherId: 'all', type: 'all', value: '', status: 'all', code: '' });
 
   // العمليات الجماعية (Table)
   const [selectedCodes, setSelectedCodes] = useState([]);
 
-  // -------------------------------------------------------------
-  // النوافذ المنبثقة (Modals) الأنيقة
-  // -------------------------------------------------------------
+  // النوافذ المنبثقة (Modals)
   const [confirmModal, setConfirmModal] = useState({ 
       show: false, title: '', message: '', action: null, type: 'danger' 
   });
@@ -62,7 +78,7 @@ export default function DiscountCodes() {
       newHasExpiration: false, newExpirationDate: ''
   });
 
-  // ✅ نافذة اختيار (المدرس / الكورس / المادة)
+  // نافذة اختيار (المدرس / الكورس / المادة)
   const [targetSelectionModal, setTargetSelectionModal] = useState({ show: false, type: '' });
 
   // دالة التحقق من الانتهاء
@@ -99,7 +115,8 @@ export default function DiscountCodes() {
         teacherId: overrideFilters.teacherId, 
         type: overrideFilters.type,
         value: overrideFilters.value, 
-        status: overrideFilters.status
+        status: overrideFilters.status,
+        code: overrideFilters.code // إرسال الكود للباك إند
       }).toString();
 
       const res = await fetch(`/api/dashboard/super/generate-discount-codes?${queryParams}`);
@@ -108,12 +125,20 @@ export default function DiscountCodes() {
         setTeachers(data.teachers || []);
         
         let fetchedCodes = data.codes || [];
+        
+        // فلترة محلية للحالات 
         if (overrideFilters.status === 'expired') {
             fetchedCodes = fetchedCodes.filter(c => c.expires_at && isExpired(c.expires_at) && !c.is_used);
         } else if (overrideFilters.status === 'active') {
             fetchedCodes = fetchedCodes.filter(c => !c.is_used && (!c.expires_at || !isExpired(c.expires_at)));
         } else if (overrideFilters.status === 'used') {
             fetchedCodes = fetchedCodes.filter(c => c.is_used);
+        }
+        
+        // فلترة محلية إضافية لكود الخصم لضمان عملها فوراً حتى لو لم يدعمها الباك إند
+        if (overrideFilters.code) {
+            const searchStr = overrideFilters.code.toLowerCase().trim();
+            fetchedCodes = fetchedCodes.filter(c => c.code.toLowerCase().includes(searchStr));
         }
 
         setCodes(fetchedCodes);
@@ -139,7 +164,7 @@ export default function DiscountCodes() {
   };
 
   const handleClearFilters = () => {
-    const emptyFilters = { teacherId: 'all', type: 'all', value: '', status: 'all' };
+    const emptyFilters = { teacherId: 'all', type: 'all', value: '', status: 'all', code: '' };
     setFilters(emptyFilters);
     if (page !== 1) setPage(1);
     else fetchData(1, emptyFilters);
@@ -274,7 +299,6 @@ export default function DiscountCodes() {
       executeBulkApi(apiPayload);
   };
 
-  // ✅ النسخ الجماعي من الجدول (كل كود في سطر)
   const handleTableBulkCopy = () => {
       if (selectedCodes.length === 0) return;
       const codesToCopy = codes
@@ -313,7 +337,7 @@ export default function DiscountCodes() {
 
       <div className={`smart-toast ${toast.show ? 'show' : ''} ${toast.type}`}>
           <div className="toast-icon">
-              {toast.type === 'success' ? '✅' : '⚠️'}
+              {toast.type === 'success' ? <IconCheck size={20}/> : <IconWarning size={20}/>}
           </div>
           <div className="toast-msg">{toast.text}</div>
       </div>
@@ -321,41 +345,52 @@ export default function DiscountCodes() {
       {isClient ? (
         <div className="page-wrapper">
           <div className="page-header">
-              <h2>🎟️ مركز إدارة الكوبونات</h2>
-              <p>توليد، تتبع، وتعديل أكواد الخصم الخاصة بالمنصة</p>
+              <h2 className="flex-center gap-2">
+                <IconTicket size={30} style={{color: 'var(--gold)'}} />
+                مركز إدارة الكوبونات
+              </h2>
+              <p>توليد، تتبع، وتعديل أكواد الخصم الخاصة بالمنصة بسهولة واحترافية.</p>
           </div>
 
           <div className="top-grid">
               {/* 1. إعدادات التوليد */}
               <div className="card-container border-glass">
-                <h3 className="card-title">⚙️ إنشاء كوبونات جديدة</h3>
+                <h3 className="card-title flex-center gap-2">
+                    <IconSettings style={{color: 'var(--gold)'}} /> إنشاء كوبونات جديدة
+                </h3>
                 <form onSubmit={handleGenerate} className="generate-form">
                   
                   {/* تحديد نوع الارتباط */}
-                  <div className="form-group" style={{gridColumn: '1 / -1'}}>
+                  <div className="form-group full-width">
                     <label>الهدف من الكوبون (نطاق الخصم):</label>
-                    <div style={{display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap'}}>
-                        <label className="checkbox-label" style={{color:'#38bdf8'}}><input type="radio" name="linkType" checked={linkType === 'teacher'} onChange={() => setLinkType('teacher')} /> مخصص لمدرس (على كل محتواه)</label>
-                        <label className="checkbox-label" style={{color:'#4ade80'}}><input type="radio" name="linkType" checked={linkType === 'course'} onChange={() => setLinkType('course')} /> مخصص لكورس محدد</label>
-                        <label className="checkbox-label" style={{color:'#facc15'}}><input type="radio" name="linkType" checked={linkType === 'subject'} onChange={() => setLinkType('subject')} /> مخصص لمادة محددة</label>
+                    <div className="radio-group">
+                        <label className="radio-label color-teacher">
+                            <input type="radio" name="linkType" checked={linkType === 'teacher'} onChange={() => setLinkType('teacher')} /> مخصص لمدرس (كافة محتواه)
+                        </label>
+                        <label className="radio-label color-course">
+                            <input type="radio" name="linkType" checked={linkType === 'course'} onChange={() => setLinkType('course')} /> مخصص لكورس محدد
+                        </label>
+                        <label className="radio-label color-subject">
+                            <input type="radio" name="linkType" checked={linkType === 'subject'} onChange={() => setLinkType('subject')} /> مخصص لمادة محددة
+                        </label>
                     </div>
 
-                    {/* ✅ الزر الاحترافي لاختيار الهدف */}
+                    {/* زر اختيار الهدف */}
                     {linkType === 'teacher' && (
                         <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'teacher' })}>
-                            {selectedTeacherName ? <span style={{color: '#38bdf8'}}>👨‍🏫 {selectedTeacherName}</span> : '🔍 اضغط لاختيار المدرس...'}
+                            {selectedTeacherName ? <span className="color-teacher flex-center justify-center gap-2"><IconTeacher/> {selectedTeacherName}</span> : <span className="flex-center justify-center gap-2"><IconSearch/> اضغط لاختيار المدرس...</span>}
                         </div>
                     )}
 
                     {linkType === 'course' && (
                         <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'course' })}>
-                            {selectedCourseName ? <span style={{color: '#4ade80'}}>📦 {selectedCourseName}</span> : '🔍 اضغط لاختيار الكورس...'}
+                            {selectedCourseName ? <span className="color-course flex-center justify-center gap-2"><IconCourse/> {selectedCourseName}</span> : <span className="flex-center justify-center gap-2"><IconSearch/> اضغط لاختيار الكورس...</span>}
                         </div>
                     )}
 
                     {linkType === 'subject' && (
                         <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'subject' })}>
-                            {selectedSubjectName ? <span style={{color: '#facc15'}}>📚 {selectedSubjectName}</span> : '🔍 اضغط لاختيار المادة...'}
+                            {selectedSubjectName ? <span className="color-subject flex-center justify-center gap-2"><IconSubject/> {selectedSubjectName}</span> : <span className="flex-center justify-center gap-2"><IconSearch/> اضغط لاختيار المادة...</span>}
                         </div>
                     )}
                   </div>
@@ -377,10 +412,10 @@ export default function DiscountCodes() {
                   </div>
 
                   {/* تحديد تاريخ الانتهاء */}
-                  <div className="form-group" style={{gridColumn: '1 / -1'}}>
-                    <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', background: 'rgba(56, 189, 248, 0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)'}}>
-                        <input type="checkbox" style={{width: '18px', height: '18px', accentColor: '#38bdf8'}} checked={hasExpiration} onChange={(e) => setHasExpiration(e.target.checked)} />
-                        <span style={{color: '#e2e8f0'}}>تحديد تاريخ انتهاء صلاحية الكوبونات؟ (إذا لم تحدد ستكون دائمة)</span>
+                  <div className="form-group full-width">
+                    <label className="checkbox-expiration">
+                        <input type="checkbox" className="custom-check" checked={hasExpiration} onChange={(e) => setHasExpiration(e.target.checked)} />
+                        <span>تحديد تاريخ انتهاء صلاحية الكوبونات؟ (إذا لم تحدد ستكون دائمة)</span>
                     </label>
                     {hasExpiration && (
                         <input 
@@ -395,8 +430,8 @@ export default function DiscountCodes() {
                   </div>
 
                   <div className="form-submit">
-                    <button type="submit" disabled={loading} className={`submit-btn ${loading ? 'loading' : ''}`}>
-                      {loading ? '⏳ جاري التوليد...' : '⚡ توليد الأكواد الآن'}
+                    <button type="submit" disabled={loading} className={`submit-btn flex-center justify-center gap-2 ${loading ? 'loading' : ''}`}>
+                      {loading ? <IconTime /> : <IconFlash />} {loading ? 'جاري التوليد...' : 'توليد الأكواد الآن'}
                     </button>
                   </div>
                 </form>
@@ -404,7 +439,9 @@ export default function DiscountCodes() {
 
               {/* 2. الإدارة السريعة بالنص */}
               <div className="card-container highlight-box border-glass">
-                  <h3 className="card-title text-blue">🚀 إدارة سريعة بالنص (Bulk Text)</h3>
+                  <h3 className="card-title text-blue flex-center gap-2">
+                      <IconFlash /> إدارة سريعة بالنص (Bulk Text)
+                  </h3>
                   <p className="hint-txt">الصق الكوبونات هنا (كل كوبون في سطر) لتطبيق الإجراء فوراً.</p>
                   <textarea 
                       className="paste-textarea" 
@@ -413,12 +450,12 @@ export default function DiscountCodes() {
                       onChange={e => setPastedCodes(e.target.value)}
                   />
                   <div className="bulk-grid-btns mt-3">
-                      <button className="btn outline-green" onClick={() => handleTextBulkAction('activate')}>✅ تفعيل</button>
-                      <button className="btn outline-orange" onClick={() => handleTextBulkAction('deactivate')}>🔥 تعطيل</button>
-                      <button className="btn outline-red" onClick={() => handleTextBulkAction('delete')}>🗑️ حذف</button>
-                      <button className="btn outline-blue" onClick={() => handleTextBulkAction('change_teacher')}>👨‍🏫 نقل لمدرس</button>
-                      <button className="btn outline-purple" onClick={() => handleTextBulkAction('change_value')}>💰 تغيير القيمة</button>
-                      <button className="btn outline-blue" style={{gridColumn: 'span 1.5'}} onClick={() => handleTextBulkAction('change_expiry')}>⏳ تغيير الصلاحية</button>
+                      <button className="btn outline-green" onClick={() => handleTextBulkAction('activate')}><IconCheck /> تفعيل</button>
+                      <button className="btn outline-orange" onClick={() => handleTextBulkAction('deactivate')}><IconBlock /> تعطيل</button>
+                      <button className="btn outline-red" onClick={() => handleTextBulkAction('delete')}><IconTrash /> حذف</button>
+                      <button className="btn outline-blue" onClick={() => handleTextBulkAction('change_teacher')}><IconTeacher /> مدرس</button>
+                      <button className="btn outline-purple" onClick={() => handleTextBulkAction('change_value')}><IconMoney /> القيمة</button>
+                      <button className="btn outline-blue full-span" onClick={() => handleTextBulkAction('change_expiry')}><IconTime /> تغيير الصلاحية</button>
                   </div>
               </div>
           </div>
@@ -427,9 +464,9 @@ export default function DiscountCodes() {
           {newlyGeneratedCodes.length > 0 && (
             <div className="new-codes-container">
               <div className="new-codes-header">
-                <h3>🎉 تم التوليد بنجاح! ({newlyGeneratedCodes.length} كود)</h3>
+                <h3 className="flex-center gap-2"><IconCheck style={{color:'var(--gold)'}}/> تم التوليد بنجاح! ({newlyGeneratedCodes.length} كود)</h3>
                 <button onClick={copyBulkCodes} className={`copy-btn ${copiedBulk ? 'copied' : ''}`}>
-                  {copiedBulk ? '✅ تم النسخ!' : '📋 نسخ القائمة بالكامل'}
+                  <IconCopy /> {copiedBulk ? 'تم النسخ!' : 'نسخ القائمة بالكامل'}
                 </button>
               </div>
               <textarea readOnly className="new-codes-textarea" value={newlyGeneratedCodes.map(item => item.code).join('\n')} rows={Math.min(10, newlyGeneratedCodes.length)} />
@@ -440,7 +477,11 @@ export default function DiscountCodes() {
           <div className="filters-container mt-4 border-glass">
               <div className="filters-grid">
                   <div className="filter-item">
-                      <label>بحث وارتباط بالمدرس</label>
+                      <label>بحث بكود مخصص</label>
+                      <input type="text" className="filter-input" placeholder="ادخل الكود هنا..." value={filters.code} onChange={e=>setFilters({...filters, code: e.target.value})} />
+                  </div>
+                  <div className="filter-item">
+                      <label>المدرس المرتبط</label>
                       <select className="filter-input" value={filters.teacherId} onChange={e=>setFilters({...filters, teacherId: e.target.value})}>
                           <option value="all">الكل</option>
                           {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -455,40 +496,39 @@ export default function DiscountCodes() {
                       </select>
                   </div>
                   <div className="filter-item">
-                      <label>القيمة</label>
+                      <label>القيمة (رقم)</label>
                       <input type="number" className="filter-input" placeholder="بحث بالقيمة..." value={filters.value} onChange={e=>setFilters({...filters, value: e.target.value})} />
                   </div>
                   <div className="filter-item">
-                      <label>حالة الكود</label>
+                      <label>الحالة</label>
                       <select className="filter-input" value={filters.status} onChange={e=>setFilters({...filters, status: e.target.value})}>
                           <option value="all">الكل</option>
-                          <option value="active">✅ متاح للاستخدام</option>
-                          <option value="used">🔥 مستخدم / معطل</option>
-                          <option value="expired">⏳ منتهي الصلاحية</option>
+                          <option value="active">متاح للاستخدام</option>
+                          <option value="used">مستخدم / معطل</option>
+                          <option value="expired">منتهي الصلاحية</option>
                       </select>
                   </div>
               </div>
               <div className="filters-actions">
-                  <button onClick={handleApplyFilters} className="btn-apply">🔍 بحث</button>
-                  <button onClick={handleClearFilters} className="btn-clear">✖ مسح</button>
+                  <button onClick={handleApplyFilters} className="btn-apply flex-center gap-2"><IconSearch /> بحث وتطبيق</button>
+                  <button onClick={handleClearFilters} className="btn-clear flex-center gap-2"><IconX /> مسح</button>
               </div>
           </div>
 
           {/* 5. الجدول والعمليات الجماعية */}
           <div className="card-container table-card border-glass">
             <div className="table-header-flex">
-               <h3 className="card-title m-0">📋 قاعدة البيانات ({totalCodes} كود)</h3>
+               <h3 className="card-title m-0">قاعدة بيانات الكوبونات ({totalCodes})</h3>
                {selectedCodes.length > 0 && (
                    <div className="bulk-actions-bar">
-                       <span className="selected-count">{selectedCodes.length} محدد</span>
-                       {/* ✅ زر النسخ الجماعي الجديد */}
-                       <button className="btn outline-blue" onClick={handleTableBulkCopy} style={{background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8'}}>📋 نسخ</button>
-                       <button className="btn green" onClick={() => handleTableBulkAction('activate')}>تفعيل</button>
-                       <button className="btn orange" onClick={() => handleTableBulkAction('deactivate')}>تعطيل</button>
-                       <button className="btn blue" onClick={() => handleTableBulkAction('change_teacher')}>نقل</button>
-                       <button className="btn purple" onClick={() => handleTableBulkAction('change_value')}>القيمة</button>
-                       <button className="btn blue" onClick={() => handleTableBulkAction('change_expiry')}>الصلاحية</button>
-                       <button className="btn red" onClick={() => handleTableBulkAction('delete')}>حذف</button>
+                       <span className="selected-count">{selectedCodes.length} كود محدد</span>
+                       <button className="btn outline-blue flex-center gap-1" onClick={handleTableBulkCopy}><IconCopy /> نسخ</button>
+                       <button className="btn green flex-center gap-1" onClick={() => handleTableBulkAction('activate')}><IconCheck /> تفعيل</button>
+                       <button className="btn orange flex-center gap-1" onClick={() => handleTableBulkAction('deactivate')}><IconBlock /> تعطيل</button>
+                       <button className="btn blue flex-center gap-1" onClick={() => handleTableBulkAction('change_teacher')}><IconTeacher /> نقل</button>
+                       <button className="btn purple flex-center gap-1" onClick={() => handleTableBulkAction('change_value')}><IconMoney /> القيمة</button>
+                       <button className="btn blue flex-center gap-1" onClick={() => handleTableBulkAction('change_expiry')}><IconTime /> الصلاحية</button>
+                       <button className="btn red flex-center gap-1" onClick={() => handleTableBulkAction('delete')}><IconTrash /> حذف</button>
                    </div>
                )}
             </div>
@@ -499,18 +539,23 @@ export default function DiscountCodes() {
                   <tr>
                     <th style={{width: '40px'}}><input type="checkbox" onChange={(e) => setSelectedCodes(e.target.checked ? codes.map(c => c.id) : [])} checked={codes.length > 0 && selectedCodes.length === codes.length} /></th>
                     <th>الكود</th>
-                    <th>الارتباط</th>
+                    <th>الارتباط والهدف</th>
                     <th>الخصم</th>
-                    <th>الإنشاء</th>
+                    <th>تاريخ الإنشاء</th>
                     <th>تاريخ الانتهاء</th>
                     <th>الحالة</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableLoading ? (
-                    <tr><td colSpan="7" className="empty-table loading-txt">جاري التحميل...</td></tr>
+                    <tr><td colSpan="7" className="empty-table loading-txt">جاري تحميل البيانات...</td></tr>
                   ) : codes.length === 0 ? (
-                    <tr><td colSpan="7" className="empty-table">لا توجد نتائج تطابق بحثك.</td></tr>
+                    <tr>
+                        <td colSpan="7" className="empty-table">
+                            <div className="flex-center justify-center" style={{marginBottom:'10px', opacity: 0.5}}><IconSearch size={40} /></div>
+                            لا توجد نتائج تطابق بحثك.
+                        </td>
+                    </tr>
                   ) : (
                     codes.map(code => (
                       <tr key={code.id} className={selectedCodes.includes(code.id) ? 'selected-row' : ''}>
@@ -518,32 +563,33 @@ export default function DiscountCodes() {
                         <td>
                             <div className="code-cell">
                                 <span className="code-text">{code.code}</span>
-                                <button className="icon-btn" onClick={() => copySingleCode(code.code)} title="نسخ الكود">📋</button>
+                                <button className="icon-btn flex-center" onClick={() => copySingleCode(code.code)} title="نسخ الكود"><IconCopy size={14}/></button>
                             </div>
                         </td>
                         
-                        {/* عرض الهدف والارتباط */}
                         <td className="teacher-name">
-                            {code.link_type === 'teacher' && <span style={{color: '#38bdf8'}}>👨‍🏫 {code.teachers?.name}</span>}
-                            {code.link_type === 'course' && <span style={{color: '#4ade80'}}>📦 {code.courses?.title}</span>}
-                            {code.link_type === 'subject' && <span style={{color: '#facc15'}}>📚 {code.subjects?.title}</span>}
-                            {!code.link_type && (code.teachers?.name || 'غير محدد')}
+                            <div className="flex-center gap-2">
+                                {code.link_type === 'teacher' && <span className="color-teacher flex-center gap-1"><IconTeacher size={14}/> {code.teachers?.name}</span>}
+                                {code.link_type === 'course' && <span className="color-course flex-center gap-1"><IconCourse size={14}/> {code.courses?.title}</span>}
+                                {code.link_type === 'subject' && <span className="color-subject flex-center gap-1"><IconSubject size={14}/> {code.subjects?.title}</span>}
+                                {!code.link_type && (code.teachers?.name || 'غير محدد')}
+                            </div>
                         </td>
                         
                         <td className="discount-value">{renderDiscountValue(code.discount_type, code.discount_value)}</td>
                         <td className="date-text">{new Date(code.created_at).toLocaleDateString('ar-EG')}</td>
                         
-                        <td className="date-text" style={{fontWeight: 'bold', color: code.expires_at ? (isExpired(code.expires_at) ? '#fca5a5' : '#e2e8f0') : '#4ade80'}}>
+                        <td className="date-text" style={{fontWeight: 'bold', color: code.expires_at ? (isExpired(code.expires_at) ? '#ef4444' : 'var(--text-primary)') : '#22c55e'}}>
                             {code.expires_at ? new Date(code.expires_at).toLocaleDateString('ar-EG') : 'مفتوح (دائم)'}
                         </td>
 
                         <td>
                           {code.is_used ? (
-                            <span className="status-badge used">🔥 معطل/مستخدم</span>
+                            <span className="status-badge used flex-center gap-1"><IconBlock size={12}/> مستخدم/معطل</span>
                           ) : isExpired(code.expires_at) ? (
-                            <span className="status-badge" style={{background:'rgba(245, 158, 11, 0.1)', color:'#fbbf24', border:'1px solid rgba(245, 158, 11, 0.3)'}}>⏳ منتهي الصلاحية</span>
+                            <span className="status-badge expired flex-center gap-1"><IconTime size={12}/> منتهي</span>
                           ) : (
-                            <span className="status-badge active">✅ متاح</span>
+                            <span className="status-badge active flex-center gap-1"><IconCheck size={12}/> متاح</span>
                           )}
                         </td>
                       </tr>
@@ -566,16 +612,16 @@ export default function DiscountCodes() {
       ) : (
         <div className="loading-screen">
             <div className="loader-spinner"></div>
-            جاري تهيئة الصفحة...
+            جاري تهيئة مركز الكوبونات...
         </div>
       )}
 
-      {/* ✅ نافذة التأكيد (Confirm Modal) الأنيقة */}
+      {/* ✅ نافذة التأكيد (Confirm Modal) */}
       {confirmModal.show && (
           <div className="modal-overlay blur-bg" onClick={() => setConfirmModal({...confirmModal, show: false})}>
               <div className="modal-box confirm-box" onClick={e => e.stopPropagation()}>
                   <div className={`modal-icon-header ${confirmModal.type}`}>
-                      {confirmModal.type === 'danger' ? '🗑️' : confirmModal.type === 'warning' ? '🔥' : '✅'}
+                      {confirmModal.type === 'danger' ? <IconTrash size={32} /> : confirmModal.type === 'warning' ? <IconWarning size={32} /> : <IconCheck size={32} />}
                   </div>
                   <h3 className="modal-title">{confirmModal.title}</h3>
                   <p className="modal-desc">{confirmModal.message}</p>
@@ -590,16 +636,16 @@ export default function DiscountCodes() {
           </div>
       )}
 
-      {/* ✅ نافذة اختيار الهدف الاحترافية (Target Selection Modal) */}
+      {/* ✅ نافذة اختيار الهدف (Target Selection Modal) */}
       {targetSelectionModal.show && (
           <div className="modal-overlay blur-bg" onClick={() => setTargetSelectionModal({ show: false, type: '' })}>
               <div className="modal-box target-selection-box" onClick={e => e.stopPropagation()}>
                   <div className="modal-header-glass">
-                      <h3 className="modal-title">
-                          {targetSelectionModal.type === 'teacher' ? '👨‍🏫 اختر المدرس' :
-                           targetSelectionModal.type === 'course' ? '📦 اختر الكورس' : '📚 اختر المادة'}
+                      <h3 className="modal-title flex-center gap-2">
+                          {targetSelectionModal.type === 'teacher' ? <><IconTeacher/> اختر المدرس</> :
+                           targetSelectionModal.type === 'course' ? <><IconCourse/> اختر الكورس</> : <><IconSubject/> اختر المادة</>}
                       </h3>
-                      <button className="close-x" onClick={() => setTargetSelectionModal({ show: false, type: '' })}>✕</button>
+                      <button className="close-x" onClick={() => setTargetSelectionModal({ show: false, type: '' })}><IconX size={24}/></button>
                   </div>
                   
                   <div className="target-list">
@@ -626,9 +672,8 @@ export default function DiscountCodes() {
                           </div>
                       ))}
                       
-                      {/* رسائل توجيهية في حال عدم وجود بيانات */}
-                      {targetSelectionModal.type === 'teacher' && teachers.length === 0 && <p style={{textAlign:'center', color:'#94a3b8'}}>لا يوجد مدرسين مسجلين.</p>}
-                      {['course', 'subject'].includes(targetSelectionModal.type) && courses.length === 0 && <p style={{textAlign:'center', color:'#94a3b8'}}>لا توجد كورسات مسجلة حالياً.</p>}
+                      {targetSelectionModal.type === 'teacher' && teachers.length === 0 && <p className="empty-msg">لا يوجد مدرسين مسجلين.</p>}
+                      {['course', 'subject'].includes(targetSelectionModal.type) && courses.length === 0 && <p className="empty-msg">لا توجد كورسات مسجلة حالياً.</p>}
                   </div>
               </div>
           </div>
@@ -639,20 +684,20 @@ export default function DiscountCodes() {
           <div className="modal-overlay blur-bg" onClick={() => setAdvancedModal({...advancedModal, show: false})}>
               <div className="modal-box" onClick={e => e.stopPropagation()}>
                   <div className="modal-header-glass">
-                      <h3 className="modal-title m-0">
-                          {advancedModal.actionType === 'change_teacher' ? '👨‍🏫 نقل الكوبونات (لمدرس فقط)' : 
-                           advancedModal.actionType === 'change_value' ? '💰 تعديل القيمة' : '⏳ تعديل الصلاحية'}
+                      <h3 className="modal-title m-0 flex-center gap-2">
+                          {advancedModal.actionType === 'change_teacher' ? <><IconTeacher/> نقل الكوبونات (لمدرس)</> : 
+                           advancedModal.actionType === 'change_value' ? <><IconMoney/> تعديل القيمة</> : <><IconTime/> تعديل الصلاحية</>}
                       </h3>
-                      <button className="close-x" onClick={() => setAdvancedModal({...advancedModal, show: false})}>✕</button>
+                      <button className="close-x" onClick={() => setAdvancedModal({...advancedModal, show: false})}><IconX size={24}/></button>
                   </div>
                   
-                  <p className="modal-desc mt-3" style={{color: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', padding: '10px', borderRadius: '8px'}}>
+                  <p className="modal-desc mt-3 alert-info">
                       سيتم التطبيق على الأكواد {advancedModal.sourceTxt}
                   </p>
 
                   {advancedModal.actionType === 'change_teacher' && (
                       <div className="form-group mt-4">
-                          <label>اختر المدرس الجديد (هذا سيحذف ارتباط الكورس/المادة إن وجد):</label>
+                          <label>اختر المدرس الجديد (يحذف ارتباط الكورس/المادة إن وجد):</label>
                           <select className="form-input" value={advancedModal.newTeacher} onChange={e => setAdvancedModal({...advancedModal, newTeacher: e.target.value})}>
                               <option value="">-- يرجى الاختيار --</option>
                               {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -678,8 +723,8 @@ export default function DiscountCodes() {
 
                   {advancedModal.actionType === 'change_expiry' && (
                       <div className="form-group mt-4">
-                        <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: 'white'}}>
-                            <input type="checkbox" style={{width: '18px', height: '18px'}} checked={advancedModal.newHasExpiration} onChange={(e) => setAdvancedModal({...advancedModal, newHasExpiration: e.target.checked})} />
+                        <label className="checkbox-expiration">
+                            <input type="checkbox" className="custom-check" checked={advancedModal.newHasExpiration} onChange={(e) => setAdvancedModal({...advancedModal, newHasExpiration: e.target.checked})} />
                             <span>تحديد تاريخ انتهاء؟ (إلغاء التحديد يجعله دائماً)</span>
                         </label>
                         {advancedModal.newHasExpiration && (
@@ -690,183 +735,210 @@ export default function DiscountCodes() {
 
                   <div className="modal-actions mt-4">
                       <button className="btn-cancel" onClick={() => setAdvancedModal({...advancedModal, show: false})}>إلغاء</button>
-                      <button className="btn-save primary" onClick={submitAdvancedModal}>حفظ التعديلات 💾</button>
+                      <button className="btn-save primary" onClick={submitAdvancedModal}>حفظ التعديلات</button>
                   </div>
               </div>
           </div>
       )}
 
       <style jsx>{`
-        /* ==================== Global & Layout ==================== */
-        .page-wrapper { padding: 25px; direction: rtl; font-family: 'Tajawal', system-ui, sans-serif; padding-bottom: 60px; }
-        .page-header { margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
-        .page-header h2 { margin: 0; color: #f8fafc; font-size: 1.8rem; }
-        .page-header p { margin: 5px 0 0 0; color: #94a3b8; }
-        
-        .loading-screen { min-height: 60vh; display: flex; flex-direction: column; gap: 15px; justify-content: center; align-items: center; color: #38bdf8; font-size: 1.2rem; }
-        .loader-spinner { width: 40px; height: 40px; border: 4px solid #1e293b; border-top: 4px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
+        /* ==================== Utilities ==================== */
+        .flex-center { display: flex; align-items: center; }
+        .justify-center { justify-content: center; }
+        .gap-1 { gap: 5px; }
+        .gap-2 { gap: 10px; }
+        .full-width { grid-column: 1 / -1; }
+        .full-span { grid-column: span 1.5; }
         .mt-3 { margin-top: 15px; } .mt-4 { margin-top: 25px; } .m-0 { margin: 0; }
 
+        /* ==================== Colors / Theme Logic ==================== */
+        .color-teacher { color: #3b82f6; }
+        .color-course { color: #22c55e; }
+        .color-subject { color: #eab308; }
+        
+        .layout-root.light .color-teacher { color: #2563eb; }
+        .layout-root.light .color-course { color: #16a34a; }
+        .layout-root.light .color-subject { color: #ca8a04; }
+
+        .page-wrapper { padding: 25px; direction: rtl; font-family: 'Tajawal', system-ui, sans-serif; padding-bottom: 60px; color: var(--text-primary); }
+        .page-header { margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .page-header h2 { margin: 0; color: var(--text-primary); font-size: 1.8rem; }
+        .page-header p { margin: 5px 0 0 0; color: var(--text-secondary); }
+        
+        .loading-screen { min-height: 60vh; display: flex; flex-direction: column; gap: 15px; justify-content: center; align-items: center; color: var(--gold); font-size: 1.2rem; }
+        .loader-spinner { width: 40px; height: 40px; border: 4px solid var(--border); border-top: 4px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
         /* ==================== Smart Toast ==================== */
-        .smart-toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1e293b; color: white; padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.6); z-index: 20000; display: flex; align-items: center; gap: 10px; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; border: 1px solid #334155; }
+        .smart-toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--bg-elevated); color: var(--text-primary); padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: var(--shadow); z-index: 20000; display: flex; align-items: center; gap: 10px; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; border: 1px solid var(--border); }
         .smart-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
         .smart-toast.success { border-bottom: 3px solid #22c55e; }
         .smart-toast.error { border-bottom: 3px solid #ef4444; }
-        .toast-icon { font-size: 1.2em; }
 
         /* ==================== Grid & Cards ==================== */
         .top-grid { display: grid; grid-template-columns: 2fr 1.2fr; gap: 20px; margin-bottom: 25px;}
         @media (max-width: 1024px) { .top-grid { grid-template-columns: 1fr; } }
 
-        .border-glass { border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .card-container { background: #1e293b; padding: 25px; border-radius: 16px; }
-        .highlight-box { background: linear-gradient(145deg, #1e293b, #0f172a); border-color: #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.1); }
+        .border-glass { border: 1px solid var(--border); box-shadow: var(--shadow); }
+        .card-container { background: var(--bg-surface); padding: 25px; border-radius: 16px; transition: 0.3s; }
         
-        .card-title { margin: 0 0 20px 0; color: #f8fafc; border-bottom: 1px dashed #334155; padding-bottom: 12px; }
-        .card-title.text-blue { color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
+        .highlight-box { background: var(--bg-hover); border-color: var(--gold); box-shadow: 0 0 20px var(--gold-dimmer); }
         
-        .paste-textarea { width: 100%; height: 160px; background: #0b1120; border: 1px solid #334155; border-radius: 12px; color: #38bdf8; padding: 15px; font-family: monospace; resize: vertical; outline: none; line-height: 1.8; letter-spacing: 1px; transition: 0.3s; }
-        .paste-textarea:focus { border-color: #38bdf8; background: #0f172a; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
-        .hint-txt { font-size: 0.85rem; color: #94a3b8; margin-bottom: 12px; }
+        .card-title { margin: 0 0 20px 0; color: var(--text-primary); border-bottom: 1px dashed var(--border); padding-bottom: 12px; font-size: 1.25rem;}
+        .card-title.text-blue { color: var(--gold); border-color: var(--gold-dim); }
+        
+        .paste-textarea { width: 100%; height: 160px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 12px; color: var(--gold); padding: 15px; font-family: monospace; resize: vertical; outline: none; line-height: 1.8; letter-spacing: 1px; transition: 0.3s; }
+        .paste-textarea:focus { border-color: var(--gold); background: var(--bg-elevated); }
+        .hint-txt { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; }
 
         /* ==================== Buttons ==================== */
         .bulk-grid-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
         
         .btn { padding: 10px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 5px; }
-        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
         
-        .btn.green { background: #22c55e; color: #0f172a;} 
+        .btn.green { background: #22c55e; color: #fff;} 
         .btn.orange { background: #f97316; color: white;} 
         .btn.red { background: #ef4444; color: white;} 
         .btn.blue { background: #3b82f6; color: white;} 
         .btn.purple { background: #a855f7; color: white;}
 
-        .btn.outline-green { background: rgba(34,197,94,0.1); border: 1px solid #22c55e; color: #4ade80; }
-        .btn.outline-orange { background: rgba(249,115,22,0.1); border: 1px solid #f97316; color: #fb923c; }
-        .btn.outline-red { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #fca5a5; }
-        .btn.outline-blue { background: rgba(59,130,246,0.1); border: 1px solid #3b82f6; color: #60a5fa; }
-        .btn.outline-purple { background: rgba(168,85,247,0.1); border: 1px solid #a855f7; color: #c084fc; }
+        .btn.outline-green { background: rgba(34,197,94,0.1); border: 1px solid #22c55e; color: #16a34a; }
+        .btn.outline-orange { background: rgba(249,115,22,0.1); border: 1px solid #f97316; color: #ea580c; }
+        .btn.outline-red { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #dc2626; }
+        .btn.outline-blue { background: rgba(59,130,246,0.1); border: 1px solid #3b82f6; color: #2563eb; }
+        .btn.outline-purple { background: rgba(168,85,247,0.1); border: 1px solid #a855f7; color: #9333ea; }
+        
+        .layout-root.dark .btn.outline-green { color: #4ade80; }
+        .layout-root.dark .btn.outline-orange { color: #fb923c; }
+        .layout-root.dark .btn.outline-red { color: #fca5a5; }
+        .layout-root.dark .btn.outline-blue { color: #60a5fa; }
+        .layout-root.dark .btn.outline-purple { color: #c084fc; }
 
         /* ==================== Form ==================== */
         .generate-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #cbd5e1; font-size: 0.9rem; }
-        .form-input { width: 100%; padding: 12px 15px; border-radius: 8px; border: 1px solid #475569; background-color: #0f172a; color: #fff; outline: none; transition: 0.2s; font-family: inherit;}
-        .form-input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.1); }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: bold; color: var(--text-secondary); font-size: 0.9rem; }
+        .form-input { width: 100%; padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border); background-color: var(--bg-base); color: var(--text-primary); outline: none; transition: 0.2s; font-family: inherit;}
+        .form-input:focus { border-color: var(--gold); }
         .form-submit { grid-column: 1 / -1; margin-top: 10px; }
-        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(37,99,235,0.3); }
-        .submit-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37,99,235,0.4); }
-        .submit-btn.loading { background: #475569; box-shadow: none; cursor: not-allowed; }
+        .submit-btn { width: 100%; padding: 15px; background: var(--gold); color: #111009; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.3s; }
+        .submit-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px var(--gold-dim); }
+        .submit-btn.loading { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; }
 
-        /* ✅ التنسيقات الخاصة بالزر الجديد للاختيار */
-        .selection-trigger {
-            width: 100%; padding: 15px; border-radius: 8px; border: 1px dashed #38bdf8;
-            background: rgba(56,189,248,0.05); color: #94a3b8; cursor: pointer;
-            text-align: center; font-weight: bold; transition: 0.3s; font-size: 1rem;
-        }
-        .selection-trigger:hover { background: rgba(56,189,248,0.1); border-style: solid; }
+        .radio-group { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .radio-label { display: flex; align-items: center; gap: 6px; font-weight: bold; cursor: pointer; }
+        
+        .checkbox-expiration { display: flex; align-items: center; gap: 10px; cursor: pointer; background: var(--bg-elevated); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border); color: var(--text-primary); font-weight: bold; transition: 0.2s; }
+        .checkbox-expiration:hover { border-color: var(--gold); }
+        .custom-check { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+
+        .selection-trigger { width: 100%; padding: 15px; border-radius: 8px; border: 1px dashed var(--border-accent); background: var(--bg-elevated); color: var(--text-muted); cursor: pointer; text-align: center; font-weight: bold; transition: 0.3s; font-size: 1rem; }
+        .selection-trigger:hover { background: var(--gold-dimmer); border-style: solid; color: var(--gold); }
         
         .target-selection-box { max-width: 550px !important; max-height: 85vh; display: flex; flex-direction: column; }
         .target-list { overflow-y: auto; margin-top: 15px; display: flex; flex-direction: column; gap: 8px; padding-right: 5px; }
         .target-list::-webkit-scrollbar { width: 6px; }
-        .target-list::-webkit-scrollbar-track { background: #0f172a; border-radius: 10px; }
-        .target-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        .target-item { padding: 12px 15px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; cursor: pointer; transition: 0.2s; color: #e2e8f0; font-weight: bold; display: flex; align-items: center;}
-        .target-item:hover { border-color: #38bdf8; background: rgba(56,189,248,0.05); color: white;}
-        .target-item.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
-        .subject-group { margin-bottom: 12px; background: #162032; padding: 15px; border-radius: 12px; border: 1px solid #1e293b;}
-        .subject-group-title { font-size: 0.95rem; color: #38bdf8; margin-bottom: 12px; font-weight: bold; border-bottom: 1px dashed #334155; padding-bottom: 8px;}
-        .target-item.subject { margin-bottom: 8px; background: rgba(15, 23, 42, 0.5); }
+        .target-list::-webkit-scrollbar-track { background: var(--bg-base); border-radius: 10px; }
+        .target-list::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 10px; }
+        .target-item { padding: 12px 15px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: 0.2s; color: var(--text-primary); font-weight: bold; display: flex; align-items: center;}
+        .target-item:hover { border-color: var(--gold); background: var(--gold-dimmer); }
+        .target-item.active { background: var(--gold); color: #111009; border-color: var(--gold); }
+        .subject-group { margin-bottom: 12px; background: var(--bg-base); padding: 15px; border-radius: 12px; border: 1px solid var(--border);}
+        .subject-group-title { font-size: 0.95rem; color: var(--gold); margin-bottom: 12px; font-weight: bold; border-bottom: 1px dashed var(--border); padding-bottom: 8px;}
+        .target-item.subject { margin-bottom: 8px; background: var(--bg-surface); }
+        .empty-msg { text-align: center; color: var(--text-muted); margin-top: 20px; font-weight: bold;}
 
         /* ==================== New Codes Box ==================== */
-        .new-codes-container { background: linear-gradient(to right, rgba(56,189,248,0.05), rgba(56,189,248,0.01)); padding: 25px; border-radius: 16px; border: 1px solid rgba(56,189,248,0.3); margin-bottom: 30px; animation: slideDown 0.4s ease-out; }
+        .new-codes-container { background: var(--gold-dimmer); padding: 25px; border-radius: 16px; border: 1px solid var(--border-accent); margin-bottom: 30px; animation: slideDown 0.4s ease-out; }
         .new-codes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .new-codes-header h3 { margin: 0; color: #38bdf8; }
-        .copy-btn { background: #38bdf8; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; display: flex; align-items: center; gap: 8px;}
+        .new-codes-header h3 { margin: 0; color: var(--gold); }
+        .copy-btn { background: var(--gold); color: #111009; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; display: flex; align-items: center; gap: 8px;}
         .copy-btn.copied { background: #22c55e; color: white; }
-        .new-codes-textarea { width: 100%; padding: 20px; background: #0f172a; color: #e2e8f0; border: 1px dashed #475569; border-radius: 12px; font-family: monospace; font-size: 1.2rem; resize: vertical; outline: none; text-align: center; letter-spacing: 2px; }
+        .new-codes-textarea { width: 100%; padding: 20px; background: var(--bg-base); color: var(--text-primary); border: 1px dashed var(--border); border-radius: 12px; font-family: monospace; font-size: 1.2rem; resize: vertical; outline: none; text-align: center; letter-spacing: 2px; }
 
         @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 
         /* ==================== Filters ==================== */
-        .filters-container { background: #162032; padding: 20px; border-radius: 16px; margin-bottom: 25px; display: flex; flex-direction: column; gap: 15px; }
+        .filters-container { background: var(--bg-elevated); padding: 20px; border-radius: 16px; margin-bottom: 25px; display: flex; flex-direction: column; gap: 15px; }
         .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
-        .filter-item label { display: block; font-size: 0.8rem; color: #64748b; margin-bottom: 5px; }
-        .filter-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; outline: none; transition: 0.2s; }
-        .filter-input:focus { border-color: #3b82f6; }
+        .filter-item label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; font-weight: bold;}
+        .filter-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-base); color: var(--text-primary); outline: none; transition: 0.2s; font-family: inherit;}
+        .filter-input:focus { border-color: var(--gold); }
         
-        .filters-actions { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #334155; padding-top: 15px; }
-        .btn-apply { background: #3b82f6; color: white; border: none; padding: 10px 25px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .btn-apply:hover { background: #2563eb; }
-        .btn-clear { background: transparent; color: #94a3b8; border: 1px solid #475569; padding: 10px 25px; border-radius: 8px; cursor: pointer; transition: 0.2s;}
-        .btn-clear:hover { background: rgba(255,255,255,0.05); color: white; }
+        .filters-actions { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 15px; }
+        .btn-apply { background: var(--gold); color: #111009; border: none; padding: 10px 25px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-apply:hover { filter: brightness(1.1); }
+        .btn-clear { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 25px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-weight: bold;}
+        .btn-clear:hover { background: var(--bg-hover); color: var(--text-primary); }
 
         /* ==================== Table & Bulk Bar ==================== */
         .table-card { padding: 0; overflow: hidden; margin-top: 10px;}
-        .table-header-flex { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #334155; background: #111827; flex-wrap: wrap; gap: 15px; }
+        .table-header-flex { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); flex-wrap: wrap; gap: 15px; }
         
-        .bulk-actions-bar { display: flex; gap: 10px; align-items: center; background: rgba(56,189,248,0.05); padding: 8px 15px; border-radius: 12px; border: 1px solid rgba(56,189,248,0.2); flex-wrap: wrap; animation: fadeIn 0.3s; }
-        .selected-count { color: #38bdf8; font-weight: bold; font-size: 0.95rem; margin-left: 10px; background: rgba(56,189,248,0.1); padding: 4px 10px; border-radius: 20px;}
+        .bulk-actions-bar { display: flex; gap: 10px; align-items: center; background: var(--bg-base); padding: 8px 15px; border-radius: 12px; border: 1px solid var(--border); flex-wrap: wrap; animation: fadeIn 0.3s; }
+        .selected-count { color: var(--gold); font-weight: bold; font-size: 0.95rem; margin-left: 10px; background: var(--gold-dimmer); padding: 4px 10px; border-radius: 20px;}
 
         .table-responsive { overflow-x: auto; }
         .codes-table { width: 100%; border-collapse: collapse; text-align: right; }
-        .codes-table th { padding: 15px 20px; background: #0f172a; color: #94a3b8; font-size: 0.9rem; border-bottom: 1px solid #334155; white-space: nowrap; font-weight: normal; text-transform: uppercase; }
-        .codes-table td { padding: 15px 20px; border-bottom: 1px solid #334155; vertical-align: middle; }
-        .codes-table tr:hover { background: rgba(255, 255, 255, 0.02); }
-        .selected-row { background: rgba(56, 189, 248, 0.05) !important; }
-        .empty-table { text-align: center; padding: 50px !important; color: #64748b; font-size: 1.1rem;}
-        .loading-txt { color: #38bdf8; }
+        .codes-table th { padding: 15px 20px; background: var(--bg-elevated); color: var(--text-secondary); font-size: 0.9rem; border-bottom: 1px solid var(--border); white-space: nowrap; font-weight: bold; text-transform: uppercase; }
+        .codes-table td { padding: 15px 20px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .codes-table tr:hover { background: var(--bg-hover); }
+        .selected-row { background: var(--gold-dimmer) !important; }
+        .empty-table { text-align: center; padding: 50px !important; color: var(--text-muted); font-size: 1.1rem; font-weight: bold;}
+        .loading-txt { color: var(--gold); }
 
         .code-cell { display: flex; align-items: center; gap: 10px; }
-        .code-text { font-family: monospace; font-size: 1.15rem; color: #60a5fa; font-weight: bold; background: #0f172a; padding: 4px 8px; border-radius: 6px; }
-        .icon-btn { background: transparent; border: 1px solid #475569; padding: 6px; border-radius: 6px; cursor: pointer; transition: 0.2s; color: #cbd5e1;}
-        .icon-btn:hover { background: #38bdf8; border-color: #38bdf8; color: #0f172a; }
+        .code-text { font-family: monospace; font-size: 1.15rem; color: var(--gold); font-weight: bold; background: var(--bg-base); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border);}
+        .icon-btn { background: transparent; border: 1px solid var(--border); padding: 6px; border-radius: 6px; cursor: pointer; transition: 0.2s; color: var(--text-secondary);}
+        .icon-btn:hover { background: var(--gold); border-color: var(--gold); color: #111009; }
 
-        .teacher-name { color: #f8fafc; font-weight: bold; }
-        .discount-value { color: #34d399; font-weight: 900; font-size: 1.1rem; }
-        .date-text { color: #94a3b8; font-size: 0.85rem; }
+        .teacher-name { color: var(--text-primary); font-weight: bold; font-size: 0.9rem;}
+        .discount-value { color: #10b981; font-weight: 900; font-size: 1.1rem; }
+        .date-text { color: var(--text-secondary); font-size: 0.85rem; }
 
-        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
-        .status-badge.used { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.2); }
-        .status-badge.active { background: rgba(34, 197, 94, 0.1); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2); }
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; width: fit-content;}
+        .status-badge.used { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .status-badge.active { background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2); }
+        .status-badge.expired { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
 
         /* Pagination */
-        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; padding: 25px; background: #111827; color: #94a3b8; font-weight: bold;}
-        .pagination button { background: #1e293b; border: 1px solid #334155; color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: inherit; transition: 0.2s;}
-        .pagination button:hover:not(:disabled) { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; padding: 25px; background: var(--bg-elevated); color: var(--text-secondary); font-weight: bold;}
+        .pagination button { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: inherit; transition: 0.2s;}
+        .pagination button:hover:not(:disabled) { background: var(--gold); color: #111009; border-color: var(--gold); }
         .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* ==================== Modals (Premium Design) ==================== */
-        .blur-bg { backdrop-filter: blur(8px); }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10000; animation: fadeIn 0.2s ease-out;}
-        .modal-box { background: #1e293b; padding: 30px; border-radius: 20px; border: 1px solid #475569; width: 90%; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; overflow: hidden; }
+        .blur-bg { backdrop-filter: blur(5px); }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 10000; animation: fadeIn 0.2s ease-out;}
+        .modal-box { background: var(--bg-surface); padding: 30px; border-radius: 20px; border: 1px solid var(--border-accent); width: 90%; max-width: 420px; box-shadow: var(--shadow); animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; overflow: hidden; }
         
-        .modal-header-glass { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
-        .close-x { background: transparent; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; transition: 0.2s; }
+        .modal-header-glass { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .close-x { background: transparent; border: none; color: var(--text-muted); cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; padding: 0;}
         .close-x:hover { color: #ef4444; }
 
-        .modal-title { color: #f8fafc; margin: 0; font-size: 1.3rem; }
-        .modal-desc { color: #94a3b8; font-size: 0.95rem; margin-top: 10px; line-height: 1.5; }
+        .modal-title { color: var(--text-primary); margin: 0; font-size: 1.3rem; }
+        .modal-desc { color: var(--text-secondary); font-size: 0.95rem; margin-top: 10px; line-height: 1.5; }
         
+        .alert-info { color: var(--gold); background: var(--gold-dimmer); padding: 10px; border-radius: 8px; border: 1px dashed var(--border-accent); }
+
         .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 30px; }
         .modal-actions.centered { justify-content: center; }
         
-        .btn-cancel { background: #0f172a; color: #cbd5e1; border: 1px solid #475569; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .btn-cancel:hover { background: #334155; color: white; }
+        .btn-cancel { background: var(--bg-base); color: var(--text-secondary); border: 1px solid var(--border); padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
         
         .btn-save { padding: 12px 25px; border-radius: 10px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; color: white; }
-        .btn-save:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-        .btn-save.primary { background: #3b82f6; }
+        .btn-save:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .btn-save.primary { background: var(--gold); color: #111009; }
         .btn-save.danger { background: #ef4444; }
         .btn-save.warning { background: #f97316; }
-        .btn-save.success { background: #22c55e; color: #0f172a; }
+        .btn-save.success { background: #22c55e; }
 
         .confirm-box { text-align: center; }
-        .modal-icon-header { width: 70px; height: 70px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 2rem; margin: 0 auto 20px auto; }
-        .modal-icon-header.danger { background: rgba(239, 68, 68, 0.1); border: 2px solid #ef4444; }
-        .modal-icon-header.warning { background: rgba(249, 115, 22, 0.1); border: 2px solid #f97316; }
-        .modal-icon-header.success { background: rgba(34, 197, 94, 0.1); border: 2px solid #22c55e; }
+        .modal-icon-header { width: 70px; height: 70px; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin: 0 auto 20px auto; }
+        .modal-icon-header.danger { background: rgba(239, 68, 68, 0.1); border: 2px solid #ef4444; color: #ef4444;}
+        .modal-icon-header.warning { background: rgba(249, 115, 22, 0.1); border: 2px solid #f97316; color: #f97316;}
+        .modal-icon-header.success { background: rgba(34, 197, 94, 0.1); border: 2px solid #22c55e; color: #22c55e;}
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scaleUp { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
