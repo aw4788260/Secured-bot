@@ -18,62 +18,6 @@ const IconCopy = ({ size = 16, className = "" }) => (<svg className={className} 
 const IconSearch = ({ size = 18, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>);
 const IconX = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
 const IconWarning = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>);
-const IconChevronDown = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>);
-const IconPercent = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>);
-
-// ─── CUSTOM DROPDOWN COMPONENT ──────────────────────────────────────
-const CustomDropdown = ({ options, value, onChange, placeholder, icon: Icon }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const selectedOption = options.find(opt => opt.value === value);
-
-    return (
-        <div className="custom-dropdown-container" ref={dropdownRef}>
-            <button 
-                type="button"
-                className={`custom-dropdown-trigger ${isOpen ? 'open' : ''}`}
-                onClick={(e) => { e.preventDefault(); setIsOpen(!isOpen); }}
-            >
-                <div className="flex-center gap-2">
-                    {Icon && <Icon size={16} className="dropdown-icon" />}
-                    <span className="dropdown-text">{selectedOption ? selectedOption.label : placeholder}</span>
-                </div>
-                <IconChevronDown size={14} className={`chevron-icon ${isOpen ? 'rotated' : ''}`} />
-            </button>
-
-            {isOpen && (
-                <ul className="custom-dropdown-menu">
-                    {options.map((opt) => (
-                        <li 
-                            key={opt.value}
-                            className={value === opt.value ? 'active' : ''}
-                            onClick={() => {
-                                onChange(opt.value);
-                                setIsOpen(false);
-                            }}
-                        >
-                            <div className="flex-center gap-2">
-                                {opt.icon && <opt.icon size={14} />}
-                                {opt.label}
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </div>
-    );
-};
 // ───────────────────────────────────────────────────────────────────────
 
 export default function DiscountCodes() {
@@ -154,26 +98,6 @@ export default function DiscountCodes() {
       });
   }
 
-  // خيارات القوائم المنسدلة (Dropdown Options)
-  const discountTypeOptions = [
-    { value: 'percentage', label: 'نسبة مئوية (%)', icon: IconPercent },
-    { value: 'fixed', label: 'مبلغ ثابت (جنيه)', icon: IconMoney }
-  ];
-
-  const filterStatusOptions = [
-    { value: 'all', label: 'الكل' },
-    { value: 'active', label: 'متاح للاستخدام', icon: IconCheck },
-    { value: 'used', label: 'مستخدم / معطل', icon: IconBlock },
-    { value: 'expired', label: 'منتهي الصلاحية', icon: IconTime }
-  ];
-
-  const filterTypeOptions = [
-    { value: 'all', label: 'الكل' },
-    { value: 'percentage', label: 'نسبة مئوية (%)', icon: IconPercent },
-    { value: 'fixed', label: 'مبلغ ثابت', icon: IconMoney }
-  ];
-
-
   // -------------------------------------------------------------
   // جلب البيانات
   // -------------------------------------------------------------
@@ -192,7 +116,7 @@ export default function DiscountCodes() {
         type: overrideFilters.type,
         value: overrideFilters.value, 
         status: overrideFilters.status,
-        code: overrideFilters.code 
+        code: overrideFilters.code // إرسال الكود للباك إند
       }).toString();
 
       const res = await fetch(`/api/dashboard/super/generate-discount-codes?${queryParams}`);
@@ -211,7 +135,7 @@ export default function DiscountCodes() {
             fetchedCodes = fetchedCodes.filter(c => c.is_used);
         }
         
-        // فلترة محلية إضافية لكود الخصم لضمان عملها فوراً
+        // فلترة محلية إضافية لكود الخصم لضمان عملها فوراً حتى لو لم يدعمها الباك إند
         if (overrideFilters.code) {
             const searchStr = overrideFilters.code.toLowerCase().trim();
             fetchedCodes = fetchedCodes.filter(c => c.code.toLowerCase().includes(searchStr));
@@ -407,12 +331,6 @@ export default function DiscountCodes() {
   const renderDiscountValue = (type, val) => type === 'percentage' ? `${val} %` : `${val} ج.م`;
   const totalPages = Math.ceil(totalCodes / limit);
 
-  // خيارات قائمة المدرسين للفلترة والتعديل
-  const teacherOptions = [
-      { value: 'all', label: 'كل المدرسين', icon: IconTeacher },
-      ...teachers.map(t => ({ value: t.id.toString(), label: t.name, icon: IconTeacher }))
-  ];
-
   return (
     <SuperLayout>
       <Head><title>إدارة الكوبونات | الإدارة العليا</title></Head>
@@ -479,12 +397,10 @@ export default function DiscountCodes() {
 
                   <div className="form-group">
                     <label>نوع الخصم:</label>
-                    <CustomDropdown 
-                        options={discountTypeOptions} 
-                        value={discountType} 
-                        onChange={setDiscountType}
-                        placeholder="اختر النوع..."
-                    />
+                    <select value={discountType} onChange={(e) => setDiscountType(e.target.value)} className="form-input">
+                      <option value="percentage">نسبة مئوية (%)</option>
+                      <option value="fixed">مبلغ ثابت (جنيه)</option>
+                    </select>
                   </div>
                   <div className="form-group">
                     <label>القيمة:</label>
@@ -562,35 +478,35 @@ export default function DiscountCodes() {
               <div className="filters-grid">
                   <div className="filter-item">
                       <label>بحث بكود مخصص</label>
-                      <input type="text" className="form-input" placeholder="ادخل الكود هنا..." value={filters.code} onChange={e=>setFilters({...filters, code: e.target.value})} />
+                      <input type="text" className="filter-input" placeholder="ادخل الكود هنا..." value={filters.code} onChange={e=>setFilters({...filters, code: e.target.value})} />
                   </div>
-                  <div className="filter-item z-index-4">
+                  <div className="filter-item">
                       <label>المدرس المرتبط</label>
-                      <CustomDropdown 
-                          options={teacherOptions} 
-                          value={filters.teacherId} 
-                          onChange={(val) => setFilters({...filters, teacherId: val})}
-                      />
+                      <select className="filter-input" value={filters.teacherId} onChange={e=>setFilters({...filters, teacherId: e.target.value})}>
+                          <option value="all">الكل</option>
+                          {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
                   </div>
-                  <div className="filter-item z-index-3">
+                  <div className="filter-item">
                       <label>نوع الخصم</label>
-                      <CustomDropdown 
-                          options={filterTypeOptions} 
-                          value={filters.type} 
-                          onChange={(val) => setFilters({...filters, type: val})}
-                      />
+                      <select className="filter-input" value={filters.type} onChange={e=>setFilters({...filters, type: e.target.value})}>
+                          <option value="all">الكل</option>
+                          <option value="percentage">نسبة مئوية (%)</option>
+                          <option value="fixed">مبلغ ثابت</option>
+                      </select>
                   </div>
                   <div className="filter-item">
                       <label>القيمة (رقم)</label>
-                      <input type="number" className="form-input" placeholder="بحث بالقيمة..." value={filters.value} onChange={e=>setFilters({...filters, value: e.target.value})} />
+                      <input type="number" className="filter-input" placeholder="بحث بالقيمة..." value={filters.value} onChange={e=>setFilters({...filters, value: e.target.value})} />
                   </div>
-                  <div className="filter-item z-index-2">
+                  <div className="filter-item">
                       <label>الحالة</label>
-                      <CustomDropdown 
-                          options={filterStatusOptions} 
-                          value={filters.status} 
-                          onChange={(val) => setFilters({...filters, status: val})}
-                      />
+                      <select className="filter-input" value={filters.status} onChange={e=>setFilters({...filters, status: e.target.value})}>
+                          <option value="all">الكل</option>
+                          <option value="active">متاح للاستخدام</option>
+                          <option value="used">مستخدم / معطل</option>
+                          <option value="expired">منتهي الصلاحية</option>
+                      </select>
                   </div>
               </div>
               <div className="filters-actions">
@@ -782,12 +698,10 @@ export default function DiscountCodes() {
                   {advancedModal.actionType === 'change_teacher' && (
                       <div className="form-group mt-4">
                           <label>اختر المدرس الجديد (يحذف ارتباط الكورس/المادة إن وجد):</label>
-                          <CustomDropdown 
-                              options={teacherOptions.filter(opt => opt.value !== 'all')} 
-                              value={advancedModal.newTeacher} 
-                              onChange={(val) => setAdvancedModal({...advancedModal, newTeacher: val})}
-                              placeholder="-- يرجى الاختيار --"
-                          />
+                          <select className="form-input" value={advancedModal.newTeacher} onChange={e => setAdvancedModal({...advancedModal, newTeacher: e.target.value})}>
+                              <option value="">-- يرجى الاختيار --</option>
+                              {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
                       </div>
                   )}
 
@@ -795,11 +709,10 @@ export default function DiscountCodes() {
                       <>
                           <div className="form-group mt-4">
                               <label>نوع الخصم الجديد:</label>
-                              <CustomDropdown 
-                                  options={discountTypeOptions} 
-                                  value={advancedModal.newType} 
-                                  onChange={(val) => setAdvancedModal({...advancedModal, newType: val})}
-                              />
+                              <select className="form-input" value={advancedModal.newType} onChange={e => setAdvancedModal({...advancedModal, newType: e.target.value})}>
+                                  <option value="percentage">نسبة مئوية (%)</option>
+                                  <option value="fixed">مبلغ ثابت (جنيه)</option>
+                              </select>
                           </div>
                           <div className="form-group mt-3">
                               <label>القيمة الجديدة:</label>
@@ -837,10 +750,6 @@ export default function DiscountCodes() {
         .full-width { grid-column: 1 / -1; }
         .full-span { grid-column: span 1.5; }
         .mt-3 { margin-top: 15px; } .mt-4 { margin-top: 25px; } .m-0 { margin: 0; }
-        
-        .z-index-4 { z-index: 4; }
-        .z-index-3 { z-index: 3; }
-        .z-index-2 { z-index: 2; }
 
         /* ==================== Colors / Theme Logic ==================== */
         .color-teacher { color: #3b82f6; }
@@ -865,40 +774,6 @@ export default function DiscountCodes() {
         .smart-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
         .smart-toast.success { border-bottom: 3px solid #22c55e; }
         .smart-toast.error { border-bottom: 3px solid #ef4444; }
-
-        /* ==================== Custom Dropdown ==================== */
-        .custom-dropdown-container { position: relative; width: 100%; }
-        .custom-dropdown-trigger { 
-          width: 100%; display: flex; align-items: center; justify-content: space-between;
-          background: var(--bg-base); color: var(--text-primary); 
-          padding: 12px 15px; border: 1px solid var(--border); border-radius: 8px; 
-          font-size: 0.95rem; cursor: pointer; transition: all 0.2s; font-family: inherit;
-        }
-        .custom-dropdown-trigger:hover, .custom-dropdown-trigger.open { border-color: var(--gold); }
-        .dropdown-icon { color: var(--text-secondary); }
-        .custom-dropdown-trigger.open .dropdown-icon { color: var(--gold); }
-        .dropdown-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .chevron-icon { color: var(--text-secondary); transition: transform 0.3s ease; flex-shrink: 0; }
-        .chevron-icon.rotated { transform: rotate(180deg); color: var(--gold); }
-        
-        .custom-dropdown-menu { 
-          position: absolute; top: calc(100% + 6px); right: 0; width: 100%; 
-          background: var(--bg-surface); border: 1px solid var(--border-accent); 
-          border-radius: 8px; box-shadow: var(--shadow); z-index: 100; 
-          list-style: none; padding: 6px 0; margin: 0; max-height: 250px; overflow-y: auto;
-          animation: dropIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .custom-dropdown-menu::-webkit-scrollbar { width: 6px; }
-        .custom-dropdown-menu::-webkit-scrollbar-track { background: var(--bg-base); }
-        .custom-dropdown-menu::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
-        .custom-dropdown-menu li { 
-          padding: 10px 15px; cursor: pointer; color: var(--text-secondary); 
-          font-size: 0.95rem; transition: all 0.2s;
-        }
-        .custom-dropdown-menu li:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .custom-dropdown-menu li.active { background: var(--gold-dim); color: var(--gold); font-weight: bold; border-right: 3px solid var(--gold); }
-
-        @keyframes dropIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
         /* ==================== Grid & Cards ==================== */
         .top-grid { display: grid; grid-template-columns: 2fr 1.2fr; gap: 20px; margin-bottom: 25px;}
@@ -987,6 +862,8 @@ export default function DiscountCodes() {
         .filters-container { background: var(--bg-elevated); padding: 20px; border-radius: 16px; margin-bottom: 25px; display: flex; flex-direction: column; gap: 15px; }
         .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
         .filter-item label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 5px; font-weight: bold;}
+        .filter-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-base); color: var(--text-primary); outline: none; transition: 0.2s; font-family: inherit;}
+        .filter-input:focus { border-color: var(--gold); }
         
         .filters-actions { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 15px; }
         .btn-apply { background: var(--gold); color: #111009; border: none; padding: 10px 25px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
