@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import medaadLogo from '../../styles/medaad-logo.png'; // تأكد من مسار اللوجو
+import medaadLogo from '../../styles/medaad-logo.png';
 
 // ─── SVG Icons ──────────────────────────────────────────
 const UserIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>);
 const LockIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>);
 const SunIcon = () => (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>);
 const MoonIcon = () => (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>);
-const ShieldIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>);
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -104,7 +103,7 @@ export default function AdminLogin() {
   return (
     <div className={`login-page ${isDark ? 'dark' : 'light'}`}>
       <Head>
-        <title>تسجيل الدخول | إدارة مداد</title>
+        <title>تسجيل الدخول | إدارة المنصة</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
       </Head>
 
@@ -119,14 +118,14 @@ export default function AdminLogin() {
 
       <div className="login-container">
         
-        {/* Logo Section */}
-        <div className="logo-wrap">
-          <img src={medaadLogo?.src || '/medaad-logo.png'} alt="مداد" className="brand-logo" />
-        </div>
-
         <div className="login-card">
+          
+          {/* Logo Section inside the card for perfect width matching */}
+          <div className="logo-wrap">
+            <img src={medaadLogo?.src || '/medaad-logo.png'} alt="اللوجو" className="brand-logo" />
+          </div>
+
           <div className="card-header">
-            <div className="header-icon"><ShieldIcon /></div>
             <h2>بوابة الإدارة المركزية</h2>
             <p>يرجى إدخال بيانات الاعتماد للوصول إلى لوحة التحكم</p>
           </div>
@@ -164,7 +163,7 @@ export default function AdminLogin() {
             </div>
 
             <button type="submit" disabled={loading} className={`submit-btn ${loading ? 'loading' : ''}`}>
-              {loading ? <span className="spinner"></span> : 'تسجيل الدخول'}
+              {loading ? <span className="spinner"></span> : 'تسجيل الدخول 🚀'}
             </button>
           </form>
         </div>
@@ -174,7 +173,7 @@ export default function AdminLogin() {
            <Link href="/privacy-policy" className="privacy-link">
              سياسة الخصوصية (Privacy Policy)
            </Link>
-           <p className="copyright">© {new Date().getFullYear()} منصة مداد. جميع الحقوق محفوظة.</p>
+           <p className="copyright">© {new Date().getFullYear()} جميع الحقوق محفوظة.</p>
         </div>
 
       </div>
@@ -245,15 +244,8 @@ export default function AdminLogin() {
           z-index: 0;
           animation: float 10s infinite ease-in-out alternate;
         }
-        .shape-1 {
-          width: 500px; height: 500px;
-          top: -100px; right: -100px;
-        }
-        .shape-2 {
-          width: 400px; height: 400px;
-          bottom: -50px; left: -100px;
-          animation-delay: -5s;
-        }
+        .shape-1 { width: 500px; height: 500px; top: -100px; right: -100px; }
+        .shape-2 { width: 400px; height: 400px; bottom: -50px; left: -100px; animation-delay: -5s; }
 
         @keyframes float {
           0% { transform: translate(0, 0) scale(1); }
@@ -284,7 +276,7 @@ export default function AdminLogin() {
         /* ── CONTAINER & CARD ── */
         .login-container {
           width: 100%;
-          max-width: 420px;
+          max-width: 440px; /* تم تكبيرها قليلاً لتناسب العرض الجديد */
           z-index: 2;
           display: flex;
           flex-direction: column;
@@ -297,24 +289,6 @@ export default function AdminLogin() {
           to { opacity: 1; transform: translateY(0); }
         }
 
-        .logo-wrap {
-          margin-bottom: 30px;
-          display: flex;
-          justify-content: center;
-          animation: pulseLogo 3s infinite alternate;
-        }
-        .brand-logo {
-          height: 60px;
-          width: auto;
-          object-fit: contain;
-          filter: drop-shadow(0 4px 10px rgba(201,168,76,0.2));
-        }
-
-        @keyframes pulseLogo {
-          from { transform: scale(1); filter: drop-shadow(0 4px 10px rgba(201,168,76,0.2)); }
-          to { transform: scale(1.03); filter: drop-shadow(0 8px 15px rgba(201,168,76,0.4)); }
-        }
-
         .login-card {
           background: var(--bg-surface);
           padding: 40px 35px;
@@ -325,24 +299,35 @@ export default function AdminLogin() {
           backdrop-filter: blur(10px);
         }
 
+        /* ── LOGO SECTION ── */
+        .logo-wrap {
+          width: 100%; /* العرض يطابق المربعات */
+          margin-bottom: 25px;
+          display: flex;
+          justify-content: center;
+          animation: logoEntrance 1s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .brand-logo {
+          width: 100%;
+          max-height: 110px; /* لضمان عدم زيادة الطول بشكل مفرط */
+          object-fit: contain;
+          filter: drop-shadow(0 8px 15px rgba(201,168,76,0.25));
+        }
+
+        @keyframes logoEntrance {
+          from { opacity: 0; transform: scale(0.9) translateY(-10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
         /* ── HEADER ── */
         .card-header {
           text-align: center;
           margin-bottom: 30px;
         }
-        .header-icon {
-          width: 50px; height: 50px;
-          background: var(--gold-dim);
-          color: var(--gold);
-          border-radius: 14px;
-          display: flex; justify-content: center; align-items: center;
-          margin: 0 auto 15px;
-          border: 1px solid var(--border-accent);
-        }
         .card-header h2 {
           margin: 0 0 8px 0;
           color: var(--text-primary);
-          font-size: 1.6rem;
+          font-size: 1.5rem;
           font-weight: 800;
         }
         .card-header p {
@@ -372,24 +357,39 @@ export default function AdminLogin() {
           40%, 60% { transform: translate3d(4px, 0, 0); }
         }
 
-        /* ── FORM INPUTS ── */
+        /* ── FORM INPUTS & ANIMATIONS ── */
         .login-form {
           display: flex;
           flex-direction: column;
           gap: 20px;
         }
+        
         .input-group {
           position: relative;
-          display: flex; align-items: center;
+          display: flex; 
+          align-items: center;
+          opacity: 0;
+          animation: fadeInUpInput 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
+        /* تدرج في الظهور لحقول الإدخال */
+        .input-group:nth-child(1) { animation-delay: 0.2s; }
+        .input-group:nth-child(2) { animation-delay: 0.3s; }
+
+        @keyframes fadeInUpInput {
+          from { opacity: 0; transform: translateY(15px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         .input-icon {
           position: absolute;
           right: 16px;
           color: var(--text-muted);
           display: flex;
-          transition: color 0.3s;
+          transition: color 0.4s;
           pointer-events: none;
+          z-index: 2;
         }
+        
         .login-input {
           width: 100%;
           padding: 16px 45px 16px 16px;
@@ -399,19 +399,33 @@ export default function AdminLogin() {
           color: var(--text-primary);
           font-size: 1rem;
           outline: none;
-          transition: all 0.3s ease;
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy Transition */
           font-family: inherit;
         }
+        
+        .login-input.ltr { 
+          direction: ltr; 
+          text-align: left; 
+          padding: 16px 16px 16px 45px; 
+        }
+        .login-input.ltr + .input-icon, .input-group:has(.ltr) .input-icon { 
+          right: auto; 
+          left: 16px; 
+        }
         .login-input::placeholder { color: var(--text-muted); }
-        .login-input.ltr { direction: ltr; text-align: left; padding: 16px 16px 16px 45px; }
-        /* Fix icon position for LTR inputs */
-        .login-input.ltr + .input-icon, .input-group:has(.ltr) .input-icon { right: auto; left: 16px; }
 
+        /* تأثير الـ Hover والـ Focus */
+        .login-input:hover {
+          border-color: var(--border-accent);
+        }
+        
         .login-input:focus {
           border-color: var(--gold);
-          box-shadow: 0 0 0 4px var(--gold-dim);
           background: var(--bg-surface);
+          box-shadow: 0 0 0 4px var(--gold-dim), 0 8px 16px rgba(0,0,0,0.1);
+          transform: translateY(-3px); /* ارتفاع المربع للأعلى بلطف */
         }
+        
         .login-input:focus ~ .input-icon, .input-group:focus-within .input-icon {
           color: var(--gold);
         }
@@ -433,6 +447,9 @@ export default function AdminLogin() {
           align-items: center;
           position: relative;
           overflow: hidden;
+          opacity: 0;
+          animation: fadeInUpInput 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          animation-delay: 0.4s;
         }
         .submit-btn::before {
           content: '';
@@ -466,6 +483,9 @@ export default function AdminLogin() {
           display: flex;
           flex-direction: column;
           gap: 12px;
+          animation: fadeInUpInput 0.6s forwards;
+          animation-delay: 0.5s;
+          opacity: 0;
         }
         .privacy-link {
           color: var(--text-secondary);
