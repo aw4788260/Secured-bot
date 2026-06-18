@@ -1,6 +1,26 @@
 import SuperLayout from '../../../components/SuperLayout';
 import { useState, useEffect } from 'react';
 
+// ─── SVG ICONS COMPONENTS ──────────────────────────────────────────────
+const IconInbox = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>);
+const IconTeacher = ({ size = 18, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
+const IconClock = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>);
+const IconCheck = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>);
+const IconX = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
+const IconRefresh = ({ size = 18, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>);
+const IconEmpty = ({ size = 48, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>);
+const IconUser = ({ size = 14, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>);
+const IconPhone = ({ size = 14, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>);
+const IconEdit = ({ size = 14, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>);
+const IconCart = ({ size = 14, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>);
+const IconNote = ({ size = 14, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
+const IconReceipt = ({ size = 14, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>);
+const IconZoom = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>);
+const IconWarning = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>);
+const IconArrowRight = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>);
+const IconArrowLeft = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>);
+// ───────────────────────────────────────────────────────────────────────
+
 export default function SuperRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -122,7 +142,7 @@ export default function SuperRequestsPage() {
     }
   };
 
-  // ✅ دالة تحديث السعر الفعلي
+  // ✅ دالة تحديث السعر الفعلي (تحدث عمود actual_paid_price بدلاً من total_price)
   const handleUpdatePrice = async () => {
     const { id, price } = editPriceModal;
     if (!price || isNaN(price) || price < 0) {
@@ -145,6 +165,7 @@ export default function SuperRequestsPage() {
       const result = await res.json();
       if (res.ok) {
         showToast(result.message, 'success');
+        // ✅ تحديث السعر الفعلي في الواجهة فوراً
         setRequests(requests.map(req => req.id === id ? { ...req, actual_paid_price: result.newPrice } : req));
         setEditPriceModal({ show: false, id: null, price: '' });
       } else {
@@ -167,7 +188,10 @@ export default function SuperRequestsPage() {
 
       <div className="header-container">
         <div>
-            <h1>📥 مركز طلبات الاشتراك</h1>
+            <h1 className="flex-center gap-2">
+              <IconInbox size={26} style={{ color: 'var(--gold)' }} /> 
+              مركز طلبات الاشتراك
+            </h1>
             <p className="sub-header">مراقبة وإدارة جميع طلبات الاشتراك لكافة المدرسين</p>
         </div>
         
@@ -175,12 +199,13 @@ export default function SuperRequestsPage() {
             
             {/* ✅ قائمة اختيار المدرس */}
             <div className="teacher-select-wrapper">
+              <IconTeacher className="select-icon" />
               <select 
                 value={selectedTeacher} 
                 onChange={(e) => setSelectedTeacher(e.target.value)}
                 className="teacher-select"
               >
-                <option value="all">👨‍🏫 كل المدرسين</option>
+                <option value="all">كل المدرسين</option>
                 {teachers.map(teacher => (
                   <option key={teacher.id} value={teacher.id}>
                     {teacher.name}
@@ -191,25 +216,27 @@ export default function SuperRequestsPage() {
 
             <div className="filter-tabs">
                 <button 
-                    className={`tab ${filter === 'pending' ? 'active' : ''}`} 
+                    className={`tab flex-center gap-2 ${filter === 'pending' ? 'active' : ''}`} 
                     onClick={() => setFilter('pending')}
                 >
-                    ⏳ المعلقة
+                    <IconClock /> المعلقة
                 </button>
                 <button 
-                    className={`tab ${filter === 'approved' ? 'active' : ''}`} 
+                    className={`tab flex-center gap-2 ${filter === 'approved' ? 'active' : ''}`} 
                     onClick={() => setFilter('approved')}
                 >
-                    ✅ المقبولة
+                    <IconCheck /> المقبولة
                 </button>
                 <button 
-                    className={`tab ${filter === 'rejected' ? 'active' : ''}`} 
+                    className={`tab flex-center gap-2 ${filter === 'rejected' ? 'active' : ''}`} 
                     onClick={() => setFilter('rejected')}
                 >
-                    ❌ المرفوضة
+                    <IconX /> المرفوضة
                 </button>
             </div>
-            <button onClick={fetchRequests} className="refresh-btn" title="تحديث البيانات">🔄</button>
+            <button onClick={fetchRequests} className="refresh-btn" title="تحديث البيانات">
+                <IconRefresh />
+            </button>
         </div>
       </div>
 
@@ -220,7 +247,9 @@ export default function SuperRequestsPage() {
         </div>
       ) : requests.length === 0 ? (
         <div className="empty-state">
-            <div style={{fontSize:'3em', marginBottom:'15px'}}>📭</div>
+            <div style={{ marginBottom:'15px', color: 'var(--border-accent)' }} className="flex-center justify-center">
+                <IconEmpty size={64} />
+            </div>
             <h3>لا توجد طلبات للعرض</h3>
             <p>جرب تغيير الفلتر أو اختيار مدرس آخر.</p>
         </div>
@@ -243,30 +272,35 @@ export default function SuperRequestsPage() {
                                 <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
                             </div>
                             {req.teachers && (
-                                <span className="teacher-badge">👨‍🏫 {req.teachers.name}</span>
+                                <span className="teacher-badge flex-center gap-1">
+                                    <IconTeacher size={14} /> 
+                                    {req.teachers.name}
+                                </span>
                             )}
                         </div>
 
                         <div className="card-body">
                             <div className="info-row">
                                 <div className="info-col">
-                                    <span className="label">👤 اسم الطالب</span>
+                                    <span className="label flex-center gap-1"><IconUser /> اسم الطالب</span>
                                     <span className="value">{req.user_name}</span>
                                 </div>
                                 <div className="info-col right">
-                                    <span className="label">📱 هاتف الطالب</span>
+                                    <span className="label flex-center gap-1"><IconPhone /> هاتف الطالب</span>
                                     <span className="value ltr">{req.phone}</span>
                                 </div>
                             </div>
                             
-                            {/* ✅ قسم عرض السعر الجديد */}
+                            {/* ✅ قسم عرض السعر الجديد (الأصلي + المعدل) */}
                             <div className="price-box">
                                 <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start'}}>
                                     <span className="label">المبلغ المطلوب</span>
+                                    {/* إظهار السعر الأصلي (مشطوب في حال وجود سعر معدل) */}
                                     <span className="price-value" style={hasActualPrice ? {textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.9em'} : {}}>
                                         {req.total_price} ج.م
                                     </span>
                                     
+                                    {/* إظهار السعر الفعلي بلون مختلف (إن وُجد) */}
                                     {hasActualPrice && (
                                         <>
                                             <span className="label" style={{marginTop: '5px', color: 'var(--gold)'}}>المدفوع فعلياً</span>
@@ -276,29 +310,31 @@ export default function SuperRequestsPage() {
                                 </div>
                                 
                                 <button 
-                                    className="btn-edit-price"
+                                    className="btn-edit-price flex-center gap-1"
                                     onClick={() => setEditPriceModal({ show: true, id: req.id, price: hasActualPrice ? req.actual_paid_price : req.total_price })}
                                     title="تعديل المبلغ الفعلي"
                                 >
-                                    ✏️ تعديل
+                                    <IconEdit /> تعديل
                                 </button>
                             </div>
                             
                             <div className="details-box">
-                                <span className="label">🛒 المحتوى المطلوب</span>
+                                <span className="label flex-center gap-1"><IconCart /> المحتوى المطلوب</span>
                                 <p className="details-text">{req.course_title || 'محتوى غير محدد'}</p>
                             </div>
 
                             {req.user_note && (
                                 <div className="note-box">
-                                    <span className="label">📝 ملاحظات الطالب</span>
+                                    <span className="label flex-center gap-1"><IconNote /> ملاحظات الطالب</span>
                                     <p className="note-text">{req.user_note}</p>
                                 </div>
                             )}
 
                             {receiptUrl && (
                                 <div className="receipt-section">
-                                    <p className="label" style={{marginBottom:'8px'}}>📄 إيصال الدفع</p>
+                                    <p className="label flex-center gap-1 justify-center" style={{marginBottom:'8px'}}>
+                                        <IconReceipt /> إيصال الدفع
+                                    </p>
                                     <div 
                                         className="receipt-thumbnail-wrapper"
                                         onClick={() => setModalImage(receiptUrl)}
@@ -310,7 +346,9 @@ export default function SuperRequestsPage() {
                                             loading="lazy"
                                             onError={(e) => {e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';}}
                                         />
-                                        <div className="zoom-hint">🔍</div>
+                                        <div className="zoom-hint">
+                                            <IconZoom size={32} />
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -321,16 +359,16 @@ export default function SuperRequestsPage() {
                                 <button 
                                     onClick={() => initiateAction(req.id, 'approve')} 
                                     disabled={processingId === req.id}
-                                    className="btn approve"
+                                    className="btn approve flex-center justify-center gap-2"
                                 >
-                                    {processingId === req.id ? '...' : '✅ تفعيل'}
+                                    {processingId === req.id ? '...' : <><IconCheck /> تفعيل</>}
                                 </button>
                                 <button 
                                     onClick={() => initiateAction(req.id, 'reject')} 
                                     disabled={processingId === req.id}
-                                    className="btn reject"
+                                    className="btn reject flex-center justify-center gap-2"
                                 >
-                                    {processingId === req.id ? '...' : '❌ رفض'}
+                                    {processingId === req.id ? '...' : <><IconX /> رفض</>}
                                 </button>
                             </div>
                         )}
@@ -349,17 +387,17 @@ export default function SuperRequestsPage() {
                 <button 
                     disabled={page === 1} 
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    className="page-btn"
+                    className="page-btn flex-center gap-2"
                 >
-                    ➡️ السابق
+                    <IconArrowRight /> السابق
                 </button>
                 <span className="page-info">صفحة {page} من {totalPages || 1}</span>
                 <button 
                     disabled={page >= totalPages} 
                     onClick={() => setPage(p => p + 1)}
-                    className="page-btn"
+                    className="page-btn flex-center gap-2"
                 >
-                    التالي ⬅️
+                    التالي <IconArrowLeft />
                 </button>
             </div>
         </>
@@ -369,7 +407,9 @@ export default function SuperRequestsPage() {
       {modalImage && (
           <div className="modal-overlay" onClick={() => setModalImage(null)}>
               <div className="modal-content" onClick={e => e.stopPropagation()}>
-                  <button className="close-modal" onClick={() => setModalImage(null)}>✕</button>
+                  <button className="close-modal" onClick={() => setModalImage(null)}>
+                      <IconX size={20} />
+                  </button>
                   <img src={modalImage} alt="Full Receipt" className="modal-img" />
               </div>
           </div>
@@ -379,7 +419,10 @@ export default function SuperRequestsPage() {
       {confirmModal.show && (
           <div className="modal-overlay alert-mode">
               <div className="alert-box">
-                  <h3>⚠️ تأكيد الإجراء</h3>
+                  <h3 className="flex-center justify-center gap-2">
+                      <IconWarning style={{ color: 'var(--gold)' }} /> 
+                      تأكيد الإجراء
+                  </h3>
                   <p>
                       {confirmModal.action === 'approve' 
                         ? 'هل أنت متأكد من تفعيل هذا الاشتراك؟ سيتمكن الطالب من الوصول للمحتوى فوراً.' 
@@ -409,11 +452,14 @@ export default function SuperRequestsPage() {
           </div>
       )}
 
-      {/* ✅ نافذة تعديل السعر */}
+      {/* ✅ نافذة تعديل السعر المخصصة للـ Super Admin */}
       {editPriceModal.show && (
           <div className="modal-overlay alert-mode">
               <div className="alert-box">
-                  <h3>✏️ تعديل المبلغ المدفوع</h3>
+                  <h3 className="flex-center justify-center gap-2">
+                      <IconEdit size={22} style={{ color: 'var(--gold)' }} /> 
+                      تعديل المبلغ المدفوع
+                  </h3>
                   <p style={{marginBottom: '10px', color: 'var(--text-secondary)'}}>أدخل المبلغ الفعلي الذي تم دفعه للاحتفاظ به في السجلات:</p>
                   <input
                       type="number"
@@ -427,7 +473,7 @@ export default function SuperRequestsPage() {
                   <div className="alert-actions">
                       <button className="cancel-btn" onClick={() => setEditPriceModal({ show: false, id: null, price: '' })}>تراجع</button>
                       <button 
-                        className="confirm-btn green" 
+                        className="confirm-btn green flex-center gap-2" 
                         onClick={handleUpdatePrice}
                         disabled={processingId === editPriceModal.id}
                       >
@@ -439,14 +485,21 @@ export default function SuperRequestsPage() {
       )}
 
       <style jsx>{`
+        /* Utils */
+        .flex-center { display: flex; align-items: center; }
+        .justify-center { justify-content: center; }
+        .gap-1 { gap: 6px; }
+        .gap-2 { gap: 8px; }
+
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
         .header-container h1 { margin: 0 0 5px 0; color: var(--text-primary); font-size: 1.8rem; }
         .sub-header { color: var(--text-secondary); margin: 0; font-size: 0.95em; }
         
         .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         
-        .teacher-select-wrapper { position: relative; }
-        .teacher-select { background: var(--bg-elevated); color: var(--text-primary); padding: 8px 30px 8px 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; cursor: pointer; outline: none; height: 40px; min-width: 180px; }
+        .teacher-select-wrapper { position: relative; display: flex; align-items: center; }
+        .select-icon { position: absolute; right: 12px; color: var(--text-secondary); pointer-events: none; }
+        .teacher-select { background: var(--bg-elevated); color: var(--text-primary); padding: 8px 15px 8px 15px; padding-right: 36px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; cursor: pointer; outline: none; height: 40px; min-width: 180px; appearance: none; -webkit-appearance: none; }
         .teacher-select:focus { border-color: var(--gold); }
 
         .filter-tabs { display: flex; background: var(--bg-elevated); padding: 4px; border-radius: 8px; border: 1px solid var(--border); }
@@ -454,68 +507,69 @@ export default function SuperRequestsPage() {
         .tab:hover { color: var(--text-primary); }
         .tab.active { background: var(--gold); color: #111009; }
 
-        .refresh-btn { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--border-accent); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; transition: 0.2s; }
+        .refresh-btn { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--border-accent); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
         .refresh-btn:hover { background: var(--gold); color: #111009; }
 
         .loading-state { text-align: center; color: var(--gold); padding: 60px; }
         .empty-state { text-align: center; padding: 60px; color: var(--text-secondary); background: var(--bg-elevated); border-radius: 12px; border: 1px dashed var(--border); margin-top: 20px; }
 
-        .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
-        .request-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column; }
+        /* ✅ تعديل مقاس الشبكة ليتسع كارتين بجوار القائمة */
+        .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 15px; }
+        
+        .request-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column; }
         .request-card:hover { transform: translateY(-5px); border-color: var(--gold); }
         .request-card.approved { border-color: #22c55e; }
         .request-card.rejected { border-color: #ef4444; opacity: 0.8; }
 
-        .card-header { background: var(--bg-elevated); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
-        .req-meta { display: flex; gap: 10px; align-items: center; font-size: 0.85em; color: var(--text-secondary); }
+        .card-header { background: var(--bg-elevated); padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .req-meta { display: flex; gap: 8px; align-items: center; font-size: 0.8em; color: var(--text-secondary); }
         .req-id { font-family: monospace; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; color: var(--text-primary); }
-        .teacher-badge { background: var(--gold-dim); color: var(--gold); padding: 4px 8px; border-radius: 20px; font-size: 0.8em; font-weight: bold; border: 1px solid var(--border-accent); }
+        .teacher-badge { background: var(--gold-dim); color: var(--gold); padding: 3px 8px; border-radius: 15px; font-size: 0.75em; font-weight: bold; border: 1px solid var(--border-accent); }
 
-        .card-body { padding: 20px; flex: 1; }
-        .info-row { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .card-body { padding: 15px; flex: 1; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
         .info-col { display: flex; flex-direction: column; }
         .info-col.right { align-items: flex-end; }
         
-        .label { color: var(--text-muted); font-size: 0.8em; font-weight: bold; text-transform: uppercase; margin-bottom: 3px; }
-        .value { color: var(--text-primary); font-weight: 500; font-size: 1em; }
+        .label { color: var(--text-muted); font-size: 0.75em; font-weight: bold; text-transform: uppercase; margin-bottom: 3px; }
+        .value { color: var(--text-primary); font-weight: 500; font-size: 0.95em; }
         .value.ltr { direction: ltr; font-family: monospace; }
         
-        /* مربع السعر */
-        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .price-value { color: #4ade80; font-weight: bold; font-size: 1.2em; }
+        .price-box { background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .price-value { color: #4ade80; font-weight: bold; font-size: 1.1em; }
         .layout-root.light .price-box { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); }
         .layout-root.light .price-value { color: #16a34a; }
 
-        .btn-edit-price { background: var(--gold-dimmer); border: 1px solid var(--border-accent); color: var(--gold); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: bold; transition: all 0.2s; }
+        .btn-edit-price { background: var(--gold-dimmer); border: 1px solid var(--border-accent); color: var(--gold); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8em; font-weight: bold; transition: all 0.2s; }
         .btn-edit-price:hover { background: var(--gold); color: #111009; }
 
-        .details-box { background: var(--bg-base); padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 15px; }
-        .details-text { color: var(--text-primary); margin: 0; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; }
+        .details-box { background: var(--bg-base); padding: 10px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px; }
+        .details-text { color: var(--text-primary); margin: 0; font-size: 0.9em; line-height: 1.4; white-space: pre-wrap; margin-top: 4px; }
 
-        .note-box { background: var(--gold-dimmer); border: 1px solid var(--border-accent); padding: 12px; border-radius: 8px; margin-bottom: 15px; }
-        .note-text { color: var(--gold); margin: 0; font-size: 0.95em; line-height: 1.4; white-space: pre-wrap; }
+        .note-box { background: var(--gold-dimmer); border: 1px solid var(--border-accent); padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+        .note-text { color: var(--gold); margin: 0; font-size: 0.9em; line-height: 1.4; white-space: pre-wrap; margin-top: 4px; }
 
-        .receipt-section { margin-top: 15px; text-align: center; }
-        .receipt-thumbnail-wrapper { position: relative; height: 160px; width: 100%; background: var(--bg-base); border-radius: 10px; overflow: hidden; cursor: zoom-in; border: 1px solid var(--border); transition: border-color 0.2s; }
+        .receipt-section { margin-top: 12px; text-align: center; }
+        .receipt-thumbnail-wrapper { position: relative; height: 140px; width: 100%; background: var(--bg-base); border-radius: 8px; overflow: hidden; cursor: zoom-in; border: 1px solid var(--border); transition: border-color 0.2s; }
         .receipt-thumbnail-wrapper:hover { border-color: var(--gold); }
         .receipt-thumbnail { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
-        .receipt-thumbnail-wrapper:hover .receipt-thumbnail { transform: scale(1.05); opacity: 0.8; }
-        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .receipt-thumbnail-wrapper:hover .receipt-thumbnail { transform: scale(1.05); opacity: 0.3; }
+        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.3s; pointer-events: none; color: var(--gold); }
         .receipt-thumbnail-wrapper:hover .zoom-hint { opacity: 1; }
 
-        .card-actions { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid var(--border); background: var(--bg-elevated); }
-        .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; font-size: 1em; }
+        .card-actions { display: flex; gap: 8px; padding: 12px 15px; border-top: 1px solid var(--border); background: var(--bg-elevated); }
+        .btn { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; font-size: 0.95em; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn.approve { background: #22c55e; color: #fff; }
         .btn.reject { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.5); }
         .btn.reject:hover { background: #ef4444; color: white; }
 
-        .rejection-note { padding: 15px; background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 0.9em; border-top: 1px solid rgba(239, 68, 68, 0.3); }
+        .rejection-note { padding: 12px 15px; background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 0.85em; border-top: 1px solid rgba(239, 68, 68, 0.3); }
 
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-content { position: relative; max-width: 95%; max-height: 95%; display: flex; justify-content: center; align-items: center; }
         .modal-img { max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        .close-modal { position: absolute; top: -40px; right: 0px; background: white; color: black; border: none; width: 30px; height: 30px; border-radius: 50%; font-weight: bold; cursor: pointer; font-size: 18px; }
+        .close-modal { position: absolute; top: -40px; right: 0px; background: white; color: black; border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
 
         .alert-mode { background: rgba(0,0,0,0.7); backdrop-filter: blur(2px); }
         .alert-box { background: var(--bg-surface); padding: 25px; border-radius: 16px; border: 1px solid var(--border-accent); width: 90%; max-width: 400px; text-align: center; box-shadow: var(--shadow); animation: popIn 0.3s; }
