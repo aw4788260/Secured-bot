@@ -3,6 +3,20 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Image from 'next/image';
 
+// استدعاء صورة اللوجو بشكل صحيح (تأكد من أن المسار يطابق هيكل مشروعك)
+import medaadLogo from '../styles/medaad-logo.png';
+
+// ─── SVG Icons ──────────────────────────────────────────
+const HomeIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>);
+const TeachersIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
+const StudentsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>);
+const RequestsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>);
+const CouponIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>);
+const WheelIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="12" x2="14.5" y2="14.5"></line></svg>);
+const FinanceIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>);
+const NotifIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>);
+const SettingsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"></path></svg>);
+
 export default function SuperLayout({ children, title }) {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -74,15 +88,15 @@ export default function SuperLayout({ children, title }) {
   };
 
   const menuItems = [
-    { name: 'لوحة القيادة', path: '/admin/super', icon: '🏠' },
-    { name: 'إدارة المدرسين', path: '/admin/super/teachers', icon: '👨‍🏫' },
-    { name: 'إدارة الطلاب', path: '/admin/super/students', icon: '👨‍🎓' },
-    { name: 'كل طلبات الاشتراك', path: '/admin/super/requests', icon: '📥' },
-    { name: 'أكواد الخصم (كوبونات)', path: '/admin/super/discount-codes', icon: '🎟️' },
-    { name: 'عجلة الحظ', path: '/admin/super/wheel', icon: '🎡' },
-    { name: 'التقارير المالية', path: '/admin/super/finance', icon: '💰' },
-    { name: 'إرسال الإشعارات', path: '/admin/super/notifications', icon: '📢' },
-    { name: 'إعدادات المنصة', path: '/admin/super/settings', icon: '⚙️' },
+    { name: 'لوحة القيادة', path: '/admin/super', icon: <HomeIcon /> },
+    { name: 'إدارة المدرسين', path: '/admin/super/teachers', icon: <TeachersIcon /> },
+    { name: 'إدارة الطلاب', path: '/admin/super/students', icon: <StudentsIcon /> },
+    { name: 'كل طلبات الاشتراك', path: '/admin/super/requests', icon: <RequestsIcon /> },
+    { name: 'أكواد الخصم (كوبونات)', path: '/admin/super/discount-codes', icon: <CouponIcon /> },
+    { name: 'عجلة الحظ', path: '/admin/super/wheel', icon: <WheelIcon /> },
+    { name: 'التقارير المالية', path: '/admin/super/finance', icon: <FinanceIcon /> },
+    { name: 'إرسال الإشعارات', path: '/admin/super/notifications', icon: <NotifIcon /> },
+    { name: 'إعدادات المنصة', path: '/admin/super/settings', icon: <SettingsIcon /> },
   ];
 
   const t = isDark ? themes.dark : themes.light;
@@ -99,7 +113,7 @@ export default function SuperLayout({ children, title }) {
 
   return (
     <div className={`layout-root ${isDark ? 'dark' : 'light'}`}>
-      <Head><title>{title ? `${title} | مبداد` : 'لوحة الإدارة العليا | مبداد'}</title></Head>
+      <Head><title>{title ? `${title} | مداد` : 'لوحة الإدارة العليا | مداد'}</title></Head>
 
       {/* ───────── TOP HEADER ───────── */}
       <header className="top-header">
@@ -115,7 +129,7 @@ export default function SuperLayout({ children, title }) {
 
         {/* Logo centered */}
         <div className="header-logo">
-          <img src="/styles/medaad-logo.png" alt="مبداد" height={38} style={{ objectFit: 'contain', display: 'block' }} />
+          <img src={medaadLogo?.src || '/medaad-logo.png'} alt="مداد" height={38} style={{ objectFit: 'contain', display: 'block' }} />
         </div>
 
         <div className="header-left">
@@ -138,7 +152,7 @@ export default function SuperLayout({ children, title }) {
         <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
           {/* Sidebar logo */}
           <div className="sidebar-logo-wrap">
-            <img src="/styles/medaad-logo.png" alt="مبداد" height={44} style={{ objectFit: 'contain' }} />
+            <img src={medaadLogo?.src || '/medaad-logo.png'} alt="مداد" height={44} style={{ objectFit: 'contain' }} />
           </div>
           <div className="sidebar-divider" />
           <nav className="nav-container">
@@ -155,7 +169,7 @@ export default function SuperLayout({ children, title }) {
             ))}
           </nav>
           <div className="sidebar-footer">
-            <span>مبداد © {new Date().getFullYear()}</span>
+            <span>مداد © {new Date().getFullYear()}</span>
           </div>
         </aside>
 
@@ -328,7 +342,7 @@ export default function SuperLayout({ children, title }) {
         }
         .nav-item:hover { background: var(--gold-dimmer); color: var(--gold); border-color: var(--border); transform: translateX(-3px); }
         .nav-item.active { background: var(--gold-dim); color: var(--gold-light); border-color: var(--border-accent); }
-        .nav-icon { font-size: 1.1rem; flex-shrink: 0; }
+        .nav-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; }
         .nav-label { flex: 1; }
         .active-bar { position: absolute; right: 0; top: 20%; bottom: 20%; width: 3px; background: var(--gold); border-radius: 2px; }
 
