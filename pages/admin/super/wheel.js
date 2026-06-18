@@ -134,8 +134,8 @@ export default function WheelManager() {
   }
 
   return (
-    <SuperLayout title="إدارة عجلة الحظ المتقدمة">
-      <div className="wheel-theme-wrapper">
+    <SuperLayout title="إدارة عجلة الحظ">
+      <div className="wheel-luxury-wrapper">
         <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>{toast.msg}</div>
 
         <div className="page-header">
@@ -144,13 +144,13 @@ export default function WheelManager() {
             <p>تجهيز الكتالوج، متابعة الفائزين، والتحكم في حالة الحملة</p>
           </div>
           <div className="header-actions">
-            <button className={`btn ${isWheelEnabled ? 'danger-btn' : 'success'}`} onClick={handleToggleWheel}>
+            <button className={`btn ${isWheelEnabled ? 'danger-btn' : 'success-btn'}`} onClick={handleToggleWheel}>
               {isWheelEnabled ? '🛑 إلغاء تفعيل العجلة بالكامل' : '🟢 تشغيل وتفعيل العجلة'}
             </button>
-            <button className="btn warning" onClick={() => showConfirm('هل أنت متأكد من مسح سجل المشاركات؟ سيتمكن الطلاب من اللعب مرة أخرى.', () => executeAction('reset_spins'))}>
+            <button className="btn warning-btn" onClick={() => showConfirm('هل أنت متأكد من مسح سجل المشاركات؟ سيتمكن الطلاب من اللعب مرة أخرى.', () => executeAction('reset_spins'))}>
                 🧹 تصفير السجل
             </button>
-            <button className="btn success" onClick={() => showConfirm('هل أنت متأكد من تفعيل الحملة؟ سيتم خلط التذاكر بناءً على الجوائز الحالية المتاحة بالمخزون.', () => executeAction('activate_campaign'))}>
+            <button className="btn primary" onClick={() => showConfirm('هل أنت متأكد من تفعيل الحملة؟ سيتم خلط التذاكر بناءً على الجوائز الحالية المتاحة بالمخزون.', () => executeAction('activate_campaign'))}>
               🚀 تفعيل الحملة وخلط الصندوق
             </button>
           </div>
@@ -165,12 +165,12 @@ export default function WheelManager() {
            </div>
            <div className="stat-card">
               <h3>🎟️ تذاكر جاهزة بالصندوق</h3>
-              <div className="val blue">{stats.poolCount}</div>
+              <div className="val gold-text">{stats.poolCount}</div>
               <p>متبقية للسحب الفوري</p>
            </div>
            <div className="stat-card">
               <h3>👤 إجمالي الطلاب الفائزين</h3>
-              <div className="val green">{stats.spinsCount}</div>
+              <div className="val green-text">{stats.spinsCount}</div>
               <p>قاموا بتدوير العجلة</p>
            </div>
         </div>
@@ -195,7 +195,7 @@ export default function WheelManager() {
               <tbody>
                 {prizes.map(p => (
                   <tr key={p.id}>
-                    <td style={{fontWeight:'bold', color: 'var(--text-primary)'}}>{p.title}</td>
+                    <td style={{fontWeight:'bold', color:'var(--text-primary)'}}>{p.title}</td>
                     <td>
                         {p.type === 'coupon' ? '🎟️ كوبون خصم' : p.type === 'material' ? '🎁 جائزة مادية' : '😢 حظ أوفر'}
                         {p.type === 'coupon' && <div className="sub-txt">{p.discount_value} {p.discount_type === 'percentage' ? '%' : 'ج.م'}</div>}
@@ -205,9 +205,9 @@ export default function WheelManager() {
                     <td className="sub-txt">
                         {p.type === 'coupon' ? (
                             <>
-                                {p.link_type === 'teacher' && <span style={{color: 'var(--accent-blue)'}}>👨‍🏫 مدرس: {p.teachers?.name || 'غير محدد'}</span>}
-                                {p.link_type === 'course' && <span style={{color: 'var(--accent-green)'}}>📦 كورس: {p.courses?.title || 'غير محدد'}</span>}
-                                {p.link_type === 'subject' && <span style={{color: 'var(--accent-yellow)'}}>📚 مادة: {p.subjects?.title || 'غير محدد'}</span>}
+                                {p.link_type === 'teacher' && <span className="target-teacher">👨‍🏫 مدرس: {p.teachers?.name || 'غير محدد'}</span>}
+                                {p.link_type === 'course' && <span className="target-course">📦 كورس: {p.courses?.title || 'غير محدد'}</span>}
+                                {p.link_type === 'subject' && <span className="target-subject">📚 مادة: {p.subjects?.title || 'غير محدد'}</span>}
                                 {!p.link_type && (p.teachers?.name || '-')}
                             </>
                         ) : '-'}
@@ -228,7 +228,7 @@ export default function WheelManager() {
         </div>
 
         <div className="panel">
-          <div className="panel-header" style={{ background: 'var(--bg-table-header)' }}>
+          <div className="panel-header">
              <h2>👥 سجل الطلاب الفائزين (المشاركات)</h2>
           </div>
           <div className="table-responsive">
@@ -256,7 +256,7 @@ export default function WheelManager() {
                           </span>
                        ) : <span className="red-text">جائزة ممسوحة</span>}
                     </td>
-                    <td style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--accent-green)' }}>
+                    <td style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold)' }}>
                        {w.coupon_code || '_'}
                     </td>
                     <td className="sub-txt">{new Date(w.created_at).toLocaleString('ar-EG')}</td>
@@ -282,7 +282,7 @@ export default function WheelManager() {
                    <h3>{formData.id ? 'تعديل بيانات الجائزة' : 'إضافة جائزة جديدة للكتالوج'}</h3>
                    <button onClick={() => setShowModal(false)} className="close-btn">✕</button>
                 </div>
-                <form onSubmit={handleSave} className="modal-body">
+                <form onSubmit={handleSave} className="modal-body custom-scrollbar">
                    <div className="form-group">
                       <label>الاسم (الذي يظهر للطلاب على العجلة)</label>
                       <input className="input" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="مثال: خصم 50% / حظ أوفر المرة القادمة" />
@@ -308,28 +308,28 @@ export default function WheelManager() {
                            
                            <div className="form-group">
                                <label>الهدف من الكوبون (نطاق الخصم):</label>
-                               <div style={{display: 'flex', gap: '15px', marginBottom: '10px', flexWrap: 'wrap'}}>
-                                  <label className="checkbox-label" style={{color: 'var(--accent-blue)'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'teacher'} onChange={() => setFormData({...formData, link_type: 'teacher', course_id: '', subject_id: ''})} /> مدرس</label>
-                                  <label className="checkbox-label" style={{color: 'var(--accent-green)'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'course'} onChange={() => setFormData({...formData, link_type: 'course', teacher_id: '', subject_id: ''})} /> كورس</label>
-                                  <label className="checkbox-label" style={{color: 'var(--accent-yellow)'}}><input type="radio" name="wLinkType" checked={formData.link_type === 'subject'} onChange={() => setFormData({...formData, link_type: 'subject', teacher_id: '', course_id: ''})} /> مادة</label>
+                               <div className="radio-group-wrap">
+                                  <label className="checkbox-label target-teacher"><input type="radio" name="wLinkType" checked={formData.link_type === 'teacher'} onChange={() => setFormData({...formData, link_type: 'teacher', course_id: '', subject_id: ''})} /> مدرس</label>
+                                  <label className="checkbox-label target-course"><input type="radio" name="wLinkType" checked={formData.link_type === 'course'} onChange={() => setFormData({...formData, link_type: 'course', teacher_id: '', subject_id: ''})} /> كورس</label>
+                                  <label className="checkbox-label target-subject"><input type="radio" name="wLinkType" checked={formData.link_type === 'subject'} onChange={() => setFormData({...formData, link_type: 'subject', teacher_id: '', course_id: ''})} /> مادة</label>
                                </div>
                                
                                {/* ✅ أزرار الاختيار الاحترافية */}
                                {formData.link_type === 'teacher' && (
                                    <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'teacher' })}>
-                                       {selectedTeacherName ? <span style={{color: 'var(--accent-blue)'}}>👨‍🏫 {selectedTeacherName}</span> : '🔍 اضغط لاختيار المدرس...'}
+                                       {selectedTeacherName ? <span className="target-teacher">👨‍🏫 {selectedTeacherName}</span> : '🔍 اضغط لاختيار المدرس...'}
                                    </div>
                                )}
 
                                {formData.link_type === 'course' && (
                                    <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'course' })}>
-                                       {selectedCourseName ? <span style={{color: 'var(--accent-green)'}}>📦 {selectedCourseName}</span> : '🔍 اضغط لاختيار الكورس...'}
+                                       {selectedCourseName ? <span className="target-course">📦 {selectedCourseName}</span> : '🔍 اضغط لاختيار الكورس...'}
                                    </div>
                                )}
 
                                {formData.link_type === 'subject' && (
                                    <div className="selection-trigger" onClick={() => setTargetSelectionModal({ show: true, type: 'subject' })}>
-                                       {selectedSubjectName ? <span style={{color: 'var(--accent-yellow)'}}>📚 {selectedSubjectName}</span> : '🔍 اضغط لاختيار المادة...'}
+                                       {selectedSubjectName ? <span className="target-subject">📚 {selectedSubjectName}</span> : '🔍 اضغط لاختيار المادة...'}
                                    </div>
                                )}
                            </div>
@@ -346,7 +346,7 @@ export default function WheelManager() {
                                    <label>القيمة المخصومة</label>
                                    <input className="input" type="number" min="1" required value={formData.discount_value} onChange={e => setFormData({...formData, discount_value: e.target.value})} />
                                </div>
-                               <div className="form-group" style={{gridColumn: '1 / -1'}}>
+                               <div className="form-group full-span">
                                    <label>صلاحية الكوبون بعد الفوز (أيام)</label>
                                    <input className="input" type="number" min="1" required value={formData.validity_days} onChange={e => setFormData({...formData, validity_days: e.target.value})} />
                                </div>
@@ -355,9 +355,9 @@ export default function WheelManager() {
                    )}
 
                    <div className="form-group mt-2">
-                       <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', padding:'12px', background: 'var(--hover-bg)', borderRadius:'8px', width:'100%'}}>
-                           <input type="checkbox" style={{width:'20px', height:'20px', accentColor: 'var(--accent-green)'}} checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} />
-                           تفعيل الجائزة ضمن السحب المباشر
+                       <label className="toggle-label-box">
+                           <input type="checkbox" className="custom-check" checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} />
+                           <span>تفعيل الجائزة ضمن السحب المباشر</span>
                        </label>
                    </div>
                    
@@ -374,15 +374,15 @@ export default function WheelManager() {
         {targetSelectionModal.show && (
             <div className="modal-overlay blur-bg" style={{ zIndex: 1100 }} onClick={() => setTargetSelectionModal({ show: false, type: '' })}>
                 <div className="modal-box target-selection-box" onClick={e => e.stopPropagation()}>
-                    <div className="modal-head" style={{borderBottom: '1px solid var(--border-color)', paddingBottom: '15px', background: 'transparent'}}>
-                        <h3 style={{margin: 0, fontSize: '1.2rem'}}>
+                    <div className="modal-head selection-head">
+                        <h3>
                             {targetSelectionModal.type === 'teacher' ? '👨‍🏫 اختر المدرس' :
                              targetSelectionModal.type === 'course' ? '📦 اختر الكورس' : '📚 اختر المادة'}
                         </h3>
                         <button className="close-btn" onClick={() => setTargetSelectionModal({ show: false, type: '' })}>✕</button>
                     </div>
                     
-                    <div className="target-list">
+                    <div className="target-list custom-scrollbar">
                         {targetSelectionModal.type === 'teacher' && teachers.map(t => (
                             <div key={t.id} className={`target-item ${formData.teacher_id == t.id ? 'active' : ''}`} onClick={() => { setFormData({...formData, teacher_id: t.id}); setTargetSelectionModal({show: false, type: ''}); }}>
                                 <span>{t.name}</span>
@@ -406,8 +406,8 @@ export default function WheelManager() {
                             </div>
                         ))}
                         
-                        {targetSelectionModal.type === 'teacher' && teachers.length === 0 && <p style={{textAlign:'center', color:'var(--text-secondary)', padding: '20px'}}>لا يوجد مدرسين مسجلين.</p>}
-                        {['course', 'subject'].includes(targetSelectionModal.type) && courses.length === 0 && <p style={{textAlign:'center', color:'var(--text-secondary)', padding: '20px'}}>لا توجد كورسات مسجلة حالياً.</p>}
+                        {targetSelectionModal.type === 'teacher' && teachers.length === 0 && <p className="empty-msg">لا يوجد مدرسين مسجلين.</p>}
+                        {['course', 'subject'].includes(targetSelectionModal.type) && courses.length === 0 && <p className="empty-msg">لا توجد كورسات مسجلة حالياً.</p>}
                     </div>
                 </div>
             </div>
@@ -415,157 +415,157 @@ export default function WheelManager() {
 
         {/* نافذة التأكيد */}
         {confirmData.show && (
-            <div className="modal-overlay" style={{ zIndex: 1200 }}>
+            <div className="modal-overlay blur-bg" style={{ zIndex: 1200 }}>
                 <div className="modal-box confirm-box">
                     <h3>⚠️ تأكيد الإجراء الأمني</h3>
                     <p>{confirmData.msg}</p>
                     <div className="modal-footer centered">
                         <button className="btn cancel" onClick={() => setConfirmData({show:false})}>تراجع</button>
-                        <button className="btn success" onClick={confirmData.action}>نعم، نفذ الآن</button>
+                        <button className="btn success-btn" onClick={confirmData.action}>نعم، نفذ الآن</button>
                     </div>
                 </div>
             </div>
         )}
 
         <style jsx>{`
-          .wheel-theme-wrapper {
-            /* Light Mode Variables */
-            --bg-page: #f8fafc;
-            --bg-card: #ffffff;
-            --bg-table-header: #f1f5f9;
-            --border-color: #e2e8f0;
-            --text-primary: #0f172a;
-            --text-secondary: #64748b;
-            --input-bg: #ffffff;
-            --input-border: #cbd5e1;
-            --hover-bg: #f1f5f9;
-            --accent-blue: #0284c7;
-            --accent-green: #16a34a;
-            --accent-yellow: #ca8a04;
-            --accent-red: #dc2626;
-            --modal-overlay: rgba(0,0,0,0.5);
-            --badge-blue-bg: rgba(2, 132, 199, 0.1);
-            --badge-green-bg: rgba(22, 163, 74, 0.1);
-            --badge-yellow-bg: rgba(202, 138, 4, 0.1);
-            --badge-red-bg: rgba(220, 38, 38, 0.1);
+          .wheel-luxury-wrapper {
+            padding-bottom: 50px;
+            color: var(--text-primary);
           }
 
-          /* Dark Mode Variables based on Media Query */
-          @media (prefers-color-scheme: dark) {
-            .wheel-theme-wrapper {
-              --bg-page: #0f172a;
-              --bg-card: #1e293b;
-              --bg-table-header: #0f172a;
-              --border-color: #334155;
-              --text-primary: #f8fafc;
-              --text-secondary: #94a3b8;
-              --input-bg: #1e293b;
-              --input-border: #475569;
-              --hover-bg: rgba(255,255,255,0.05);
-              --accent-blue: #38bdf8;
-              --accent-green: #4ade80;
-              --accent-yellow: #facc15;
-              --accent-red: #f87171;
-              --modal-overlay: rgba(0,0,0,0.8);
-              --badge-blue-bg: rgba(56, 189, 248, 0.1);
-              --badge-green-bg: rgba(74, 222, 128, 0.1);
-              --badge-yellow-bg: rgba(250, 204, 21, 0.1);
-              --badge-red-bg: rgba(239, 68, 68, 0.1);
-            }
-          }
-
-          /* Support explicit dark mode class toggle via Dashobard Container */
-          :global(.dark) .wheel-theme-wrapper {
-              --bg-page: #0f172a;
-              --bg-card: #1e293b;
-              --bg-table-header: #0f172a;
-              --border-color: #334155;
-              --text-primary: #f8fafc;
-              --text-secondary: #94a3b8;
-              --input-bg: #1e293b;
-              --input-border: #475569;
-              --hover-bg: rgba(255,255,255,0.05);
-              --accent-blue: #38bdf8;
-              --accent-green: #4ade80;
-              --accent-yellow: #facc15;
-              --accent-red: #f87171;
-              --modal-overlay: rgba(0,0,0,0.8);
-              --badge-blue-bg: rgba(56, 189, 248, 0.1);
-              --badge-green-bg: rgba(74, 222, 128, 0.1);
-              --badge-yellow-bg: rgba(250, 204, 21, 0.1);
-              --badge-red-bg: rgba(239, 68, 68, 0.1);
-          }
-
-          .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-          .page-header h1 { margin: 0 0 5px 0; color: var(--text-primary); font-size: 1.8rem; }
+          /* --- Header & Layout --- */
+          .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+          .page-header h1 { margin: 0 0 5px 0; color: var(--text-primary); font-size: 1.8rem; font-weight: 800; }
           .page-header p { margin: 0; color: var(--text-secondary); }
+          
           .header-actions { display: flex; gap: 10px; }
+          
           .btn { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.95rem; }
-          .btn.primary { background: var(--accent-blue); color: #0f172a; }
-          .btn.success { background: var(--accent-green); color: #0f172a; }
-          .btn.warning { background: transparent; border: 1px solid var(--accent-yellow); color: var(--accent-yellow); }
-          .btn.cancel { background: transparent; border: 1px solid var(--text-secondary); color: var(--text-secondary); }
-          .danger-btn { background: var(--accent-red); color: white; } .danger-btn:hover { opacity: 0.9; }
+          .btn.primary { background: var(--gold); color: #111009; }
+          .btn.primary:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 4px 12px var(--gold-dim); }
+          .success-btn { background: #22c55e; color: white; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s;}
+          .success-btn:hover { background: #16a34a; transform: translateY(-2px); }
+          .warning-btn { background: transparent; border: 1px solid var(--gold); color: var(--gold); padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+          .warning-btn:hover { background: var(--gold-dimmer); }
+          .btn.cancel { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+          .btn.cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
+          .danger-btn { background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s;} 
+          .danger-btn:hover { background: #dc2626; transform: translateY(-2px); }
+
+          /* --- Stats Grid --- */
           .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-          .stat-card { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; }
-          .stat-card h3 { margin: 0 0 10px 0; color: var(--text-secondary); font-size: 1rem; }
-          .stat-card .val { font-size: 2rem; font-weight: bold; color: var(--text-primary); }
-          .stat-card .val.blue { color: var(--accent-blue); } .stat-card .val.green { color: var(--accent-green); }
-          .green-text { color: var(--accent-green) !important; } .red-text { color: var(--accent-red) !important; }
-          .panel { background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); overflow: hidden; }
-          .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-table-header); }
-          .panel-header h2 { margin: 0; font-size: 1.2rem; color: var(--text-primary); }
+          .stat-card { background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border); text-align: center; transition: transform 0.2s, box-shadow 0.2s; }
+          .stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.2); border-color: var(--border-accent); }
+          .stat-card h3 { margin: 0 0 10px 0; color: var(--text-muted); font-size: 1rem; }
+          .stat-card .val { font-size: 2.2rem; font-weight: 800; color: var(--text-primary); }
+          .stat-card p { margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-secondary); }
+          
+          .gold-text { color: var(--gold) !important; } 
+          .green-text { color: #4ade80 !important; } 
+          .red-text { color: #f87171 !important; }
+
+          /* --- Panels & Tables --- */
+          .panel { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+          .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); }
+          .panel-header h2 { margin: 0; font-size: 1.25rem; color: var(--text-primary); font-weight: bold; }
+          
+          .table-responsive { overflow-x: auto; }
           table { width: 100%; border-collapse: collapse; text-align: right; }
-          th { padding: 15px; color: var(--text-secondary); font-size: 0.9rem; background: var(--bg-table-header); border-bottom: 1px solid var(--border-color); }
-          td { padding: 15px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); vertical-align: middle; }
-          .sub-txt { font-size: 0.85em; color: var(--text-secondary); }
-          .stock-badge { background: var(--badge-blue-bg); color: var(--accent-blue); padding: 4px 12px; border-radius: 20px; font-weight: bold; }
-          .type-tag { padding: 4px 8px; border-radius: 6px; font-size: 0.9rem; font-weight: bold; background: var(--border-color); }
-          .type-tag.coupon { color: var(--accent-green); background: var(--badge-green-bg); }
-          .type-tag.material { color: var(--accent-yellow); background: var(--badge-yellow-bg); }
+          th { padding: 15px 20px; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; background: var(--bg-elevated); border-bottom: 1px solid var(--border); font-weight: bold; }
+          td { padding: 15px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
+          tr:last-child td { border-bottom: none; }
+          tr:hover td { background: var(--bg-hover); }
+          
+          .sub-txt { font-size: 0.85em; color: var(--text-muted); }
+          
+          /* Badges & Tags */
+          .stock-badge { background: var(--gold-dimmer); color: var(--gold); padding: 4px 12px; border-radius: 20px; font-weight: bold; border: 1px solid var(--border-accent); }
+          .type-tag { padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: bold; border: 1px solid var(--border); }
+          .type-tag.coupon { color: #4ade80; background: rgba(74, 222, 128, 0.1); border-color: rgba(74, 222, 128, 0.3); }
+          .type-tag.material { color: var(--gold); background: var(--gold-dimmer); border-color: var(--border-accent); }
+          
+          /* Colors for Targets */
+          .target-teacher { color: #60a5fa; font-weight: bold; }
+          .target-course { color: #34d399; font-weight: bold; }
+          .target-subject { color: var(--gold); font-weight: bold; }
+
+          /* Actions Cell */
           .actions-cell { display: flex; gap: 8px; }
-          .icon-btn { background: var(--hover-bg); color: var(--text-primary); border: none; width: 35px; height: 35px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-          .icon-btn.edit { background: var(--badge-yellow-bg); } .icon-btn.delete { background: var(--badge-red-bg); }
-          .modal-overlay { position: fixed; inset: 0; background: var(--modal-overlay); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
-          .modal-box { background: var(--bg-card); width: 95%; max-width: 600px; border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
-          .confirm-box { max-width: 400px; padding: 25px; text-align: center; display: block; }
-          .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-table-header); flex-shrink: 0; }
-          .modal-head h3 { margin: 0; color: var(--text-primary); }
-          .close-btn { background: none; border: none; color: var(--text-secondary); font-size: 1.2rem; cursor: pointer; }
-          .modal-body { padding: 20px; overflow-y: auto; color: var(--text-primary); }
-          .form-group { margin-bottom: 15px; }
-          .form-group label { display: block; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem; }
-          .input { width: 100%; padding: 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; color: var(--text-primary); }
+          .icon-btn { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); width: 35px; height: 35px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+          .icon-btn:hover { filter: brightness(1.2); transform: scale(1.05); }
+          .icon-btn.edit { color: var(--gold); } .icon-btn.edit:hover { background: var(--gold-dimmer); border-color: var(--gold); }
+          .icon-btn.delete { color: #ef4444; } .icon-btn.delete:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; }
+
+          /* --- Modals --- */
+          .blur-bg { backdrop-filter: blur(5px); }
+          .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; justify-content: center; align-items: center; }
+          .modal-box { background: var(--bg-surface); width: 95%; max-width: 600px; border-radius: 16px; border: 1px solid var(--border-accent); overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0,0,0,0.6); animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+          .confirm-box { max-width: 400px; padding: 25px; text-align: center; display: block; border-color: var(--border); }
+          .confirm-box h3 { color: var(--gold); margin-top: 0; }
+          
+          .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); flex-shrink: 0; }
+          .modal-head h3 { margin: 0; color: var(--gold); font-size: 1.25rem; }
+          .selection-head { background: transparent; border-bottom-color: var(--border); padding-bottom: 15px; }
+          .close-btn { background: none; border: none; color: var(--text-muted); font-size: 1.2rem; cursor: pointer; transition: 0.2s; }
+          .close-btn:hover { color: #ef4444; }
+          
+          .modal-body { padding: 25px; overflow-y: auto; color: var(--text-primary); }
+          .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+          .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-base); }
+          .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+
+          .form-group { margin-bottom: 20px; }
+          .form-group label { display: block; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem; font-weight: bold; }
+          .input { width: 100%; padding: 12px 15px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 1rem; transition: 0.2s; }
+          .input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 2px var(--gold-dimmer); }
+          
           .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
           .mt-2 { margin-top: 15px; }
-          .coupon-box { background: var(--badge-blue-bg); border: 1px dashed rgba(56, 189, 248, 0.3); padding: 15px; border-radius: 12px; margin-top: 15px; }
-          .coupon-box h4 { margin: 0 0 15px 0; color: var(--accent-blue); }
-          .modal-footer { padding-top: 20px; margin-top: 10px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
-          .modal-footer.centered { justify-content: center; border: none; }
-          .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #333; color: white; padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 2000; transition: 0.4s; opacity: 0; }
-          .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
-          .toast.success { background: var(--accent-green); color: #0f172a; }
-          .toast.error { background: var(--accent-red); color: white; }
+          .full-span { grid-column: 1 / -1; }
 
-          /* ✅ تنسيقات نافذة الاختيار الاحترافية */
-          .selection-trigger {
-              width: 100%; padding: 15px; border-radius: 8px; border: 1px dashed var(--accent-blue);
-              background: var(--badge-blue-bg); color: var(--text-secondary); cursor: pointer;
-              text-align: center; font-weight: bold; transition: 0.3s; font-size: 1rem;
-          }
-          .selection-trigger:hover { background: var(--hover-bg); border-style: solid; }
+          .coupon-box { background: var(--gold-dimmer); border: 1px dashed var(--border-accent); padding: 20px; border-radius: 12px; margin-top: 15px; }
+          .coupon-box h4 { margin: 0 0 15px 0; color: var(--gold); font-size: 1.1rem; }
           
-          .target-selection-box { max-width: 550px !important; padding: 20px; background: var(--bg-card); }
-          .target-list { overflow-y: auto; margin-top: 15px; display: flex; flex-direction: column; gap: 8px; padding-right: 5px; max-height: 60vh; }
-          .target-list::-webkit-scrollbar { width: 6px; }
-          .target-list::-webkit-scrollbar-track { background: var(--bg-page); border-radius: 10px; }
-          .target-list::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
-          .target-item { padding: 12px 15px; background: var(--bg-page); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: 0.2s; color: var(--text-primary); font-weight: bold; display: flex; align-items: center;}
-          .target-item:hover { border-color: var(--accent-blue); background: var(--hover-bg); color: var(--text-primary);}
-          .target-item.active { background: var(--accent-blue); color: #0f172a; border-color: var(--accent-blue); }
-          .subject-group { margin-bottom: 12px; background: var(--bg-page); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);}
-          .subject-group-title { font-size: 0.95rem; color: var(--accent-blue); margin-bottom: 12px; font-weight: bold; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px;}
-          .target-item.subject { margin-bottom: 8px; background: var(--bg-card); }
+          .radio-group-wrap { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+          .checkbox-label { display: flex; align-items: center; gap: 8px; font-weight: bold; cursor: pointer; }
+          .checkbox-label input { accent-color: var(--gold); width: 16px; height: 16px; cursor: pointer; }
+
+          .toggle-label-box { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 15px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; width: 100%; font-weight: bold; transition: 0.2s; }
+          .toggle-label-box:hover { border-color: var(--gold); }
+          .custom-check { width: 20px; height: 20px; accent-color: #4ade80; cursor: pointer; }
+
+          .modal-footer { padding: 20px 25px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; background: var(--bg-elevated); }
+          .modal-footer.centered { justify-content: center; border: none; background: transparent; padding-top: 10px; }
+
+          /* Selection Modal specifically */
+          .selection-trigger { width: 100%; padding: 15px; border-radius: 8px; border: 1px dashed var(--border-accent); background: var(--bg-elevated); color: var(--text-muted); cursor: pointer; text-align: center; font-weight: bold; transition: 0.3s; font-size: 1rem; }
+          .selection-trigger:hover { background: var(--gold-dimmer); border-style: solid; color: var(--gold); }
+          
+          .target-selection-box { max-width: 500px !important; padding: 25px; background: var(--bg-surface); }
+          .target-list { overflow-y: auto; margin-top: 15px; display: flex; flex-direction: column; gap: 10px; padding-right: 5px; max-height: 60vh; }
+          .target-item { padding: 12px 15px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: 0.2s; color: var(--text-primary); font-weight: bold; display: flex; align-items: center; }
+          .target-item:hover { border-color: var(--gold); background: var(--gold-dimmer); }
+          .target-item.active { background: var(--gold); color: #111009; border-color: var(--gold); }
+          
+          .subject-group { margin-bottom: 5px; background: var(--bg-base); padding: 15px; border-radius: 12px; border: 1px solid var(--border); }
+          .subject-group-title { font-size: 0.95rem; color: var(--gold); margin-bottom: 12px; font-weight: bold; border-bottom: 1px dashed var(--border); padding-bottom: 8px; }
+          .target-item.subject { margin-bottom: 8px; background: var(--bg-surface); }
+          .empty-msg { text-align: center; color: var(--text-muted); padding: 20px; font-style: italic; }
+
+          /* Toast */
+          .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--bg-elevated); color: var(--text-primary); padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: var(--shadow); z-index: 20000; transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1); opacity: 0; border: 1px solid var(--border); }
+          .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+          .toast.success { border-bottom: 3px solid #22c55e; }
+          .toast.error { border-bottom: 3px solid #ef4444; }
+
+          @keyframes popIn { from { transform: scale(0.92) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+          
+          @media (max-width: 600px) {
+              .page-header { flex-direction: column; align-items: flex-start; }
+              .header-actions { width: 100%; flex-wrap: wrap; justify-content: space-between; }
+              .header-actions button { flex: 1; min-width: 120px; text-align: center; padding: 12px; }
+              .grid-2 { grid-template-columns: 1fr; }
+          }
         `}</style>
       </div>
     </SuperLayout>
