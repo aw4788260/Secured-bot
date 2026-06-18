@@ -10,364 +10,6 @@ const ChartIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="n
 const TeacherIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
 const FileTextIcon = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
 
-// ─── Shared Report CSS ──────────────────────────────────
-const getReportCSS = () => `
-  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
-    background: #fdfbf5;
-    color: #1a1508;
-    direction: rtl;
-    padding: 0;
-    min-height: 100vh;
-  }
-
-  /* ── PAGE WRAPPER ── */
-  .report-page {
-    max-width: 1050px;
-    margin: 0 auto;
-    background: #ffffff;
-    min-height: 100vh;
-  }
-
-  /* ── HEADER BANNER ── */
-  .report-header {
-    background: linear-gradient(135deg, #1a1508 0%, #2c2312 50%, #1a1508 100%);
-    padding: 36px 48px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    position: relative;
-    overflow: hidden;
-  }
-  .report-header::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 30% 50%, rgba(201,168,76,0.12) 0%, transparent 60%);
-    pointer-events: none;
-  }
-  .report-header::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, transparent, #c9a84c, #e8c96a, #c9a84c, transparent);
-  }
-
-  .header-logo-wrap {
-    flex-shrink: 0;
-  }
-  .header-logo-wrap img {
-    height: 70px;
-    width: auto;
-    object-fit: contain;
-    filter: brightness(1.1);
-  }
-
-  .header-title-block {
-    text-align: center;
-    flex: 1;
-  }
-  .header-title-block .report-type-label {
-    display: inline-block;
-    background: rgba(201,168,76,0.2);
-    border: 1px solid rgba(201,168,76,0.4);
-    color: #e8c96a;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    padding: 4px 14px;
-    border-radius: 20px;
-    margin-bottom: 10px;
-    text-transform: uppercase;
-  }
-  .header-title-block h1 {
-    color: #f5f0e0;
-    font-size: 1.9rem;
-    font-weight: 900;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
-    margin-bottom: 8px;
-  }
-  .header-title-block h1 span {
-    color: #c9a84c;
-  }
-  .header-title-block .date-range-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(201,168,76,0.25);
-    padding: 6px 16px;
-    border-radius: 30px;
-    color: #a89f7a;
-    font-size: 0.88rem;
-    font-weight: 600;
-  }
-  .header-title-block .date-range-pill .dot {
-    width: 6px; height: 6px;
-    background: #c9a84c;
-    border-radius: 50%;
-    display: inline-block;
-  }
-
-  .header-meta-block {
-    text-align: left;
-    flex-shrink: 0;
-  }
-  .header-meta-block .meta-item {
-    font-size: 0.78rem;
-    color: #a89f7a;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-  .header-meta-block .meta-item span {
-    color: #c9a84c;
-    margin-right: 4px;
-  }
-
-  /* ── SUMMARY STRIP ── */
-  .summary-strip {
-    background: #faf8f0;
-    border-bottom: 1px solid #e8dfc0;
-    padding: 24px 48px;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0;
-  }
-  .summary-cell {
-    text-align: center;
-    padding: 8px 16px;
-    border-left: 1px solid #e8dfc0;
-  }
-  .summary-cell:last-child {
-    border-left: none;
-  }
-  .summary-cell .cell-label {
-    font-size: 0.78rem;
-    color: #9e8850;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 8px;
-  }
-  .summary-cell .cell-value {
-    font-size: 1.35rem;
-    font-weight: 900;
-    display: block;
-    line-height: 1;
-    margin-bottom: 4px;
-  }
-  .summary-cell .cell-value.gold { color: #b8903a; }
-  .summary-cell .cell-value.green { color: #16a34a; }
-  .summary-cell .cell-value.red { color: #dc2626; }
-  .summary-cell .cell-value.muted { color: #9e8850; font-size: 1rem; text-decoration: line-through; }
-  .summary-cell .cell-currency {
-    font-size: 0.75rem;
-    color: #9e8850;
-    font-weight: 600;
-  }
-
-  /* ── SECTION TITLE ── */
-  .section-title {
-    padding: 20px 48px 12px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .section-title h2 {
-    font-size: 1rem;
-    font-weight: 800;
-    color: #b8903a;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .section-title .title-line {
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(90deg, #e8dfc0, transparent);
-  }
-
-  /* ── TABLE ── */
-  .report-table-wrap {
-    padding: 0 48px 32px;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.88rem;
-  }
-  thead tr {
-    background: linear-gradient(90deg, #1a1508 0%, #2c2312 100%);
-  }
-  thead th {
-    color: #c9a84c;
-    font-weight: 800;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    padding: 14px 16px;
-    text-align: right;
-    white-space: nowrap;
-    border: none;
-  }
-  tbody tr {
-    border-bottom: 1px solid #f0ead6;
-    transition: background 0.15s;
-  }
-  tbody tr:nth-child(even) {
-    background: #fdfbf5;
-  }
-  tbody tr:last-child {
-    border-bottom: none;
-  }
-  tbody td {
-    padding: 13px 16px;
-    text-align: right;
-    color: #3a3015;
-    vertical-align: middle;
-  }
-  tbody td.td-name { font-weight: 800; color: #1a1508; font-size: 0.95rem; }
-  tbody td.td-count { text-align: center; }
-  .count-chip {
-    display: inline-block;
-    background: #f0ead6;
-    border: 1px solid #e8dfc0;
-    color: #6b5a2a;
-    padding: 3px 12px;
-    border-radius: 20px;
-    font-weight: 700;
-    font-size: 0.82rem;
-  }
-  .td-original { color: #9e8850; text-decoration: line-through; }
-  .td-actual { color: #16a34a; font-weight: 800; font-size: 0.95rem; }
-  .td-fee { color: #6b5a2a; }
-  .td-profit { color: #b8903a; font-weight: 900; font-size: 1rem; }
-
-  /* Status badges */
-  .badge-approved { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; display: inline-block; }
-  .badge-rejected { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; display: inline-block; }
-
-  /* ── TEACHER REPORT SUMMARY ── */
-  .teacher-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-    padding: 0 48px 24px;
-  }
-  .teacher-summary-card {
-    background: #faf8f0;
-    border: 1px solid #e8dfc0;
-    border-radius: 12px;
-    padding: 20px 24px;
-    text-align: center;
-  }
-  .teacher-summary-card.highlight {
-    background: linear-gradient(135deg, #1a1508, #2c2312);
-    border-color: #5a4e28;
-  }
-  .teacher-summary-card .card-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #9e8850;
-    margin-bottom: 10px;
-  }
-  .teacher-summary-card.highlight .card-label { color: #a89f7a; }
-  .teacher-summary-card .card-value {
-    font-size: 1.5rem;
-    font-weight: 900;
-    display: block;
-    line-height: 1.1;
-  }
-  .teacher-summary-card .card-value.gold { color: #b8903a; }
-  .teacher-summary-card.highlight .card-value { color: #e8c96a; }
-  .teacher-summary-card .card-value.green { color: #16a34a; }
-  .teacher-summary-card .card-value.red { color: #dc2626; }
-  .teacher-summary-card .card-sub {
-    font-size: 0.78rem;
-    color: #9e8850;
-    margin-top: 6px;
-    font-weight: 600;
-  }
-  .teacher-summary-card.highlight .card-sub { color: #a89f7a; }
-
-  /* ── TEACHER NAME BLOCK ── */
-  .teacher-name-block {
-    text-align: center;
-    padding: 20px 48px 12px;
-  }
-  .teacher-name-block .teacher-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    background: #faf8f0;
-    border: 2px solid #c9a84c;
-    border-radius: 40px;
-    padding: 8px 24px;
-  }
-  .teacher-name-block .teacher-avatar {
-    width: 36px; height: 36px;
-    background: linear-gradient(135deg, #c9a84c, #e8c96a);
-    color: #1a1508;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem; font-weight: 900;
-    flex-shrink: 0;
-  }
-  .teacher-name-block .teacher-name-text {
-    font-size: 1.25rem;
-    font-weight: 900;
-    color: #1a1508;
-  }
-
-  /* ── FOOTER ── */
-  .report-footer {
-    margin: 0 48px;
-    padding: 16px 0;
-    border-top: 1px solid #e8dfc0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .report-footer .footer-brand {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #9e8850;
-    font-size: 0.8rem;
-    font-weight: 700;
-  }
-  .report-footer .footer-brand .brand-dot {
-    width: 8px; height: 8px;
-    background: linear-gradient(135deg, #c9a84c, #e8c96a);
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .report-footer .footer-timestamp {
-    color: #b8a878;
-    font-size: 0.78rem;
-    font-weight: 600;
-  }
-
-  /* ── PRINT ── */
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .report-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .summary-strip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    thead tr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    tbody tr:nth-child(even) { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .teacher-summary-card.highlight { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .badge-approved, .badge-rejected { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  }
-`;
-
 export default function SuperFinance() {
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(null);
@@ -414,326 +56,243 @@ export default function SuperFinance() {
     fetchFinanceData();
   }, [dateRange]);
 
-  // ─── Helper: get absolute logo URL ───────────────────
-  const getLogoUrl = () => {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/medaad-logo.png`;
-    }
-    return '/medaad-logo.png';
-  };
-
-  // ─── Helper: format date in Arabic ───────────────────
-  const formatDateAr = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
-  };
-
-  // ─── Global Finance Report PDF ────────────────────────
+  // ✅ دالة الطباعة العامة
   const handleGlobalExportPDF = () => {
     if (financials.teachers_list.length === 0) return;
 
-    const now = new Date();
-    const printWindow = window.open('', '_blank');
+    const fileName = `التقرير_المالي_الشامل_${dateRange.startDate}_${dateRange.endDate}`;
 
+    const printWindow = window.open('', '_blank');
     const htmlContent = `
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
+      <html dir="rtl">
         <head>
-          <meta charset="UTF-8" />
-          <title>التقرير المالي الشامل - مداد</title>
-          <style>${getReportCSS()}</style>
+          <title>${fileName}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1a1508; }
+            .header-container { text-align: center; margin-bottom: 20px; }
+            .logo { max-height: 80px; margin-bottom: 10px; }
+            h1, h2 { text-align: center; color: #b8903a; margin: 5px 0; }
+            p { text-align: center; color: #666; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: right; }
+            th { background-color: #fbf8f1; color: #b8903a; -webkit-print-color-adjust: exact; font-weight: bold; }
+            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #faf8f0; padding: 15px; border: 1px solid #e5daba; border-radius: 8px; -webkit-print-color-adjust: exact; }
+            .stat { text-align: center; font-weight: bold; color: #333; }
+            .stat-val { font-weight: bold; font-size: 18px; color: #b8903a; margin-top: 5px; }
+            .stat-val.actual { color: #16a34a; }
+            .stat-val.muted { color: #888; font-size: 14px; text-decoration: line-through; }
+          </style>
         </head>
         <body>
-          <div class="report-page">
+          <div class="header-container">
+             <img src="/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'" />
+             <h1>التقرير المالي الشامل</h1>
+             <p>الفترة من: ${dateRange.startDate} إلى: ${dateRange.endDate}</p>
+          </div>
+          
+          <div class="summary-box">
+            <div class="stat">المبيعات الافتراضية<div class="stat-val muted">${financials.total_original_revenue.toLocaleString()} ج.م</div></div>
+            <div class="stat">المبيعات الفعلية (المُحصلة)<div class="stat-val actual">${financials.total_actual_revenue.toLocaleString()} ج.م</div></div>
+            <div class="stat">ربح المنصة<div class="stat-val">${financials.platform_profit.toLocaleString()} ج.م</div></div>
+            <div class="stat">مستحقات المدرسين<div class="stat-val" style="color: #dc2626">${financials.teachers_due.toLocaleString()} ج.م</div></div>
+          </div>
 
-            <!-- HEADER -->
-            <div class="report-header">
-              <div class="header-logo-wrap">
-                <img src="${getLogoUrl()}" alt="مداد" onerror="this.style.display='none'" />
+          <table>
+            <thead>
+              <tr>
+                <th>المدرس</th>
+                <th>عدد العمليات</th>
+                <th>المبيعات الافتراضية</th>
+                <th>المبيعات الفعلية</th>
+                <th>حصة المنصة</th>
+                <th>صافي الربح للمدرس</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${financials.teachers_list.map(t => {
+                const hasCustom = t.original_sales !== t.actual_sales;
+                return `
+                <tr>
+                  <td><strong>${t.name}</strong></td>
+                  <td>${t.transaction_count}</td>
+                  <td style="color:#888; ${hasCustom ? 'text-decoration:line-through;' : ''}">${t.original_sales.toLocaleString()}</td>
+                  <td style="color:#16a34a; font-weight:bold;">${t.actual_sales.toLocaleString()}</td>
+                  <td>${t.platform_fee.toLocaleString()}</td>
+                  <td style="color:#b8903a; font-weight:bold; font-size: 1.1em;">${t.net_profit.toLocaleString()}</td>
+                </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+          <div style="margin-top: 30px; text-align: center; font-size: 12px; color: #777;">
+             تم استخراج هذا التقرير بتاريخ: ${new Date().toLocaleDateString('ar-EG')}
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
+  // ✅ دالة طباعة تقرير المدرس التفصيلي
+  const handleTeacherReport = async (teacherId) => {
+    setReportLoading(teacherId);
+    try {
+        const query = new URLSearchParams({ 
+            teacherId, 
+            startDate: dateRange.startDate, 
+            endDate: dateRange.endDate 
+        }).toString();
+
+        const res = await fetch(`/api/dashboard/super/teacher-report?${query}`);
+        if (!res.ok) throw new Error('Failed to fetch report');
+        
+        const data = await res.json();
+        
+        const percentage = data.platformPercentage !== undefined ? data.platformPercentage : 0.10;
+        const percentageDisplay = (percentage * 100).toFixed(0).replace(/\.0+$/, '');
+
+        const totalOriginal = data.summary.total_original_amount || 0;
+        const totalActual = data.summary.total_actual_amount || 0;
+        const platformShare = totalActual * percentage; 
+        const netProfit = totalActual - platformShare;
+
+        const safeName = data.teacherName.replace(/\s+/g, '_');
+        const fileName = `تقرير_${safeName}_${dateRange.startDate}_${dateRange.endDate}`;
+
+        const printWindow = window.open('', '_blank');
+        const htmlContent = `
+          <html dir="rtl">
+            <head>
+              <title>${fileName}</title> 
+              <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1a1508; }
+                .header-container { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e5daba; padding-bottom: 20px; }
+                .logo { max-height: 80px; margin-bottom: 10px; }
+                h2 { text-align: center; color: #333; margin-bottom: 5px; margin-top: 0; }
+                p.meta { text-align: center; color: #666; margin-top: 0; font-weight: bold; }
+                
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th, td { border: 1px solid #ccc; padding: 10px; text-align: right; vertical-align: middle; }
+                th { background-color: #fbf8f1; color: #b8903a; font-weight: bold; -webkit-print-color-adjust: exact; }
+                
+                .approved { background-color: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+                .rejected { background-color: #fef2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                
+                .summary { 
+                    margin: 20px 0; 
+                    padding: 20px; 
+                    border: 1px solid #e5daba; 
+                    background-color: #faf8f0;
+                    display: flex;
+                    justify-content: space-between;
+                    -webkit-print-color-adjust: exact;
+                    border-radius: 8px;
+                }
+                .summary-col { flex: 1; text-align: center; }
+                .summary-col.border { border-left: 1px solid #e5daba; } 
+                
+                .val { font-weight: bold; font-size: 1.1em; display: block; margin-top: 5px; }
+                .val.muted { color: #888; font-size: 0.9em; text-decoration: line-through; }
+                .green { color: #16a34a; }
+                .gold { color: #b8903a; }
+                .red { color: #dc2626; }
+                
+                .info-row { margin-bottom: 5px; font-size: 14px; font-weight: bold; color: #444; }
+                
+                .user-info { font-weight: bold; }
+                .username { font-size: 0.85em; color: #777; display: block; }
+              </style>
+            </head>
+            <body>
+              <div class="header-container">
+                 <img src="/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'" />
+                 <h2>تقرير حسابات مدرس</h2>
+                 <h3 style="margin:5px 0; color:#b8903a; font-size: 24px;">${data.teacherName}</h3>
+                 <p class="meta">الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</p>
               </div>
 
-              <div class="header-title-block">
-                <div class="report-type-label">التقارير المالية</div>
-                <h1>التقرير المالي <span>الشامل</span></h1>
-                <div class="date-range-pill">
-                  <span class="dot"></span>
-                  ${formatDateAr(dateRange.startDate)}
-                  &nbsp;—&nbsp;
-                  ${formatDateAr(dateRange.endDate)}
-                  <span class="dot"></span>
+              <div class="summary">
+                <div class="summary-col border">
+                    <div class="info-row">مقبول / مرفوض</div>
+                    <span class="val green">${data.summary.total_approved_count} مقبول</span>
+                    <span class="val red">${data.summary.total_rejected_count} مرفوض</span>
+                </div>
+                
+                <div class="summary-col border">
+                    <div class="info-row">إجمالي المبيعات (الفعلي)</div>
+                    <span class="val muted">${totalOriginal.toLocaleString()} ج.م (افتراضي)</span>
+                    <span class="val green">${totalActual.toLocaleString()} ج.م</span>
+                </div>
+
+                <div class="summary-col border">
+                    <div class="info-row">حصة المنصة (${percentageDisplay}%)</div>
+                    <span class="val red">${platformShare.toLocaleString()} ج.م</span>
+                </div>
+
+                <div class="summary-col">
+                    <div class="info-row">صافي المستحق للمدرس</div>
+                    <span class="val gold" style="font-size:1.4em">${netProfit.toLocaleString()} ج.م</span>
                 </div>
               </div>
 
-              <div class="header-meta-block">
-                <div class="meta-item">عدد المدرسين: <span>${financials.teachers_list.length}</span></div>
-                <div class="meta-item">تاريخ الإصدار: <span>${now.toLocaleDateString('ar-EG')}</span></div>
-                <div class="meta-item">الوقت: <span>${now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span></div>
-              </div>
-            </div>
-
-            <!-- SUMMARY STRIP -->
-            <div class="summary-strip">
-              <div class="summary-cell">
-                <div class="cell-label">المبيعات الافتراضية</div>
-                <span class="cell-value muted">${financials.total_original_revenue.toLocaleString('ar-EG')}</span>
-                <div class="cell-currency">جنيه مصري</div>
-              </div>
-              <div class="summary-cell">
-                <div class="cell-label">التحصيل الفعلي</div>
-                <span class="cell-value green">${financials.total_actual_revenue.toLocaleString('ar-EG')}</span>
-                <div class="cell-currency">جنيه مصري</div>
-              </div>
-              <div class="summary-cell">
-                <div class="cell-label">صافي ربح المنصة</div>
-                <span class="cell-value gold">${financials.platform_profit.toLocaleString('ar-EG')}</span>
-                <div class="cell-currency">جنيه مصري</div>
-              </div>
-              <div class="summary-cell">
-                <div class="cell-label">مستحقات المدرسين</div>
-                <span class="cell-value red">${financials.teachers_due.toLocaleString('ar-EG')}</span>
-                <div class="cell-currency">جنيه مصري</div>
-              </div>
-            </div>
-
-            <!-- TABLE SECTION -->
-            <div class="section-title">
-              <h2>تفاصيل المدرسين الماليـة</h2>
-              <div class="title-line"></div>
-            </div>
-
-            <div class="report-table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>اسم المدرس</th>
-                    <th style="text-align:center">العمليات</th>
-                    <th>المبيعات الافتراضية</th>
-                    <th>التحصيل الفعلي</th>
-                    <th>حصة المنصة</th>
-                    <th>صافي الربح</th>
+                    <th style="width: 80px;">التاريخ</th>
+                    <th>الطالب</th>
+                    <th>المحتوى</th>
+                    <th>السعر المطلوب</th>
+                    <th>المدفوع فعلياً</th>
+                    <th>الحالة</th>
+                    <th>ملاحظة الطالب</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${financials.teachers_list.map((t, i) => {
-                    const hasCustom = t.original_sales !== t.actual_sales;
-                    return `
-                    <tr>
-                      <td style="color:#9e8850; font-weight:700; font-size:0.8rem;">${i + 1}</td>
-                      <td class="td-name">${t.name}</td>
-                      <td class="td-count"><span class="count-chip">${t.transaction_count}</span></td>
-                      <td class="${hasCustom ? 'td-original' : ''}">${t.original_sales.toLocaleString('ar-EG')} ج.م</td>
-                      <td class="td-actual">${t.actual_sales.toLocaleString('ar-EG')} ج.م</td>
-                      <td class="td-fee">${t.platform_fee.toLocaleString('ar-EG')} ج.م</td>
-                      <td class="td-profit">${t.net_profit.toLocaleString('ar-EG')} ج.م</td>
+                  ${data.requests.map(req => {
+                     const orig = req.total_price || 0;
+                     const act = req.actual_paid_price !== null ? req.actual_paid_price : orig;
+                     const hasCustomPrice = req.actual_paid_price !== null;
+
+                     return `
+                    <tr class="${req.status}">
+                      <td>${new Date(req.created_at).toLocaleDateString('ar-EG')}</td>
+                      <td>
+                        <span class="user-info">${req.user_name || 'بدون اسم'}</span>
+                        <span class="username">${req.user_username ? `(${req.user_username})` : ''}</span>
+                      </td>
+                      <td>${req.course_title}</td>
+                      <td style="${hasCustomPrice ? 'text-decoration:line-through;color:#888;' : ''}">${orig}</td>
+                      <td style="font-weight:bold; color:#16a34a;">${act}</td>
+                      <td>${req.status === 'approved' ? '✅ مقبول' : '❌ مرفوض'}</td>
+                      <td>${req.user_note || '-'}</td>
                     </tr>
                     `;
                   }).join('')}
                 </tbody>
               </table>
-            </div>
-
-            <!-- FOOTER -->
-            <div class="report-footer">
-              <div class="footer-brand">
-                <span class="brand-dot"></span>
-                منصة مداد التعليمية — وثيقة مالية رسمية
-              </div>
-              <div class="footer-timestamp">
-                صدر بتاريخ ${now.toLocaleDateString('ar-EG')} الساعة ${now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            </div>
-
-          </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() { window.print(); }, 400);
-            }
-          </script>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-  };
-
-  // ─── Teacher Detailed Report PDF ─────────────────────
-  const handleTeacherReport = async (teacherId) => {
-    setReportLoading(teacherId);
-    try {
-      const query = new URLSearchParams({ 
-        teacherId, 
-        startDate: dateRange.startDate, 
-        endDate: dateRange.endDate 
-      }).toString();
-
-      const res = await fetch(`/api/dashboard/super/teacher-report?${query}`);
-      if (!res.ok) throw new Error('Failed to fetch report');
-      
-      const data = await res.json();
-      
-      const percentage = data.platformPercentage !== undefined ? data.platformPercentage : 0.10;
-      const percentageDisplay = (percentage * 100).toFixed(0).replace(/\.0+$/, '');
-      const totalOriginal = data.summary.total_original_amount || 0;
-      const totalActual = data.summary.total_actual_amount || 0;
-      const platformShare = totalActual * percentage;
-      const netProfit = totalActual - platformShare;
-      const now = new Date();
-
-      const printWindow = window.open('', '_blank');
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-          <head>
-            <meta charset="UTF-8" />
-            <title>كشف حساب — ${data.teacherName} | مداد</title>
-            <style>${getReportCSS()}</style>
-          </head>
-          <body>
-            <div class="report-page">
-
-              <!-- HEADER -->
-              <div class="report-header">
-                <div class="header-logo-wrap">
-                  <img src="${getLogoUrl()}" alt="مداد" onerror="this.style.display='none'" />
-                </div>
-
-                <div class="header-title-block">
-                  <div class="report-type-label">كشف حساب مدرس</div>
-                  <h1>تقرير <span>حسابات المدرس</span></h1>
-                  <div class="date-range-pill">
-                    <span class="dot"></span>
-                    ${formatDateAr(dateRange.startDate)}
-                    &nbsp;—&nbsp;
-                    ${formatDateAr(dateRange.endDate)}
-                    <span class="dot"></span>
-                  </div>
-                </div>
-
-                <div class="header-meta-block">
-                  <div class="meta-item">نسبة المنصة: <span>${percentageDisplay}%</span></div>
-                  <div class="meta-item">إجمالي العمليات: <span>${data.requests.length}</span></div>
-                  <div class="meta-item">تاريخ الإصدار: <span>${now.toLocaleDateString('ar-EG')}</span></div>
-                </div>
+              
+              <div style="margin-top: 30px; text-align: center; font-size: 12px; color: #777;">
+                تم استخراج هذا التقرير بتاريخ: ${new Date().toLocaleDateString('ar-EG')}
               </div>
 
-              <!-- TEACHER NAME -->
-              <div class="teacher-name-block" style="padding:24px 48px 16px;">
-                <div class="teacher-badge">
-                  <div class="teacher-avatar">${data.teacherName.charAt(0)}</div>
-                  <span class="teacher-name-text">${data.teacherName}</span>
-                </div>
-              </div>
-
-              <!-- SUMMARY CARDS -->
-              <div class="teacher-summary-grid">
-                <div class="teacher-summary-card">
-                  <div class="card-label">حالة الطلبات</div>
-                  <span class="card-value green">${data.summary.total_approved_count} مقبول</span>
-                  <span class="card-value red" style="font-size:1rem; margin-top:6px;">${data.summary.total_rejected_count} مرفوض</span>
-                </div>
-
-                <div class="teacher-summary-card">
-                  <div class="card-label">إجمالي المبيعات</div>
-                  <span class="card-value" style="color:#9e8850; text-decoration:line-through; font-size:0.95rem;">${totalOriginal.toLocaleString('ar-EG')} ج.م (افتراضي)</span>
-                  <span class="card-value green" style="margin-top:8px;">${totalActual.toLocaleString('ar-EG')} ج.م</span>
-                  <div class="card-sub">التحصيل الفعلي</div>
-                </div>
-
-                <div class="teacher-summary-card">
-                  <div class="card-label">حصة المنصة (${percentageDisplay}%)</div>
-                  <span class="card-value red">${platformShare.toLocaleString('ar-EG')} ج.م</span>
-                  <div class="card-sub">محسوبة من التحصيل الفعلي</div>
-                </div>
-
-                <div class="teacher-summary-card highlight">
-                  <div class="card-label">صافي المستحق للمدرس</div>
-                  <span class="card-value">${netProfit.toLocaleString('ar-EG')} ج.م</span>
-                  <div class="card-sub">بعد خصم حصة المنصة</div>
-                </div>
-              </div>
-
-              <!-- TABLE SECTION -->
-              <div class="section-title">
-                <h2>تفاصيل الطلبات والمعاملات</h2>
-                <div class="title-line"></div>
-              </div>
-
-              <div class="report-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>التاريخ</th>
-                      <th>الطالب</th>
-                      <th>المحتوى</th>
-                      <th>السعر المطلوب</th>
-                      <th>المدفوع فعلياً</th>
-                      <th>الحالة</th>
-                      <th>ملاحظة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${data.requests.map((req, i) => {
-                      const orig = req.total_price || 0;
-                      const act = req.actual_paid_price !== null ? req.actual_paid_price : orig;
-                      const hasCustomPrice = req.actual_paid_price !== null;
-                      const isApproved = req.status === 'approved';
-                      return `
-                      <tr>
-                        <td style="color:#9e8850; font-weight:700; font-size:0.8rem;">${i + 1}</td>
-                        <td style="white-space:nowrap; color:#6b5a2a; font-weight:600; font-size:0.82rem;">
-                          ${new Date(req.created_at).toLocaleDateString('ar-EG')}
-                        </td>
-                        <td>
-                          <div style="font-weight:800; color:#1a1508;">${req.user_name || 'بدون اسم'}</div>
-                          ${req.user_username ? `<div style="font-size:0.78rem; color:#9e8850;">(${req.user_username})</div>` : ''}
-                        </td>
-                        <td style="font-weight:600; color:#3a3015; max-width:160px; word-break:break-word;">${req.course_title}</td>
-                        <td style="${hasCustomPrice ? 'color:#9e8850; text-decoration:line-through;' : 'color:#3a3015; font-weight:700;'}">${orig.toLocaleString('ar-EG')}</td>
-                        <td class="td-actual">${act.toLocaleString('ar-EG')} ج.م</td>
-                        <td>
-                          <span class="${isApproved ? 'badge-approved' : 'badge-rejected'}">
-                            ${isApproved ? '✓ مقبول' : '✗ مرفوض'}
-                          </span>
-                        </td>
-                        <td style="color:#9e8850; font-size:0.82rem; max-width:120px; word-break:break-word;">${req.user_note || '—'}</td>
-                      </tr>
-                      `;
-                    }).join('')}
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- FOOTER -->
-              <div class="report-footer">
-                <div class="footer-brand">
-                  <span class="brand-dot"></span>
-                  منصة مداد التعليمية — وثيقة مالية رسمية
-                </div>
-                <div class="footer-timestamp">
-                  صدر بتاريخ ${now.toLocaleDateString('ar-EG')} الساعة ${now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-
-            </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() { window.print(); }, 400);
-              }
-            </script>
-          </body>
-        </html>
-      `;
-
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
+              <script>
+                window.onload = function() { window.print(); }
+              </script>
+            </body>
+          </html>
+        `;
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
 
     } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء جلب التقرير');
+        console.error(err);
+        alert('حدث خطأ أثناء جلب التقرير');
     } finally {
-      setReportLoading(null);
+        setReportLoading(null);
     }
   };
 
@@ -990,6 +549,7 @@ export default function SuperFinance() {
         .table-header { padding: 22px 24px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); }
         .table-header h3 { margin: 0; color: var(--gold); font-size: 1.15rem; font-weight: 700; }
 
+        /* Important to allow horizontal scroll */
         .table-responsive { 
           width: 100%; 
           overflow-x: auto; 
