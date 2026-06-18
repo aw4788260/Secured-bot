@@ -1,5 +1,5 @@
 import SuperLayout from '../../../components/SuperLayout';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // ─── SVG ICONS COMPONENTS ──────────────────────────────────────────────
 const IconInbox = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>);
@@ -19,6 +19,7 @@ const IconZoom = ({ size = 24, className = "" }) => (<svg className={className} 
 const IconWarning = ({ size = 24, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>);
 const IconArrowRight = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>);
 const IconArrowLeft = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>);
+const IconChevronDown = ({ size = 16, className = "" }) => (<svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>);
 // ───────────────────────────────────────────────────────────────────────
 
 export default function SuperRequestsPage() {
@@ -31,9 +32,11 @@ export default function SuperRequestsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 10;
 
-  // ✅ حالات المدرسين
+  // ✅ حالات المدرسين و Dropdown
   const [teachers, setTeachers] = useState([]);
   const [selectedTeacher, setSelectedTeacher] = useState('all');
+  const [isTeacherDropdownOpen, setIsTeacherDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null); // لإغلاق القائمة عند النقر خارجها
 
   // حالات النوافذ والتنبيهات
   const [modalImage, setModalImage] = useState(null);
@@ -51,6 +54,17 @@ export default function SuperRequestsPage() {
       setToast({ show: true, message: msg, type });
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
+
+  // ✅ إغلاق قائمة المدرسين عند النقر خارجها
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsTeacherDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // ✅ جلب قائمة المدرسين للفلتر
   const fetchTeachers = async () => {
@@ -180,6 +194,13 @@ export default function SuperRequestsPage() {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
+  // إيجاد اسم المدرس المختار حالياً للعرض
+  const getSelectedTeacherName = () => {
+    if (selectedTeacher === 'all') return 'كل المدرسين';
+    const teacher = teachers.find(t => t.id == selectedTeacher);
+    return teacher ? teacher.name : 'كل المدرسين';
+  };
+
   return (
     <SuperLayout title="كل طلبات الاشتراك">
       <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
@@ -197,21 +218,38 @@ export default function SuperRequestsPage() {
         
         <div className="header-actions">
             
-            {/* ✅ قائمة اختيار المدرس */}
-            <div className="teacher-select-wrapper">
-              <IconTeacher className="select-icon" />
-              <select 
-                value={selectedTeacher} 
-                onChange={(e) => setSelectedTeacher(e.target.value)}
-                className="teacher-select"
+            {/* ✅ قائمة اختيار المدرس الاحترافية (Custom Dropdown) */}
+            <div className="custom-dropdown-container" ref={dropdownRef}>
+              <button 
+                className={`custom-dropdown-trigger ${isTeacherDropdownOpen ? 'open' : ''}`}
+                onClick={() => setIsTeacherDropdownOpen(!isTeacherDropdownOpen)}
               >
-                <option value="all">كل المدرسين</option>
-                {teachers.map(teacher => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </option>
-                ))}
-              </select>
+                <div className="flex-center gap-2">
+                  <IconTeacher size={18} className="teacher-icon-color" />
+                  <span>{getSelectedTeacherName()}</span>
+                </div>
+                <IconChevronDown size={16} className={`chevron-icon ${isTeacherDropdownOpen ? 'rotated' : ''}`} />
+              </button>
+
+              {isTeacherDropdownOpen && (
+                <ul className="custom-dropdown-menu">
+                  <li 
+                    className={selectedTeacher === 'all' ? 'active' : ''}
+                    onClick={() => { setSelectedTeacher('all'); setIsTeacherDropdownOpen(false); }}
+                  >
+                    كل المدرسين
+                  </li>
+                  {teachers.map(teacher => (
+                    <li 
+                      key={teacher.id} 
+                      className={selectedTeacher == teacher.id ? 'active' : ''}
+                      onClick={() => { setSelectedTeacher(teacher.id); setIsTeacherDropdownOpen(false); }}
+                    >
+                      {teacher.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="filter-tabs">
@@ -497,10 +535,34 @@ export default function SuperRequestsPage() {
         
         .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         
-        .teacher-select-wrapper { position: relative; display: flex; align-items: center; }
-        .select-icon { position: absolute; right: 12px; color: var(--text-secondary); pointer-events: none; }
-        .teacher-select { background: var(--bg-elevated); color: var(--text-primary); padding: 8px 15px 8px 15px; padding-right: 36px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; cursor: pointer; outline: none; height: 40px; min-width: 180px; appearance: none; -webkit-appearance: none; }
-        .teacher-select:focus { border-color: var(--gold); }
+        /* ✅ تنسيق القائمة الاحترافية للمدرسين */
+        .custom-dropdown-container { position: relative; min-width: 220px; }
+        .custom-dropdown-trigger { 
+          width: 100%; display: flex; align-items: center; justify-content: space-between;
+          background: var(--bg-elevated); color: var(--text-primary); 
+          padding: 8px 15px; border: 1px solid var(--border); border-radius: 8px; 
+          font-size: 0.95rem; cursor: pointer; height: 40px; transition: all 0.2s;
+        }
+        .custom-dropdown-trigger:hover, .custom-dropdown-trigger.open { border-color: var(--gold); }
+        .teacher-icon-color { color: var(--gold); }
+        .chevron-icon { color: var(--text-secondary); transition: transform 0.3s ease; }
+        .chevron-icon.rotated { transform: rotate(180deg); color: var(--gold); }
+        
+        .custom-dropdown-menu { 
+          position: absolute; top: calc(100% + 6px); right: 0; width: 100%; 
+          background: var(--bg-surface); border: 1px solid var(--border-accent); 
+          border-radius: 8px; box-shadow: var(--shadow); z-index: 100; 
+          list-style: none; padding: 6px 0; margin: 0; max-height: 250px; overflow-y: auto;
+          animation: dropIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .custom-dropdown-menu li { 
+          padding: 10px 15px; cursor: pointer; color: var(--text-secondary); 
+          font-size: 0.95rem; transition: all 0.2s; display: flex; align-items: center;
+        }
+        .custom-dropdown-menu li:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .custom-dropdown-menu li.active { background: var(--gold-dim); color: var(--gold); font-weight: bold; border-right: 3px solid var(--gold); }
+
+        @keyframes dropIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
         .filter-tabs { display: flex; background: var(--bg-elevated); padding: 4px; border-radius: 8px; border: 1px solid var(--border); }
         .tab { background: transparent; border: none; color: var(--text-secondary); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; white-space: nowrap; }
@@ -513,7 +575,6 @@ export default function SuperRequestsPage() {
         .loading-state { text-align: center; color: var(--gold); padding: 60px; }
         .empty-state { text-align: center; padding: 60px; color: var(--text-secondary); background: var(--bg-elevated); border-radius: 12px; border: 1px dashed var(--border); margin-top: 20px; }
 
-        /* ✅ تعديل مقاس الشبكة ليتسع كارتين بجوار القائمة */
         .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 15px; }
         
         .request-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column; }
