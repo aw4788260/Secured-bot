@@ -79,6 +79,16 @@ export default function SuperLayout({ children, title }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // منع التمرير الخلفي في الهاتف عند فتح القائمة
+  useEffect(() => {
+    if (window.innerWidth <= 768 && isSidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isSidebarOpen]);
+
   const performLogout = async () => {
     try { await fetch('/api/auth/logout'); } catch (e) {}
     localStorage.removeItem('admin_user_id');
@@ -98,8 +108,6 @@ export default function SuperLayout({ children, title }) {
     { name: 'إرسال الإشعارات', path: '/admin/super/notifications', icon: <NotifIcon /> },
     { name: 'إعدادات المنصة', path: '/admin/super/settings', icon: <SettingsIcon /> },
   ];
-
-  const t = isDark ? themes.dark : themes.light;
 
   if (isChecking) {
     return (
@@ -242,8 +250,23 @@ export default function SuperLayout({ children, title }) {
           --header-bg:      #ffffff;
         }
 
-        body { margin: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; overflow-x: hidden; background: var(--bg-base); direction: rtl; }
-        .layout-root { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg-base); color: var(--text-primary); transition: background 0.3s, color 0.3s; }
+        body { 
+          margin: 0; 
+          font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
+          overflow-x: hidden; 
+          background: var(--bg-base); 
+          direction: rtl; 
+        }
+
+        .layout-root { 
+          display: flex; 
+          flex-direction: column; 
+          min-height: 100vh; 
+          background: var(--bg-base); 
+          color: var(--text-primary); 
+          transition: background 0.3s, color 0.3s; 
+          overflow-x: hidden;
+        }
 
         /* ── HEADER ── */
         .top-header {
@@ -385,17 +408,34 @@ export default function SuperLayout({ children, title }) {
         }
 
         /* ── MAIN ── */
-        .body-wrapper { display: flex; padding-top: 64px; min-height: 100vh; }
-        .main-content { flex: 1; padding: 30px; transition: margin-right 0.3s ease; }
+        .body-wrapper { display: flex; padding-top: 64px; min-height: 100vh; width: 100%; overflow-x: hidden; }
+        .main-content { flex: 1; padding: 30px; transition: margin-right 0.3s ease; width: 100%; }
 
         @media (min-width: 769px) {
           .main-content.shifted { margin-right: 264px; }
           .mobile-overlay { display: none; }
         }
         @media (max-width: 768px) {
-          .main-content { padding: 16px; margin-right: 0 !important; }
-          .sidebar { width: 78%; max-width: 290px; box-shadow: -6px 0 20px rgba(0,0,0,0.4); }
-          .mobile-overlay { position: fixed; top: 64px; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.55); z-index: 45; backdrop-filter: blur(3px); }
+          .main-content { 
+            padding: 16px; 
+            margin-right: 0 !important; 
+            width: 100%; 
+            max-width: 100vw; 
+            overflow-x: hidden; 
+          }
+          .sidebar { 
+            width: 280px; 
+            max-width: 85vw; 
+            box-shadow: -6px 0 25px rgba(0,0,0,0.5); 
+          }
+          .mobile-overlay { 
+            position: fixed; 
+            top: 64px; bottom: 0; left: 0; right: 0; 
+            background: rgba(0,0,0,0.6); 
+            z-index: 45; 
+            backdrop-filter: blur(3px); 
+            display: block; 
+          }
           .admin-profile-chip, .logout-text { display: none; }
         }
 
@@ -440,5 +480,3 @@ export default function SuperLayout({ children, title }) {
     </div>
   );
 }
-
-const themes = { dark: {}, light: {} };
