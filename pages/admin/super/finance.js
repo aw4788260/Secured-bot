@@ -61,17 +61,19 @@ export default function SuperFinance() {
         <head>
           <title>${fileName}</title>
           <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; color: #1a1508; }
             .header-container { text-align: center; margin-bottom: 20px; }
             .logo { max-height: 80px; margin-bottom: 10px; }
-            h1, h2 { text-align: center; color: #333; margin: 5px 0; }
+            h1, h2 { text-align: center; color: #b8903a; margin: 5px 0; }
+            p { text-align: center; color: #666; font-weight: bold; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-            th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
-            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #f9f9f9; padding: 15px; border: 1px solid #eee; border-radius: 8px; -webkit-print-color-adjust: exact; }
-            .stat { text-align: center; }
-            .stat-val { font-weight: bold; font-size: 16px; color: #2563eb; margin-top: 5px; }
-            .stat-val.muted { color: #64748b; font-size: 14px; text-decoration: line-through; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: right; }
+            th { background-color: #fbf8f1; color: #b8903a; -webkit-print-color-adjust: exact; font-weight: bold; }
+            .summary-box { display: flex; justify-content: space-around; margin-bottom: 30px; background: #faf8f0; padding: 15px; border: 1px solid #e5daba; border-radius: 8px; -webkit-print-color-adjust: exact; }
+            .stat { text-align: center; font-weight: bold; color: #333; }
+            .stat-val { font-weight: bold; font-size: 18px; color: #b8903a; margin-top: 5px; }
+            .stat-val.actual { color: #16a34a; }
+            .stat-val.muted { color: #888; font-size: 14px; text-decoration: line-through; }
           </style>
         </head>
         <body>
@@ -83,9 +85,9 @@ export default function SuperFinance() {
           
           <div class="summary-box">
             <div class="stat">المبيعات الافتراضية<div class="stat-val muted">${financials.total_original_revenue.toLocaleString()} ج.م</div></div>
-            <div class="stat">المبيعات الفعلية (المُحصلة)<div class="stat-val" style="color:#16a34a">${financials.total_actual_revenue.toLocaleString()} ج.م</div></div>
+            <div class="stat">المبيعات الفعلية (المُحصلة)<div class="stat-val actual">${financials.total_actual_revenue.toLocaleString()} ج.م</div></div>
             <div class="stat">ربح المنصة<div class="stat-val">${financials.platform_profit.toLocaleString()} ج.م</div></div>
-            <div class="stat">مستحقات المدرسين<div class="stat-val">${financials.teachers_due.toLocaleString()} ج.م</div></div>
+            <div class="stat">مستحقات المدرسين<div class="stat-val" style="color: #dc2626">${financials.teachers_due.toLocaleString()} ج.م</div></div>
           </div>
 
           <table>
@@ -106,15 +108,18 @@ export default function SuperFinance() {
                 <tr>
                   <td><strong>${t.name}</strong></td>
                   <td>${t.transaction_count}</td>
-                  <td style="color:#64748b; ${hasCustom ? 'text-decoration:line-through;' : ''}">${t.original_sales.toLocaleString()}</td>
+                  <td style="color:#888; ${hasCustom ? 'text-decoration:line-through;' : ''}">${t.original_sales.toLocaleString()}</td>
                   <td style="color:#16a34a; font-weight:bold;">${t.actual_sales.toLocaleString()}</td>
                   <td>${t.platform_fee.toLocaleString()}</td>
-                  <td style="color:#2563eb; font-weight:bold;">${t.net_profit.toLocaleString()}</td>
+                  <td style="color:#b8903a; font-weight:bold; font-size: 1.1em;">${t.net_profit.toLocaleString()}</td>
                 </tr>
                 `;
               }).join('')}
             </tbody>
           </table>
+          <div style="margin-top: 30px; text-align: center; font-size: 12px; color: #777;">
+             تم استخراج هذا التقرير بتاريخ: ${new Date().toLocaleDateString('ar-EG')}
+          </div>
           <script>
             window.onload = function() { window.print(); }
           </script>
@@ -156,50 +161,51 @@ export default function SuperFinance() {
         const htmlContent = `
           <html>
             <head>
-              <title>${fileName}</title> <style>
-                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; }
-                .header-container { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
+              <title>${fileName}</title> 
+              <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; padding: 20px; color: #1a1508; }
+                .header-container { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e5daba; padding-bottom: 20px; }
                 .logo { max-height: 80px; margin-bottom: 10px; }
                 h2 { text-align: center; color: #333; margin-bottom: 5px; margin-top: 0; }
-                p.meta { text-align: center; color: #666; margin-top: 0; }
+                p.meta { text-align: center; color: #666; margin-top: 0; font-weight: bold; }
                 
                 table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th, td { border: 1px solid #ccc; padding: 8px; text-align: right; vertical-align: middle; }
-                th { background-color: #f2f2f2; -webkit-print-color-adjust: exact; }
+                th, td { border: 1px solid #ccc; padding: 10px; text-align: right; vertical-align: middle; }
+                th { background-color: #fbf8f1; color: #b8903a; font-weight: bold; -webkit-print-color-adjust: exact; }
                 
-                .approved { background-color: #dcfce7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
-                .rejected { background-color: #fee2e2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .approved { background-color: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+                .rejected { background-color: #fef2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                 
                 .summary { 
                     margin: 20px 0; 
                     padding: 20px; 
-                    border: 1px solid #333; 
-                    background-color: #f8fafc;
+                    border: 1px solid #e5daba; 
+                    background-color: #faf8f0;
                     display: flex;
                     justify-content: space-between;
                     -webkit-print-color-adjust: exact;
                     border-radius: 8px;
                 }
                 .summary-col { flex: 1; text-align: center; }
-                .summary-col.border { border-left: 1px solid #ccc; } 
+                .summary-col.border { border-left: 1px solid #e5daba; } 
                 
                 .val { font-weight: bold; font-size: 1.1em; display: block; margin-top: 5px; }
-                .val.muted { color: #64748b; font-size: 0.9em; text-decoration: line-through; }
+                .val.muted { color: #888; font-size: 0.9em; text-decoration: line-through; }
                 .green { color: #16a34a; }
-                .blue { color: #2563eb; }
+                .gold { color: #b8903a; }
                 .red { color: #dc2626; }
                 
-                .info-row { margin-bottom: 5px; font-size: 14px; }
+                .info-row { margin-bottom: 5px; font-size: 14px; font-weight: bold; color: #444; }
                 
                 .user-info { font-weight: bold; }
-                .username { font-size: 0.85em; color: #555; display: block; }
+                .username { font-size: 0.85em; color: #777; display: block; }
               </style>
             </head>
             <body>
               <div class="header-container">
                  <img src="/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'" />
                  <h2>تقرير حسابات مدرس</h2>
-                 <h3 style="margin:5px 0; color:#2563eb">${data.teacherName}</h3>
+                 <h3 style="margin:5px 0; color:#b8903a; font-size: 24px;">${data.teacherName}</h3>
                  <p class="meta">الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</p>
               </div>
 
@@ -223,7 +229,7 @@ export default function SuperFinance() {
 
                 <div class="summary-col">
                     <div class="info-row">صافي المستحق للمدرس</div>
-                    <span class="val blue" style="font-size:1.3em">${netProfit.toLocaleString()} ج.م</span>
+                    <span class="val gold" style="font-size:1.4em">${netProfit.toLocaleString()} ج.م</span>
                 </div>
               </div>
 
@@ -253,7 +259,7 @@ export default function SuperFinance() {
                         <span class="username">${req.user_username ? `(${req.user_username})` : ''}</span>
                       </td>
                       <td>${req.course_title}</td>
-                      <td style="${hasCustomPrice ? 'text-decoration:line-through;color:#666;' : ''}">${orig}</td>
+                      <td style="${hasCustomPrice ? 'text-decoration:line-through;color:#888;' : ''}">${orig}</td>
                       <td style="font-weight:bold; color:#16a34a;">${act}</td>
                       <td>${req.status === 'approved' ? '✅ مقبول' : '❌ مرفوض'}</td>
                       <td>${req.user_note || '-'}</td>
@@ -290,7 +296,7 @@ export default function SuperFinance() {
         <title>المالية والأرباح | Super Admin</title>
       </Head>
 
-      <div className="finance-container">
+      <div className="finance-luxury-wrapper">
         <div className="header-section">
           <div>
             <h1>💰 التقارير المالية</h1>
@@ -305,7 +311,7 @@ export default function SuperFinance() {
                   onChange={(e) => setDateRange({...dateRange, startDate: e.target.value})}
                   className="date-input"
                 />
-                <span style={{color:'#94a3b8'}}>إلى</span>
+                <span className="date-separator">إلى</span>
                 <input 
                   type="date" 
                   value={dateRange.endDate}
@@ -337,25 +343,25 @@ export default function SuperFinance() {
               <div className="icon">💵</div>
               <div className="content">
                  <h3>التحصيل الفعلي</h3>
-                 <p>{loading ? '...' : financials.total_actual_revenue.toLocaleString()} ج.م</p>
+                 <p className="val-success">{loading ? '...' : financials.total_actual_revenue.toLocaleString()} ج.م</p>
                  <span className="badge success">ما تم دفعه فعلياً</span>
               </div>
            </div>
 
            <div className="stat-card profit">
-              <div className="icon">📈</div>
+              <div className="icon gold-icon">📈</div>
               <div className="content">
                  <h3>صافي ربح المنصة</h3>
-                 <p>{loading ? '...' : financials.platform_profit.toLocaleString()} ج.م</p>
+                 <p className="val-gold">{loading ? '...' : financials.platform_profit.toLocaleString()} ج.م</p>
                  <span className="badge">محسوب من التحصيل الفعلي</span>
               </div>
            </div>
 
            <div className="stat-card due">
-              <div className="icon">👨‍🏫</div>
+              <div className="icon red-icon">👨‍🏫</div>
               <div className="content">
                  <h3>مستحقات المدرسين</h3>
-                 <p>{loading ? '...' : financials.teachers_due.toLocaleString()} ج.م</p>
+                 <p className="val-danger">{loading ? '...' : financials.teachers_due.toLocaleString()} ج.م</p>
                  <span className="badge warning">التزام مالي للمدرسين</span>
               </div>
            </div>
@@ -372,107 +378,122 @@ export default function SuperFinance() {
                 <p>جاري حساب الأرقام...</p>
              </div>
            ) : (
-             <div className="table-responsive">
-               <table>
-                 <thead>
-                   <tr>
-                     <th>اسم المدرس</th>
-                     <th style={{textAlign:'center'}}>العمليات</th>
-                     <th title="المبلغ الأصلي للكورسات">المبيعات الافتراضية</th>
-                     <th title="ما تم دفعه بالفعل وتم حسابه بالتقارير">التحصيل الفعلي</th>
-                     <th>نسبة المنصة</th>
-                     <th>صافي ربح المدرس</th>
-                     <th>الإجراءات</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {financials.teachers_list.length > 0 ? (
-                     financials.teachers_list.map((teacher) => (
-                       <tr key={teacher.id}>
-                         <td style={{fontWeight:'bold', color:'white'}}>{teacher.name}</td>
-                         <td style={{textAlign:'center'}}>{teacher.transaction_count}</td>
-                         <td style={{color:'#64748b', textDecoration: teacher.original_sales !== teacher.actual_sales ? 'line-through' : 'none'}}>
-                             {teacher.original_sales.toLocaleString()}
-                         </td>
-                         <td style={{color:'#4ade80', fontWeight:'bold'}}>{teacher.actual_sales.toLocaleString()} ج.م</td>
-                         <td style={{color:'#facc15'}}>{teacher.platform_fee.toLocaleString()}</td>
-                         <td style={{color:'#38bdf8', fontWeight:'bold'}}>{teacher.net_profit.toLocaleString()} ج.م</td>
-                         <td>
-                            <button 
-                                className="btn-details" 
-                                onClick={() => handleTeacherReport(teacher.id)}
-                                disabled={reportLoading === teacher.id}
-                            >
-                                {reportLoading === teacher.id ? 'جاري التحميل...' : '📄 كشف حساب PDF'}
-                            </button>
-                         </td>
-                       </tr>
-                     ))
-                   ) : (
-                     <tr><td colSpan="7" style={{textAlign:'center', padding:'30px', color:'#64748b'}}>لا توجد بيانات في هذه الفترة</td></tr>
-                   )}
-                 </tbody>
-               </table>
+             <div className="table-responsive custom-scrollbar">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>اسم المدرس</th>
+                      <th style={{textAlign:'center'}}>العمليات</th>
+                      <th title="المبلغ الأصلي للكورسات">المبيعات الافتراضية</th>
+                      <th title="ما تم دفعه بالفعل وتم حسابه بالتقارير">التحصيل الفعلي</th>
+                      <th>نسبة المنصة</th>
+                      <th>صافي ربح المدرس</th>
+                      <th>الإجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {financials.teachers_list.length > 0 ? (
+                      financials.teachers_list.map((teacher) => (
+                        <tr key={teacher.id}>
+                          <td style={{fontWeight:'bold', color:'var(--text-primary)'}}>{teacher.name}</td>
+                          <td style={{textAlign:'center', color: 'var(--text-secondary)'}}>{teacher.transaction_count}</td>
+                          <td style={{
+                              color:'var(--text-muted)', 
+                              textDecoration: teacher.original_sales !== teacher.actual_sales ? 'line-through' : 'none'
+                          }}>
+                              {teacher.original_sales.toLocaleString()}
+                          </td>
+                          <td style={{color:'#4ade80', fontWeight:'bold'}}>{teacher.actual_sales.toLocaleString()} ج.م</td>
+                          <td style={{color:'var(--text-secondary)'}}>{teacher.platform_fee.toLocaleString()}</td>
+                          <td style={{color:'var(--gold)', fontWeight:'bold', fontSize: '1.05em'}}>{teacher.net_profit.toLocaleString()} ج.م</td>
+                          <td>
+                             <button 
+                                 className="btn-details" 
+                                 onClick={() => handleTeacherReport(teacher.id)}
+                                 disabled={reportLoading === teacher.id}
+                             >
+                                 {reportLoading === teacher.id ? 'جاري التحميل...' : '📄 كشف حساب PDF'}
+                             </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr><td colSpan="7" style={{textAlign:'center', padding:'40px', color:'var(--text-muted)'}}>لا توجد بيانات مالية مسجلة في هذه الفترة</td></tr>
+                    )}
+                  </tbody>
+                </table>
              </div>
            )}
         </div>
       </div>
 
       <style jsx>{`
-        .finance-container { padding-bottom: 50px; }
+        .finance-luxury-wrapper { 
+            padding-bottom: 50px; 
+            color: var(--text-primary);
+        }
         
-        .header-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 1px solid #334155; padding-bottom: 20px; flex-wrap: wrap; gap: 20px; }
-        .header-section h1 { margin: 0 0 5px 0; color: #f8fafc; font-size: 1.8rem; }
-        .sub-text { color: #94a3b8; margin: 0; }
+        .header-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 20px; flex-wrap: wrap; gap: 20px; }
+        .header-section h1 { margin: 0 0 5px 0; color: var(--text-primary); font-size: 1.8rem; font-weight: 800; }
+        .sub-text { color: var(--text-secondary); margin: 0; }
         
         .actions-bar { display: flex; gap: 15px; align-items: center; }
-        .date-picker-group { background: #1e293b; padding: 5px 15px; border-radius: 8px; border: 1px solid #334155; display: flex; gap: 10px; align-items: center; }
-        .date-input { background: transparent; border: none; color: white; padding: 8px; outline: none; font-family: inherit; color-scheme: dark; cursor: pointer; }
+        .date-picker-group { background: var(--bg-surface); padding: 5px 15px; border-radius: 8px; border: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+        .date-separator { color: var(--text-muted); font-weight: bold; }
+        .date-input { background: transparent; border: none; color: var(--text-primary); padding: 8px; outline: none; font-family: inherit; color-scheme: dark; cursor: pointer; font-weight: bold; }
         
-        .export-btn { background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .export-btn:hover:not(:disabled) { background: #38bdf8; color: #0f172a; }
-        .export-btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: #475569; color: #64748b; }
+        .export-btn { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--gold); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s ease; display: flex; align-items: center; gap: 8px; }
+        .export-btn:hover:not(:disabled) { background: var(--gold); color: #111009; box-shadow: 0 4px 12px var(--gold-dim); transform: translateY(-2px); }
+        .export-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--border-accent); color: var(--text-muted); }
 
         .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; display: flex; gap: 15px; align-items: center; transition: transform 0.2s; }
-        .stat-card:hover { transform: translateY(-5px); border-color: #475569; }
+        .stat-card { background: var(--bg-surface); border: 1px solid var(--border); padding: 20px; border-radius: 16px; display: flex; gap: 15px; align-items: center; transition: transform 0.2s, box-shadow 0.2s; }
+        .stat-card:hover { transform: translateY(-5px); border-color: var(--border-accent); box-shadow: var(--shadow); }
         
-        .stat-card .icon { width: 50px; height: 50px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; flex-shrink: 0; }
-        .stat-card.default .icon { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
-        .stat-card.total .icon { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
-        .stat-card.profit .icon { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
-        .stat-card.due .icon { background: rgba(244, 63, 94, 0.1); color: #f43f5e; }
+        .stat-card .icon { width: 50px; height: 50px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; flex-shrink: 0; background: var(--bg-elevated); border: 1px solid var(--border); }
+        .default .icon { color: var(--text-secondary); }
+        .total .icon { background: rgba(34, 197, 94, 0.1); color: #4ade80; border-color: rgba(34, 197, 94, 0.2); }
+        .profit .icon.gold-icon { background: var(--gold-dimmer); color: var(--gold); border-color: var(--border-accent); }
+        .due .icon.red-icon { background: rgba(239, 68, 68, 0.1); color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
 
-        .stat-card .content h3 { margin: 0 0 5px 0; color: #94a3b8; font-size: 0.85rem; font-weight: normal; }
-        .stat-card .content p { margin: 0; font-size: 1.5rem; font-weight: bold; color: white; }
+        .stat-card .content h3 { margin: 0 0 5px 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: bold; }
+        .stat-card .content p { margin: 0; font-size: 1.5rem; font-weight: 800; color: var(--text-primary); }
+        .val-success { color: #4ade80 !important; }
+        .val-gold { color: var(--gold) !important; }
+        .val-danger { color: #ef4444 !important; }
         
-        .badge { font-size: 0.7rem; background: #334155; padding: 2px 6px; border-radius: 4px; color: #cbd5e1; margin-top: 5px; display: inline-block; }
-        .badge.warning { background: rgba(244, 63, 94, 0.2); color: #fca5a5; }
-        .badge.success { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .badge { font-size: 0.7rem; background: var(--bg-elevated); padding: 4px 8px; border-radius: 4px; color: var(--text-muted); margin-top: 8px; display: inline-block; border: 1px solid var(--border); font-weight: bold; }
+        .badge.warning { background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.2); }
+        .badge.success { background: rgba(34, 197, 94, 0.1); color: #4ade80; border-color: rgba(34, 197, 94, 0.2); }
 
-        .table-container { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; }
-        .table-header { padding: 20px; border-bottom: 1px solid #334155; background: #0f172a; }
-        .table-header h3 { margin: 0; color: white; font-size: 1.1rem; }
+        .table-container { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+        .table-header { padding: 20px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); }
+        .table-header h3 { margin: 0; color: var(--text-primary); font-size: 1.2rem; font-weight: bold; }
 
         .table-responsive { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: right; padding: 15px 20px; color: #94a3b8; font-size: 0.85rem; background: #1e293b; font-weight: 600; white-space: nowrap; }
-        td { padding: 15px 20px; border-top: 1px solid #334155; color: #e2e8f0; vertical-align: middle; white-space: nowrap; }
-        tr:hover td { background: rgba(255,255,255,0.02); }
+        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-base); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
 
-        .btn-details { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; transition: 0.2s; white-space: nowrap; }
-        .btn-details:hover:not(:disabled) { border-color: #38bdf8; color: #38bdf8; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: right; padding: 15px 20px; color: var(--text-muted); font-size: 0.85rem; background: var(--bg-elevated); font-weight: bold; white-space: nowrap; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+        td { padding: 15px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; white-space: nowrap; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--bg-hover); }
+
+        .btn-details { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85em; transition: 0.2s; white-space: nowrap; font-weight: bold; }
+        .btn-details:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); background: var(--gold-dimmer); transform: translateY(-1px); }
         .btn-details:disabled { opacity: 0.5; cursor: wait; }
 
-        .loading { text-align: center; padding: 50px; color: #38bdf8; }
-        .spinner { width: 30px; height: 30px; border: 3px solid #334155; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        .loading { text-align: center; padding: 50px; color: var(--gold); }
+        .spinner { width: 35px; height: 35px; border: 3px solid var(--border); border-top: 3px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         @media (max-width: 768px) {
             .header-section { flex-direction: column; align-items: flex-start; }
-            .actions-bar { width: 100%; flex-direction: column; }
+            .actions-bar { width: 100%; flex-direction: column; align-items: stretch; }
             .date-picker-group { width: 100%; justify-content: space-between; }
-            .export-btn { width: 100%; }
+            .export-btn { width: 100%; justify-content: center; }
         }
       `}</style>
     </SuperLayout>
