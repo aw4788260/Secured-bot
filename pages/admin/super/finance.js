@@ -431,6 +431,7 @@ export default function SuperFinance() {
         .finance-luxury-wrapper { 
             padding-bottom: 50px; 
             color: var(--text-primary);
+            width: 100%;
         }
         
         .header-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 20px; flex-wrap: wrap; gap: 20px; }
@@ -442,12 +443,30 @@ export default function SuperFinance() {
         .date-separator { color: var(--text-muted); font-weight: bold; }
         .date-input { background: transparent; border: none; color: var(--text-primary); padding: 8px; outline: none; font-family: inherit; color-scheme: dark; cursor: pointer; font-weight: bold; }
         
-        .export-btn { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--gold); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s ease; display: flex; align-items: center; gap: 8px; }
+        .export-btn { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--gold); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s ease; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
         .export-btn:hover:not(:disabled) { background: var(--gold); color: #111009; box-shadow: 0 4px 12px var(--gold-dim); transform: translateY(-2px); }
         .export-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--border-accent); color: var(--text-muted); }
 
-        .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: var(--bg-surface); border: 1px solid var(--border); padding: 20px; border-radius: 16px; display: flex; gap: 15px; align-items: center; transition: transform 0.2s, box-shadow 0.2s; }
+        /* تعديل شبكة الكروت لتكون أكثر استجابة مع القائمة الجانبية المفتوحة */
+        .cards-grid { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 20px; 
+            margin-bottom: 30px; 
+            width: 100%;
+        }
+        .stat-card { 
+            flex: 1 1 200px; /* يسمح بالتمدد والانكماش مع حد أدنى مناسب 200 بكسل */
+            background: var(--bg-surface); 
+            border: 1px solid var(--border); 
+            padding: 20px; 
+            border-radius: 16px; 
+            display: flex; 
+            gap: 15px; 
+            align-items: center; 
+            transition: transform 0.2s, box-shadow 0.2s; 
+            min-width: 0; /* لمنع تجاوز العناصر الداخلية للعرض */
+        }
         .stat-card:hover { transform: translateY(-5px); border-color: var(--border-accent); box-shadow: var(--shadow); }
         
         .stat-card .icon { width: 50px; height: 50px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; flex-shrink: 0; background: var(--bg-elevated); border: 1px solid var(--border); }
@@ -456,26 +475,44 @@ export default function SuperFinance() {
         .profit .icon.gold-icon { background: var(--gold-dimmer); color: var(--gold); border-color: var(--border-accent); }
         .due .icon.red-icon { background: rgba(239, 68, 68, 0.1); color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
 
-        .stat-card .content h3 { margin: 0 0 5px 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: bold; }
-        .stat-card .content p { margin: 0; font-size: 1.5rem; font-weight: 800; color: var(--text-primary); }
+        .stat-card .content { flex-grow: 1; min-width: 0; }
+        .stat-card .content h3 { margin: 0 0 5px 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stat-card .content p { margin: 0; font-size: 1.4rem; font-weight: 800; color: var(--text-primary); white-space: nowrap; }
         .val-success { color: #4ade80 !important; }
         .val-gold { color: var(--gold) !important; }
         .val-danger { color: #ef4444 !important; }
         
-        .badge { font-size: 0.7rem; background: var(--bg-elevated); padding: 4px 8px; border-radius: 4px; color: var(--text-muted); margin-top: 8px; display: inline-block; border: 1px solid var(--border); font-weight: bold; }
+        .badge { font-size: 0.7rem; background: var(--bg-elevated); padding: 4px 8px; border-radius: 4px; color: var(--text-muted); margin-top: 8px; display: inline-block; border: 1px solid var(--border); font-weight: bold; white-space: nowrap;}
         .badge.warning { background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.2); }
         .badge.success { background: rgba(34, 197, 94, 0.1); color: #4ade80; border-color: rgba(34, 197, 94, 0.2); }
 
-        .table-container { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+        /* إعدادات الجدول للتمرير الأفقي بشكل صحيح */
+        .table-container { 
+            background: var(--bg-surface); 
+            border-radius: 16px; 
+            border: 1px solid var(--border); 
+            overflow: hidden; 
+            box-shadow: var(--shadow); 
+            width: 100%;
+            max-width: 100%;
+        }
         .table-header { padding: 20px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); }
         .table-header h3 { margin: 0; color: var(--text-primary); font-size: 1.2rem; font-weight: bold; }
 
-        .table-responsive { overflow-x: auto; }
+        .table-responsive { 
+            width: 100%;
+            overflow-x: auto; 
+            -webkit-overflow-scrolling: touch;
+        }
         .custom-scrollbar::-webkit-scrollbar { height: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-base); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
 
-        table { width: 100%; border-collapse: collapse; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            min-width: 900px; /* يفرض مساحة محددة لتفعيل شريط التمرير عند صغر الشاشة */
+        }
         th { text-align: right; padding: 15px 20px; color: var(--text-muted); font-size: 0.85rem; background: var(--bg-elevated); font-weight: bold; white-space: nowrap; text-transform: uppercase; border-bottom: 1px solid var(--border); }
         td { padding: 15px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; white-space: nowrap; }
         tr:last-child td { border-bottom: none; }
@@ -494,6 +531,7 @@ export default function SuperFinance() {
             .actions-bar { width: 100%; flex-direction: column; align-items: stretch; }
             .date-picker-group { width: 100%; justify-content: space-between; }
             .export-btn { width: 100%; justify-content: center; }
+            .stat-card { flex: 1 1 100%; } /* ليأخذ البطاقة العرض كاملاً في الموبايل */
         }
       `}</style>
     </SuperLayout>
