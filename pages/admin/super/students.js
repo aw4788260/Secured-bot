@@ -137,7 +137,6 @@ export default function SuperStudentsPage() {
       try {
           const res = await fetch(`/api/dashboard/super/students?get_details_for_user=${user.id}`);
           const data = await res.json();
-          // data يحتوي على: courses (المملوكة), subjects (المملوكة)
           setUserSubs(data);
       } catch (e) {}
       setLoadingSubs(false);
@@ -163,7 +162,6 @@ export default function SuperStudentsPage() {
                       if (action === 'update_profile') {
                           setViewUser({ ...viewUser, ...payload.data });
                       }
-                      // إعادة جلب الاشتراكات لتحديث القائمة
                       if (['grant_access', 'revoke_access'].includes(action)) {
                            const subRes = await fetch(`/api/dashboard/super/students?get_details_for_user=${viewUser.id}`);
                            const subData = await subRes.json();
@@ -217,7 +215,7 @@ export default function SuperStudentsPage() {
   const openGrantModal = (target) => {
       setGrantTarget(target);
       setSelectedGrantItems({ courses: [], subjects: [] });
-      setExpandedGrants({}); // تصفير التوسيع
+      setExpandedGrants({});
       setShowGrantModal(true);
   };
 
@@ -236,16 +234,14 @@ export default function SuperStudentsPage() {
 
   // التحقق مما إذا كان العنصر مملوكاً بالفعل (للتعطيل في المودال)
   const isOwned = (type, id) => {
-      if (grantTarget === 'bulk') return false; // في الجماعي لا نعطل شيئاً
+      if (grantTarget === 'bulk') return false; 
       if (!userSubs || !userSubs.courses) return false;
 
       if (type === 'course') {
           return userSubs.courses.some(c => c.course_id === id);
       }
       if (type === 'subject') {
-          // المادة مملوكة إذا كانت في قائمة المواد أو إذا كان الكورس الأب مملوكاً
           const subjectOwned = userSubs.subjects.some(s => s.subject_id === id);
-          // نحتاج معرفة الكورس الأب للمادة، يمكن استخراجه من allCourses
           let parentCourseId = null;
           for (let c of allCourses) {
               if (c.subjects?.some(s => s.id === id)) {
@@ -381,7 +377,7 @@ export default function SuperStudentsPage() {
           </div>
       )}
 
-      {/* --- Filter Modal (Modern & Sleek) --- */}
+      {/* --- Filter Modal --- */}
       {showFilterModal && (
           <div className="modal-overlay" onClick={() => setShowFilterModal(false)}>
               <div className="modal-box filter-modal" onClick={e => e.stopPropagation()}>
@@ -410,7 +406,6 @@ export default function SuperStudentsPage() {
                                   </label>
                               </div>
                               
-                              {/* القائمة المنسدلة */}
                               <div className={`group-body ${expandedFilters[course.id] ? 'show' : ''}`}>
                                   {course.subjects?.length > 0 ? course.subjects.map(subject => (
                                       <label key={subject.id} className="checkbox-row sub">
@@ -435,7 +430,7 @@ export default function SuperStudentsPage() {
           </div>
       )}
 
-      {/* --- Profile Modal (Edit & Actions) --- */}
+      {/* --- Profile Modal --- */}
       {viewUser && (
           <div className="modal-overlay" onClick={() => setViewUser(null)}>
               <div className="modal-box profile-modal" onClick={e => e.stopPropagation()}>
@@ -449,13 +444,13 @@ export default function SuperStudentsPage() {
                           {!isEditing ? (
                               <button className="edit-btn-icon" onClick={() => setIsEditing(true)}>✏️ تعديل البيانات</button>
                           ) : (
-                              <button className="edit-btn-icon cancel" onClick={() => setIsEditing(false)}>إلغاء</button>
+                              <button className="edit-btn-icon cancel" onClick={() => setIsEditing(false)}>إلغاء التعديل</button>
                           )}
                           <button className="close-icon" onClick={() => setViewUser(null)}>✕</button>
                       </div>
                   </div>
                   
-                  <div className="modal-content">
+                  <div className="modal-content custom-scrollbar">
                       <div className="data-form">
                           <div className="data-row">
                               <div className="data-item">
@@ -549,7 +544,7 @@ export default function SuperStudentsPage() {
           </div>
       )}
 
-      {/* --- Grant Modal (Updated with Dropdowns) --- */}
+      {/* --- Grant Modal --- */}
       {showGrantModal && (
           <div className="modal-overlay" onClick={() => setShowGrantModal(false)}>
               <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
@@ -630,8 +625,13 @@ export default function SuperStudentsPage() {
       )}
 
       <style jsx>{`
-        /* ================= Theme-Aware Styling ================= */
-        .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; font-weight: bold; transform: translateX(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 99999999; box-shadow: var(--shadow); background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); }
+        /* ================= Theme-Aware & Responsive Styling ================= */
+        
+        .toast { 
+          position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; font-weight: bold; 
+          transform: translateX(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 99999999; 
+          box-shadow: var(--shadow); background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); 
+        }
         .toast.show { transform: translateX(0); } 
         .toast.success { border-right: 4px solid #22c55e; } 
         .toast.error { border-right: 4px solid #ef4444; }
@@ -657,7 +657,7 @@ export default function SuperStudentsPage() {
         .filter-btn:hover, .filter-btn.active { background: var(--gold); color: #111009; border-color: var(--gold-light); }
 
         /* Bulk Actions Bar */
-        .bulk-glass-bar { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 850px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid var(--gold); padding: 12px 25px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); z-index: 50; animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .bulk-glass-bar { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 850px; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid var(--gold); padding: 12px 25px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); z-index: 50; animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .bulk-info { display: flex; align-items: center; color: white; font-weight: 600; }
         .count-badge { background: var(--gold); color: #111009; padding: 2px 10px; border-radius: 20px; font-weight: 800; margin-left: 8px; font-size: 1.1rem; }
         .bulk-actions { display: flex; gap: 10px; }
@@ -666,8 +666,8 @@ export default function SuperStudentsPage() {
         .glass-btn.danger { border-color: #ef4444; color: #fca5a5; } 
         .glass-btn.danger:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fecaca; }
 
-        /* Main Table */
-        .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow-x: auto; box-shadow: var(--shadow); }
+        /* Main Table - Mobile Optimized */
+        .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow-x: auto; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
         .std-table { width: 100%; border-collapse: collapse; min-width: 850px; }
         .std-table th { background: var(--bg-elevated); padding: 16px 20px; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 0.9em; text-transform: uppercase; font-weight: 700; }
         .std-table td { padding: 16px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
@@ -686,15 +686,15 @@ export default function SuperStudentsPage() {
 
         input[type="checkbox"] { accent-color: var(--gold); width: 18px; height: 18px; cursor: pointer; }
 
-        .pagination { display: flex; justify-content: center; gap: 15px; margin-top: 25px; color: var(--text-muted); padding-bottom: 50px; align-items: center; font-weight: 500; }
+        .pagination { display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; margin-top: 25px; color: var(--text-muted); padding-bottom: 50px; align-items: center; font-weight: 500; }
         .pagination button { padding: 8px 18px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .pagination button:hover:not(:disabled) { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
         .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
         
         .loading-state { padding: 50px; text-align: center; color: var(--gold); font-weight: bold; font-size: 1.1rem; }
 
-        /* General Modals */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        /* General Modals - Mobile Optimized */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         .modal-box { background: var(--bg-surface); width: 90%; border-radius: 16px; border: 1px solid var(--border-accent); overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0,0,0,0.6); animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .profile-modal { max-width: 650px; max-height: 90vh; }
         .grant-modal, .filter-modal { max-width: 550px; max-height: 85vh; }
@@ -712,10 +712,10 @@ export default function SuperStudentsPage() {
         .sub-text { font-size: 0.85em; color: var(--text-muted); font-weight: 500; display: block; margin-top: 4px; }
         .head-actions { display: flex; align-items: center; gap: 12px; }
         
-        .close-icon { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px; border-radius: 50%; transition: 0.2s; }
+        .close-icon { background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; padding: 6px; border-radius: 50%; transition: 0.2s; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; }
         .close-icon:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
         
-        .edit-btn-icon { background: var(--bg-surface); color: var(--gold); border: 1px solid var(--border-accent); padding: 6px 14px; border-radius: 8px; font-size: 0.85em; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .edit-btn-icon { background: var(--bg-surface); color: var(--gold); border: 1px solid var(--border-accent); padding: 8px 14px; border-radius: 8px; font-size: 0.85em; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .edit-btn-icon:hover { background: var(--gold-dim); }
         .edit-btn-icon.cancel { background: transparent; border-color: var(--border); color: var(--text-muted); }
         .edit-btn-icon.cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -723,7 +723,7 @@ export default function SuperStudentsPage() {
         .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
         .modal-footer { padding: 18px 25px; background: var(--bg-elevated); display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); }
 
-        /* Modern Expandable List Styles (Filters & Grants) */
+        /* Modern Expandable List Styles */
         .expandable-group { background: var(--bg-elevated); border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--border); overflow: hidden; transition: 0.2s; }
         .expandable-group:hover { border-color: var(--border-accent); }
         .expandable-group.open { border-color: var(--gold); background: var(--bg-surface); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -732,16 +732,16 @@ export default function SuperStudentsPage() {
 
         .group-header { display: flex; align-items: center; padding: 12px; background: transparent; cursor: pointer; }
         
-        .expand-btn { background: rgba(255, 255, 255, 0.05); border: none; color: var(--text-muted); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-left: 12px; transition: all 0.3s ease; cursor: pointer; }
+        .expand-btn { background: rgba(255, 255, 255, 0.05); border: none; color: var(--text-muted); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-left: 12px; transition: all 0.3s ease; cursor: pointer; }
         .expand-btn:hover { background: var(--gold-dimmer); color: var(--gold); }
         .expand-btn.rotated { transform: rotate(180deg); background: var(--gold-dim); color: var(--gold); }
 
         .group-body { max-height: 0; opacity: 0; overflow: hidden; background: var(--bg-hover); transition: all 0.3s ease; }
-        .group-body.show { max-height: 600px; opacity: 1; padding: 5px 0 15px 0; border-top: 1px dashed var(--border); }
+        .group-body.show { max-height: 800px; opacity: 1; padding: 5px 0 15px 0; border-top: 1px dashed var(--border); overflow-y: auto; }
 
         .checkbox-row { display: flex; align-items: center; cursor: pointer; position: relative; user-select: none; }
-        .checkbox-row.main { flex: 1; gap: 12px; }
-        .checkbox-row.sub { padding: 10px 15px 10px 0; margin-right: 28px; border-radius: 8px; transition: 0.2s; color: var(--text-secondary); }
+        .checkbox-row.main { flex: 1; gap: 12px; min-height: 44px; }
+        .checkbox-row.sub { padding: 12px 15px 12px 0; margin-right: 28px; border-radius: 8px; transition: 0.2s; color: var(--text-secondary); min-height: 44px; }
         .checkbox-row.sub:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
 
         /* Tree Line Effect */
@@ -775,7 +775,7 @@ export default function SuperStudentsPage() {
         
         /* Profile Admin Actions */
         .admin-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 25px 0; }
-        .admin-btn { padding: 12px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.9em; display: flex; justify-content: center; align-items: center; gap: 6px; }
+        .admin-btn { padding: 12px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.9em; display: flex; justify-content: center; align-items: center; gap: 6px; min-height: 44px; }
         .admin-btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .admin-btn.yellow { background: #eab308; color: #422006; }
         .admin-btn.orange { background: #f97316; }
@@ -785,25 +785,25 @@ export default function SuperStudentsPage() {
         .divider { border: 0; border-top: 1px dashed var(--border); margin: 25px 0; }
         
         /* Subscriptions Grid */
-        .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .subs-header h4 { margin: 0; color: var(--text-primary); font-size: 1.1rem; }
-        .add-sub-btn { background: var(--gold); color: #111009; border: none; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9em; transition: 0.2s; }
+        .add-sub-btn { background: var(--gold); color: #111009; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9em; transition: 0.2s; }
         .add-sub-btn:hover { background: var(--gold-light); transform: translateY(-1px); box-shadow: 0 4px 10px var(--gold-dim); }
         
         .subs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .sub-column h5 { color: var(--text-muted); margin: 0 0 12px 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
         .sub-chip { background: var(--bg-elevated); border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 0.95em; color: var(--text-primary); font-weight: 500; transition: 0.2s; }
         .sub-chip:hover { border-color: var(--border-accent); }
-        .sub-chip button { background: rgba(239, 68, 68, 0.1); border: 1px solid transparent; color: #ef4444; font-weight: bold; cursor: pointer; border-radius: 6px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .sub-chip button { background: rgba(239, 68, 68, 0.1); border: 1px solid transparent; color: #ef4444; font-weight: bold; cursor: pointer; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
         .sub-chip button:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
         .empty-text { color: var(--text-muted); font-size: 0.9em; text-align: center; font-style: italic; background: var(--bg-hover); padding: 15px; border-radius: 10px; border: 1px dashed var(--border); }
         
         /* General Buttons */
-        .confirm-btn { background: var(--gold); color: #111009; border: none; padding: 10px 22px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.95rem; transition: 0.2s; }
+        .confirm-btn { background: var(--gold); color: #111009; border: none; padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.95rem; transition: 0.2s; min-height: 44px; display: flex; align-items: center; justify-content: center;}
         .confirm-btn:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 5px 15px var(--gold-dim); }
         .confirm-btn.red { background: #ef4444; color: white; }
         .confirm-btn.red:hover { background: #dc2626; box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3); }
-        .cancel-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 22px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.95rem; transition: 0.2s; }
+        .cancel-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.95rem; transition: 0.2s; min-height: 44px; display: flex; align-items: center; justify-content: center;}
         .cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
         .danger-text { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
         .danger-text:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #fca5a5; }
@@ -811,15 +811,40 @@ export default function SuperStudentsPage() {
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
         
+        /* ================= Mobile Media Queries ================= */
         @media (max-width: 768px) {
-            .controls-container { flex-direction: column; align-items: stretch; }
-            .search-wrapper { width: 100%; }
+            .page-title { flex-direction: column; text-align: center; }
+            .page-title h1 { font-size: 1.5rem; }
+            
+            .controls-container { flex-direction: column; align-items: stretch; gap: 10px; }
+            .search-wrapper { width: 100%; min-width: auto; }
             .filter-btn, .btn-refresh { width: 100%; justify-content: center; }
-            .admin-actions-grid { grid-template-columns: 1fr; }
-            .data-row { flex-direction: column; gap: 15px; }
-            .subs-grid { grid-template-columns: 1fr; }
-            .modal-head.profile-head { flex-direction: column; text-align: center; }
-            .head-actions { width: 100%; justify-content: space-between; margin-top: 10px; }
+            
+            .bulk-glass-bar { flex-direction: column; gap: 12px; border-radius: 20px; padding: 15px; bottom: 20px; width: 92%; }
+            .bulk-actions { flex-wrap: wrap; justify-content: center; width: 100%; }
+            .glass-btn { flex: 1; text-align: center; min-width: 120px; }
+            
+            .std-table th, .std-table td { padding: 12px 10px; font-size: 0.85rem; }
+            
+            .modal-box { width: 95%; max-height: 90dvh; }
+            .modal-head.profile-head { flex-direction: column; text-align: center; padding: 15px; }
+            .head-actions { width: 100%; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
+            
+            .modal-content { padding: 15px; }
+            .data-row { flex-direction: column; gap: 12px; margin-bottom: 12px; }
+            
+            .admin-actions-grid { grid-template-columns: 1fr; gap: 10px; }
+            
+            .subs-grid { grid-template-columns: 1fr; gap: 15px; }
+            .subs-header { flex-direction: column; align-items: stretch; }
+            .add-sub-btn { width: 100%; text-align: center; }
+            
+            .modal-footer { padding: 15px; flex-wrap: wrap; justify-content: stretch; flex-direction: column-reverse; gap: 10px; }
+            .modal-footer button { width: 100%; flex: none; }
+            
+            /* Toast Fix */
+            .toast { top: 10px; left: 10px; right: 10px; text-align: center; transform: translateY(-150%); }
+            .toast.show { transform: translateY(0); }
         }
       `}</style>
     </SuperLayout>
