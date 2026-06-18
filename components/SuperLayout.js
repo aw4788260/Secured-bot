@@ -1,21 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Image from 'next/image';
-
-// استدعاء صورة اللوجو بشكل صحيح (تأكد من أن المسار يطابق هيكل مشروعك)
-import medaadLogo from '../styles/medaad-logo.png';
-
-// ─── SVG Icons ──────────────────────────────────────────
-const HomeIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>);
-const TeachersIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
-const StudentsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>);
-const RequestsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>);
-const CouponIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>);
-const WheelIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="12" x2="14.5" y2="14.5"></line></svg>);
-const FinanceIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>);
-const NotifIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>);
-const SettingsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"></path></svg>);
 
 export default function SuperLayout({ children, title }) {
   const router = useRouter();
@@ -88,18 +73,16 @@ export default function SuperLayout({ children, title }) {
   };
 
   const menuItems = [
-    { name: 'لوحة القيادة', path: '/admin/super', icon: <HomeIcon /> },
-    { name: 'إدارة المدرسين', path: '/admin/super/teachers', icon: <TeachersIcon /> },
-    { name: 'إدارة الطلاب', path: '/admin/super/students', icon: <StudentsIcon /> },
-    { name: 'كل طلبات الاشتراك', path: '/admin/super/requests', icon: <RequestsIcon /> },
-    { name: 'أكواد الخصم (كوبونات)', path: '/admin/super/discount-codes', icon: <CouponIcon /> },
-    { name: 'عجلة الحظ', path: '/admin/super/wheel', icon: <WheelIcon /> },
-    { name: 'التقارير المالية', path: '/admin/super/finance', icon: <FinanceIcon /> },
-    { name: 'إرسال الإشعارات', path: '/admin/super/notifications', icon: <NotifIcon /> },
-    { name: 'إعدادات المنصة', path: '/admin/super/settings', icon: <SettingsIcon /> },
+    { name: 'لوحة القيادة', path: '/admin/super', icon: '🏠' },
+    { name: 'إدارة المدرسين', path: '/admin/super/teachers', icon: '👨‍🏫' },
+    { name: 'إدارة الطلاب', path: '/admin/super/students', icon: '👨‍🎓' },
+    { name: 'كل طلبات الاشتراك', path: '/admin/super/requests', icon: '📥' },
+    { name: 'أكواد الخصم (كوبونات)', path: '/admin/super/discount-codes', icon: '🎟️' },
+    { name: 'عجلة الحظ', path: '/admin/super/wheel', icon: '🎡' },
+    { name: 'التقارير المالية', path: '/admin/super/finance', icon: '💰' },
+    { name: 'إرسال الإشعارات', path: '/admin/super/notifications', icon: '📢' },
+    { name: 'إعدادات المنصة', path: '/admin/super/settings', icon: '⚙️' },
   ];
-
-  const t = isDark ? themes.dark : themes.light;
 
   if (isChecking) {
     return (
@@ -124,19 +107,24 @@ export default function SuperLayout({ children, title }) {
             </svg>
           </button>
           <span className="platform-label">الإدارة العليا</span>
-          {adminName && <span className="admin-badge">🛡️ {adminName}</span>}
-        </div>
-
-        {/* Logo centered */}
-        <div className="header-logo">
-          <img src={medaadLogo?.src || '/medaad-logo.png'} alt="مداد" height={38} style={{ objectFit: 'contain', display: 'block' }} />
         </div>
 
         <div className="header-left">
+          {/* Profile Chip */}
+          {adminName && (
+            <div className="admin-profile" title={adminName}>
+              <span className="admin-name">{adminName}</span>
+              <div className="admin-avatar">{adminName.charAt(0)}</div>
+            </div>
+          )}
+          
+          <div className="header-divider"></div>
+
           <button onClick={toggleTheme} className="theme-toggle" title={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}>
             {isDark ? '☀️' : '🌙'}
           </button>
-          <button onClick={() => setShowLogoutModal(true)} className="logout-btn">
+          
+          <button onClick={() => setShowLogoutModal(true)} className="logout-btn" title="تسجيل الخروج">
             <span className="logout-text">خروج</span>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" style={{ transform: 'rotate(180deg)' }}>
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -150,11 +138,13 @@ export default function SuperLayout({ children, title }) {
       {/* ───────── BODY ───────── */}
       <div className="body-wrapper">
         <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
-          {/* Sidebar logo */}
+          {/* Sidebar logo - المكبر والمعدل */}
           <div className="sidebar-logo-wrap">
-            <img src={medaadLogo?.src || '/medaad-logo.png'} alt="مداد" height={44} style={{ objectFit: 'contain' }} />
+            <img src="/styles/medaad-logo.png" alt="مداد" className="sidebar-main-logo" />
           </div>
+          
           <div className="sidebar-divider" />
+          
           <nav className="nav-container">
             {menuItems.map(item => (
               <button
@@ -251,9 +241,13 @@ export default function SuperLayout({ children, title }) {
           z-index: 60;
           box-shadow: 0 2px 12px rgba(0,0,0,0.15);
         }
-        .header-right, .header-left { display: flex; align-items: center; gap: 10px; min-width: 180px; }
-        .header-left { justify-content: flex-end; }
-        .header-logo { position: absolute; left: 50%; transform: translateX(-50%); }
+        .header-right, .header-left { display: flex; align-items: center; gap: 10px; }
+        
+        .header-divider {
+          width: 1px; height: 24px;
+          background: var(--border);
+          margin: 0 4px;
+        }
 
         .hamburger-btn {
           background: var(--gold-dimmer);
@@ -267,14 +261,37 @@ export default function SuperLayout({ children, title }) {
         }
         .hamburger-btn:hover { background: var(--gold-dim); border-color: var(--gold); }
 
-        .platform-label { color: var(--gold); font-weight: 700; font-size: 1rem; margin-right: 4px; letter-spacing: 0.02em; }
-        .admin-badge {
-          color: var(--text-secondary);
-          font-size: 0.82rem;
-          padding: 3px 10px;
-          background: var(--gold-dimmer);
-          border-radius: 20px;
+        .platform-label { color: var(--gold); font-weight: 700; font-size: 1.05rem; margin-right: 4px; letter-spacing: 0.02em; }
+
+        /* Profile Chip */
+        .admin-profile {
+          display: flex; align-items: center; gap: 10px;
+          padding: 4px 4px 4px 14px;
+          background: var(--bg-hover);
           border: 1px solid var(--border);
+          border-radius: 30px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .admin-profile:hover {
+          border-color: var(--gold-accent);
+          background: var(--bg-elevated);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .admin-name {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .admin-avatar {
+          width: 32px; height: 32px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, var(--gold), var(--gold-light));
+          color: #111009;
+          display: flex; align-items: center; justify-content: center;
+          font-weight: 800;
+          font-size: 1rem;
+          box-shadow: inset 0 2px 4px rgba(255,255,255,0.3);
         }
 
         .theme-toggle {
@@ -319,9 +336,18 @@ export default function SuperLayout({ children, title }) {
         .sidebar.closed { transform: translateX(100%); }
 
         .sidebar-logo-wrap {
-          padding: 20px 20px 12px;
+          padding: 24px 20px 16px;
           display: flex; align-items: center; justify-content: center;
+          width: 100%;
         }
+        .sidebar-main-logo {
+          width: 100%;
+          max-width: 190px;
+          height: auto;
+          object-fit: contain;
+          filter: drop-shadow(0 4px 8px rgba(201,168,76,0.15));
+        }
+
         .sidebar-divider { height: 1px; background: linear-gradient(90deg, transparent, var(--gold), transparent); margin: 0 16px 12px; opacity: 0.4; }
 
         .nav-container { display: flex; flex-direction: column; gap: 4px; padding: 0 12px; flex: 1; }
@@ -342,7 +368,7 @@ export default function SuperLayout({ children, title }) {
         }
         .nav-item:hover { background: var(--gold-dimmer); color: var(--gold); border-color: var(--border); transform: translateX(-3px); }
         .nav-item.active { background: var(--gold-dim); color: var(--gold-light); border-color: var(--border-accent); }
-        .nav-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; }
+        .nav-icon { font-size: 1.1rem; flex-shrink: 0; }
         .nav-label { flex: 1; }
         .active-bar { position: absolute; right: 0; top: 20%; bottom: 20%; width: 3px; background: var(--gold); border-radius: 2px; }
 
@@ -367,8 +393,9 @@ export default function SuperLayout({ children, title }) {
           .main-content { padding: 16px; margin-right: 0 !important; }
           .sidebar { width: 78%; max-width: 290px; box-shadow: -6px 0 20px rgba(0,0,0,0.4); }
           .mobile-overlay { position: fixed; top: 64px; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.55); z-index: 45; backdrop-filter: blur(3px); }
-          .admin-badge, .logout-text { display: none; }
-          .header-logo img { height: 30px !important; }
+          .admin-name, .logout-text { display: none; }
+          .admin-profile { padding: 4px; border-radius: 50%; border: none; background: transparent; }
+          .header-left { gap: 6px; }
         }
 
         /* ── LOGOUT MODAL ── */
@@ -412,5 +439,3 @@ export default function SuperLayout({ children, title }) {
     </div>
   );
 }
-
-const themes = { dark: {}, light: {} };
