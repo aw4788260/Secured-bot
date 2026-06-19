@@ -2,6 +2,23 @@ import TeacherLayout from '../../../../components/TeacherLayout';
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 
+// --- أيقونات SVG الاحترافية ---
+const Icons = {
+    back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>,
+    chart: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>,
+    users: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
+    percent: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>,
+    target: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
+    studentTab: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>,
+    analysisTab: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+    eye: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
+    zoom: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>,
+    check: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
+    close: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+    doc: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
+    alert: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+};
+
 export default function ExamStatsPage() {
   const router = useRouter();
   const { id: examId } = router.query;
@@ -63,64 +80,78 @@ export default function ExamStatsPage() {
             <p>جاري تحميل إحصائيات الامتحان...</p>
         </div>
         <style jsx>{`
-          .loader-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; color: #38bdf8; }
-          .spinner { width: 40px; height: 40px; border: 4px solid #334155; border-top: 4px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
+          .loader-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; color: var(--gold); font-weight: bold; }
+          .spinner { width: 44px; height: 44px; border: 4px solid var(--border); border-top: 4px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
           @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         `}</style>
       </TeacherLayout>
     );
   }
 
-  if (!stats) return <TeacherLayout title="خطأ"><div style={{color:'white', padding:'20px'}}>حدث خطأ في تحميل البيانات.</div></TeacherLayout>;
+  if (!stats) return <TeacherLayout title="خطأ"><div className="empty-state">حدث خطأ في تحميل البيانات.</div></TeacherLayout>;
 
   return (
     <TeacherLayout title={`إحصائيات | ${stats.examTitle}`}>
       
-      {/* Header */}
-      <div className="header-bar">
+      {/* ── PAGE HEADER ── */}
+      <div className="page-header">
           <div className="title-area">
-              <h1>📊 إحصائيات: {stats.examTitle}</h1>
-              <p>تحليل أداء الطلاب ونتائج الامتحان</p>
+              <div className="title-icon">{Icons.chart}</div>
+              <div>
+                  <h1 className="page-title">إحصائيات: {stats.examTitle}</h1>
+                  <p className="page-sub">تحليل شامل لأداء الطلاب ونتائج الامتحان.</p>
+              </div>
           </div>
-          <button className="back-btn" onClick={() => router.push('/admin/teacher/content')}>رجوع ⬅️</button>
+          <button className="btn-secondary" onClick={() => router.push('/admin/teacher/content')}>
+              <span className="icon-wrap">{Icons.back}</span> رجوع
+          </button>
       </div>
 
-      {/* Summary Cards */}
+      {/* ── SUMMARY CARDS ── */}
       <div className="summary-grid">
           <div className="stat-card">
-              <div className="icon blue">👥</div>
-              <div className="info"><span>إجمالي الطلاب</span><strong>{stats.totalAttempts}</strong></div>
+              <div className="stat-icon blue-icon">{Icons.users}</div>
+              <div className="stat-info">
+                  <span className="stat-label">إجمالي الطلاب</span>
+                  <span className="stat-value">{stats.totalAttempts}</span>
+              </div>
           </div>
           <div className="stat-card">
-              <div className="icon yellow">📈</div>
-              <div className="info"><span>متوسط النسبة</span><strong style={{color:'#facc15'}}>{stats.averagePercentage}%</strong></div>
+              <div className="stat-icon yellow-icon">{Icons.percent}</div>
+              <div className="stat-info">
+                  <span className="stat-label">متوسط النسبة</span>
+                  <span className="stat-value highlight-yellow">{stats.averagePercentage}%</span>
+              </div>
           </div>
           <div className="stat-card">
-              <div className="icon green">🎯</div>
-              <div className="info"><span>متوسط الدرجات</span><strong style={{color:'#4ade80'}}>{stats.averageScore}</strong></div>
+              <div className="stat-icon green-icon">{Icons.target}</div>
+              <div className="stat-info">
+                  <span className="stat-label">متوسط الدرجات</span>
+                  <span className="stat-value highlight-green">{stats.averageScore}</span>
+              </div>
           </div>
       </div>
 
-      {/* ✅ تبويبات التنقل (داخل مستطيل ملون خفيف ليوضح حركة التنقل) */}
+      {/* ── TABS SWITCHER ── */}
       <div className="tabs-wrapper">
           <div className="tabs-container">
               <button className={`tab ${activeTab === 'students' ? 'active' : ''}`} onClick={() => setActiveTab('students')}>
-                 👨‍🎓 نتائج الطلاب
+                  <span className="icon-wrap">{Icons.studentTab}</span> نتائج الطلاب
               </button>
               <button className={`tab ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
-                 🔍 تحليل صعوبة الأسئلة
+                  <span className="icon-wrap">{Icons.analysisTab}</span> تحليل صعوبة الأسئلة
               </button>
           </div>
       </div>
 
-      {/* Tab Content 1: Students Table */}
+      {/* ── TAB CONTENT 1: STUDENTS TABLE ── */}
       {activeTab === 'students' && (
           <div className="panel animate-fade">
               <div className="table-responsive">
-                  <table>
+                  <table className="custom-table">
                       <thead>
                           <tr>
-                              <th>م</th>
+                              <th style={{width: '50px'}}>م</th>
                               <th>اسم الطالب</th>
                               <th style={{textAlign:'center'}}>رقم الهاتف</th>
                               <th style={{textAlign:'center'}}>النسبة</th>
@@ -131,26 +162,26 @@ export default function ExamStatsPage() {
                       </thead>
                       <tbody>
                           {stats.attempts.map((a, i) => (
-                              <tr key={a.attempt_id}>
-                                  <td style={{color:'#64748b'}}>{i + 1}</td>
-                                  <td style={{fontWeight:'bold', color:'white'}}>{a.student_name_input}</td>
-                                  <td style={{textAlign:'center', fontFamily:'monospace'}} dir="ltr">{a.phone}</td>
-                                  <td style={{textAlign:'center', color: a.percentage >= 50 ? '#4ade80' : '#ef4444', fontWeight:'bold'}}>
+                              <tr key={a.attempt_id} className="hover-row">
+                                  <td className="muted-text">{i + 1}</td>
+                                  <td className="primary-text bold-text">{a.student_name_input}</td>
+                                  <td className="mono-text center-text ltr-dir">{a.phone}</td>
+                                  <td className="center-text bold-text" style={{color: a.percentage >= 50 ? '#22c55e' : '#ef4444'}}>
                                       {a.percentage}%
                                   </td>
-                                  <td style={{textAlign:'center'}}>{a.score}</td>
-                                  <td style={{textAlign:'center', color:'#94a3b8', fontSize:'0.9em'}}>
-                                      {a.completed_at ? new Date(a.completed_at).toLocaleString('ar-EG') : '-'}
+                                  <td className="center-text bold-text primary-text">{a.score}</td>
+                                  <td className="center-text muted-text text-sm">
+                                      {a.completed_at ? new Date(a.completed_at).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                                   </td>
-                                  <td style={{textAlign:'center'}}>
-                                      <button className="view-btn" onClick={() => openStudentResult(a.attempt_id)}>
-                                          عرض الإجابات 👁️
+                                  <td className="center-text">
+                                      <button className="btn-view" onClick={() => openStudentResult(a.attempt_id)} title="عرض الإجابات">
+                                          <span className="icon-wrap">{Icons.eye}</span> عرض
                                       </button>
                                   </td>
                               </tr>
                           ))}
                           {stats.attempts.length === 0 && (
-                              <tr><td colSpan="7" style={{textAlign:'center', padding:'30px', color:'#64748b'}}>لا يوجد طلاب قاموا بحل هذا الامتحان حتى الآن.</td></tr>
+                              <tr><td colSpan="7" className="empty-row">لا يوجد طلاب قاموا بحل هذا الامتحان حتى الآن.</td></tr>
                           )}
                       </tbody>
                   </table>
@@ -158,7 +189,7 @@ export default function ExamStatsPage() {
           </div>
       )}
 
-      {/* Tab Content 2: Question Analysis */}
+      {/* ── TAB CONTENT 2: QUESTION ANALYSIS ── */}
       {activeTab === 'analysis' && (
           <div className="analysis-grid animate-fade">
               {[...(stats.questionStats || [])].sort((a, b) => {
@@ -182,24 +213,24 @@ export default function ExamStatsPage() {
                   return (
                       <div key={q.question_id} className="q-stat-card">
                           
-                          {/* عرض صورة السؤال (أعلى النص) */}
                           {q.image_file_id && (
                               <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`)}>
-                                  <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`} alt="Question Image" />
-                                  <div className="zoom-hint">🔍 تكبير</div>
+                                  <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image_file_id}`} alt="Question" loading="lazy" />
+                                  <div className="zoom-hint"><span className="icon-wrap">{Icons.zoom}</span> تكبير</div>
                               </div>
                           )}
 
-                          {/* ✅ نص السؤال داخل مستطيل ملون خفيف */}
                           <div className="question-text-box">
-                              <h4 className="q-text"><span>{i + 1}.</span> {q.question_text}</h4>
+                              <h4 className="q-text"><span className="q-num-highlight">{i + 1}.</span> {q.question_text}</h4>
                           </div>
 
-                          <div className="q-meta">أجاب على هذا السؤال: <strong>{total} طالب</strong></div>
+                          <div className="q-meta">
+                              أجاب على هذا السؤال: <strong>{total} طالب</strong>
+                          </div>
                           
                           <div className="overall-summary">
-                              <span className="badge green">إجابات صحيحة: {correctPerc}%</span>
-                              <span className="badge red">إجابات خاطئة: {wrongPerc}%</span>
+                              <span className="badge-pill green-pill">إجابات صحيحة: {correctPerc}%</span>
+                              <span className="badge-pill red-pill">إجابات خاطئة: {wrongPerc}%</span>
                           </div>
 
                           <div className="options-breakdown">
@@ -214,12 +245,13 @@ export default function ExamStatsPage() {
                                       <div key={opt.option_id} className={`opt-stat-row ${isCorrect ? 'is-correct' : ''}`}>
                                           <div className="opt-stat-info">
                                               <span className="opt-text">
-                                                  {isCorrect ? '✅' : '❌'} {opt.option_text}
+                                                  <span className="icon-wrap opt-icon">{isCorrect ? Icons.check : Icons.close}</span>
+                                                  {opt.option_text}
                                               </span>
                                               <span className="opt-count">{optPerc}% ({optCount} طالب)</span>
                                           </div>
                                           <div className="opt-progress-bar">
-                                              <div className={`opt-fill ${isCorrect ? 'green' : 'gray'}`} style={{width: `${optPerc}%`}}></div>
+                                              <div className={`opt-fill ${isCorrect ? 'green-fill' : 'gray-fill'}`} style={{width: `${optPerc}%`}}></div>
                                           </div>
                                       </div>
                                   );
@@ -229,53 +261,61 @@ export default function ExamStatsPage() {
                   );
               })}
               {(!stats.questionStats || stats.questionStats.length === 0) && (
-                  <div style={{color:'#64748b', textAlign:'center', gridColumn:'1/-1', padding:'30px'}}>لا توجد إحصائيات للأسئلة حالياً.</div>
+                  <div className="empty-state full-span">لا توجد إحصائيات للأسئلة حالياً.</div>
               )}
           </div>
       )}
 
-      {/* Modal ورقة إجابة الطالب */}
+      {/* ── MODAL: STUDENT ATTEMPT DETAILS ── */}
       {selectedAttempt && (
           <div className="modal-overlay" onClick={() => setSelectedAttempt(null)}>
-              <div className="modal-box" onClick={e => e.stopPropagation()}>
+              <div className="modal-box large" onClick={e => e.stopPropagation()}>
                   
                   <div className="modal-header">
-                      <h3>📄 ورقة إجابة الطالب</h3>
-                      <button className="close-btn" onClick={() => setSelectedAttempt(null)}>✕</button>
+                      <div className="modal-title">
+                          <span className="icon-wrap" style={{color: 'var(--gold)'}}>{Icons.doc}</span>
+                          <h3>ورقة إجابة الطالب</h3>
+                      </div>
+                      <button className="close-btn" onClick={() => setSelectedAttempt(null)}>{Icons.close}</button>
                   </div>
 
                   {loadingAttempt || !attemptDetails ? (
-                      <div className="loader-container" style={{height:'200px'}}>
+                      <div className="loading-state inner-modal">
                           <div className="spinner"></div>
                           <p>جاري تحميل الإجابات...</p>
                       </div>
                   ) : (
-                      <div className="modal-body">
+                      <div className="modal-body custom-scrollbar">
                           <div className="student-info-card">
                               <div className="s-name">{attemptDetails.student.name}</div>
-                              <div className="s-score">الدرجة: <span style={{color:'#facc15'}}>{attemptDetails.exam.score} / {attemptDetails.exam.total_questions}</span> ({attemptDetails.exam.percentage}%)</div>
+                              <div className="s-score">
+                                  الدرجة: <span className="highlight-yellow">{attemptDetails.exam.score} / {attemptDetails.exam.total_questions}</span> 
+                                  <span className="perc-bracket">({attemptDetails.exam.percentage}%)</span>
+                              </div>
                           </div>
 
                           <div className="questions-list">
                               {attemptDetails.questions_details.map((q, i) => (
                                   <div key={q.id} className="q-detail-card">
                                       
-                                      {/* عرض صورة السؤال (أعلى النص) */}
                                       {q.image && (
                                           <div className="q-image" onClick={() => setZoomedImage(`/api/admin/file-proxy?type=exam_images&filename=${q.image}`)}>
-                                              <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question Image" />
-                                              <div className="zoom-hint">🔍 تكبير</div>
+                                              <img src={`/api/admin/file-proxy?type=exam_images&filename=${q.image}`} alt="Question" loading="lazy" />
+                                              <div className="zoom-hint"><span className="icon-wrap">{Icons.zoom}</span> تكبير</div>
                                           </div>
                                       )}
 
                                       <div className="q-head">
-                                          {/* ✅ نص السؤال داخل مستطيل ملون خفيف */}
                                           <div className="question-text-box flex-row">
-                                              <span className="q-num">{i + 1}</span>
+                                              <span className="q-num-circle">{i + 1}</span>
                                               <p>{q.text}</p>
                                           </div>
                                           <div className="q-status">
-                                              {q.is_student_correct ? <span className="badge green">✅ صحيح</span> : <span className="badge red">❌ خطأ</span>}
+                                              {q.is_student_correct ? (
+                                                  <span className="badge-pill green-pill"><span className="icon-wrap">{Icons.check}</span> صحيح</span>
+                                              ) : (
+                                                  <span className="badge-pill red-pill"><span className="icon-wrap">{Icons.close}</span> خطأ</span>
+                                              )}
                                           </div>
                                       </div>
 
@@ -285,29 +325,29 @@ export default function ExamStatsPage() {
                                               let badge = null;
 
                                               if (opt.id === q.correct_option_id) {
-                                                  optClass += "correct ";
-                                                  badge = <span className="opt-badge green">الإجابة الصحيحة</span>;
+                                                  optClass += "correct-opt ";
+                                                  badge = <span className="opt-badge green-badge">الإجابة الصحيحة</span>;
                                               }
                                               
                                               if (opt.id === q.student_selected_option_id && !q.is_student_correct) {
-                                                  optClass += "wrong ";
-                                                  badge = <span className="opt-badge red">اختيار الطالب</span>;
+                                                  optClass += "wrong-opt ";
+                                                  badge = <span className="opt-badge red-badge">اختيار الطالب</span>;
                                               }
 
                                               if (opt.id === q.student_selected_option_id && q.is_student_correct) {
-                                                  badge = <span className="opt-badge green">اختيار الطالب (صحيح)</span>;
+                                                  badge = <span className="opt-badge green-badge">اختيار الطالب (صحيح)</span>;
                                               }
 
                                               return (
                                                   <div key={opt.id} className={optClass}>
-                                                      <div className="opt-text">{opt.text}</div>
+                                                      <div className="opt-text-inner">{opt.text}</div>
                                                       {badge}
                                                   </div>
                                               );
                                           })}
                                           {!q.student_selected_option_id && (
-                                              <div style={{color:'#ef4444', fontSize:'0.85em', marginTop:'10px', padding:'5px', background:'rgba(239,68,68,0.1)', borderRadius:'6px', textAlign:'center'}}>
-                                                  ⚠️ لم يقم الطالب باختيار أي إجابة لهذا السؤال.
+                                              <div className="no-answer-warning">
+                                                  <span className="icon-wrap">{Icons.alert}</span> لم يقم الطالب باختيار أي إجابة لهذا السؤال.
                                               </div>
                                           )}
                                       </div>
@@ -320,138 +360,178 @@ export default function ExamStatsPage() {
           </div>
       )}
 
-      {/* نافذة التكبير الكلية للصور */}
+      {/* ── MODAL: IMAGE ZOOM ── */}
       {zoomedImage && (
           <div className="modal-overlay image-zoom-overlay" onClick={() => setZoomedImage(null)}>
               <div className="zoomed-image-container" onClick={e => e.stopPropagation()}>
-                  <button className="close-btn abs-close" onClick={() => setZoomedImage(null)}>✕</button>
-                  <img src={zoomedImage} alt="Zoomed Question" />
+                  <button className="abs-close-btn" onClick={() => setZoomedImage(null)}>{Icons.close}</button>
+                  <img src={zoomedImage} alt="Zoomed" />
               </div>
           </div>
       )}
 
       <style jsx>{`
-        /* Header & Common */
-        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
-        .title-area { display: flex; flex-direction: column; gap: 5px; }
-        .back-btn { background: #334155; color: #cbd5e1; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 0.95rem; }
-        .back-btn:hover { background: #475569; color: white; }
-        .header-bar h1 { margin: 0; color: #38bdf8; font-size: 1.6rem; }
-        .header-bar p { margin: 0; color: #94a3b8; font-size: 0.95rem; }
+        /* ── THEME VARS ── */
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .title-area { display: flex; align-items: center; gap: 16px; }
+        .title-icon { width: 50px; height: 50px; background: var(--gold-dim); color: var(--gold); border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-accent); }
+        .page-title { margin: 0 0 6px 0; color: var(--text-primary); font-size: 1.6rem; font-weight: 800; }
+        .page-sub { margin: 0; color: var(--text-secondary); font-size: 0.95rem; }
 
-        /* Summary Cards */
-        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; display: flex; align-items: center; gap: 15px; }
-        .stat-card .icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
-        .stat-card .icon.blue { background: rgba(56, 189, 248, 0.1); }
-        .stat-card .icon.yellow { background: rgba(250, 204, 21, 0.1); }
-        .stat-card .icon.green { background: rgba(34, 197, 94, 0.1); }
-        .stat-card .info { display: flex; flex-direction: column; gap: 5px; }
-        .stat-card .info span { color: #94a3b8; font-size: 0.9rem; }
-        .stat-card .info strong { color: white; font-size: 1.5rem; }
-
-        /* ✅ التبويبات (Tabs Switcher) بخلفية ملونة خفيفة */
-        .tabs-wrapper { display: flex; justify-content: center; margin-bottom: 30px; }
-        .tabs-container { display: inline-flex; background: rgba(255, 255, 255, 0.05); padding: 6px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); gap: 5px; }
-        .tab { background: transparent; color: #94a3b8; border: none; padding: 12px 30px; font-size: 1.05rem; font-weight: bold; cursor: pointer; border-radius: 8px; transition: all 0.3s ease; }
-        .tab:hover { color: white; background: rgba(255,255,255,0.05); }
-        .tab.active { background: #38bdf8; color: #0f172a; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3); }
-
-        .animate-fade { animation: fadeIn 0.4s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Table */
-        .panel { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
-        .table-responsive { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: right; padding: 15px; color: #94a3b8; background: #0f172a; border-bottom: 1px solid #334155; font-size: 0.9rem; white-space: nowrap; }
-        td { padding: 15px; color: #cbd5e1; border-bottom: 1px solid #334155; font-size: 0.95rem; }
-        tr:hover td { background: rgba(255,255,255,0.02); }
-        .view-btn { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: bold; transition: 0.2s; }
-        .view-btn:hover { background: #38bdf8; color: #0f172a; }
-
-        /* Analysis Grid & Question Cards */
-        .analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
-        .q-stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
-        .q-meta { color: #94a3b8; font-size: 0.85rem; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #334155; }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 20px; border-radius: 10px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; transition: 0.2s; }
+        .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
         
-        /* ✅ مستطيل نص السؤال بخلفية خفيفة */
-        .question-text-box { background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-right: 4px solid #38bdf8; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .question-text-box.flex-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 0; flex: 1; }
-        .question-text-box h4, .question-text-box p { margin: 0; color: white; font-size: 1.05rem; line-height: 1.6; }
-        .question-text-box h4 span, .question-text-box span.q-num { color: #38bdf8; font-weight: bold; }
-        .question-text-box span.q-num { background: #38bdf8; color: #0f172a; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+        .icon-wrap { display: flex; align-items: center; justify-content: center; }
+
+        /* ── SUMMARY CARDS ── */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 35px; }
+        .stat-card { background: var(--bg-surface); padding: 20px; border-radius: 16px; border: 1px solid var(--border); display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow); transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-4px); border-color: var(--border-accent); }
+        .stat-icon { width: 54px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid transparent; }
+        .blue-icon { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border-color: rgba(56, 189, 248, 0.2); }
+        .yellow-icon { background: rgba(250, 204, 21, 0.1); color: #facc15; border-color: rgba(250, 204, 21, 0.2); }
+        .green-icon { background: rgba(34, 197, 94, 0.1); color: #4ade80; border-color: rgba(34, 197, 94, 0.2); }
+        .stat-info { display: flex; flex-direction: column; gap: 4px; }
+        .stat-label { color: var(--text-muted); font-size: 0.9rem; font-weight: bold; }
+        .stat-value { color: var(--text-primary); font-size: 1.6rem; font-weight: 900; }
+        .highlight-yellow { color: #facc15; }
+        .highlight-green { color: #4ade80; }
+
+        /* ── TABS ── */
+        .tabs-wrapper { display: flex; justify-content: center; margin-bottom: 30px; }
+        .tabs-container { display: inline-flex; background: var(--bg-surface); padding: 6px; border-radius: 14px; border: 1px solid var(--border); gap: 5px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .tab { background: transparent; color: var(--text-secondary); border: none; padding: 12px 24px; font-size: 1rem; font-weight: bold; cursor: pointer; border-radius: 10px; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px; }
+        .tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+        .tab.active { background: var(--gold-dim); color: var(--gold); box-shadow: 0 2px 10px rgba(201,168,76,0.1); border: 1px solid var(--border-accent); }
+
+        .animate-fade { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── TABLE ── */
+        .panel { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+        .table-responsive { overflow-x: auto; }
+        .custom-table { width: 100%; border-collapse: collapse; min-width: 800px; text-align: right; }
+        .custom-table th { padding: 16px; color: var(--text-secondary); background: var(--bg-elevated); border-bottom: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; white-space: nowrap; }
+        .custom-table td { padding: 16px; border-bottom: 1px solid var(--border); color: var(--text-primary); font-size: 0.95rem; vertical-align: middle; }
+        .custom-table tbody tr:last-child td { border-bottom: none; }
+        .hover-row { transition: background 0.2s; }
+        .hover-row:hover { background: var(--bg-hover); }
+        
+        .muted-text { color: var(--text-muted); }
+        .primary-text { color: var(--text-primary); }
+        .bold-text { font-weight: 700; }
+        .mono-text { font-family: monospace; }
+        .center-text { text-align: center; }
+        .ltr-dir { direction: ltr; }
+        .text-sm { font-size: 0.85rem; }
+
+        .btn-view { background: var(--gold-dimmer); border: 1px solid var(--border-accent); color: var(--gold); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: bold; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-view:hover { background: var(--gold-dim); border-color: var(--gold); }
+        .empty-row { text-align: center; padding: 40px; color: var(--text-muted); font-style: italic; }
+
+        /* ── ANALYSIS GRID ── */
+        .analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 24px; }
+        .q-stat-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); transition: transform 0.2s; }
+        .q-stat-card:hover { border-color: var(--border-accent); transform: translateY(-3px); }
+        
+        .q-meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); font-weight: bold; }
+        .q-meta strong { color: var(--gold); }
+
+        .question-text-box { background: var(--bg-elevated); border: 1px solid var(--border); border-right: 4px solid var(--gold); padding: 16px; border-radius: 10px; margin-bottom: 18px; }
+        .question-text-box.flex-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 0; flex: 1; border-right: none; background: transparent; border: none; padding: 0; }
+        .question-text-box h4, .question-text-box p { margin: 0; color: var(--text-primary); font-size: 1.05rem; line-height: 1.6; }
+        .q-num-highlight { color: var(--gold); font-weight: 900; margin-left: 4px; }
+        .q-num-circle { background: var(--gold-dim); color: var(--gold); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; flex-shrink: 0; border: 1px solid var(--border-accent); }
 
         /* Image Zoom Styles */
-        .q-image { position: relative; display: inline-block; cursor: zoom-in; margin-bottom: 15px; border-radius: 8px; overflow: hidden; border: 1px solid #334155; transition: border-color 0.2s; background: #0f172a; max-width: 100%; }
-        .q-image:hover { border-color: #38bdf8; }
-        .q-image img { display: block; max-height: 200px; width: auto; object-fit: contain; transition: transform 0.3s; }
-        .q-image:hover img { opacity: 0.6; transform: scale(1.02); }
-        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.8); padding: 8px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+        .q-image { position: relative; display: inline-block; cursor: zoom-in; margin-bottom: 18px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); transition: border-color 0.2s; background: var(--bg-base); max-width: 100%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .q-image:hover { border-color: var(--gold); }
+        .q-image img { display: block; max-height: 220px; width: auto; object-fit: contain; transition: transform 0.4s ease; }
+        .q-image:hover img { opacity: 0.7; transform: scale(1.03); filter: blur(1px); }
+        .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-primary); background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 20px; font-size: 0.95rem; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(4px); }
         .q-image:hover .zoom-hint { opacity: 1; }
+        
         .image-zoom-overlay { z-index: 20000; padding: 20px; }
-        .zoomed-image-container { position: relative; display: flex; justify-content: center; align-items: center; max-width: 90vw; max-height: 90vh; }
-        .zoomed-image-container img { max-width: 100%; max-height: 90vh; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); object-fit: contain; background: #0f172a; }
-        .abs-close { position: absolute; top: -15px; right: -15px; background: white; color: black; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 10; font-weight: bold; transition: 0.2s; }
-        .abs-close:hover { transform: scale(1.1); background: #ef4444; color: white; }
+        .zoomed-image-container { position: relative; display: flex; justify-content: center; align-items: center; max-width: 95vw; max-height: 95vh; animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .zoomed-image-container img { max-width: 100%; max-height: 90vh; border-radius: 16px; box-shadow: 0 15px 50px rgba(0,0,0,0.8); object-fit: contain; background: var(--bg-surface); }
+        .abs-close-btn { position: absolute; top: -20px; right: -20px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.4); z-index: 10; transition: 0.2s; }
+        .abs-close-btn:hover { transform: scale(1.1); background: #ef4444; color: white; border-color: #ef4444; }
 
         /* Options Breakdown */
-        .overall-summary { display: flex; gap: 10px; margin-bottom: 20px; }
-        .overall-summary .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
-        .overall-summary .badge.green { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
-        .overall-summary .badge.red { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .overall-summary { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+        .badge-pill { padding: 6px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; }
+        .green-pill { background: rgba(34, 197, 94, 0.1); color: #4ade80; border-color: rgba(34, 197, 94, 0.2); }
+        .red-pill { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border-color: rgba(239, 68, 68, 0.2); }
 
-        .options-breakdown { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        .breakdown-title { color: #cbd5e1; margin: 0 0 15px 0; font-size: 0.9rem; font-weight: normal; }
-        .opt-stat-row { margin-bottom: 12px; }
+        .options-breakdown { background: var(--bg-base); padding: 18px; border-radius: 12px; border: 1px solid var(--border); }
+        .breakdown-title { color: var(--text-muted); margin: 0 0 16px 0; font-size: 0.95rem; font-weight: bold; }
+        .opt-stat-row { margin-bottom: 14px; }
         .opt-stat-row:last-child { margin-bottom: 0; }
-        .opt-stat-info { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem; color: #cbd5e1; }
+        .opt-stat-info { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-secondary); align-items: center; }
         .opt-stat-row.is-correct .opt-stat-info { color: #4ade80; font-weight: bold; }
-        .opt-count { font-family: monospace; color: #94a3b8; }
-        .opt-progress-bar { width: 100%; height: 6px; background: #1e293b; border-radius: 10px; overflow: hidden; }
-        .opt-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
-        .opt-fill.green { background: #4ade80; }
-        .opt-fill.gray { background: #64748b; }
+        .opt-text { display: flex; align-items: center; gap: 8px; }
+        .opt-icon { font-size: 0.8rem; }
+        .opt-count { font-family: monospace; color: var(--text-muted); }
+        
+        .opt-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated); border-radius: 10px; overflow: hidden; }
+        .opt-fill { height: 100%; border-radius: 10px; transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .green-fill { background: #4ade80; }
+        .gray-fill { background: var(--border-accent); }
 
-        /* Modal Styles */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
-        .modal-box { background: #0f172a; width: 95%; max-width: 800px; height: 90vh; border-radius: 16px; border: 1px solid #334155; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: #1e293b; border-bottom: 1px solid #334155; }
-        .modal-header h3 { margin: 0; color: white; }
-        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; }
-        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+        /* ── MODAL (Attempt Details) ── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); padding: 20px; }
+        .modal-box { background: var(--bg-surface); width: 100%; border-radius: 20px; border: 1px solid var(--border-accent); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .modal-box.large { max-width: 850px; height: 90vh; }
+        
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }
+        .modal-title { display: flex; align-items: center; gap: 10px; }
+        .modal-title h3 { margin: 0; color: var(--text-primary); font-size: 1.2rem; font-weight: bold; }
+        .close-btn { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); width: 34px; height: 34px; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
+        .close-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+        
+        .modal-body { padding: 24px; overflow-y: auto; flex: 1; background: var(--bg-base); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--gold); }
 
-        /* Attempt Details Inside Modal */
-        .student-info-card { background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid #334155; padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-        .s-name { font-size: 1.3rem; font-weight: bold; color: white; }
-        .s-score { font-size: 1.1rem; color: #cbd5e1; font-weight: bold; }
+        .inner-modal { height: 100%; display: flex; flex-direction: column; justify-content: center; }
+
+        .student-info-card { background: var(--bg-elevated); border: 1px solid var(--border); padding: 20px 24px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-right: 4px solid var(--gold); }
+        .s-name { font-size: 1.3rem; font-weight: 900; color: var(--text-primary); }
+        .s-score { font-size: 1.1rem; color: var(--text-secondary); font-weight: bold; }
+        .perc-bracket { font-size: 0.95rem; color: var(--text-muted); margin-right: 6px; }
 
         .questions-list { display: flex; flex-direction: column; gap: 20px; }
-        .q-detail-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 12px; }
-        .q-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; gap: 15px; }
-        
-        .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap; }
-        .badge.green { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
-        .badge.red { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .q-detail-card { background: var(--bg-surface); border: 1px solid var(--border); padding: 24px; border-radius: 16px; box-shadow: var(--shadow); }
+        .q-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 20px; }
+        .q-status { flex-shrink: 0; }
 
-        .options-list { display: flex; flex-direction: column; gap: 8px; }
-        .opt-row { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px 15px; border-radius: 8px; border: 1px solid #334155; color: #cbd5e1; }
-        .opt-row.correct { background: rgba(34, 197, 94, 0.05); border-color: #22c55e; color: white; }
-        .opt-row.wrong { background: rgba(239, 68, 68, 0.05); border-color: #ef4444; color: white; }
-        
-        .opt-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
-        .opt-badge.green { background: #22c55e; color: #0f172a; }
-        .opt-badge.red { background: #ef4444; color: white; }
+        .options-list { display: flex; flex-direction: column; gap: 10px; }
+        .opt-row { display: flex; justify-content: space-between; align-items: center; background: var(--bg-base); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); transition: 0.2s; }
+        .opt-row.correct-opt { background: rgba(34, 197, 94, 0.05); border-color: #22c55e; color: var(--text-primary); }
+        .opt-row.wrong-opt { background: rgba(239, 68, 68, 0.05); border-color: #ef4444; color: var(--text-primary); }
+        .opt-text-inner { font-size: 0.95rem; line-height: 1.5; }
+
+        .opt-badge { font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; font-weight: bold; white-space: nowrap; flex-shrink: 0; }
+        .green-badge { background: #22c55e; color: #111009; }
+        .red-badge { background: #ef4444; color: white; }
+
+        .no-answer-warning { color: #fca5a5; font-size: 0.9rem; margin-top: 15px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; text-align: center; border: 1px dashed rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; }
+
+        .empty-state { text-align: center; padding: 40px; color: var(--text-muted); font-size: 1.05rem; }
+        .full-span { grid-column: 1 / -1; }
 
         @keyframes popIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 
         @media (max-width: 768px) {
-            .header-bar { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .page-header { flex-direction: column; align-items: flex-start; gap: 15px; }
             .analysis-grid { grid-template-columns: 1fr; }
-            .student-info-card { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .student-info-card { flex-direction: column; align-items: flex-start; gap: 12px; }
             .q-head { flex-direction: column; }
-            .opt-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .opt-row { flex-direction: column; align-items: flex-start; gap: 12px; }
             .tabs-container { flex-direction: column; width: 100%; }
+            .tab { width: 100%; justify-content: center; }
         }
       `}</style>
     </TeacherLayout>
