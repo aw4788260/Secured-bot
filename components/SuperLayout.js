@@ -255,42 +255,44 @@ export default function SuperLayout({ children, title }) {
       <style jsx global>{`
         *, *::before, *::after { box-sizing: border-box; }
 
-        /* ── THEME VARS ── */
+
+/* ── THEME VARS (ألوان هادئة ومحايدة) ── */
         .layout-root.dark {
-          --bg-base:        #111009;
-          --bg-surface:     #1a1710;
-          --bg-elevated:    #221f13;
-          --bg-hover:       #2c2818;
-          --border:         #3a3420;
-          --border-accent:  #5a4e28;
-          --gold:           #c9a84c;
-          --gold-light:     #e8c96a;
-          --gold-dim:       rgba(201,168,76,0.15);
-          --gold-dimmer:    rgba(201,168,76,0.07);
-          --text-primary:   #f5f0e0;
-          --text-secondary: #a89f7a;
-          --text-muted:     #6b6245;
+          --bg-base:        #121212;  /* خلفية داكنة محايدة بدلاً من المائلة للبني */
+          --bg-surface:     #1a1a1a;
+          --bg-elevated:    #242424;
+          --bg-hover:       #2e2e2e;
+          --border:         #333333;
+          --border-accent:  #6b5e43;  /* حدود بلمسة ذهبية خفيفة */
+          --gold:           #bda878;  /* 🌟 ذهبي مطفأ (شامبين) أقل اصفراراً */
+          --gold-light:     #d6c598;
+          --gold-dim:       rgba(189,168,120,0.15);
+          --gold-dimmer:    rgba(189,168,120,0.07);
+          --text-primary:   #f5f5f5;  /* أبيض محايد */
+          --text-secondary: #a3a3a3;
+          --text-muted:     #737373;
           --shadow:         0 4px 24px rgba(0,0,0,0.5);
-          --header-bg:      #16130c;
+          --header-bg:      #171717;
         }
+        
         .layout-root.light {
-          --bg-base:        #faf8f0;
+          --bg-base:        #f8f9fa;  /* رمادي فاتح جداً نقي بدلاً من السكري */
           --bg-surface:     #ffffff;
-          --bg-elevated:    #f5f0e0;
-          --bg-hover:       #ede8d4;
-          --border:         #ddd4a8;
-          --border-accent:  #c9a84c;
-          --gold:           #b8903a;
-          --gold-light:     #d4a843;
-          --gold-dim:       rgba(184,144,58,0.12);
-          --gold-dimmer:    rgba(184,144,58,0.06);
-          --text-primary:   #1a1508;
-          --text-secondary: #6b5a2a;
-          --text-muted:     #9e8850;
-          --shadow:         0 4px 24px rgba(0,0,0,0.1);
+          --bg-elevated:    #f1f5f9;
+          --bg-hover:       #e2e8f0;
+          --border:         #e2e8f0;
+          --border-accent:  #bda878;
+          --gold:           #a6905d;  /* 🌟 ذهبي داكن قليلاً ليناسب الخلفية البيضاء */
+          --gold-light:     #bda878;
+          --gold-dim:       rgba(166,144,93,0.12);
+          --gold-dimmer:    rgba(166,144,93,0.06);
+          --text-primary:   #0f172a;  /* رمادي داكن للنصوص */
+          --text-secondary: #475569;
+          --text-muted:     #94a3b8;
+          --shadow:         0 4px 24px rgba(0,0,0,0.06);
           --header-bg:      #ffffff;
         }
-
+        
         body { 
           margin: 0; 
           font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
