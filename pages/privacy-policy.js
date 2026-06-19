@@ -16,7 +16,7 @@ export default function PrivacyPolicy() {
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
-    // إزالة خلفية الـ body الزرقاء القادمة من globals.css
+    // إزالة خلفية الـ body الزرقاء القادمة من globals.css لضمان تطبيق السمة الجديدة
     document.body.style.backgroundColor = 'transparent';
     
     const savedTheme = localStorage.getItem('medaad_theme');
@@ -174,39 +174,41 @@ export default function PrivacyPolicy() {
       <style jsx global>{`
         /* ── THEME VARIABLES ── */
         .policy-layout.dark {
-          --bg-base:        #111009;
-          --bg-surface:     #1a1710;
-          --bg-elevated:    #221f13;
-          --border:         #3a3420;
-          --border-accent:  #5a4e28;
-          --gold:           #c9a84c;
-          --gold-hover:     #e8c96a;
-          --gold-dim:       rgba(201,168,76,0.15);
-          --text-primary:   #f5f0e0;
-          --text-secondary: #a89f7a;
-          --text-muted:     #6b6245;
-          --danger-bg:      rgba(239, 68, 68, 0.05);
+          --bg-base:        #121212;
+          --bg-surface:     #1a1a1a;
+          --bg-elevated:    #242424;
+          --border:         #333333;
+          --border-accent:  #6b5e43;
+          --gold:           #bda878;
+          --gold-hover:     #d6c598;
+          --gold-dim:       rgba(189,168,120,0.15);
+          --text-primary:   #f5f5f5;
+          --text-secondary: #a3a3a3;
+          --text-muted:     #737373;
+          --danger-bg:      rgba(239, 68, 68, 0.1);
           --danger-border:  rgba(239, 68, 68, 0.2);
           --danger-text:    #fca5a5;
-          --bg-shape:       rgba(201,168,76,0.03);
+          --bg-shape:       rgba(189,168,120,0.06);
+          --shadow:         0 10px 30px rgba(0,0,0,0.5);
         }
 
         .policy-layout.light {
-          --bg-base:        #faf8f0;
+          --bg-base:        #f8f9fa;
           --bg-surface:     #ffffff;
-          --bg-elevated:    #f5f0e0;
-          --border:         #ddd4a8;
-          --border-accent:  #c9a84c;
-          --gold:           #b8903a;
-          --gold-hover:     #967228;
-          --gold-dim:       rgba(184,144,58,0.12);
-          --text-primary:   #1a1508;
-          --text-secondary: #6b5a2a;
-          --text-muted:     #9e8850;
+          --bg-elevated:    #f1f5f9;
+          --border:         #e2e8f0;
+          --border-accent:  #bda878;
+          --gold:           #a6905d;
+          --gold-hover:     #8a7649;
+          --gold-dim:       rgba(166,144,93,0.12);
+          --text-primary:   #0f172a;
+          --text-secondary: #475569;
+          --text-muted:     #94a3b8;
           --danger-bg:      rgba(220, 38, 38, 0.05);
           --danger-border:  rgba(220, 38, 38, 0.2);
           --danger-text:    #dc2626;
-          --bg-shape:       rgba(184,144,58,0.05);
+          --bg-shape:       rgba(166,144,93,0.08);
+          --shadow:         0 10px 30px rgba(0,0,0,0.05);
         }
 
         body { 
@@ -219,7 +221,7 @@ export default function PrivacyPolicy() {
         .policy-layout {
           min-height: 100vh;
           width: 100%;
-          background-color: var(--bg-base) !important; /* هذا السطر يفرض لون الخلفية الجديد بقوة */
+          background-color: var(--bg-base) !important;
           color: var(--text-primary);
           transition: background 0.4s ease, color 0.4s ease;
           position: relative;
@@ -295,7 +297,7 @@ export default function PrivacyPolicy() {
         .brand-logo {
           max-height: 90px;
           object-fit: contain;
-          filter: drop-shadow(0 8px 15px rgba(201,168,76,0.25));
+          filter: drop-shadow(0 8px 15px rgba(0,0,0,0.1));
         }
         .logo-fallback {
           font-size: 2.5rem;
@@ -338,7 +340,7 @@ export default function PrivacyPolicy() {
           border: 1px solid var(--border);
           border-radius: 20px;
           padding: 35px 40px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+          box-shadow: var(--shadow);
           transition: transform 0.3s ease, border-color 0.3s ease;
           opacity: 0;
           animation: fadeUp 0.6s ease forwards;
@@ -368,7 +370,7 @@ export default function PrivacyPolicy() {
           gap: 14px;
           margin: 0 0 20px 0;
           font-size: 1.4rem;
-          color: var(--gold);
+          color: var(--text-primary);
         }
         
         .icon-wrap {
@@ -444,6 +446,7 @@ export default function PrivacyPolicy() {
           display: flex; flex-direction: column; align-items: center;
         }
         .contact-card h2 { justify-content: center; width: 100%; color: var(--text-primary); }
+        .contact-card .icon-wrap { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); }
         
         .whatsapp-btn {
           display: inline-flex;
