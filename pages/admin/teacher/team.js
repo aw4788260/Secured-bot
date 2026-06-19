@@ -1,6 +1,14 @@
 import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 
+// --- أيقونات SVG الاحترافية ---
+const Icons = {
+    users: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
+    add: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+    trash: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+    shield: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+};
+
 export default function TeamPage() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -92,120 +100,220 @@ export default function TeamPage() {
 
   return (
     <TeacherLayout title="فريق العمل">
-      <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>{toast.message}</div>
+      <div className={`toast-notification ${toast.show ? 'show' : ''} ${toast.type}`}>
+          {toast.message}
+      </div>
 
       <div className="page-header">
-          <div>
-            <h1>👥 إدارة المساعدين</h1>
-            <p className="sub-head">إدارة المشرفين وصلاحياتهم على المحتوى</p>
+          <div className="title-area">
+              <div className="title-icon">{Icons.users}</div>
+              <div>
+                  <h1 className="page-title">إدارة المساعدين</h1>
+                  <p className="page-sub">أضف مشرفين لمساعدتك في إدارة المحتوى والطلاب بكفاءة.</p>
+              </div>
           </div>
-          <button onClick={handlePromote} className="add-btn">➕ إضافة مشرف جديد</button>
+          <button onClick={handlePromote} className="btn-primary">
+              <span className="icon-wrap">{Icons.add}</span> إضافة مشرف جديد
+          </button>
       </div>
 
       <div className="table-box">
-          <table className="admin-table">
-              <thead>
-                  <tr>
-                      <th style={{width:'60px'}}>ID</th>
-                      <th>الاسم</th>
-                      <th>اسم المستخدم</th>
-                      <th style={{textAlign:'center'}}>الهاتف</th>
-                      <th>تاريخ الانضمام</th>
-                      <th>الإجراءات</th>
-                  </tr>
-              </thead>
-              <tbody>
-                  {teamMembers.map(member => (
-                      <tr key={member.id}>
-                          <td style={{fontFamily:'monospace', color:'#94a3b8'}}>{member.id}</td>
-                          <td style={{fontWeight:'bold'}}>{member.first_name || 'بدون اسم'}</td>
-                          
-                          <td><span className="user-tag admin">@{member.username}</span></td>
+          {loading ? (
+              <div className="loading-state">
+                  <div className="spinner"></div>
+                  <span>جاري تحميل قائمة المشرفين...</span>
+              </div>
+          ) : (
+              <div className="table-responsive">
+                  <table className="admin-table">
+                      <thead>
+                          <tr>
+                              <th style={{width:'80px'}}>ID</th>
+                              <th style={{textAlign: 'right'}}>الاسم</th>
+                              <th style={{textAlign: 'center'}}>اسم المستخدم</th>
+                              <th style={{textAlign: 'center'}}>الهاتف</th>
+                              <th style={{textAlign: 'center'}}>تاريخ الانضمام</th>
+                              <th style={{textAlign: 'center'}}>الإجراءات</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {teamMembers.map(member => (
+                              <tr key={member.id} className="hover-row">
+                                  <td className="mono-text">{member.id}</td>
+                                  <td>
+                                      <div className="name-wrap">
+                                          <div className="avatar-mini">{member.first_name?.[0] || '؟'}</div>
+                                          <span className="name-text">{member.first_name || 'بدون اسم'}</span>
+                                      </div>
+                                  </td>
+                                  
+                                  <td className="center-text">
+                                      <span className="user-tag admin">
+                                          <span className="icon-wrap mini">{Icons.shield}</span> @{member.username}
+                                      </span>
+                                  </td>
 
-                          <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'#e2e8f0'}}>{member.phone || '-'}</td>
-                          
-                          <td style={{color:'#94a3b8', fontSize:'0.9em'}}>
-                            {new Date(member.created_at).toLocaleDateString('en-GB')}
-                          </td>
-                          
-                          <td>
-                              <div className="actions">
-                                  <button onClick={() => handleDemote(member)} className="text-btn red">
-                                      سحب الإشراف 🗑️
-                                  </button>
-                              </div>
-                          </td>
-                      </tr>
-                  ))}
-                  {teamMembers.length === 0 && !loading && <tr><td colSpan="6" style={{textAlign:'center', padding:'20px'}}>لا يوجد مساعدين حالياً</td></tr>}
-              </tbody>
-          </table>
+                                  <td className="center-text mono-text highlight-text ltr-dir">{member.phone || '-'}</td>
+                                  
+                                  <td className="center-text date-cell">
+                                    {new Date(member.created_at).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  </td>
+                                  
+                                  <td>
+                                      <div className="actions-cell">
+                                          <button onClick={() => handleDemote(member)} className="btn-icon danger-icon" title="سحب الإشراف">
+                                              {Icons.trash}
+                                          </button>
+                                      </div>
+                                  </td>
+                              </tr>
+                          ))}
+                          {teamMembers.length === 0 && !loading && (
+                              <tr>
+                                  <td colSpan="6" className="empty-state">
+                                      <div className="empty-icon">{Icons.users}</div>
+                                      لا يوجد مشرفين أو مساعدين في فريقك حالياً.
+                                  </td>
+                              </tr>
+                          )}
+                      </tbody>
+                  </table>
+              </div>
+          )}
       </div>
 
       {/* --- نوافذ التنبيهات (Alerts & Prompts) --- */}
       {promptData.show && (
-        <div className="modal-overlay alert">
-            <div className="modal-box small">
-                <h3>{promptData.title}</h3>
-                <input id="pIn" autoFocus className="prompt-in" placeholder={promptData.placeholder} />
-                <div className="modal-actions">
-                    <button type="button" className="cancel" onClick={()=>setPromptData({...promptData,show:false})}>إلغاء</button>
-                    <button onClick={()=>{promptData.onSubmit(document.getElementById('pIn').value); setPromptData({...promptData,show:false})}} className="save">موافق</button>
+        <div className="modal-overlay alert-mode" onClick={() => setPromptData({...promptData,show:false})}>
+            <div className="modal-box small" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>🔍 إضافة مشرف</h3>
+                    <button className="close-icon" onClick={() => setPromptData({...promptData,show:false})}>{Icons.x}</button>
+                </div>
+                <div className="modal-body">
+                    <p className="prompt-label">{promptData.title}</p>
+                    <input 
+                        id="pIn" 
+                        autoFocus 
+                        className="input" 
+                        placeholder={promptData.placeholder} 
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                promptData.onSubmit(e.target.value); 
+                                setPromptData({...promptData,show:false});
+                            }
+                        }}
+                    />
+                </div>
+                <div className="modal-footer">
+                    <button type="button" className="btn-cancel" onClick={()=>setPromptData({...promptData,show:false})}>إلغاء</button>
+                    <button onClick={()=>{promptData.onSubmit(document.getElementById('pIn').value); setPromptData({...promptData,show:false})}} className="btn-confirm success-bg">بحث وترقية</button>
                 </div>
             </div>
         </div>
       )}
 
       {confirmData.show && (
-        <div className="modal-overlay alert">
-            <div className="modal-box small">
-                <h3>تأكيد</h3>
-                <p>{confirmData.message}</p>
-                <div className="modal-actions">
-                    <button type="button" className="cancel" onClick={()=>setConfirmData({...confirmData,show:false})}>إلغاء</button>
-                    <button onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}} className="save red">نعم، متأكد</button>
+        <div className="modal-overlay alert-mode" onClick={() => setConfirmData({...confirmData,show:false})}>
+            <div className="modal-box small" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>⚠️ تأكيد الإجراء</h3>
+                    <button className="close-icon" onClick={() => setConfirmData({...confirmData,show:false})}>{Icons.x}</button>
+                </div>
+                <div className="modal-body">
+                    <p className="confirm-text" style={{ whiteSpace: 'pre-wrap' }}>{confirmData.message}</p>
+                </div>
+                <div className="modal-footer">
+                    <button type="button" className="btn-cancel" onClick={()=>setConfirmData({...confirmData,show:false})}>تراجع</button>
+                    <button onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}} className="btn-confirm danger-bg">نعم، تأكيد</button>
                 </div>
             </div>
         </div>
       )}
 
       <style jsx>{`
-        .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; transform: translateX(150%); transition: transform 0.3s; z-index: 9999; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-        .toast.show { transform: translateX(0); } .toast.success { background: #22c55e; } .toast.error { background: #ef4444; }
+        /* ── THEME VARS ── */
+        .toast-notification { position: fixed; top: 24px; left: 50%; transform: translate(-50%, -150%); padding: 14px 28px; border-radius: 12px; font-weight: bold; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); z-index: 99999; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); }
+        .toast-notification.show { transform: translate(-50%, 0); } 
+        .toast-notification.success { background: #22c55e; color: #111009; } 
+        .toast-notification.error { background: #ef4444; color: #fff; }
 
-        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-        .page-header h1 { margin: 0; color: #38bdf8; font-size: 1.8em; }
-        .sub-head { margin: 5px 0 0 0; color: #94a3b8; font-size: 0.9em; }
-        .add-btn { background: #38bdf8; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .add-btn:hover { background: #7dd3fc; transform: translateY(-2px); }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .title-area { display: flex; align-items: center; gap: 16px; }
+        .title-icon { width: 50px; height: 50px; background: var(--gold-dim); color: var(--gold); border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-accent); }
+        .page-title { margin: 0 0 6px 0; color: var(--text-primary); font-size: 1.6rem; font-weight: 800; }
+        .page-sub { margin: 0; color: var(--text-secondary); font-size: 0.95rem; }
 
-        .table-box { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow-x: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
-        .admin-table { width: 100%; border-collapse: collapse; min-width: 800px; }
-        .admin-table th { background: #0f172a; padding: 15px; color: #94a3b8; border-bottom: 1px solid #334155; text-align: right; white-space: nowrap; }
-        .admin-table td { padding: 15px; border-bottom: 1px solid #334155; color: #e2e8f0; vertical-align: middle; }
-        .admin-table tr:hover { background: rgba(255,255,255,0.03); }
+        .btn-primary { background: var(--gold); color: #111009; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; transition: 0.2s; box-shadow: 0 4px 12px var(--gold-dimmer); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px var(--gold-dim); }
 
-        .user-tag { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500; display: inline-block; font-family: monospace; }
-        .user-tag.admin { color: #4ade80; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.2); }
+        .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+        .table-responsive { overflow-x: auto; }
+        .admin-table { width: 100%; border-collapse: collapse; min-width: 850px; text-align: right; }
+        .admin-table th { background: var(--bg-elevated); padding: 16px; color: var(--text-secondary); border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+        .admin-table td { padding: 16px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: middle; font-size: 0.95rem; }
+        .admin-table tbody tr:last-child td { border-bottom: none; }
+        .hover-row { transition: background 0.2s; }
+        .hover-row:hover { background: var(--bg-hover); }
 
-        .actions { display: flex; gap: 8px; }
-        .text-btn { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85em; font-weight: bold; transition: 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
-        .text-btn.red { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); } .text-btn.red:hover { background: #ef4444; color: white; }
+        .name-wrap { display: flex; align-items: center; gap: 12px; }
+        .avatar-mini { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--gold), var(--gold-light)); color: #111009; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; font-weight: bold; flex-shrink: 0; }
+        .name-text { font-weight: 600; }
 
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
-        .modal-box { background: #1e293b; width: 90%; max-width: 500px; padding: 25px; border-radius: 16px; border: 1px solid #475569; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: popIn 0.3s; }
+        .user-tag { padding: 6px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; font-family: monospace; }
+        .user-tag.admin { color: var(--gold); background: var(--gold-dim); border: 1px solid var(--border-accent); }
+
+        .mono-text { font-family: 'Courier New', Courier, monospace; color: var(--text-secondary); }
+        .center-text { text-align: center; }
+        .highlight-text { color: var(--text-primary); font-weight: 600; }
+        .ltr-dir { direction: ltr; }
+        .date-cell { font-size: 0.85rem; color: var(--text-muted); }
+
+        .actions-cell { display: flex; justify-content: center; align-items: center; }
+        .btn-icon { background: var(--bg-elevated); border: 1px solid transparent; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; color: var(--text-secondary); }
+        .btn-icon.danger-icon { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
+        .btn-icon.danger-icon:hover { background: #ef4444; color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2); }
+
+        .loading-state { padding: 60px 20px; text-align: center; color: var(--gold); font-weight: bold; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 0.95rem; }
+        .empty-icon { font-size: 3rem; color: var(--border); margin-bottom: 15px; display: flex; justify-content: center; opacity: 0.5; }
+
+        /* ── MODALS ── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); padding: 20px; }
+        .modal-box { background: var(--bg-surface); width: 100%; max-width: 500px; border-radius: 20px; border: 1px solid var(--border-accent); display: flex; flex-direction: column; box-shadow: 0 25px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); overflow: hidden; }
         .modal-box.small { max-width: 400px; }
-        .modal-box h3 { margin-top: 0; color: #38bdf8; margin-bottom: 10px; }
         
-        .prompt-in { width: 100%; padding: 12px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; margin-bottom: 20px; font-size: 1em; }
+        .modal-header { background: var(--bg-elevated); padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+        .modal-header h3 { margin: 0; color: var(--gold); font-size: 1.15rem; font-weight: bold; }
+        .close-icon { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
+        .close-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
         
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-        .modal-actions button { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
-        .modal-actions .cancel { background: transparent; color: #cbd5e1; border: 1px solid #475569; }
-        .modal-actions .save { background: #22c55e; color: white; }
-        .modal-actions .save.red { background: #ef4444; }
+        .modal-body { padding: 24px; }
+        .prompt-label { margin: 0 0 10px 0; color: var(--text-secondary); font-weight: bold; font-size: 0.95rem; }
+        .confirm-text { margin: 0; color: var(--text-primary); font-size: 1rem; line-height: 1.6; }
+        
+        .input { width: 100%; background: var(--bg-base); border: 1px solid var(--border); color: var(--text-primary); padding: 12px 16px; border-radius: 10px; font-family: inherit; font-size: 1rem; transition: 0.2s; }
+        .input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 2px var(--gold-dim); }
+        
+        .modal-footer { padding: 18px 24px; background: var(--bg-elevated); display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); }
+        
+        .btn-cancel { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .btn-confirm { border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; color: white; }
+        .btn-confirm.success-bg { background: #22c55e; color: #111009; }
+        .btn-confirm.success-bg:hover { background: #16a34a; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3); }
+        .btn-confirm.danger-bg { background: #ef4444; }
+        .btn-confirm.danger-bg:hover { background: #dc2626; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
 
-        @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes popIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+        @media (max-width: 600px) {
+            .page-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .btn-primary { width: 100%; justify-content: center; }
+        }
       `}</style>
     </TeacherLayout>
   );
