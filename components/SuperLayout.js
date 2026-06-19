@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Image from 'next/image';
 
-// استدعاء صورة اللوجو بشكل صحيح (تأكد من أن المسار يطابق هيكل مشروعك)
+// استدعاء صورة اللوجو (تأكد من أن المسار يطابق هيكل مشروعك)
 import medaadLogo from '../styles/medaad-logo.png';
 
 // ─── SVG Icons ──────────────────────────────────────────
@@ -22,10 +21,11 @@ export default function SuperLayout({ children, title }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isChecking, setIsChecking] = useState(true);
   const [adminName, setAdminName] = useState('');
+  const [profileImage, setProfileImage] = useState(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isDark, setIsDark] = useState(true);
 
-  // Load saved theme preference
+  // 1. تحميل إعدادات السمة (Dark/Light Mode)
   useEffect(() => {
     const savedTheme = localStorage.getItem('medaad_theme');
     if (savedTheme) setIsDark(savedTheme === 'dark');
@@ -38,41 +38,68 @@ export default function SuperLayout({ children, title }) {
     localStorage.setItem('medaad_theme', newVal ? 'dark' : 'light');
   };
 
-  // Session check
+  // 2. التحقق من الجلسة واستدعاء البيانات
   useEffect(() => {
     const checkSession = async () => {
       setIsChecking(true);
+      
       const adminId = localStorage.getItem('admin_user_id');
       const isAdminSession = localStorage.getItem('is_admin_session');
       const storedName = localStorage.getItem('admin_name');
+      const storedAvatar = localStorage.getItem('admin_avatar');
+      
       if (storedName) setAdminName(storedName);
-      if (!adminId || !isAdminSession) { performLogout(); return; }
+      if (storedAvatar) setProfileImage(storedAvatar);
+
+      if (!adminId || !isAdminSession) {
+        performLogout();
+        return;
+      }
+
       try {
         const res = await fetch('/api/auth/check-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: adminId })
+          body: JSON.stringify({ userId: adminId }) 
         });
         const data = await res.json();
-        if (!res.ok || !data.valid) { performLogout(); }
-        else {
-          if (data.name) { setAdminName(data.name); localStorage.setItem('admin_name', data.name); }
+
+        if (!res.ok || !data.valid) {
+          performLogout();
+        } else {
+          if (data.name) {
+              setAdminName(data.name);
+              localStorage.setItem('admin_name', data.name);
+          }
           setIsChecking(false);
+
+          // جلب صورة المدير (إن وجدت)
+          fetch('/api/dashboard/teacher/update-profile')
+            .then(res => res.json())
+            .then(profileData => {
+                if (profileData.success && profileData.data && profileData.data.profile_image) {
+                    setProfileImage(profileData.data.profile_image);
+                    localStorage.setItem('admin_avatar', profileData.data.profile_image);
+                }
+            })
+            .catch(err => console.error("Error fetching profile image:", err));
         }
-      } catch (err) { performLogout(); }
+      } catch (err) {
+        performLogout(); 
+      }
     };
     checkSession();
-  }, [router.pathname]);
+  }, [router.pathname]); 
 
-  // Responsive sidebar
+  // 3. ضبط حجم الشاشة والتجاوب (Responsive)
   useEffect(() => {
     let lastWidth = window.innerWidth;
     const handleResize = () => {
-      const currentWidth = window.innerWidth;
-      if (currentWidth === lastWidth) return;
-      lastWidth = currentWidth;
-      if (currentWidth <= 768) setIsSidebarOpen(false);
-      else setIsSidebarOpen(true);
+        const currentWidth = window.innerWidth;
+        if (currentWidth === lastWidth) return;
+        lastWidth = currentWidth;
+        if (currentWidth <= 768) setIsSidebarOpen(false);
+        else setIsSidebarOpen(true);
     };
     if (window.innerWidth <= 768) setIsSidebarOpen(false);
     window.addEventListener('resize', handleResize);
@@ -89,11 +116,15 @@ export default function SuperLayout({ children, title }) {
     return () => { document.body.style.overflow = ''; };
   }, [isSidebarOpen]);
 
+  // دالة تنفيذ الخروج الفعلي
   const performLogout = async () => {
-    try { await fetch('/api/auth/logout'); } catch (e) {}
+    try { await fetch('/api/auth/logout'); } catch(e) {}
+    
     localStorage.removeItem('admin_user_id');
     localStorage.removeItem('is_admin_session');
     localStorage.removeItem('admin_name');
+    localStorage.removeItem('admin_avatar');
+    
     router.replace('/admin/login');
   };
 
@@ -135,11 +166,15 @@ export default function SuperLayout({ children, title }) {
         </div>
 
         <div className="header-left">
-          {/* اسم الإدمن بالتصميم الجديد (Profile Chip) */}
+          {/* اسم الإدمن وصورته */}
           {adminName && (
             <div className="admin-profile-chip">
               <div className="admin-avatar">
-                {adminName.charAt(0).toUpperCase()}
+                {profileImage ? (
+                  <img src={profileImage} alt="Profile" className="avatar-img-header" />
+                ) : (
+                  adminName.charAt(0).toUpperCase()
+                )}
               </div>
               <span className="admin-name">{adminName}</span>
             </div>
@@ -148,6 +183,7 @@ export default function SuperLayout({ children, title }) {
           <button onClick={toggleTheme} className="theme-toggle" title={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}>
             {isDark ? '☀️' : '🌙'}
           </button>
+          
           <button onClick={() => setShowLogoutModal(true)} className="logout-btn">
             <span className="logout-text">خروج</span>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" style={{ transform: 'rotate(180deg)' }}>
@@ -162,7 +198,6 @@ export default function SuperLayout({ children, title }) {
       {/* ───────── BODY ───────── */}
       <div className="body-wrapper">
         <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
-          {/* Sidebar logo - مع التكبير ليتناسب مع العرض */}
           <div className="sidebar-logo-wrap">
             <img 
               src={medaadLogo?.src || '/medaad-logo.png'} 
@@ -171,11 +206,15 @@ export default function SuperLayout({ children, title }) {
             />
           </div>
           <div className="sidebar-divider" />
+          
           <nav className="nav-container">
             {menuItems.map(item => (
               <button
                 key={item.path}
-                onClick={() => { router.push(item.path); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
+                onClick={() => { 
+                  router.push(item.path); 
+                  if (window.innerWidth <= 768) setIsSidebarOpen(false); 
+                }}
                 className={`nav-item ${router.pathname === item.path ? 'active' : ''}`}
               >
                 <span className="nav-icon">{item.icon}</span>
@@ -184,6 +223,7 @@ export default function SuperLayout({ children, title }) {
               </button>
             ))}
           </nav>
+          
           <div className="sidebar-footer">
             <span>مداد © {new Date().getFullYear()}</span>
           </div>
@@ -202,7 +242,7 @@ export default function SuperLayout({ children, title }) {
           <div className="modal-box">
             <div className="modal-icon-wrap">👋</div>
             <h3>تسجيل الخروج</h3>
-            <p>هل أنت متأكد من أنك تريد إنهاء جلسة الإدارة؟</p>
+            <p>هل أنت متأكد من أنك تريد إنهاء الجلسة والخروج؟</p>
             <div className="modal-actions">
               <button className="btn-cancel" onClick={() => setShowLogoutModal(false)}>تراجع</button>
               <button className="btn-confirm" onClick={performLogout}>نعم، خروج</button>
@@ -211,6 +251,7 @@ export default function SuperLayout({ children, title }) {
         </div>
       )}
 
+      {/* ───────── GLOBAL CSS ───────── */}
       <style jsx global>{`
         *, *::before, *::after { box-sizing: border-box; }
 
@@ -322,7 +363,15 @@ export default function SuperLayout({ children, title }) {
           font-weight: 800;
           font-size: 0.95rem;
           box-shadow: 0 2px 8px rgba(201,168,76,0.3);
+          overflow: hidden; 
         }
+        .avatar-img-header {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
         .admin-name {
           color: var(--text-primary);
           font-weight: 600;
