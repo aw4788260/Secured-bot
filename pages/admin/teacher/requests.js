@@ -43,7 +43,6 @@ export default function RequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // جلب البيانات بناءً على الفلتر والصفحة
       const res = await fetch(`/api/dashboard/teacher/requests?status=${filter}&page=${page}&limit=${pageSize}`);
       const result = await res.json();
       
@@ -65,12 +64,10 @@ export default function RequestsPage() {
     }
   };
 
-  // إعادة تعيين الصفحة عند تغيير الفلتر
   useEffect(() => {
     setPage(1);
   }, [filter]);
 
-  // جلب الطلبات عند تغيير الفلتر أو الصفحة
   useEffect(() => {
     fetchRequests();
   }, [filter, page]);
@@ -199,7 +196,6 @@ export default function RequestsPage() {
                                 </div>
                             </div>
                             
-                            {/* صندوق السعر */}
                             <div className={`price-box ${hasDiscount ? 'discounted' : ''}`}>
                                 <span className="label">المبلغ المدفوع</span>
                                 {hasDiscount ? (
@@ -244,7 +240,6 @@ export default function RequestsPage() {
                             )}
                         </div>
 
-                        {/* إظهار أزرار الإجراءات فقط إذا كان الطلب معلقاً */}
                         {filter === 'pending' && (
                             <div className="card-actions">
                                 <button 
@@ -264,7 +259,6 @@ export default function RequestsPage() {
                             </div>
                         )}
                         
-                        {/* إظهار سبب الرفض إذا كان مرفوضاً */}
                         {filter === 'rejected' && req.rejection_reason && (
                             <div className="rejection-note">
                                 <strong>سبب الرفض:</strong> {req.rejection_reason}
@@ -275,7 +269,6 @@ export default function RequestsPage() {
             })}
             </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
                 <div className="pagination-controls">
                     <button 
@@ -383,7 +376,9 @@ export default function RequestsPage() {
         .empty-icon { font-size: 3rem; color: var(--border); margin-bottom: 15px; }
         .empty-state h3 { color: var(--text-secondary); margin: 0 0 10px 0; }
 
-        .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
+        /* ✅ التعديل هنا: تم تقليل minmax إلى 260px لضمان ظهور بطاقتين عند فتح القائمة الجانبية */
+        .requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
+        
         .request-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column; position: relative; }
         .request-card:hover { transform: translateY(-5px); border-color: var(--border-accent); box-shadow: 0 8px 24px rgba(201,168,76,0.1); }
         .request-card.approved { border-top: 4px solid #22c55e; }
@@ -394,21 +389,21 @@ export default function RequestsPage() {
         .req-date { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
 
         .card-body { padding: 22px; flex: 1; }
-        .info-row { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .info-col { display: flex; flex-direction: column; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 10px; }
+        .info-col { display: flex; flex-direction: column; overflow: hidden; }
         .info-col.right { align-items: flex-end; }
         
-        .label { color: var(--text-muted); font-size: 0.8rem; font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+        .label { color: var(--text-muted); font-size: 0.8rem; font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
         .mini-icon { display: flex; opacity: 0.7; color: var(--gold); }
-        .value { color: var(--text-primary); font-weight: 600; font-size: 1rem; }
+        .value { color: var(--text-primary); font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
         .value.ltr { direction: ltr; font-family: monospace; }
         
-        .price-box { background: var(--bg-base); border: 1px solid var(--border); padding: 12px 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; transition: 0.3s; }
+        .price-box { background: var(--bg-base); border: 1px solid var(--border); padding: 12px 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; transition: 0.3s; flex-wrap: wrap; gap: 5px; }
         .price-box.discounted { background: rgba(245, 158, 11, 0.05); border-color: rgba(245, 158, 11, 0.2); }
         .price-box .label { margin: 0; color: var(--text-secondary); }
         .price-value { color: var(--text-primary); font-weight: 800; font-size: 1.15rem; }
         .price-value.discount { color: #f59e0b; }
-        .price-group { display: flex; align-items: center; gap: 10px; }
+        .price-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
         .old-price { text-decoration: line-through; color: var(--text-muted); font-size: 0.9rem; }
 
         .details-box { background: var(--bg-elevated); padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 16px; }
@@ -418,15 +413,15 @@ export default function RequestsPage() {
         .note-text { color: #fcd34d; margin: 0; font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; }
 
         .receipt-section { margin-top: 20px; }
-        .receipt-thumbnail-wrapper { position: relative; height: 180px; width: 100%; background: var(--bg-base); border-radius: 12px; overflow: hidden; cursor: zoom-in; border: 1px solid var(--border); transition: border-color 0.2s; }
+        .receipt-thumbnail-wrapper { position: relative; height: 160px; width: 100%; background: var(--bg-base); border-radius: 12px; overflow: hidden; cursor: zoom-in; border: 1px solid var(--border); transition: border-color 0.2s; }
         .receipt-thumbnail-wrapper:hover { border-color: var(--gold); box-shadow: 0 4px 15px var(--gold-dim); }
         .receipt-thumbnail { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
         .receipt-thumbnail-wrapper:hover .receipt-thumbnail { transform: scale(1.05); opacity: 0.7; filter: blur(1px); }
         .zoom-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-primary); opacity: 0; transition: opacity 0.3s; pointer-events: none; background: rgba(0,0,0,0.5); padding: 12px; border-radius: 50%; backdrop-filter: blur(4px); display: flex; }
         .receipt-thumbnail-wrapper:hover .zoom-hint { opacity: 1; }
 
-        .card-actions { display: flex; gap: 12px; padding: 18px 20px; border-top: 1px solid var(--border); background: var(--bg-elevated); }
-        .btn { flex: 1; padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; transition: all 0.2s; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .card-actions { display: flex; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--border); background: var(--bg-elevated); }
+        .btn { flex: 1; padding: 10px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; transition: all 0.2s; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-icon { display: flex; align-items: center; }
         .approve-btn { background: #22c55e; color: #111009; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2); }
@@ -475,7 +470,8 @@ export default function RequestsPage() {
 
         @keyframes popIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 
-        @media (max-width: 600px) {
+        /* ✅ لضمان عرض عمود واحد في الشاشات الصغيرة جداً لتفادي كسر التصميم */
+        @media (max-width: 650px) {
             .page-header { flex-direction: column; align-items: flex-start; gap: 15px; }
             .header-actions { width: 100%; justify-content: space-between; }
             .filter-tabs { width: 100%; overflow-x: auto; padding-bottom: 5px; }
