@@ -14,7 +14,9 @@ const Icons = {
     video: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>,
     pdf: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
     arrowDown: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>,
-    check: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    check: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
+    chevronDown: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>,
+    alert: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
 };
 
 export default function AdvancedCopyPage() {
@@ -270,7 +272,10 @@ export default function AdvancedCopyPage() {
   return (
     <TeacherLayout title="النسخ المتقدم">
       <div className={`toast-notification ${toast.show ? 'show' : ''} ${toast.type}`}>
-          {toast.msg}
+          <span className="toast-icon">
+              {toast.type === 'success' ? Icons.check : Icons.alert}
+          </span>
+          <span>{toast.msg}</span>
       </div>
 
       <div className="page-header">
@@ -304,10 +309,16 @@ export default function AdvancedCopyPage() {
                         </div>
                         <div className="step-content">
                             <label><span className="icon-wrap mini">{Icons.course}</span> الكورس المصدري (يُنسخ منه):</label>
-                            <select className="elegant-select" value={sourceCourseId} onChange={e => setSourceCourseId(e.target.value)}>
-                                <option value="">-- اختر الكورس المصدري --</option>
-                                {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                            </select>
+                            
+                            {/* --- Custom Select UI --- */}
+                            <div className="custom-select-container">
+                                <select className="premium-select" value={sourceCourseId} onChange={e => setSourceCourseId(e.target.value)}>
+                                    <option value="">-- اختر الكورس المصدري --</option>
+                                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                </select>
+                                <span className="select-chevron">{Icons.chevronDown}</span>
+                            </div>
+
                         </div>
                     </div>
 
@@ -320,30 +331,40 @@ export default function AdvancedCopyPage() {
                         </div>
                         <div className="step-content">
                             <label><span className="icon-wrap mini">{Icons.target}</span> الكورس الهدف (يُنسخ إليه):</label>
-                            <select className="elegant-select target" value={targetCourseId} onChange={e => { setTargetCourseId(e.target.value); setTargetSubjectId(''); setTargetChapterId(''); }}>
-                                <option value="">-- اختر الكورس الهدف --</option>
-                                {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                            </select>
+                            
+                            <div className="custom-select-container target-select">
+                                <select className="premium-select" value={targetCourseId} onChange={e => { setTargetCourseId(e.target.value); setTargetSubjectId(''); setTargetChapterId(''); }}>
+                                    <option value="">-- اختر الكورس الهدف --</option>
+                                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                </select>
+                                <span className="select-chevron">{Icons.chevronDown}</span>
+                            </div>
 
                             {targetCourseId && (
                                 <>
                                     <label className="mt-3"><span className="icon-wrap mini">{Icons.subject}</span> المادة الوجهة (اختياري - للنسخ بداخلها):</label>
-                                    <select className="elegant-select target" value={targetSubjectId} onChange={e => { setTargetSubjectId(e.target.value); setTargetChapterId(''); }}>
-                                        <option value="">-- إنشاء مواد جديدة --</option>
-                                        {targetTree.map(sub => <option key={sub.id} value={sub.id}>{sub.title}</option>)}
-                                    </select>
+                                    <div className="custom-select-container target-select">
+                                        <select className="premium-select" value={targetSubjectId} onChange={e => { setTargetSubjectId(e.target.value); setTargetChapterId(''); }}>
+                                            <option value="">-- إنشاء مواد جديدة --</option>
+                                            {targetTree.map(sub => <option key={sub.id} value={sub.id}>{sub.title}</option>)}
+                                        </select>
+                                        <span className="select-chevron">{Icons.chevronDown}</span>
+                                    </div>
                                 </>
                             )}
 
                             {targetSubjectId && (
                                 <>
                                     <label className="mt-3"><span className="icon-wrap mini">{Icons.folder}</span> الفصل الوجهة (اختياري - لنقل الفيديوهات والملفات):</label>
-                                    <select className="elegant-select target" value={targetChapterId} onChange={e => setTargetChapterId(e.target.value)}>
-                                        <option value="">-- إنشاء فصول جديدة --</option>
-                                        {targetTree.find(s => String(s.id) === String(targetSubjectId))?.chapters?.map(ch => (
-                                            <option key={ch.id} value={ch.id}>{ch.title}</option>
-                                        ))}
-                                    </select>
+                                    <div className="custom-select-container target-select">
+                                        <select className="premium-select" value={targetChapterId} onChange={e => setTargetChapterId(e.target.value)}>
+                                            <option value="">-- إنشاء فصول جديدة --</option>
+                                            {targetTree.find(s => String(s.id) === String(targetSubjectId))?.chapters?.map(ch => (
+                                                <option key={ch.id} value={ch.id}>{ch.title}</option>
+                                            ))}
+                                        </select>
+                                        <span className="select-chevron">{Icons.chevronDown}</span>
+                                    </div>
                                 </>
                             )}
                         </div>
@@ -356,14 +377,18 @@ export default function AdvancedCopyPage() {
                         </div>
                         <div className="step-content">
                             <div className="summary-tags">
-                                <div className="tag"><span>مواد</span><strong>{selected.subjects.length}</strong></div>
-                                <div className="tag"><span>فصول</span><strong>{selected.chapters.length}</strong></div>
-                                <div className="tag"><span>امتحانات</span><strong>{selected.exams.length}</strong></div>
-                                <div className="tag"><span>فردي</span><strong>{selected.videos.length + selected.pdfs.length}</strong></div>
+                                <div className="tag"><span><span className="icon-wrap mini">{Icons.subject}</span> مواد</span><strong>{selected.subjects.length}</strong></div>
+                                <div className="tag"><span><span className="icon-wrap mini">{Icons.folder}</span> فصول</span><strong>{selected.chapters.length}</strong></div>
+                                <div className="tag"><span><span className="icon-wrap mini">{Icons.exam}</span> امتحانات</span><strong>{selected.exams.length}</strong></div>
+                                <div className="tag"><span><span className="icon-wrap mini">{Icons.video}</span> محتوى فردي</span><strong>{selected.videos.length + selected.pdfs.length}</strong></div>
                             </div>
 
-                            <button className="btn-primary full-width" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId}>
-                                {copying ? '⏳ جاري النسخ...' : <><span className="icon-wrap">{Icons.copy}</span> تأكيد وبدء النسخ</>}
+                            <button className="btn-primary full-width execute-btn" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId}>
+                                {copying ? (
+                                    <><div className="spinner button-spinner"></div> جاري النسخ...</>
+                                ) : (
+                                    <><span className="icon-wrap">{Icons.copy}</span> تأكيد وبدء النسخ</>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -478,10 +503,12 @@ export default function AdvancedCopyPage() {
 
       <style jsx>{`
         /* ── THEME VARS ── */
-        .toast-notification { position: fixed; top: 24px; left: 50%; transform: translate(-50%, -150%); padding: 14px 28px; border-radius: 12px; font-weight: bold; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); z-index: 99999; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); background: var(--bg-surface); color: var(--text-primary); }
+        .toast-notification { position: fixed; top: 24px; left: 50%; transform: translate(-50%, -150%); padding: 14px 28px; border-radius: 12px; font-weight: bold; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); z-index: 99999; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); background: var(--bg-surface); color: var(--text-primary); display: flex; align-items: center; gap: 10px; }
         .toast-notification.show { transform: translate(-50%, 0); } 
         .toast-notification.success { border-bottom: 3px solid #22c55e; } 
+        .toast-notification.success .toast-icon { color: #22c55e; }
         .toast-notification.error { border-bottom: 3px solid #ef4444; }
+        .toast-notification.error .toast-icon { color: #ef4444; }
 
         .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
         .title-area { display: flex; align-items: center; gap: 16px; }
@@ -492,17 +519,76 @@ export default function AdvancedCopyPage() {
         .btn-secondary { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 20px; border-radius: 10px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; transition: 0.2s; }
         .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); }
         
-        .btn-primary { background: var(--gold); color: #111009; border: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.05rem; transition: 0.2s; box-shadow: 0 4px 12px var(--gold-dimmer); }
+        .btn-primary { background: var(--gold); color: #111009; border: none; padding: 14px 24px; border-radius: 12px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.05rem; transition: 0.2s; box-shadow: 0 4px 12px var(--gold-dimmer); }
         .btn-primary.full-width { width: 100%; }
-        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 16px var(--gold-dim); background: var(--gold-light); }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px var(--gold-dim); background: var(--gold-light); }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
 
-        .mt-3 { margin-top: 15px; display: flex; align-items: center; gap: 6px; }
+        .mt-3 { margin-top: 18px; display: flex; align-items: center; gap: 6px; }
         .icon-wrap { display: flex; align-items: center; justify-content: center; }
         .icon-wrap.mini { opacity: 0.7; }
 
+        /* ================= Custom Select (Dropdowns) ================= */
+        .custom-select-container {
+            position: relative;
+            width: 100%;
+        }
+        .premium-select {
+            width: 100%;
+            padding: 14px 16px 14px 45px; /* مسافة من اليسار للسهم */
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            appearance: none; /* إخفاء سهم المتصفح الافتراضي */
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+        .premium-select:hover {
+            border-color: var(--border-accent);
+        }
+        .premium-select:focus {
+            border-color: var(--gold);
+            box-shadow: 0 0 0 3px var(--gold-dim);
+            background: var(--bg-surface);
+        }
+        .custom-select-container.target-select .premium-select:focus {
+            border-color: #22c55e;
+            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+        }
+        
+        .select-chevron {
+            position: absolute;
+            left: 16px; /* محاذاة لليسار لأن الموقع بالعربية RTL */
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-muted);
+            display: flex;
+            transition: 0.2s;
+        }
+        .premium-select:focus + .select-chevron {
+            color: var(--gold);
+            transform: translateY(-50%) rotate(180deg);
+        }
+        .custom-select-container.target-select .premium-select:focus + .select-chevron {
+            color: #22c55e;
+        }
+
+        /* تنسيق الخيارات داخل الـ Select (تعمل في بعض المتصفحات فقط) */
+        .premium-select option {
+            background-color: var(--bg-surface);
+            color: var(--text-primary);
+            padding: 10px;
+        }
+
         /* ================= Layout ================= */
-        .main-layout { display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; padding-bottom: 40px; }
+        .main-layout { display: grid; grid-template-columns: 360px 1fr; gap: 30px; align-items: start; padding-bottom: 40px; }
         @media(max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
 
         /* ================= Sidebar Config ================= */
@@ -520,16 +606,16 @@ export default function AdvancedCopyPage() {
         .step-content { padding: 20px; }
         .step-content label { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); margin-bottom: 10px; font-weight: bold; font-size: 0.9rem; }
         
-        .elegant-select { width: 100%; padding: 14px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 0.95rem; font-family: inherit; outline: none; cursor: pointer; transition: 0.2s; }
-        .elegant-select:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
-        .elegant-select.target:focus { border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15); }
-        
-        .down-arrow { text-align: center; color: var(--text-muted); margin: -5px 0; opacity: 0.5; }
+        .down-arrow { text-align: center; color: var(--text-muted); margin: -5px 0; opacity: 0.5; display: flex; justify-content: center; }
 
         .summary-tags { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-        .tag { background: var(--bg-base); border: 1px solid var(--border); padding: 12px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .tag span { color: var(--text-secondary); font-size: 0.9rem; font-weight: bold; }
+        .tag { background: var(--bg-base); border: 1px solid var(--border); padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .tag:hover { border-color: var(--border-accent); background: var(--bg-hover); }
+        .tag span { color: var(--text-secondary); font-size: 0.9rem; font-weight: bold; display: flex; align-items: center; gap: 6px; }
         .tag strong { color: var(--gold); font-size: 1.2rem; }
+
+        .execute-btn { margin-top: 10px; }
+        .button-spinner { width: 20px; height: 20px; border-width: 2px; border-top-color: #111009; border-left-color: rgba(17, 16, 9, 0.2); border-bottom-color: rgba(17, 16, 9, 0.2); border-right-color: rgba(17, 16, 9, 0.2); }
 
         /* ================= Tree Panel ================= */
         .tree-main-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 120px); min-height: 600px; box-shadow: var(--shadow); }
@@ -546,7 +632,7 @@ export default function AdvancedCopyPage() {
         .tree-structure { display: flex; flex-direction: column; gap: 24px; }
 
         /* --- Subject Level --- */
-        .subject-block { background: var(--bg-surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+        .subject-block { background: var(--bg-surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .subject-item { background: var(--bg-elevated); padding: 16px 20px; border-bottom: 1px solid var(--border); transition: 0.2s; }
         .subject-item.selected { background: var(--gold-dimmer); border-bottom-color: var(--border-accent); }
         
@@ -569,7 +655,7 @@ export default function AdvancedCopyPage() {
         .chapter-block.selected .attach-pill.video.selected-pill { border-color: var(--gold); color: #111009; background: var(--gold); }
         .chapter-block.selected .attach-pill.pdf.selected-pill { border-color: #38bdf8; color: #0f172a; background: #38bdf8; }
         .trunc { max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .no-attachments { color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
+        .no-attachments { color: var(--text-muted); font-size: 0.85rem; font-style: italic; display: flex; justify-content: center; padding: 10px; opacity: 0.7; }
 
         /* --- Exam Level --- */
         .exam-item { background: var(--bg-base); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 16px; position: relative; z-index: 2; transition: 0.2s; }
@@ -581,9 +667,9 @@ export default function AdvancedCopyPage() {
         .custom-checkbox input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
         
         .checkmark { position: relative; background-color: var(--bg-elevated); border: 2px solid var(--text-muted); border-radius: 6px; transition: 0.2s; flex-shrink: 0; margin-left: 15px; display: flex; align-items: center; justify-content: center; color: transparent; }
-        .checkmark.main { height: 24px; width: 24px; border-radius: 8px; }
-        .checkmark.sub { height: 20px; width: 20px; }
-        .checkmark.exam { height: 20px; width: 20px; }
+        .checkmark.main { height: 26px; width: 26px; border-radius: 8px; }
+        .checkmark.sub { height: 22px; width: 22px; }
+        .checkmark.exam { height: 22px; width: 22px; }
 
         .custom-checkbox:hover input ~ .checkmark { border-color: var(--text-primary); }
         
@@ -592,9 +678,9 @@ export default function AdvancedCopyPage() {
         .custom-checkbox input:checked ~ .checkmark.exam { background-color: #facc15; border-color: #facc15; color: #111009; }
 
         .item-text { display: flex; align-items: center; gap: 10px; }
-        .item-text h4 { margin: 0; font-size: 1.1rem; color: var(--text-primary); font-weight: bold; }
-        .item-text h5 { margin: 0; font-size: 1rem; color: var(--text-primary); font-weight: bold; }
-        .item-text .icon { display: flex; align-items: center; color: var(--gold); }
+        .item-text h4 { margin: 0; font-size: 1.15rem; color: var(--text-primary); font-weight: bold; }
+        .item-text h5 { margin: 0; font-size: 1.05rem; color: var(--text-primary); font-weight: bold; }
+        .item-text .icon { display: flex; align-items: center; color: var(--gold); opacity: 0.9; }
 
         /* ================= States & UI ================= */
         .loading-state { text-align: center; color: var(--gold); padding: 80px 20px; display: flex; flex-direction: column; align-items: center; gap: 15px; font-weight: bold; height: 100%; justify-content: center; }
