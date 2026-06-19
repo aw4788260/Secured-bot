@@ -18,7 +18,7 @@ export default function TeacherLayout({ children, title }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isChecking, setIsChecking] = useState(true);
   const [adminName, setAdminName] = useState('');
-  const [profileImage, setProfileImage] = useState(null); // ✅ حالة لتخزين صورة المدرس
+  const [profileImage, setProfileImage] = useState(null); 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isDark, setIsDark] = useState(true);
 
@@ -54,7 +54,6 @@ export default function TeacherLayout({ children, title }) {
       }
 
       try {
-        // التحقق من صلاحية الجلسة
         const res = await fetch('/api/auth/check-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -71,7 +70,6 @@ export default function TeacherLayout({ children, title }) {
           }
           setIsChecking(false);
 
-          // ✅ جلب صورة المدرس من بيانات الملف الشخصي
           fetch('/api/dashboard/teacher/update-profile')
             .then(res => res.json())
             .then(profileData => {
@@ -104,7 +102,6 @@ export default function TeacherLayout({ children, title }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // منع التمرير الخلفي في الهاتف عند فتح القائمة
   useEffect(() => {
     if (window.innerWidth <= 768 && isSidebarOpen) {
       document.body.style.overflow = 'hidden';
@@ -114,7 +111,6 @@ export default function TeacherLayout({ children, title }) {
     return () => { document.body.style.overflow = ''; };
   }, [isSidebarOpen]);
 
-  // دالة تنفيذ الخروج الفعلي
   const performLogout = async () => {
     try { await fetch('/api/auth/logout'); } catch(e) {}
     
@@ -126,7 +122,6 @@ export default function TeacherLayout({ children, title }) {
     router.replace('/admin/login');
   };
 
-  // ✅ القائمة المخصصة للمدرس (بأيقونات احترافية)
   const menuItems = [
     { name: 'الرئيسية', path: '/admin/teacher', icon: <HomeIcon /> },
     { name: 'إدارة المحتوى', path: '/admin/teacher/content', icon: <ContentIcon /> },
@@ -158,11 +153,10 @@ export default function TeacherLayout({ children, title }) {
               <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          {/* ✅ تم إزالة العنصر الأوسط (النص) للحصول على شريط نظيف بالكامل */}
+          <span className="platform-label">لوحة المدرس</span>
         </div>
 
         <div className="header-left">
-          {/* ✅ اسم المدرس وصورته (Profile Chip) */}
           {adminName && (
             <div className="admin-profile-chip">
               <div className="admin-avatar">
@@ -194,7 +188,6 @@ export default function TeacherLayout({ children, title }) {
       {/* ───────── BODY ───────── */}
       <div className="body-wrapper">
         <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
-          {/* Sidebar logo */}
           <div className="sidebar-logo-wrap">
             <img 
               src={medaadLogo?.src || '/medaad-logo.png'} 
@@ -335,6 +328,8 @@ export default function TeacherLayout({ children, title }) {
         }
         .hamburger-btn:hover { background: var(--gold-dim); border-color: var(--gold); }
 
+        .platform-label { color: var(--gold); font-weight: 700; font-size: 1.05rem; margin-right: 6px; letter-spacing: 0.02em; }
+
         /* ── ADMIN PROFILE CHIP ── */
         .admin-profile-chip {
           display: flex;
@@ -358,9 +353,8 @@ export default function TeacherLayout({ children, title }) {
           font-weight: 800;
           font-size: 0.95rem;
           box-shadow: 0 2px 8px rgba(201,168,76,0.3);
-          overflow: hidden; /* لضمان عدم خروج الصورة عن الدائرة */
+          overflow: hidden; 
         }
-        /* تنسيق صورة المدرس في الشريط العلوي */
         .avatar-img-header {
           width: 100%;
           height: 100%;
