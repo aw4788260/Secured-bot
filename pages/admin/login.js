@@ -182,41 +182,41 @@ export default function AdminLogin() {
       <style jsx global>{`
         /* ── THEME VARIABLES ── */
         .login-page.dark {
-          --bg-base:        #111009;
-          --bg-surface:     #1a1710;
-          --bg-elevated:    #221f13;
-          --border:         #3a3420;
-          --border-accent:  #5a4e28;
-          --gold:           #c9a84c;
-          --gold-hover:     #e8c96a;
-          --gold-dim:       rgba(201,168,76,0.15);
-          --text-primary:   #f5f0e0;
-          --text-secondary: #a89f7a;
-          --text-muted:     #6b6245;
+          --bg-base:        #121212;
+          --bg-surface:     #1a1a1a;
+          --bg-elevated:    #242424;
+          --border:         #333333;
+          --border-accent:  #6b5e43;
+          --gold:           #bda878;
+          --gold-hover:     #d6c598;
+          --gold-dim:       rgba(189,168,120,0.15);
+          --text-primary:   #f5f5f5;
+          --text-secondary: #a3a3a3;
+          --text-muted:     #737373;
           --error-bg:       rgba(239, 68, 68, 0.1);
           --error-border:   rgba(239, 68, 68, 0.2);
           --error-text:     #fca5a5;
           --shadow-card:    0 25px 50px -12px rgba(0, 0, 0, 0.7);
-          --bg-shape:       rgba(201,168,76,0.03);
+          --bg-shape:       rgba(189,168,120,0.06);
         }
 
         .login-page.light {
-          --bg-base:        #faf8f0;
+          --bg-base:        #f8f9fa;
           --bg-surface:     #ffffff;
-          --bg-elevated:    #f5f0e0;
-          --border:         #ddd4a8;
-          --border-accent:  #c9a84c;
-          --gold:           #b8903a;
-          --gold-hover:     #967228;
-          --gold-dim:       rgba(184,144,58,0.12);
-          --text-primary:   #1a1508;
-          --text-secondary: #6b5a2a;
-          --text-muted:     #9e8850;
+          --bg-elevated:    #f1f5f9;
+          --border:         #e2e8f0;
+          --border-accent:  #bda878;
+          --gold:           #a6905d;
+          --gold-hover:     #8a7649;
+          --gold-dim:       rgba(166,144,93,0.12);
+          --text-primary:   #0f172a;
+          --text-secondary: #475569;
+          --text-muted:     #94a3b8;
           --error-bg:       rgba(220, 38, 38, 0.1);
           --error-border:   rgba(220, 38, 38, 0.2);
           --error-text:     #dc2626;
-          --shadow-card:    0 20px 40px -10px rgba(184,144,58,0.15);
-          --bg-shape:       rgba(184,144,58,0.05);
+          --shadow-card:    0 20px 40px -10px rgba(0,0,0,0.08);
+          --bg-shape:       rgba(166,144,93,0.08);
         }
 
         body { margin: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl; }
@@ -266,7 +266,7 @@ export default function AdminLogin() {
           display: flex; align-items: center; justify-content: center;
           transition: all 0.3s;
           z-index: 10;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
         .theme-toggle-btn:hover {
           transform: rotate(15deg) scale(1.05);
@@ -310,9 +310,9 @@ export default function AdminLogin() {
         }
         .brand-logo {
           width: 100%;
-          max-height: 150px; /* تم زيادة الطول الأقصى ليصبح اللوجو أكبر وأكثر وضوحاً */
+          max-height: 150px;
           object-fit: contain;
-          filter: drop-shadow(0 8px 15px rgba(201,168,76,0.25));
+          filter: drop-shadow(0 8px 15px rgba(0,0,0,0.1));
         }
 
         @keyframes logoEntrance {
@@ -376,7 +376,7 @@ export default function AdminLogin() {
           opacity: 0;
           animation: fadeInUpInput 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        /* تدرج في الظهور لحقول الإدخال */
+        
         .input-group:nth-child(1) { animation-delay: 0.2s; }
         .input-group:nth-child(2) { animation-delay: 0.3s; }
 
@@ -404,7 +404,7 @@ export default function AdminLogin() {
           color: var(--text-primary);
           font-size: 1rem;
           outline: none;
-          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy Transition */
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
           font-family: inherit;
         }
         
@@ -419,7 +419,6 @@ export default function AdminLogin() {
         }
         .login-input::placeholder { color: var(--text-muted); }
 
-        /* تأثير الـ Hover والـ Focus */
         .login-input:hover {
           border-color: var(--border-accent);
         }
@@ -427,8 +426,8 @@ export default function AdminLogin() {
         .login-input:focus {
           border-color: var(--gold);
           background: var(--bg-surface);
-          box-shadow: 0 0 0 4px var(--gold-dim), 0 8px 16px rgba(0,0,0,0.1);
-          transform: translateY(-3px); /* ارتفاع المربع للأعلى بلطف */
+          box-shadow: 0 0 0 4px var(--gold-dim);
+          transform: translateY(-3px);
         }
         
         .login-input:focus ~ .input-icon, .input-group:focus-within .input-icon {
@@ -466,7 +465,7 @@ export default function AdminLogin() {
         .submit-btn:hover:not(:disabled) {
           background: var(--gold-hover);
           transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(201,168,76,0.3);
+          box-shadow: 0 8px 20px var(--gold-dim);
         }
         .submit-btn:hover::before { left: 150%; }
         
