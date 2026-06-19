@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Image from 'next/image';
 
 // استدعاء صورة اللوجو (تأكد من أن المسار يطابق هيكل مشروعك)
 import medaadLogo from '../styles/medaad-logo.png';
@@ -19,6 +18,7 @@ export default function TeacherLayout({ children, title }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isChecking, setIsChecking] = useState(true);
   const [adminName, setAdminName] = useState('');
+  const [profileImage, setProfileImage] = useState(null); // ✅ حالة لتخزين صورة المدرس
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isDark, setIsDark] = useState(true);
 
@@ -35,7 +35,7 @@ export default function TeacherLayout({ children, title }) {
     localStorage.setItem('medaad_theme', newVal ? 'dark' : 'light');
   };
 
-  // 2. التحقق من الجلسة (Session Check)
+  // 2. التحقق من الجلسة واستدعاء البيانات
   useEffect(() => {
     const checkSession = async () => {
       setIsChecking(true);
@@ -43,8 +43,10 @@ export default function TeacherLayout({ children, title }) {
       const adminId = localStorage.getItem('admin_user_id');
       const isAdminSession = localStorage.getItem('is_admin_session');
       const storedName = localStorage.getItem('admin_name');
+      const storedAvatar = localStorage.getItem('admin_avatar');
       
       if (storedName) setAdminName(storedName);
+      if (storedAvatar) setProfileImage(storedAvatar);
 
       if (!adminId || !isAdminSession) {
         performLogout();
@@ -52,6 +54,7 @@ export default function TeacherLayout({ children, title }) {
       }
 
       try {
+        // التحقق من صلاحية الجلسة
         const res = await fetch('/api/auth/check-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -62,12 +65,22 @@ export default function TeacherLayout({ children, title }) {
         if (!res.ok || !data.valid) {
           performLogout();
         } else {
-          // التحقق الإضافي: التأكد من أن الدور ليس سوبر أدمن (اختياري)
           if (data.name) {
               setAdminName(data.name);
               localStorage.setItem('admin_name', data.name);
           }
           setIsChecking(false);
+
+          // ✅ جلب صورة المدرس من بيانات الملف الشخصي
+          fetch('/api/dashboard/teacher/update-profile')
+            .then(res => res.json())
+            .then(profileData => {
+                if (profileData.success && profileData.data && profileData.data.profile_image) {
+                    setProfileImage(profileData.data.profile_image);
+                    localStorage.setItem('admin_avatar', profileData.data.profile_image);
+                }
+            })
+            .catch(err => console.error("Error fetching profile image:", err));
         }
       } catch (err) {
         performLogout(); 
@@ -108,6 +121,7 @@ export default function TeacherLayout({ children, title }) {
     localStorage.removeItem('admin_user_id');
     localStorage.removeItem('is_admin_session');
     localStorage.removeItem('admin_name');
+    localStorage.removeItem('admin_avatar');
     
     router.replace('/admin/login');
   };
@@ -144,15 +158,19 @@ export default function TeacherLayout({ children, title }) {
               <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <span className="platform-label">لوحة المدرس</span>
+          {/* ✅ تم إزالة العنصر الأوسط (النص) للحصول على شريط نظيف بالكامل */}
         </div>
 
         <div className="header-left">
-          {/* اسم المدرس بالتصميم الجديد (Profile Chip) */}
+          {/* ✅ اسم المدرس وصورته (Profile Chip) */}
           {adminName && (
             <div className="admin-profile-chip">
               <div className="admin-avatar">
-                {adminName.charAt(0).toUpperCase()}
+                {profileImage ? (
+                  <img src={profileImage} alt="Profile" className="avatar-img-header" />
+                ) : (
+                  adminName.charAt(0).toUpperCase()
+                )}
               </div>
               <span className="admin-name">{adminName}</span>
             </div>
@@ -317,8 +335,6 @@ export default function TeacherLayout({ children, title }) {
         }
         .hamburger-btn:hover { background: var(--gold-dim); border-color: var(--gold); }
 
-        .platform-label { color: var(--gold); font-weight: 700; font-size: 1.05rem; margin-right: 6px; letter-spacing: 0.02em; }
-
         /* ── ADMIN PROFILE CHIP ── */
         .admin-profile-chip {
           display: flex;
@@ -342,7 +358,16 @@ export default function TeacherLayout({ children, title }) {
           font-weight: 800;
           font-size: 0.95rem;
           box-shadow: 0 2px 8px rgba(201,168,76,0.3);
+          overflow: hidden; /* لضمان عدم خروج الصورة عن الدائرة */
         }
+        /* تنسيق صورة المدرس في الشريط العلوي */
+        .avatar-img-header {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
         .admin-name {
           color: var(--text-primary);
           font-weight: 600;
