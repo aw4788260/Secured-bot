@@ -2,6 +2,21 @@ import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 
+// --- أيقونات SVG الاحترافية ---
+const Icons = {
+    copy: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>,
+    back: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>,
+    course: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
+    target: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
+    subject: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>,
+    folder: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
+    exam: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>,
+    video: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>,
+    pdf: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
+    arrowDown: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>,
+    check: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+};
+
 export default function AdvancedCopyPage() {
   const router = useRouter();
   const [courses, setCourses] = useState([]);
@@ -71,7 +86,7 @@ export default function AdvancedCopyPage() {
     fetchTree();
   }, [sourceCourseId]);
 
-  // جلب شجرة الهدف (لإظهار المواد والفصول الموجودة)
+  // جلب شجرة الهدف
   useEffect(() => {
     if (!targetCourseId) {
         setTargetTree([]);
@@ -194,14 +209,12 @@ export default function AdvancedCopyPage() {
   const executeCopy = async () => {
     if (!sourceCourseId || !targetCourseId) return showToast('يرجى اختيار الكورس المصدري والهدف', 'error');
     
-    
-
     const hasIndividualChaptersOrExams = selected.chapters.length > 0 || selected.exams.length > 0;
     if (hasIndividualChaptersOrExams && !targetSubjectId && selected.subjects.length === 0) {
         return showToast('يجب اختيار المادة الوجهة لنسخ الفصول والامتحانات الفردية', 'error');
     }
 
-    // تصفية الفيديوهات لتجنب النسخ المزدوج (لو الشابتر كامل متحدد، بنشيل الفيديوهات الفردية منه)
+    // تصفية الفيديوهات لتجنب النسخ المزدوج
     let filteredVideos = [...selected.videos];
     let filteredPdfs = [...selected.pdfs];
     
@@ -242,7 +255,7 @@ export default function AdvancedCopyPage() {
       const data = await res.json();
       
       if (res.ok) {
-        showToast('🎉 تم النسخ بنجاح!', 'success');
+        showToast('تم النسخ بنجاح!', 'success');
         setSelected({ subjects: [], chapters: [], exams: [], videos: [], pdfs: [] });
       } else {
         showToast(data.error || 'حدث خطأ أثناء النسخ', 'error');
@@ -256,27 +269,26 @@ export default function AdvancedCopyPage() {
 
   return (
     <TeacherLayout title="النسخ المتقدم">
-      <div className={`custom-toast ${toast.show ? 'show' : ''} ${toast.type}`}>
-          <span className="toast-icon">{toast.type === 'success' ? '✅' : '⚠️'}</span>
-          <span>{toast.msg}</span>
+      <div className={`toast-notification ${toast.show ? 'show' : ''} ${toast.type}`}>
+          {toast.msg}
       </div>
 
       <div className="page-header">
-          <div className="header-info">
-              <div className="header-icon">🚀</div>
+          <div className="title-area">
+              <div className="title-icon">{Icons.copy}</div>
               <div>
-                  <h1>النسخ الذكي للمحتوى</h1>
-                  <p>يمكنك نسخ محتويات كاملة أو فردية إلى كورسات ومواد وفصول موجودة بالفعل.</p>
+                  <h1 className="page-title">النسخ الذكي للمحتوى</h1>
+                  <p className="page-sub">يمكنك نسخ محتويات كاملة أو فردية إلى كورسات ومواد وفصول موجودة بالفعل.</p>
               </div>
           </div>
-          <button className="back-button" onClick={() => router.push('/admin/teacher/content')}>
-              ⬅️ رجوع للمحتوى
+          <button className="btn-secondary" onClick={() => router.push('/admin/teacher/content')}>
+              <span className="icon-wrap">{Icons.back}</span> رجوع للمحتوى
           </button>
       </div>
 
       {loading ? (
-          <div className="loading-container">
-              <div className="loader-circle"></div>
+          <div className="loading-state">
+              <div className="spinner"></div>
               <p>جاري تهيئة الأداة...</p>
           </div>
       ) : (
@@ -291,7 +303,7 @@ export default function AdvancedCopyPage() {
                             <h3>تحديد المصدر</h3>
                         </div>
                         <div className="step-content">
-                            <label>📦 الكورس المصدري (يُنسخ منه):</label>
+                            <label><span className="icon-wrap mini">{Icons.course}</span> الكورس المصدري (يُنسخ منه):</label>
                             <select className="elegant-select" value={sourceCourseId} onChange={e => setSourceCourseId(e.target.value)}>
                                 <option value="">-- اختر الكورس المصدري --</option>
                                 {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
@@ -299,7 +311,7 @@ export default function AdvancedCopyPage() {
                         </div>
                     </div>
 
-                    <div className="down-arrow">⬇️</div>
+                    <div className="down-arrow">{Icons.arrowDown}</div>
 
                     <div className="step-box">
                         <div className="step-title">
@@ -307,16 +319,15 @@ export default function AdvancedCopyPage() {
                             <h3>تحديد الهدف</h3>
                         </div>
                         <div className="step-content">
-                            <label>🎯 الكورس الهدف (يُنسخ إليه):</label>
+                            <label><span className="icon-wrap mini">{Icons.target}</span> الكورس الهدف (يُنسخ إليه):</label>
                             <select className="elegant-select target" value={targetCourseId} onChange={e => { setTargetCourseId(e.target.value); setTargetSubjectId(''); setTargetChapterId(''); }}>
                                 <option value="">-- اختر الكورس الهدف --</option>
-                                {/* تم السماح باختيار نفس الكورس هنا */}
                                 {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                             </select>
 
                             {targetCourseId && (
                                 <>
-                                    <label className="mt-3">📚 المادة الوجهة (اختياري - للنسخ بداخلها):</label>
+                                    <label className="mt-3"><span className="icon-wrap mini">{Icons.subject}</span> المادة الوجهة (اختياري - للنسخ بداخلها):</label>
                                     <select className="elegant-select target" value={targetSubjectId} onChange={e => { setTargetSubjectId(e.target.value); setTargetChapterId(''); }}>
                                         <option value="">-- إنشاء مواد جديدة --</option>
                                         {targetTree.map(sub => <option key={sub.id} value={sub.id}>{sub.title}</option>)}
@@ -326,7 +337,7 @@ export default function AdvancedCopyPage() {
 
                             {targetSubjectId && (
                                 <>
-                                    <label className="mt-3">📂 الفصل الوجهة (اختياري - لنقل الفيديوهات والملفات):</label>
+                                    <label className="mt-3"><span className="icon-wrap mini">{Icons.folder}</span> الفصل الوجهة (اختياري - لنقل الفيديوهات والملفات):</label>
                                     <select className="elegant-select target" value={targetChapterId} onChange={e => setTargetChapterId(e.target.value)}>
                                         <option value="">-- إنشاء فصول جديدة --</option>
                                         {targetTree.find(s => String(s.id) === String(targetSubjectId))?.chapters?.map(ch => (
@@ -340,19 +351,19 @@ export default function AdvancedCopyPage() {
 
                     <div className="step-box execute-box">
                         <div className="step-title">
-                            <span className="step-badge purple">3</span>
+                            <span className="step-badge gold">3</span>
                             <h3>التنفيذ والملخص</h3>
                         </div>
                         <div className="step-content">
                             <div className="summary-tags">
-                                <div className="tag"><span>📚 مواد</span><strong>{selected.subjects.length}</strong></div>
-                                <div className="tag"><span>📂 فصول</span><strong>{selected.chapters.length}</strong></div>
-                                <div className="tag"><span>📝 امتحانات</span><strong>{selected.exams.length}</strong></div>
-                                <div className="tag"><span>🎬 فردي</span><strong>{selected.videos.length + selected.pdfs.length}</strong></div>
+                                <div className="tag"><span>مواد</span><strong>{selected.subjects.length}</strong></div>
+                                <div className="tag"><span>فصول</span><strong>{selected.chapters.length}</strong></div>
+                                <div className="tag"><span>امتحانات</span><strong>{selected.exams.length}</strong></div>
+                                <div className="tag"><span>فردي</span><strong>{selected.videos.length + selected.pdfs.length}</strong></div>
                             </div>
 
-                            <button className="execute-btn" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId}>
-                                {copying ? '⏳ جاري النسخ...' : '🚀 تأكيد وبدء النسخ'}
+                            <button className="btn-primary full-width" onClick={executeCopy} disabled={copying || !sourceCourseId || !targetCourseId}>
+                                {copying ? '⏳ جاري النسخ...' : <><span className="icon-wrap">{Icons.copy}</span> تأكيد وبدء النسخ</>}
                             </button>
                         </div>
                     </div>
@@ -363,18 +374,18 @@ export default function AdvancedCopyPage() {
             <div className="tree-main-panel">
                 <div className="panel-header">
                     <h2>هيكل الكورس والمحتوى</h2>
-                    <span className="info-badge">قم بتحديد/إلغاء تحديد ما تريد نسخه بدقة</span>
+                    <span className="info-badge">حدد ما تريد نسخه بدقة</span>
                 </div>
                 
                 <div className="panel-body custom-scrollbar">
                     {treeLoading ? (
-                        <div className="loading-container">
-                            <div className="loader-circle"></div>
+                        <div className="loading-state">
+                            <div className="spinner"></div>
                             <p>جاري تحليل وبناء هيكل الكورس...</p>
                         </div>
                     ) : sourceTree.length === 0 ? (
-                        <div className="empty-tree">
-                            <div className="empty-icon">📦</div>
+                        <div className="empty-state">
+                            <div className="empty-icon">{Icons.course}</div>
                             <p>يرجى اختيار الكورس المصدري من القائمة الجانبية لعرض محتوياته هنا.</p>
                         </div>
                     ) : (
@@ -386,9 +397,9 @@ export default function AdvancedCopyPage() {
                                     <div className={`subject-item ${selected.subjects.includes(sub.id) ? 'selected' : ''}`}>
                                         <label className="custom-checkbox">
                                             <input type="checkbox" checked={selected.subjects.includes(sub.id)} onChange={() => toggleSubject(sub)} />
-                                            <span className="checkmark main"></span>
+                                            <span className="checkmark main">{selected.subjects.includes(sub.id) && Icons.check}</span>
                                             <div className="item-text">
-                                                <span className="icon">📚</span>
+                                                <span className="icon">{Icons.subject}</span>
                                                 <h4>{sub.title}</h4>
                                             </div>
                                         </label>
@@ -403,15 +414,15 @@ export default function AdvancedCopyPage() {
                                                 <div className="chapter-item">
                                                     <label className="custom-checkbox">
                                                         <input type="checkbox" checked={selected.chapters.includes(ch.id)} onChange={() => toggleChapter(ch.id, sub.id, ch.videos, ch.pdfs)} />
-                                                        <span className="checkmark sub"></span>
+                                                        <span className="checkmark sub">{selected.chapters.includes(ch.id) && Icons.check}</span>
                                                         <div className="item-text">
-                                                            <span className="icon" style={{color: '#38bdf8'}}>📂</span>
+                                                            <span className="icon" style={{color: 'var(--text-secondary)'}}>{Icons.folder}</span>
                                                             <h5>{ch.title}</h5>
                                                         </div>
                                                     </label>
                                                 </div>
                                                 
-                                                {/* المرفقات (تحويلها لأزرار تحديد) */}
+                                                {/* المرفقات */}
                                                 <div className="attachments-area">
                                                     {(ch.videos?.length > 0 || ch.pdfs?.length > 0) ? (
                                                         <div className="attachments-flex">
@@ -421,7 +432,7 @@ export default function AdvancedCopyPage() {
                                                                     className={`attach-pill video ${selected.videos.includes(v.id) ? 'selected-pill' : ''}`}
                                                                     onClick={() => toggleVideo(v.id)}
                                                                 >
-                                                                    🎬 <span className="trunc">{v.title}</span>
+                                                                    <span className="icon-wrap">{Icons.video}</span> <span className="trunc">{v.title}</span>
                                                                 </div>
                                                             ))}
                                                             {ch.pdfs?.map(p => (
@@ -430,7 +441,7 @@ export default function AdvancedCopyPage() {
                                                                     className={`attach-pill pdf ${selected.pdfs.includes(p.id) ? 'selected-pill' : ''}`}
                                                                     onClick={() => togglePdf(p.id)}
                                                                 >
-                                                                    📄 <span className="trunc">{p.title}</span>
+                                                                    <span className="icon-wrap">{Icons.pdf}</span> <span className="trunc">{p.title}</span>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -446,9 +457,9 @@ export default function AdvancedCopyPage() {
                                             <div key={ex.id} className={`exam-item ${selected.exams.includes(ex.id) ? 'selected' : ''}`}>
                                                 <label className="custom-checkbox">
                                                     <input type="checkbox" checked={selected.exams.includes(ex.id)} onChange={() => toggleExam(ex.id, sub.id)} />
-                                                    <span className="checkmark exam"></span>
+                                                    <span className="checkmark exam">{selected.exams.includes(ex.id) && Icons.check}</span>
                                                     <div className="item-text">
-                                                        <span className="icon" style={{color: '#facc15'}}>📝</span>
+                                                        <span className="icon" style={{color: 'var(--gold)'}}>{Icons.exam}</span>
                                                         <h5>امتحان: {ex.title}</h5>
                                                     </div>
                                                 </label>
@@ -466,138 +477,132 @@ export default function AdvancedCopyPage() {
       )}
 
       <style jsx>{`
-        .mt-3 { margin-top: 15px; display: block; }
-        
-        .attach-pill { cursor: pointer; border: 2px solid transparent !important; }
-        .attach-pill:hover { filter: brightness(1.2); }
-        .attach-pill.selected-pill { border-color: #a855f7 !important; background: rgba(168, 85, 247, 0.2) !important; color: white !important; }
+        /* ── THEME VARS ── */
+        .toast-notification { position: fixed; top: 24px; left: 50%; transform: translate(-50%, -150%); padding: 14px 28px; border-radius: 12px; font-weight: bold; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); z-index: 99999; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); background: var(--bg-surface); color: var(--text-primary); }
+        .toast-notification.show { transform: translate(-50%, 0); } 
+        .toast-notification.success { border-bottom: 3px solid #22c55e; } 
+        .toast-notification.error { border-bottom: 3px solid #ef4444; }
 
-        /* ================= General Layout ================= */
-        .page-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; margin-bottom: 25px; }
-        .header-info { display: flex; align-items: center; gap: 15px; }
-        .header-icon { font-size: 2.5rem; background: rgba(168, 85, 247, 0.1); width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 16px; }
-        .header-info h1 { margin: 0; color: #f8fafc; font-size: 1.6rem; }
-        .header-info p { margin: 5px 0 0; color: #94a3b8; font-size: 0.95rem; }
-        
-        .back-button { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .back-button:hover { background: #334155; color: white; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .title-area { display: flex; align-items: center; gap: 16px; }
+        .title-icon { width: 50px; height: 50px; background: var(--gold-dim); color: var(--gold); border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-accent); }
+        .page-title { margin: 0 0 6px 0; color: var(--text-primary); font-size: 1.6rem; font-weight: 800; }
+        .page-sub { margin: 0; color: var(--text-secondary); font-size: 0.95rem; }
 
-        .main-layout { display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 20px; border-radius: 10px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; transition: 0.2s; }
+        .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); }
+        
+        .btn-primary { background: var(--gold); color: #111009; border: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.05rem; transition: 0.2s; box-shadow: 0 4px 12px var(--gold-dimmer); }
+        .btn-primary.full-width { width: 100%; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 16px var(--gold-dim); background: var(--gold-light); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
+
+        .mt-3 { margin-top: 15px; display: flex; align-items: center; gap: 6px; }
+        .icon-wrap { display: flex; align-items: center; justify-content: center; }
+        .icon-wrap.mini { opacity: 0.7; }
+
+        /* ================= Layout ================= */
+        .main-layout { display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; padding-bottom: 40px; }
         @media(max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
 
-        /* ================= Sidebar Config (Right) ================= */
+        /* ================= Sidebar Config ================= */
         .config-sidebar { position: relative; }
-        .sticky-box { position: sticky; top: 80px; display: flex; flex-direction: column; gap: 15px; }
+        .sticky-box { position: sticky; top: 90px; display: flex; flex-direction: column; gap: 16px; }
         
-        .step-box { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .execute-box { border-color: rgba(168, 85, 247, 0.4); background: linear-gradient(180deg, #1e293b, #151c2c); }
+        .step-box { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+        .execute-box { border-color: var(--border-accent); }
         
-        .step-title { display: flex; align-items: center; gap: 12px; padding: 15px 20px; background: rgba(0,0,0,0.2); border-bottom: 1px solid #334155; }
-        .step-badge { width: 28px; height: 28px; background: #334155; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-        .step-badge.purple { background: #a855f7; }
-        .step-title h3 { margin: 0; color: #e2e8f0; font-size: 1.1rem; }
+        .step-title { display: flex; align-items: center; gap: 12px; padding: 16px 20px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }
+        .step-badge { width: 28px; height: 28px; background: var(--border); color: var(--text-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; }
+        .step-badge.gold { background: var(--gold); color: #111009; }
+        .step-title h3 { margin: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; }
 
         .step-content { padding: 20px; }
-        .step-content label { display: block; color: #cbd5e1; margin-bottom: 10px; font-weight: 600; }
+        .step-content label { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); margin-bottom: 10px; font-weight: bold; font-size: 0.9rem; }
         
-        .elegant-select { width: 100%; padding: 14px; background: #0f172a; border: 1px solid #475569; border-radius: 10px; color: white; font-size: 1rem; outline: none; cursor: pointer; transition: 0.2s; }
-        .elegant-select:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1); }
-        .elegant-select.target:focus { border-color: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.1); }
+        .elegant-select { width: 100%; padding: 14px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 0.95rem; font-family: inherit; outline: none; cursor: pointer; transition: 0.2s; }
+        .elegant-select:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
+        .elegant-select.target:focus { border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15); }
         
-        .down-arrow { text-align: center; font-size: 1.5rem; color: #64748b; margin: -5px 0; }
+        .down-arrow { text-align: center; color: var(--text-muted); margin: -5px 0; opacity: 0.5; }
 
-        .summary-tags { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-        .tag { background: #0f172a; border: 1px solid #334155; padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .tag span { color: #94a3b8; font-size: 0.9rem; }
-        .tag strong { color: white; font-size: 1.1rem; }
-        .tag.muted { opacity: 0.6; }
+        .summary-tags { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+        .tag { background: var(--bg-base); border: 1px solid var(--border); padding: 12px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .tag span { color: var(--text-secondary); font-size: 0.9rem; font-weight: bold; }
+        .tag strong { color: var(--gold); font-size: 1.2rem; }
 
-        .execute-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #a855f7, #7e22ce); color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3); }
-        .execute-btn:disabled { opacity: 0.5; cursor: not-allowed; background: #475569; box-shadow: none; }
-        .execute-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4); }
+        /* ================= Tree Panel ================= */
+        .tree-main-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 120px); min-height: 600px; box-shadow: var(--shadow); }
+        .panel-header { padding: 20px 24px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .panel-header h2 { margin: 0; color: var(--text-primary); font-size: 1.15rem; font-weight: bold; }
+        .info-badge { background: var(--gold-dim); color: var(--gold); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid var(--border-accent); }
 
-        /* ================= Tree Panel (Left) ================= */
-        .tree-main-panel { background: #1e293b; border: 1px solid #334155; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 120px); min-height: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .panel-header { padding: 20px 25px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
-        .panel-header h2 { margin: 0; color: #f8fafc; font-size: 1.2rem; }
-        .info-badge { background: rgba(56, 189, 248, 0.1); color: #38bdf8; padding: 5px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(56, 189, 248, 0.2); }
+        .panel-body { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg-base); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--gold); }
 
-        .panel-body { flex: 1; overflow-y: auto; padding: 25px; background: #111827; }
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .tree-structure { display: flex; flex-direction: column; gap: 24px; }
 
-        .tree-structure { display: flex; flex-direction: column; gap: 25px; }
-
-        /* --- 1. Subject Level --- */
-        .subject-block { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
-        .subject-item { background: rgba(0,0,0,0.2); padding: 15px 20px; border-bottom: 1px solid #334155; transition: 0.3s; }
-        .subject-item.selected { background: rgba(168, 85, 247, 0.1); border-bottom-color: rgba(168, 85, 247, 0.3); }
+        /* --- Subject Level --- */
+        .subject-block { background: var(--bg-surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+        .subject-item { background: var(--bg-elevated); padding: 16px 20px; border-bottom: 1px solid var(--border); transition: 0.2s; }
+        .subject-item.selected { background: var(--gold-dimmer); border-bottom-color: var(--border-accent); }
         
-        .subject-children { padding: 20px 20px 20px 45px; position: relative; display: flex; flex-direction: column; gap: 15px; }
-        /* الخط الرأسي الرئيسي للمادة */
-        .subject-children::before { content: ''; position: absolute; top: 0; bottom: 20px; right: 28px; width: 2px; background: #334155; z-index: 1; }
+        .subject-children { padding: 20px 20px 20px 45px; position: relative; display: flex; flex-direction: column; gap: 16px; }
+        .subject-children::before { content: ''; position: absolute; top: 0; bottom: 20px; right: 28px; width: 2px; background: var(--border); z-index: 1; }
 
-        /* --- 2. Chapter Level --- */
-        .chapter-block { background: #0f172a; border: 1px dashed #475569; border-radius: 10px; position: relative; z-index: 2; transition: 0.3s; overflow: hidden; }
-        .chapter-block.selected { border-style: solid; border-color: #38bdf8; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.05); }
-        /* الخط الأفقي الواصل للفصل */
-        .chapter-block::before { content: ''; position: absolute; top: 25px; right: -17px; width: 17px; height: 2px; background: #334155; z-index: -1; }
+        /* --- Chapter Level --- */
+        .chapter-block { background: var(--bg-base); border: 1px dashed var(--border); border-radius: 10px; position: relative; z-index: 2; transition: 0.2s; overflow: hidden; }
+        .chapter-block.selected { border-style: solid; border-color: var(--gold); box-shadow: 0 4px 15px var(--gold-dim); }
+        .chapter-block::before { content: ''; position: absolute; top: 25px; right: -17px; width: 17px; height: 2px; background: var(--border); z-index: -1; }
 
-        .chapter-item { padding: 12px 15px; background: rgba(255,255,255,0.02); border-bottom: 1px dashed #334155; }
-        .chapter-block.selected .chapter-item { background: rgba(56, 189, 248, 0.08); border-bottom: 1px solid rgba(56, 189, 248, 0.2); }
+        .chapter-item { padding: 14px 16px; background: transparent; border-bottom: 1px dashed var(--border); }
+        .chapter-block.selected .chapter-item { background: var(--gold-dimmer); border-bottom: 1px solid var(--border-accent); }
 
-        /* --- 3. Attachments (Videos/PDFs) --- */
-        .attachments-area { padding: 15px; }
-        .attachments-flex { display: flex; flex-wrap: wrap; gap: 8px; }
-        .attach-pill { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; border: 1px solid #475569; background: #1e293b; color: #cbd5e1; user-select: none; transition: 0.3s; }
-        .chapter-block.selected .attach-pill.video { border-color: #38bdf8; color: white; background: rgba(56,189,248,0.1); }
-        .chapter-block.selected .attach-pill.pdf { border-color: #f472b6; color: white; background: rgba(244,114,182,0.1); }
+        /* --- Attachments (Videos/PDFs) --- */
+        .attachments-area { padding: 16px; }
+        .attachments-flex { display: flex; flex-wrap: wrap; gap: 10px; }
+        .attach-pill { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); user-select: none; transition: 0.2s; cursor: pointer; }
+        .attach-pill:hover { border-color: var(--text-muted); color: var(--text-primary); }
+        .chapter-block.selected .attach-pill.video.selected-pill { border-color: var(--gold); color: #111009; background: var(--gold); }
+        .chapter-block.selected .attach-pill.pdf.selected-pill { border-color: #38bdf8; color: #0f172a; background: #38bdf8; }
         .trunc { max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .no-attachments { color: #64748b; font-size: 0.85rem; font-style: italic; }
+        .no-attachments { color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
 
-        /* --- 4. Exam Level --- */
-        .exam-item { background: #0f172a; border: 1px dashed #475569; border-radius: 10px; padding: 12px 15px; position: relative; z-index: 2; transition: 0.3s; }
-        .exam-item::before { content: ''; position: absolute; top: 20px; right: -17px; width: 17px; height: 2px; background: #334155; z-index: -1; }
+        /* --- Exam Level --- */
+        .exam-item { background: var(--bg-base); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 16px; position: relative; z-index: 2; transition: 0.2s; }
+        .exam-item::before { content: ''; position: absolute; top: 20px; right: -17px; width: 17px; height: 2px; background: var(--border); z-index: -1; }
         .exam-item.selected { border-style: solid; border-color: #facc15; background: rgba(250, 204, 21, 0.08); }
 
         /* ================= Custom Checkboxes ================= */
         .custom-checkbox { display: flex; align-items: center; cursor: pointer; position: relative; user-select: none; width: 100%; }
         .custom-checkbox input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
         
-        .checkmark { position: relative; background-color: #0f172a; border: 2px solid #475569; border-radius: 6px; transition: 0.2s; flex-shrink: 0; margin-left: 15px; display: flex; align-items: center; justify-content: center; }
-        .checkmark.main { height: 24px; width: 24px; }
+        .checkmark { position: relative; background-color: var(--bg-elevated); border: 2px solid var(--text-muted); border-radius: 6px; transition: 0.2s; flex-shrink: 0; margin-left: 15px; display: flex; align-items: center; justify-content: center; color: transparent; }
+        .checkmark.main { height: 24px; width: 24px; border-radius: 8px; }
         .checkmark.sub { height: 20px; width: 20px; }
-        .checkmark.exam { height: 20px; width: 20px; border-radius: 4px; }
+        .checkmark.exam { height: 20px; width: 20px; }
 
-        .custom-checkbox:hover input ~ .checkmark { border-color: #94a3b8; }
+        .custom-checkbox:hover input ~ .checkmark { border-color: var(--text-primary); }
         
-        .custom-checkbox input:checked ~ .checkmark.main { background-color: #a855f7; border-color: #a855f7; }
-        .custom-checkbox input:checked ~ .checkmark.sub { background-color: #38bdf8; border-color: #38bdf8; }
-        .custom-checkbox input:checked ~ .checkmark.exam { background-color: #facc15; border-color: #facc15; }
-
-        .checkmark:after { content: ""; position: absolute; display: none; border: solid #0f172a; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-        .checkmark.main:after { left: 7px; top: 3px; width: 6px; height: 12px; }
-        .checkmark.sub:after { left: 6px; top: 2px; width: 5px; height: 10px; }
-        .checkmark.exam:after { left: 6px; top: 2px; width: 5px; height: 10px; border-color: #0f172a; }
-        .custom-checkbox input:checked ~ .checkmark:after { display: block; }
+        .custom-checkbox input:checked ~ .checkmark.main { background-color: var(--gold); border-color: var(--gold); color: #111009; }
+        .custom-checkbox input:checked ~ .checkmark.sub { background-color: var(--gold); border-color: var(--gold); color: #111009; }
+        .custom-checkbox input:checked ~ .checkmark.exam { background-color: #facc15; border-color: #facc15; color: #111009; }
 
         .item-text { display: flex; align-items: center; gap: 10px; }
-        .item-text h4 { margin: 0; font-size: 1.1rem; color: #f8fafc; font-weight: bold; }
-        .item-text h5 { margin: 0; font-size: 1rem; color: #e2e8f0; font-weight: normal; }
-        .item-text .icon { font-size: 1.2rem; }
+        .item-text h4 { margin: 0; font-size: 1.1rem; color: var(--text-primary); font-weight: bold; }
+        .item-text h5 { margin: 0; font-size: 1rem; color: var(--text-primary); font-weight: bold; }
+        .item-text .icon { display: flex; align-items: center; color: var(--gold); }
 
         /* ================= States & UI ================= */
-        .loading-container, .empty-tree { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; color: #64748b; text-align: center; }
-        .empty-icon { font-size: 4rem; margin-bottom: 15px; opacity: 0.5; }
-        .loader-circle { width: 50px; height: 50px; border: 4px solid #1e293b; border-top: 4px solid #a855f7; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-state { text-align: center; color: var(--gold); padding: 80px 20px; display: flex; flex-direction: column; align-items: center; gap: 15px; font-weight: bold; height: 100%; justify-content: center; }
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .custom-toast { position: fixed; top: 30px; left: 50%; transform: translate(-50%, -150%); background: #1e293b; color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 20000; display: flex; align-items: center; gap: 12px; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: 1px solid #334155; font-size: 1.1rem; }
-        .custom-toast.show { transform: translate(-50%, 0); }
-        .custom-toast.success { border-bottom: 3px solid #22c55e; }
-        .custom-toast.error { border-bottom: 3px solid #ef4444; }
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; color: var(--text-muted); height: 100%; text-align: center; font-size: 1.05rem; }
+        .empty-icon { font-size: 3.5rem; color: var(--border); margin-bottom: 15px; display: flex; }
       `}</style>
     </TeacherLayout>
   );
