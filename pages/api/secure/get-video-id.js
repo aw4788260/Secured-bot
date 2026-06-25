@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import axios from 'axios';
 import { checkUserAccess } from '../../../lib/authHelper';
+import crypto from 'crypto'; // ✅ استيراد مكتبة التشفير
 
 // ✅ 1. استيراد مكتبات Firebase
 import { db } from '../../../lib/firebaseAdmin';
@@ -31,11 +32,12 @@ export default async (req, res) => {
 
     try {
         // 2. جلب بيانات الفيديو من قاعدة البيانات
-        // ✅ تم التعديل هنا: التدرج في جلب بيانات الفصل والمادة والكورس والمدرس
+        // ✅ تمت إضافة جلب bunny_video_id
         const { data: videoData, error: vidErr } = await supabase
             .from('videos')
             .select(`
-                youtube_video_id, 
+                youtube_video_id,
+                bunny_video_id, 
                 title, 
                 chapters ( 
                     title, 
@@ -55,8 +57,6 @@ export default async (req, res) => {
         if (vidErr || !videoData) {
             return res.status(404).json({ message: "Video not found" });
         }
-
-        const youtubeId = videoData.youtube_video_id;
 
         // استخراج المتغيرات بأمان لتجنب أخطاء undefined
         const chapter = videoData.chapters;
@@ -113,7 +113,7 @@ export default async (req, res) => {
         // ================================================================
 
         // ================================================================
-        // 3. الاتصال بالبروكسي (الأساسي ثم الاحتياطي)
+        // 3. الاتصال بالسيرفرات (Bunny الأول -> Proxy احتياطي أول -> HLS احتياطي ثاني)
         // ================================================================
         let proxyResult = { url: null, availableQualities: [] };
         let isOfflineMode = true;
@@ -124,34 +124,70 @@ export default async (req, res) => {
                 isOfflineMode = settingResult.data.value === 'true';
             }
 
-            if (PYTHON_PROXY_BASE_URL) {
+            // 🟢 المحاولة الأولى: السيرفر الأساسي (Bunny Stream)
+            if (videoData.bunny_video_id) {
+                log("➡️ Trying Primary Server (Bunny Stream)...");
+                try {
+                    const bVideoId = videoData.bunny_video_id;
+                    
+                    // ✅ جلب البيانات الحساسة من متغيرات البيئة فقط
+                    const streamDomain = process.env.BUNNY_STREAM_DOMAIN;
+                    const pullZoneKey = process.env.BUNNY_PULL_ZONE_KEY;
+                    
+                    // التحقق من وجود المتغيرات لتجنب الأخطاء
+                    if (!streamDomain || !pullZoneKey) {
+                        throw new Error("Missing BunnyCDN environment variables (BUNNY_STREAM_DOMAIN or BUNNY_PULL_ZONE_KEY)");
+                    }
+                    
+                    // الخوارزمية المطابقة لبايثون
+                    const expirationHours = 24; 
+                    const expires = Math.floor(Date.now() / 1000) + (expirationHours * 3600);
+                    const tokenPath = `/${bVideoId}/`;
+                    
+                    const hashableString = `${pullZoneKey}${tokenPath}${expires}token_path=${tokenPath}`;
+
+                    const hash = crypto.createHash('sha256').update(hashableString, 'utf-8').digest();
+                    let token = hash.toString('base64');
+                    token = token.replace(/\n/g, '').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+                    
+                    const encodedPath = encodeURIComponent(tokenPath);
+                    const fileName = "playlist.m3u8";
+
+                    proxyResult.url = `https://${streamDomain}/bcdn_token=${token}&expires=${expires}&token_path=${encodedPath}${tokenPath}${fileName}`;
+                    log("✅ Bunny Stream URL Generated Successfully!");
+                } catch (bunnyErr) {
+                    errLog(`⚠️ Bunny Stream Generation Failed: ${bunnyErr.message}`);
+                }
+            }
+
+            // 🟡 إذا لم يكن هناك Bunny ID أو فشل التوليد، ننتقل للسيرفرات الاحتياطية
+            if (!proxyResult.url && PYTHON_PROXY_BASE_URL) {
                 const proxyHeaders = process.env.PYTHON_PROXY_KEY ? { 'X-API-Key': process.env.PYTHON_PROXY_KEY } : {};
                 const queryParams = { youtubeId: videoData.youtube_video_id };
 
                 try {
-                    // --- المحاولة الأولى: السيرفر الأساسي ---
-                    log("➡️ Trying Primary Proxy...");
+                    // --- المحاولة الثانية: السيرفر الاحتياطي الأول ---
+                    log("➡️ Trying First Backup (Primary Proxy)...");
                     const primaryResponse = await axios.get(`${PYTHON_PROXY_BASE_URL}/api/get-hls-playlist`, { 
                         params: queryParams,
                         headers: proxyHeaders
                     });
                     
                     proxyResult = primaryResponse.data;
-                    log("✅ Primary Proxy Succeeded!");
+                    log("✅ First Backup Proxy Succeeded!");
 
                 } catch (primaryErr) {
-                    errLog(`⚠️ Primary Proxy Failed: ${primaryErr.message}. Switching IMMEDIATELY to Backup...`);
+                    errLog(`⚠️ First Backup Proxy Failed: ${primaryErr.message}. Switching IMMEDIATELY to Second Backup...`);
                     
-                    // استخدام المتغير الاحتياطي
+                    // --- المحاولة الثالثة: السيرفر الاحتياطي الثاني ---
                     if (PYTHON_HLS_BACKUP_URL) {
-                        // --- المحاولة الثانية: السيرفر الاحتياطي ---
                         const backupResponse = await axios.get(`${PYTHON_HLS_BACKUP_URL}/api/get-hls-playlist`, {
                             params: queryParams,
                             headers: proxyHeaders
                         });
                         
                         proxyResult = backupResponse.data;
-                        log("✅ Backup Proxy Succeeded!");
+                        log("✅ Second Backup Proxy Succeeded!");
                     } else {
                         throw primaryErr;
                     }
@@ -160,9 +196,6 @@ export default async (req, res) => {
                 if (!proxyResult.url && proxyResult.availableQualities?.length > 0) {
                     proxyResult.url = proxyResult.availableQualities.sort((a, b) => b.quality - a.quality)[0].url;
                 }
-
-            } else {
-                log("⚠️ Proxy URL missing, skipping stream fetch.");
             }
         } catch (proxyErr) {
             errLog(`Proxy Failed (Ignored for Player 2): ${proxyErr.message}`);
@@ -174,6 +207,7 @@ export default async (req, res) => {
             url: proxyResult.url || null, 
             duration: "0",
             youtube_video_id: videoData.youtube_video_id, 
+            bunny_video_id: videoData.bunny_video_id,
             db_video_title: videoData.title,
             subject_name: subjectName, // ✅ استخدام المتغير المستخرج بأمان
             chapter_name: chapterName, // ✅ استخدام المتغير المستخرج بأمان
