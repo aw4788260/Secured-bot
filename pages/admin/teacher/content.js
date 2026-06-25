@@ -16,7 +16,8 @@ const Icons = {
     image: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
     menu: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>,
     eye: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>,    
-    drag: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+    drag: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>,
+    refresh: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
 };
 
 const formatDateForInput = (isoString) => {
@@ -73,6 +74,16 @@ export default function ContentManager() {
   const [currentMediaId, setCurrentMediaId] = useState(null); 
   const [viewsPage, setViewsPage] = useState(1); 
   const [totalViewsCount, setTotalViewsCount] = useState(0);
+
+  // ✅ حالات رفع الفيديو إلى Bunny Stream
+  const [videoFile, setVideoFile] = useState(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+
+  // ✅ حالة "حالة المعالجة" لكل فيديو (يتم جلبها فقط عند الضغط على زر التحقق لفيديو معين)
+  // الشكل: { [videoId]: { loading: bool, status: 'waiting'|'processing'|'ready'|'failed', label: string } }
+  const [videoStatusMap, setVideoStatusMap] = useState({});
+
  
  const refreshView = async () => {
       try {
@@ -239,6 +250,91 @@ export default function ContentManager() {
       setLoading(false);
   };
 
+  // ✅ رفع ملف الفيديو إلى Bunny Stream عبر XMLHttpRequest (لإظهار نسبة تقدم الرفع الفعلية)
+  const uploadVideoToBunny = (file, title, chapterId) => {
+      return new Promise((resolve, reject) => {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('title', title);
+          fd.append('chapterId', chapterId);
+
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/dashboard/teacher/upload-video');
+
+          xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                  setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
+              }
+          };
+
+          xhr.onload = () => {
+              try {
+                  const data = JSON.parse(xhr.responseText);
+                  if (xhr.status >= 200 && xhr.status < 300 && data.success) {
+                      resolve(data);
+                  } else {
+                      reject(new Error(data.error || 'فشل رفع الفيديو'));
+                  }
+              } catch (e) {
+                  reject(new Error('استجابة غير متوقعة من السيرفر'));
+              }
+          };
+
+          xhr.onerror = () => reject(new Error('خطأ في الاتصال أثناء رفع الفيديو'));
+
+          xhr.send(fd);
+      });
+  };
+
+  // ✅ حفظ فيديو جديد: يرفع الملف إلى Bunny Stream أولاً (إن وُجد) ثم ينشئ السجل
+  // بمجرد استلام bunny_video_id من Bunny (أي بعد اكتمال استقبال الملف فقط، وليس
+  // بعد انتهاء تحويله لجودات متعددة) تُغلق نافذة الرفع فوراً عبر apiCall.
+  const handleSaveVideo = async () => {
+      const hVal = parseInt(formData.durHours || 0);
+      const mVal = parseInt(formData.durMinutes || 0);
+      const sVal = parseInt(formData.durSeconds || 0);
+
+      if (hVal === 0 && mVal === 0 && sVal === 0) {
+          return showAlert('error', '⚠️ يرجى إدخال مدة الفيديو الفعلية (لا يمكن تركها أصفاراً).');
+      }
+      if (mVal > 59 || sVal > 59) {
+          return showAlert('error', '⚠️ الدقائق والثواني يجب ألا تتجاوز 59.');
+      }
+      if (!videoFile && !formData.url) {
+          return showAlert('error', '⚠️ يجب رفع ملف فيديو أو إدخال رابط يوتيوب على الأقل.');
+      }
+
+      const h = String(hVal).padStart(2, '0');
+      const m = String(mVal).padStart(2, '0');
+      const s = String(sVal).padStart(2, '0');
+      const finalDuration = h === '00' ? `${m}:${s}` : `${h}:${m}:${s}`;
+
+      const videoPayload = {
+          chapter_id: selectedChapter.id,
+          title: formData.title,
+          url: formData.url || undefined, // رابط يوتيوب اختياري
+          duration: finalDuration,
+          notifyStudents: formData.notifyStudents
+      };
+
+      if (videoFile) {
+          setIsUploadingVideo(true);
+          setVideoUploadProgress(0);
+          try {
+              const uploadResult = await uploadVideoToBunny(videoFile, formData.title, selectedChapter.id);
+              videoPayload.bunny_video_id = uploadResult.bunny_video_id;
+          } catch (err) {
+              setIsUploadingVideo(false);
+              return showAlert('error', err.message || 'فشل رفع الفيديو إلى Bunny Stream');
+          }
+          setIsUploadingVideo(false);
+      }
+
+      // ✅ بمجرد توفر bunny_video_id (أو رابط اليوتيوب) ننشئ السجل، وapiCall تُغلق
+      // النافذة فوراً عند النجاح - لا ننتظر هنا اكتمال المعالجة (Encoding) على Bunny
+      await apiCall('create', 'videos', videoPayload);
+  };
+
 const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
       if (pageNum === 1) setIsViewsModalOpen(true);
       
@@ -265,6 +361,27 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
           setLoadingViews(false);
       }
   };
+
+  // ✅ التحقق من حالة معالجة فيديو واحد فقط (وليس كل الفيديوهات) عند الضغط على الزر
+  const checkVideoStatus = async (videoId) => {
+      setVideoStatusMap(prev => ({ ...prev, [videoId]: { ...(prev[videoId] || {}), loading: true } }));
+
+      try {
+          const res = await fetch(`/api/dashboard/teacher/video-status?videoId=${videoId}`);
+          const data = await res.json();
+
+          if (res.ok && data.success) {
+              setVideoStatusMap(prev => ({
+                  ...prev,
+                  [videoId]: { loading: false, status: data.status, label: data.label, encodeProgress: data.encodeProgress }
+              }));
+          } else {
+              setVideoStatusMap(prev => ({ ...prev, [videoId]: { loading: false, status: 'error', label: data.error || 'فشل التحقق' } }));
+          }
+      } catch (e) {
+          setVideoStatusMap(prev => ({ ...prev, [videoId]: { loading: false, status: 'error', label: 'خطأ في الاتصال' } }));
+      }
+  };
     
 
   const handleDelete = (type, id) => showConfirm('هل أنت متأكد من الحذف النهائي؟', async () => {
@@ -281,6 +398,9 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
     durHours: '', durMinutes: '', durSeconds: ''
 });
       setNotifyPdf(false);
+      setVideoFile(null);
+      setIsUploadingVideo(false);
+      setVideoUploadProgress(0);
       
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
           setFormData({ 
@@ -603,7 +723,39 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="thumb video-thumb">{Icons.video}</div>
                               <div className="media-body">
-                                  <h4>{v.title}</h4>
+                                  <div className="media-info-col">
+                                      <h4>{v.title}</h4>
+
+                                      {v.bunny_video_id && (
+                                          <div className="video-status-row">
+                                              {videoStatusMap[v.id] ? (
+                                                  <>
+                                                      <span className={`status-badge status-${videoStatusMap[v.id].status}`}>
+                                                          {videoStatusMap[v.id].loading ? 'جاري التحقق... ⏳' : videoStatusMap[v.id].label}
+                                                      </span>
+                                                      {!videoStatusMap[v.id].loading && (
+                                                          <button 
+                                                              className="status-recheck-btn" 
+                                                              title="إعادة التحقق" 
+                                                              onClick={() => checkVideoStatus(v.id)}
+                                                          >
+                                                              {Icons.refresh}
+                                                          </button>
+                                                      )}
+                                                  </>
+                                              ) : (
+                                                  <button 
+                                                      className="status-check-btn" 
+                                                      title="تحقق من حالة معالجة الفيديو"
+                                                      onClick={() => checkVideoStatus(v.id)}
+                                                  >
+                                                      {Icons.refresh} <span>حالة الفيديو</span>
+                                                  </button>
+                                              )}
+                                          </div>
+                                      )}
+                                  </div>
+
                                   <div style={{display: 'flex', gap: '8px'}}>
                                       <button 
                                           className="btn-icon highlight-icon" 
@@ -684,9 +836,32 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               {modalType === 'add_video' && (
                   <>
                   <div className="form-group">
-                      <label>رابط يوتيوب</label>
-                      <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://..." dir="ltr" />
+                      <label>ملف الفيديو (رفع إلى Bunny Stream)</label>
+                      <input 
+                        className="input file" 
+                        type="file" 
+                        accept="video/*" 
+                        disabled={isUploadingVideo}
+                        onChange={e => setVideoFile(e.target.files[0] || null)} 
+                      />
+                      <small style={{color: 'var(--text-muted)', display: 'block', marginTop: '6px'}}>
+                          يمكنك رفع ملف فيديو، أو إدخال رابط يوتيوب أدناه، أو كليهما معاً.
+                      </small>
                   </div>
+                  <div className="form-group">
+                      <label>رابط يوتيوب (اختياري)</label>
+                      <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://... (اختياري)" dir="ltr" disabled={isUploadingVideo} />
+                  </div>
+                  {isUploadingVideo && (
+                      <div className="form-group" style={{marginTop: '10px'}}>
+                          <div className="upload-progress-track">
+                              <div className="upload-progress-fill" style={{width: `${videoUploadProgress}%`}}></div>
+                          </div>
+                          <small style={{color: 'var(--gold)', display: 'block', marginTop: '6px', textAlign: 'center'}}>
+                              جاري رفع الفيديو إلى Bunny Stream... {videoUploadProgress}%
+                          </small>
+                      </div>
+                  )}
                   <div className="form-group" style={{ marginTop: '15px' }}>
                       <label style={{ marginBottom: '10px', display: 'block', color: 'var(--gold)' }}>⏱️ مدة الفيديو الفعلية</label>
                       <div className="duration-inputs-wrapper">
@@ -698,6 +873,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                  min="0" max="99"
                                  value={formData.durHours} 
                                  onChange={e => setFormData({...formData, durHours: e.target.value})} 
+                                 disabled={isUploadingVideo}
                               />
                               <small>ساعات</small>
                           </div>
@@ -712,6 +888,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                  min="0" max="59"
                                  value={formData.durMinutes} 
                                  onChange={e => setFormData({...formData, durMinutes: e.target.value})} 
+                                 disabled={isUploadingVideo}
                               />
                               <small>دقائق</small>
                           </div>
@@ -726,6 +903,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                  min="0" max="59"
                                  value={formData.durSeconds} 
                                  onChange={e => setFormData({...formData, durSeconds: e.target.value})} 
+                                 disabled={isUploadingVideo}
                               />
                               <small>ثواني</small>
                           </div>
@@ -738,6 +916,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                             style={{width: '18px', height: '18px', accentColor: 'var(--gold)'}} 
                             checked={formData.notifyStudents} 
                             onChange={e => setFormData({...formData, notifyStudents: e.target.checked})} 
+                            disabled={isUploadingVideo}
                           />
                           <span>إرسال إشعار للطلاب المشتركين في المادة</span>
                       </label>
@@ -746,8 +925,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               )}
               
               <div className="acts">
-                  <button className="btn-cancel" onClick={() => setModalType(null)}>إلغاء</button>
-                  <button className="btn-primary" onClick={() => {
+                  <button className="btn-cancel" onClick={() => setModalType(null)} disabled={isUploadingVideo}>إلغاء</button>
+                  <button className="btn-primary" disabled={isUploadingVideo} onClick={() => {
                       if (modalType === 'add_course') apiCall('create', 'courses', { title: formData.title, price: formData.price, description: formData.description });
                       else if (modalType === 'edit_course') apiCall('update', 'courses', { id: selectedCourse.id, title: formData.title, price: formData.price, description: formData.description });
                       
@@ -757,33 +936,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       else if (modalType === 'add_chapter') apiCall('create', 'chapters', { subject_id: selectedSubject.id, title: formData.title });
                       else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
                       
-                      else if (modalType === 'add_video') {
-                          const hVal = parseInt(formData.durHours || 0);
-                          const mVal = parseInt(formData.durMinutes || 0);
-                          const sVal = parseInt(formData.durSeconds || 0);
-
-                          if (hVal === 0 && mVal === 0 && sVal === 0) {
-                              return showAlert('error', '⚠️ يرجى إدخال مدة الفيديو الفعلية (لا يمكن تركها أصفاراً).');
-                          }
-                          if (mVal > 59 || sVal > 59) {
-                              return showAlert('error', '⚠️ الدقائق والثواني يجب ألا تتجاوز 59.');
-                          }
-
-                          const h = String(hVal).padStart(2, '0');
-                          const m = String(mVal).padStart(2, '0');
-                          const s = String(sVal).padStart(2, '0');
-                          
-                          const finalDuration = h === '00' ? `${m}:${s}` : `${h}:${m}:${s}`;
-
-                          apiCall('create', 'videos', { 
-                              chapter_id: selectedChapter.id, 
-                              title: formData.title, 
-                              url: formData.url, 
-                              duration: finalDuration, 
-                              notifyStudents: formData.notifyStudents 
-                          });
-                      }
-                  }}>حفظ</button>
+                      else if (modalType === 'add_video') handleSaveVideo();
+                  }}>{isUploadingVideo ? 'جاري الرفع... ⏳' : 'حفظ'}</button>
               </div>
           </Modal>
       )}
@@ -1195,8 +1349,34 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .media-card:hover { border-color: var(--border-accent); }
         .media-card .thumb { height: 110px; background: var(--bg-surface); display: flex; align-items: center; justify-content: center; }
         .media-card .video-thumb { color: var(--gold); }
-        .media-body { padding: 12px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); }
+        .media-body { padding: 12px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); gap: 8px; }
+        .media-info-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
         .media-body h4 { margin: 0; font-size: 0.95rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+
+        /* ✅ حالة معالجة فيديو Bunny Stream */
+        .video-status-row { display: flex; align-items: center; gap: 6px; }
+        .status-check-btn, .status-recheck-btn { 
+            display: flex; align-items: center; gap: 5px; 
+            background: var(--bg-elevated); border: 1px solid var(--border); 
+            color: var(--text-secondary); border-radius: 6px; padding: 4px 8px; 
+            font-size: 0.75rem; cursor: pointer; transition: all 0.2s; 
+        }
+        .status-check-btn:hover, .status-recheck-btn:hover { background: var(--bg-hover); color: var(--gold); border-color: var(--gold); }
+        .status-recheck-btn { padding: 4px; }
+        .status-badge { 
+            display: inline-flex; align-items: center; padding: 3px 9px; 
+            border-radius: 20px; font-size: 0.72rem; font-weight: bold; white-space: nowrap; 
+        }
+        .status-badge.status-waiting { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+        .status-badge.status-processing { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+        .status-badge.status-ready { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+        .status-badge.status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .status-badge.status-error { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .status-badge.status-unknown { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+        /* ✅ شريط تقدم رفع الفيديو إلى Bunny Stream */
+        .upload-progress-track { width: 100%; height: 8px; background: var(--bg-elevated); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+        .upload-progress-fill { height: 100%; background: var(--gold); transition: width 0.2s ease; }
 
         /* --- Unified Modals (Popups) --- */
         .modal-overlay { 
