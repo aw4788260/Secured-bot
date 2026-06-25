@@ -1,6 +1,7 @@
 import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { useBunnyDirectUpload } from '../../../hooks/useBunnyDirectUpload';
 
 // --- أيقونات SVG (محدثة لتتوافق مع الألوان الديناميكية) ---
 const Icons = {
@@ -75,10 +76,18 @@ export default function ContentManager() {
   const [viewsPage, setViewsPage] = useState(1); 
   const [totalViewsCount, setTotalViewsCount] = useState(0);
 
-  // ✅ حالات رفع الفيديو إلى Bunny Stream
+  // ✅ حالات رفع الفيديو إلى Bunny Stream (TUS Direct Upload)
   const [videoFile, setVideoFile] = useState(null);
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
-  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const {
+    startUpload: startBunnyUpload,
+    cancel: cancelBunnyUpload,
+    reset: resetBunnyUpload,
+    progress: videoUploadProgress,
+    status: bunnyUploadStatus,
+    error: bunnyUploadError,
+  } = useBunnyDirectUpload();
+  // isUploadingVideo = true while the TUS session is active
+  const isUploadingVideo = ['requesting', 'uploading', 'confirming'].includes(bunnyUploadStatus);
 
   // ✅ حالة "حالة المعالجة" لكل فيديو (يتم جلبها فقط عند الضغط على زر التحقق لفيديو معين)
   // الشكل: { [videoId]: { loading: bool, status: 'waiting'|'processing'|'ready'|'failed', label: string } }
@@ -250,58 +259,46 @@ export default function ContentManager() {
       setLoading(false);
   };
 
-  // ✅ رفع ملف الفيديو إلى Bunny Stream عبر XMLHttpRequest (لإظهار نسبة تقدم الرفع الفعلية)
-  const uploadVideoToBunny = (file, title, chapterId) => {
-      return new Promise((resolve, reject) => {
-          const fd = new FormData();
-          fd.append('file', file);
-          fd.append('title', title);
-          fd.append('chapterId', chapterId);
-
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', '/api/dashboard/teacher/upload-video');
-
-          xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) {
-                  setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
-              }
-          };
-
-          xhr.onload = () => {
-              try {
-                  const data = JSON.parse(xhr.responseText);
-                  if (xhr.status >= 200 && xhr.status < 300 && data.success) {
-                      resolve(data);
-                  } else {
-                      reject(new Error(data.error || 'فشل رفع الفيديو'));
-                  }
-              } catch (e) {
-                  reject(new Error('استجابة غير متوقعة من السيرفر'));
-              }
-          };
-
-          xhr.onerror = () => reject(new Error('خطأ في الاتصال أثناء رفع الفيديو'));
-
-          xhr.send(fd);
-      });
-  };
-
-  // ✅ حفظ فيديو جديد: يرفع الملف إلى Bunny Stream أولاً (إن وُجد) ثم ينشئ السجل
-  // بمجرد استلام bunny_video_id من Bunny (أي بعد اكتمال استقبال الملف فقط، وليس
-  // بعد انتهاء تحويله لجودات متعددة) تُغلق نافذة الرفع فوراً عبر apiCall.
+  // ✅ حفظ فيديو جديد عبر TUS Direct Upload إلى Bunny Stream
+  // ─ إذا اختار المعلم ملفاً: يُرفع مباشرةً من المتصفح إلى Bunny عبر TUS
+  //   ويُحفظ السجل تلقائياً في confirm-upload بدون المرور بالسيرفر.
+  // ─ إذا أدخل رابط يوتيوب فقط: يُرسل مباشرةً إلى content API كالمعتاد.
   const handleSaveVideo = async () => {
+      if (!videoFile && !formData.url) {
+          return showAlert('error', '⚠️ يجب رفع ملف فيديو أو إدخال رابط يوتيوب على الأقل.');
+      }
+
+      // ── مسار Bunny TUS: رفع ملف مباشر ─────────────────────────────
+      if (videoFile) {
+          await startBunnyUpload({
+              file: videoFile,
+              chapterId: selectedChapter.id,
+              title: formData.title || videoFile.name,
+              notifyStudents: formData.notifyStudents,
+              onComplete: async () => {
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد المعالجة.');
+                  setModalType(null);
+                  setVideoFile(null);
+                  resetBunnyUpload();
+                  await refreshView();
+              },
+              onError: (err) => {
+                  showAlert('error', err.message || 'فشل رفع الفيديو إلى Bunny Stream');
+              },
+          });
+          return; // confirm-upload يتولى الحفظ في DB
+      }
+
+      // ── مسار يوتيوب: رابط فقط بدون ملف ────────────────────────────
       const hVal = parseInt(formData.durHours || 0);
       const mVal = parseInt(formData.durMinutes || 0);
       const sVal = parseInt(formData.durSeconds || 0);
 
       if (hVal === 0 && mVal === 0 && sVal === 0) {
-          return showAlert('error', '⚠️ يرجى إدخال مدة الفيديو الفعلية (لا يمكن تركها أصفاراً).');
+          return showAlert('error', '⚠️ يرجى إدخال مدة الفيديو عند استخدام رابط يوتيوب.');
       }
       if (mVal > 59 || sVal > 59) {
           return showAlert('error', '⚠️ الدقائق والثواني يجب ألا تتجاوز 59.');
-      }
-      if (!videoFile && !formData.url) {
-          return showAlert('error', '⚠️ يجب رفع ملف فيديو أو إدخال رابط يوتيوب على الأقل.');
       }
 
       const h = String(hVal).padStart(2, '0');
@@ -309,30 +306,13 @@ export default function ContentManager() {
       const s = String(sVal).padStart(2, '0');
       const finalDuration = h === '00' ? `${m}:${s}` : `${h}:${m}:${s}`;
 
-      const videoPayload = {
+      await apiCall('create', 'videos', {
           chapter_id: selectedChapter.id,
           title: formData.title,
-          url: formData.url || undefined, // رابط يوتيوب اختياري
+          url: formData.url,
           duration: finalDuration,
-          notifyStudents: formData.notifyStudents
-      };
-
-      if (videoFile) {
-          setIsUploadingVideo(true);
-          setVideoUploadProgress(0);
-          try {
-              const uploadResult = await uploadVideoToBunny(videoFile, formData.title, selectedChapter.id);
-              videoPayload.bunny_video_id = uploadResult.bunny_video_id;
-          } catch (err) {
-              setIsUploadingVideo(false);
-              return showAlert('error', err.message || 'فشل رفع الفيديو إلى Bunny Stream');
-          }
-          setIsUploadingVideo(false);
-      }
-
-      // ✅ بمجرد توفر bunny_video_id (أو رابط اليوتيوب) ننشئ السجل، وapiCall تُغلق
-      // النافذة فوراً عند النجاح - لا ننتظر هنا اكتمال المعالجة (Encoding) على Bunny
-      await apiCall('create', 'videos', videoPayload);
+          notifyStudents: formData.notifyStudents,
+      });
   };
 
 const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
@@ -399,8 +379,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 });
       setNotifyPdf(false);
       setVideoFile(null);
-      setIsUploadingVideo(false);
-      setVideoUploadProgress(0);
+      resetBunnyUpload();
       
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
           setFormData({ 
@@ -852,18 +831,37 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <label>رابط يوتيوب (اختياري)</label>
                       <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://... (اختياري)" dir="ltr" disabled={isUploadingVideo} />
                   </div>
+                  {/* ── حالة الرفع TUS ── */}
                   {isUploadingVideo && (
                       <div className="form-group" style={{marginTop: '10px'}}>
                           <div className="upload-progress-track">
                               <div className="upload-progress-fill" style={{width: `${videoUploadProgress}%`}}></div>
                           </div>
                           <small style={{color: 'var(--gold)', display: 'block', marginTop: '6px', textAlign: 'center'}}>
-                              جاري رفع الفيديو إلى Bunny Stream... {videoUploadProgress}%
+                              {bunnyUploadStatus === 'requesting' && 'جاري إعداد جلسة الرفع...'}
+                              {bunnyUploadStatus === 'uploading' && `جاري رفع الفيديو مباشرة إلى Bunny... ${videoUploadProgress}%`}
+                              {bunnyUploadStatus === 'confirming' && 'جاري حفظ البيانات...'}
                           </small>
+                          {bunnyUploadStatus === 'uploading' && (
+                              <button
+                                  className="btn-cancel"
+                                  style={{marginTop: '8px', width: '100%'}}
+                                  onClick={() => { cancelBunnyUpload(); resetBunnyUpload(); }}
+                              >
+                                  إلغاء الرفع
+                              </button>
+                          )}
                       </div>
                   )}
+                  {bunnyUploadStatus === 'error' && bunnyUploadError && (
+                      <div className="form-group" style={{color: 'var(--danger)', marginTop: '8px', fontSize: '0.9em'}}>
+                          ❌ {bunnyUploadError}
+                      </div>
+                  )}
+                  {/* مدة الفيديو: إلزامية فقط عند استخدام رابط يوتيوب بدون ملف */}
+                  {!videoFile && (
                   <div className="form-group" style={{ marginTop: '15px' }}>
-                      <label style={{ marginBottom: '10px', display: 'block', color: 'var(--gold)' }}>⏱️ مدة الفيديو الفعلية</label>
+                      <label style={{ marginBottom: '10px', display: 'block', color: 'var(--gold)' }}>⏱️ مدة الفيديو (مطلوبة لرابط يوتيوب)</label>
                       <div className="duration-inputs-wrapper">
                           <div className="dur-col">
                               <input 
@@ -909,6 +907,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                           </div>
                       </div>
                   </div>
+                  )}
                   <div className="form-group" style={{marginTop: '15px'}}>
                       <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: 'var(--text-secondary)'}}>
                           <input 
