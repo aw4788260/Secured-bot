@@ -86,7 +86,6 @@ export default function ContentManager() {
     status: bunnyUploadStatus,
     error: bunnyUploadError,
   } = useBunnyDirectUpload();
-  // isUploadingVideo = true while the TUS session is active
   const isUploadingVideo = ['requesting', 'uploading', 'confirming'].includes(bunnyUploadStatus);
 
   // ✅ حالة "حالة المعالجة" لكل فيديو (يتم جلبها فقط عند الضغط على زر التحقق لفيديو معين)
@@ -261,14 +260,14 @@ export default function ContentManager() {
 
   // ✅ حفظ فيديو جديد عبر TUS Direct Upload إلى Bunny Stream
   // ─ إذا اختار المعلم ملفاً: يُرفع مباشرةً من المتصفح إلى Bunny عبر TUS
-  //   ويُحفظ السجل تلقائياً في confirm-upload بدون المرور بالسيرفر.
-  // ─ إذا أدخل رابط يوتيوب فقط: يُرسل مباشرةً إلى content API كالمعتاد.
+  //   ثم يُحفظ السجل تلقائياً في confirm-upload بدون المرور بالسيرفر.
+  // ─ إذا أدخل رابط يوتيوب فقط: يُرسل إلى content API مع مدة مطلوبة.
   const handleSaveVideo = async () => {
       if (!videoFile && !formData.url) {
           return showAlert('error', '⚠️ يجب رفع ملف فيديو أو إدخال رابط يوتيوب على الأقل.');
       }
 
-      // ── مسار Bunny TUS: رفع ملف مباشر ─────────────────────────────
+      // ── مسار Bunny TUS: رفع مباشر ──────────────────────────────────
       if (videoFile) {
           await startBunnyUpload({
               file: videoFile,
@@ -831,7 +830,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <label>رابط يوتيوب (اختياري)</label>
                       <input className="input" value={formData.url} onChange={e=>setFormData({...formData, url: e.target.value})} placeholder="https://... (اختياري)" dir="ltr" disabled={isUploadingVideo} />
                   </div>
-                  {/* ── حالة الرفع TUS ── */}
+                  {/* ── حالة رفع TUS المباشر ── */}
                   {isUploadingVideo && (
                       <div className="form-group" style={{marginTop: '10px'}}>
                           <div className="upload-progress-track">
@@ -858,7 +857,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                           ❌ {bunnyUploadError}
                       </div>
                   )}
-                  {/* مدة الفيديو: إلزامية فقط عند استخدام رابط يوتيوب بدون ملف */}
+                  {/* مدة الفيديو: مطلوبة فقط عند استخدام رابط يوتيوب بدون ملف */}
                   {!videoFile && (
                   <div className="form-group" style={{ marginTop: '15px' }}>
                       <label style={{ marginBottom: '10px', display: 'block', color: 'var(--gold)' }}>⏱️ مدة الفيديو (مطلوبة لرابط يوتيوب)</label>
