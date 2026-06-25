@@ -144,13 +144,19 @@ export default async (req, res) => {
         data = { id: req.body.id };
     }
 
-    // ✅ معالجة فيديو اليوتيوب واستقبال المدة يدوياً
-    if (type === 'videos' && data?.url) {
-      data.youtube_video_id = extractYouTubeID(data.url);
-      delete data.url; 
-      
+    // ✅ معالجة فيديو اليوتيوب (اختياري الآن) واستقبال المدة يدوياً
+    // الفيديو يمكن أن يأتي من Bunny Stream (bunny_video_id) و/أو رابط يوتيوب اختياري (url)
+    if (type === 'videos') {
+      if (data?.url) {
+        data.youtube_video_id = extractYouTubeID(data.url);
+        delete data.url;
+      }
+
       // ✅ أخذ المدة التي أدخلها المدرس من الواجهة، وإذا كانت فارغة نضع قيمة افتراضية 00:00
-      data.duration = data.duration || '00:00';
+      // (يُطبَّق دائماً على أي فيديو سواء كان مصدره Bunny أو يوتيوب أو الاثنين معاً)
+      if (data) {
+        data.duration = data.duration || '00:00';
+      }
     }
 
     const checkCourseOwnership = async (courseId) => {
@@ -206,6 +212,11 @@ export default async (req, res) => {
         // استخراج حالة خيار الإشعار وحذفه من بيانات الإدخال لجدول الفيديوهات لتجنب أخطاء الـ SQL
         const shouldNotify = insertData.notifyStudents === true;
         delete insertData.notifyStudents;
+
+        // ✅ يجب توفر مصدر واحد على الأقل للفيديو: ملف مرفوع على Bunny و/أو رابط يوتيوب
+        if (type === 'videos' && !insertData.bunny_video_id && !insertData.youtube_video_id) {
+          return res.status(400).json({ error: 'يجب رفع ملف الفيديو أو إدخال رابط يوتيوب على الأقل.' });
+        }
 
         if (type !== 'courses') {
            const targetCourseId = await getParentCourseId(type, insertData, false);
