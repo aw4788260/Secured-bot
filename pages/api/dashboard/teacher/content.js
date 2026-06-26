@@ -16,6 +16,34 @@ const extractYouTubeID = (url) => {
   return match ? match[1] : url;
 };
 
+// 🛠️ دالة مساعدة لحذف الفيديو فعلياً من خوادم Bunny Stream
+async function deleteVideoFromBunny(bunnyVideoId) {
+  if (!bunnyVideoId) return;
+  
+  const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
+  const apiKey = process.env.BUNNY_STREAM_API_KEY;
+  
+  if (!libraryId || !apiKey) {
+    console.error('⚠️ [Bunny] Missing credentials for deletion');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
+      method: 'DELETE',
+      headers: { AccessKey: apiKey, accept: 'application/json' },
+    });
+    
+    if (!res.ok) {
+       console.error(`⚠️ [Bunny] Failed to delete video ${bunnyVideoId}, status: ${res.status}`);
+    } else {
+       console.log(`✅ [Bunny] Video ${bunnyVideoId} deleted successfully from Bunny Stream.`);
+    }
+  } catch (err) {
+    console.error('⚠️ [Bunny] Error deleting video:', err.message);
+  }
+}
+
 export default async (req, res) => {
   // 1. التحقق من الصلاحية (مدرس أو أدمن)
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -152,7 +180,6 @@ export default async (req, res) => {
       }
 
       // المدة مطلوبة فقط لروابط يوتيوب — فيديوهات Bunny تحفظ duration_seconds عبر confirm-upload
-      // لا نضع قيمة افتراضية '00:00' لأنها تُفسد سجلات Bunny التي لا تحتاج هذا الحقل
       if (data && !data.bunny_video_id) {
         data.duration = data.duration || '00:00';
       }
@@ -335,6 +362,7 @@ export default async (req, res) => {
       if (action === 'delete') {
          const { id } = data;
          let isAuthorized = false;
+         let bunnyVideoIdToDelete = null; // 👈 متغير لتخزين معرف باني ستريم
 
          if (type === 'courses') {
             const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
@@ -344,14 +372,30 @@ export default async (req, res) => {
              const teacherId = exam?.subjects?.courses?.teacher_id;
              if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
          } else {
+            // 👈 إذا كان العنصر المحذوف فيديو، نقوم بجلب معرفه على Bunny قبل الحذف
+            if (type === 'videos') {
+                const { data: videoRecord } = await supabase.from('videos').select('bunny_video_id').eq('id', id).single();
+                if (videoRecord) {
+                    bunnyVideoIdToDelete = videoRecord.bunny_video_id;
+                }
+            }
+
             const targetCourseId = await getParentCourseId(type, { id }, true);
             if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
          }
 
          if (!isAuthorized) return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
 
+         // حذف العنصر من قاعدة البيانات
          const { error } = await supabase.from(type).delete().eq('id', id);
          if (error) throw error;
+
+         // 👈 إذا تم الحذف من قاعدة البيانات بنجاح وكان هناك فيديو مرتبط، نحذفه من Bunny
+         if (type === 'videos' && bunnyVideoIdToDelete) {
+             // نرسل أمر الحذف في الخلفية ولا ننتظر النتيجة (لكي لا نعطل الاستجابة للعميل)
+             deleteVideoFromBunny(bunnyVideoIdToDelete);
+         }
+
          return res.status(200).json({ success: true });
       }
 
