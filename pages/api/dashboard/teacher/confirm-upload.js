@@ -72,6 +72,7 @@ export default async function handler(req, res) {
     title,
     notifyStudents = false,
     sortOrder = 999,
+    durationSeconds = 0, // 👈 استقبال المدة القادمة من المتصفح محلياً
   } = req.body;
 
   if (!bunnyVideoId) {
@@ -105,8 +106,11 @@ export default async function handler(req, res) {
 
   const videoTitle = title || bunnyVideo.title || 'Untitled Video';
 
+  // 👈 نعتمد على المدة المستخرجة من المتصفح، وإذا فشلت (أو كانت 0) نأخذ مدة Bunny كاحتياطي
+  const finalDuration = durationSeconds > 0 ? durationSeconds : bunnyVideo.length;
+
   // تحويل مدة الفيديو إلى نص بالصيغة الصحيحة
-  const formattedDuration = formatDuration(bunnyVideo.length);
+  const formattedDuration = formatDuration(finalDuration);
 
   // 5. حفظ الفيديو في قاعدة البيانات
   const { data: insertedVideo, error: dbError } = await supabase
