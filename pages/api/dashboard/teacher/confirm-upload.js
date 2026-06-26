@@ -18,6 +18,24 @@ function getLibraryConfig() {
   return { libraryId, apiKey };
 }
 
+// دالة لتحويل الثواني إلى صيغة MM:SS أو HH:MM:SS لتتوافق مع قاعدة البيانات
+function formatDuration(totalSeconds) {
+  if (!totalSeconds || isNaN(totalSeconds)) return '00:00';
+  
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.floor(totalSeconds % 60);
+
+  const mStr = String(m).padStart(2, '0');
+  const sStr = String(s).padStart(2, '0');
+
+  if (h > 0) {
+    const hStr = String(h).padStart(2, '0');
+    return `${hStr}:${mStr}:${sStr}`;
+  }
+  return `${mStr}:${sStr}`;
+}
+
 async function verifyChapterOwnership(chapterId, teacherId) {
   if (!chapterId) return false;
   const { data: chapter } = await supabase
@@ -87,6 +105,9 @@ export default async function handler(req, res) {
 
   const videoTitle = title || bunnyVideo.title || 'Untitled Video';
 
+  // تحويل مدة الفيديو إلى نص بالصيغة الصحيحة
+  const formattedDuration = formatDuration(bunnyVideo.length);
+
   // 5. حفظ الفيديو في قاعدة البيانات
   const { data: insertedVideo, error: dbError } = await supabase
     .from('videos')
@@ -95,8 +116,7 @@ export default async function handler(req, res) {
       title: videoTitle,
       bunny_video_id: bunnyVideoId,
       sort_order: sortOrder,
-      // يمكن إضافة duration_seconds لاحقاً من bunnyVideo.length إذا كان متاحاً
-      duration_seconds: bunnyVideo.length || null,
+      duration: formattedDuration, // تم تصحيح اسم الحقل وصيغته ليتوافق مع قاعدة البيانات
     })
     .select('id')
     .single();
@@ -147,7 +167,7 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}`);
+  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}`);
 
   return res.status(200).json({
     success: true,
