@@ -36,18 +36,17 @@ const nextConfig = {
             value: 'camera=(), microphone=(), geolocation=(), browsing-topics=()'
           },
           {
-            // 🔥 الجدار الناري للمتصفح (CSP) - نسخة صارمة جداً
+            // 🔥 الجدار الناري للمتصفح (CSP) - تم إضافة BunnyCDN
             key: 'Content-Security-Policy',
             value: `
               default-src 'self';
               script-src 'self' 'unsafe-eval' 'unsafe-inline';
               style-src 'self' 'unsafe-inline';
-              img-src 'self' blob: data: https://*.supabase.co https://*.ytimg.com;
+              img-src 'self' blob: data: https://*.supabase.co https://*.ytimg.com https://*.bunnycdn.com;
               font-src 'self' data:;
-              connect-src 'self' https://*.supabase.co;
+              connect-src 'self' https://*.supabase.co https://*.bunnycdn.com;
               frame-ancestors 'self';
             `.replace(/\s{2,}/g, ' ').trim() 
-            // ملاحظة: سمحنا فقط بـ (Supabase) و (YouTube Thumbnails) بناءً على تحليلي للكود الخاص بك
           }
         ],
       },
