@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { supabase } from '../../../../lib/supabaseClient';
 
@@ -7,8 +8,8 @@ import { supabase } from '../../../../lib/supabaseClient';
 // ✅ ما يفعله هذا الـ API:
 //   1) التحقق من صلاحية المعلم وملكيته للفصل (chapter)
 //   2) إنشاء كائن فيديو فارغ في Bunny Stream
-//   3) إنشاء Presigned TUS Upload URL تُرسل مباشرة للعميل
-//   4) الرد بـ (tusUrl + bunny_video_id) فقط — بدون لمس أي بايت من الفيديو
+//   3) إنشاء توقيع أمني (Signature) للرفع المباشر
+//   4) الرد بـ (signature + بيانات التوثيق) فقط — بدون لمس أي بايت من الفيديو
 //
 // ❌ لا يمر الفيديو بالسيرفر إطلاقاً — يرفعه العميل مباشرة إلى Bunny
 // ===================================================================
@@ -90,50 +91,25 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: 'فشل إنشاء الفيديو على Bunny Stream' });
   }
 
-  // 4. إنشاء Presigned TUS URL (الرفع المباشر)
-  //    مدة الصلاحية: expirationHours ساعات من الآن (افتراضي 6 ساعات)
-  let tusUploadUrl;
+  // 4. إنشاء توقيع (Signature) للرفع المباشر الموثق من Bunny
+  let signature;
+  let expiresAt;
   try {
-    const expiresAt = Math.floor(Date.now() / 1000) + expirationHours * 3600;
+    // تحديد وقت انتهاء الصلاحية
+    expiresAt = Math.floor(Date.now() / 1000) + expirationHours * 3600;
 
-    const tusRes = await fetch(
-      `https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}/tus`,
-      {
-        method: 'GET',
-        headers: {
-          AccessKey: apiKey,
-          accept: 'application/json',
-          // إرسال حجم الملف و وقت الانتهاء كـ headers مطلوبة من Bunny
-          'Upload-Length': String(fileSize),
-          'AuthorizationExpire': String(expiresAt),
-        },
-      }
-    );
+    // إنشاء التوقيع بالترتيب المطلوب: library_id + api_key + expiration_time + video_id
+    const signatureString = `${libraryId}${apiKey}${expiresAt}${bunnyVideoId}`;
+    signature = crypto.createHash('sha256').update(signatureString).digest('hex');
 
-    if (!tusRes.ok) {
-      const errBody = await tusRes.text();
-      // تنظيف الفيديو الفاشل من Bunny
-      await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
-        method: 'DELETE',
-        headers: { AccessKey: apiKey },
-      }).catch(() => {});
-      throw new Error(`Bunny TUS URL failed: ${tusRes.status} — ${errBody}`);
-    }
-
-    // Bunny يرجع الـ TUS URL في header "Location"
-    tusUploadUrl = tusRes.headers.get('location');
-    if (!tusUploadUrl) {
-      // بعض إصدارات Bunny ترجعه في الـ body أيضاً
-      const tusData = await tusRes.json().catch(() => ({}));
-      tusUploadUrl = tusData?.tusUploadUrl || tusData?.location;
-    }
-
-    if (!tusUploadUrl) {
-      throw new Error('لم يتم استلام TUS Upload URL من Bunny');
-    }
   } catch (err) {
-    console.error('❌ [create-upload-session] TUS URL error:', err.message);
-    return res.status(502).json({ error: `فشل إنشاء رابط الرفع المباشر: ${err.message}` });
+    console.error('❌ [create-upload-session] Signature error:', err.message);
+    // تنظيف الفيديو الفاشل من Bunny لتجنب بقاء ملفات فارغة
+    await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
+      method: 'DELETE',
+      headers: { AccessKey: apiKey },
+    }).catch(() => {});
+    return res.status(502).json({ error: `فشل إنشاء توقيع الرفع: ${err.message}` });
   }
 
   console.log(`✅ [create-upload-session] TUS session created. videoId=${bunnyVideoId}`);
@@ -142,7 +118,9 @@ export default async function handler(req, res) {
   return res.status(200).json({
     success: true,
     bunnyVideoId,      // سيُستخدم لاحقاً لربط الفيديو بالـ chapter في DB
-    tusUploadUrl,      // العميل يرفع إليه مباشرة باستخدام tus-js-client
+    libraryId,         // سيحتاجه العميل في headers
+    signature,         // التوقيع الذي سيتم إرساله في الـ headers
+    expiresAt,         // وقت الانتهاء
     chapterId,
     title: videoTitle,
   });
