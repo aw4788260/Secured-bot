@@ -19,6 +19,24 @@ async function loadTus() {
 }
 
 /**
+ * 👈 دالة لاستخراج مدة الفيديو محلياً من المتصفح قبل إرسال التأكيد للسيرفر
+ * @param {File} file 
+ * @returns {Promise<number>} المدة بالثواني
+ */
+function getVideoDurationLocal(file) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      window.URL.revokeObjectURL(video.src);
+      resolve(video.duration); // يرجع المدة بالثواني
+    };
+    video.onerror = () => resolve(0); // في حال فشل القراءة
+    video.src = window.URL.createObjectURL(file);
+  });
+}
+
+/**
  * @typedef {Object} UploadOptions
  * @property {File}     file            - ملف الفيديو المراد رفعه
  * @property {string}   chapterId       - معرف الفصل في قاعدة البيانات
@@ -155,6 +173,9 @@ export function useBunnyDirectUpload() {
     setStatus('confirming');
     setProgress(100);
 
+    // 👈 استخراج مدة الفيديو محلياً بالثواني
+    const durationInSeconds = await getVideoDurationLocal(file);
+
     try {
       const confirmRes = await fetch('/api/dashboard/teacher/confirm-upload', {
         method: 'POST',
@@ -165,6 +186,7 @@ export function useBunnyDirectUpload() {
           title: title || file.name,
           notifyStudents,
           sortOrder,
+          durationSeconds: durationInSeconds, // 👈 إرسال المدة مع الطلب
         }),
       });
 
