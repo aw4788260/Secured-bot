@@ -2,16 +2,11 @@
 // ===================================================================
 // 🎯 Hook للرفع المباشر من جهاز المعلم إلى Bunny Stream (بدون المرور بالسيرفر)
 // ===================================================================
-// الاستخدام:
-//   const { startUpload, progress, status, error, cancel } = useBunnyDirectUpload();
-//   await startUpload({ file, chapterId, title, onComplete });
-// ===================================================================
 
 import { useState, useRef, useCallback } from 'react';
 
 /**
  * يحمّل مكتبة tus-js-client ديناميكياً (لا تُحمَّل إلا عند الحاجة)
- * هذا يتجنب زيادة حجم الـ Bundle للصفحات التي لا ترفع فيديو
  */
 async function loadTus() {
   const tus = await import('tus-js-client');
@@ -19,20 +14,42 @@ async function loadTus() {
 }
 
 /**
- * 👈 دالة لاستخراج مدة الفيديو محلياً من المتصفح قبل إرسال التأكيد للسيرفر
+ * 👈 دالة متطورة لاستخراج مدة الفيديو محلياً من المتصفح 
+ * تعالج مشكلة (Infinity Bug) في متصفحات كروم وتضمن استخراج المدة
  * @param {File} file 
  * @returns {Promise<number>} المدة بالثواني
  */
 function getVideoDurationLocal(file) {
   return new Promise((resolve) => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.onloadedmetadata = () => {
-      window.URL.revokeObjectURL(video.src);
-      resolve(video.duration); // يرجع المدة بالثواني
-    };
-    video.onerror = () => resolve(0); // في حال فشل القراءة
-    video.src = window.URL.createObjectURL(file);
+    try {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      const url = window.URL.createObjectURL(file);
+      
+      const cleanUpAndResolve = (duration) => {
+        window.URL.revokeObjectURL(url);
+        resolve(duration && !isNaN(duration) && duration !== Infinity ? duration : 0);
+      };
+
+      video.onloadedmetadata = () => {
+        // إذا واجهنا خطأ Infinity الشهير، نجبر المتصفح على التوجه لآخر الفيديو لحساب المدة
+        if (video.duration === Infinity || isNaN(video.duration)) {
+          video.currentTime = 1e101; 
+          video.ontimeupdate = () => {
+            video.ontimeupdate = null; // نوقف الحدث بعد أول مرة
+            cleanUpAndResolve(video.duration);
+          };
+        } else {
+          cleanUpAndResolve(video.duration);
+        }
+      };
+
+      video.onerror = () => cleanUpAndResolve(0);
+      video.src = url;
+    } catch (err) {
+      console.error("Local duration extraction error:", err);
+      resolve(0);
+    }
   });
 }
 
@@ -40,28 +57,22 @@ function getVideoDurationLocal(file) {
  * @typedef {Object} UploadOptions
  * @property {File}     file            - ملف الفيديو المراد رفعه
  * @property {string}   chapterId       - معرف الفصل في قاعدة البيانات
- * @property {string}   [title]         - عنوان الفيديو (افتراضي: اسم الملف)
- * @property {boolean}  [notifyStudents] - إرسال إشعار FCM للطلاب بعد الاكتمال
- * @property {number}   [sortOrder]     - ترتيب الفيديو داخل الفصل
- * @property {Function} [onComplete]    - callback يُستدعى بعد حفظ الفيديو في DB
- * @property {Function} [onError]       - callback عند حدوث خطأ
+ * @property {string}   [title]         - عنوان الفيديو 
+ * @property {boolean}  [notifyStudents] 
+ * @property {number}   [sortOrder]     
+ * @property {Function} [onComplete]    
+ * @property {Function} [onError]       
  */
 
 export function useBunnyDirectUpload() {
-  const [progress, setProgress]   = useState(0);   // 0–100
-  const [status, setStatus]       = useState('idle'); // idle | requesting | uploading | confirming | done | error | cancelled
+  const [progress, setProgress]   = useState(0);   
+  const [status, setStatus]       = useState('idle'); 
   const [error, setError]         = useState(null);
   const [currentVideoId, setCurrentVideoId] = useState(null);
 
-  const uploadRef = useRef(null); // مرجع لكائن TUS Upload (للإلغاء)
+  const uploadRef = useRef(null); 
 
-  /**
-   * بدء عملية الرفع الكاملة:
-   * 1. طلب جلسة رفع من السيرفر (token/URL فقط)
-   * 2. الرفع المباشر إلى Bunny عبر TUS
-   * 3. تأكيد الحفظ في DB
-   */
-  const startUpload = useCallback(async (/** @type {UploadOptions} */ options) => {
+  const startUpload = useCallback(async (options) => {
     const {
       file,
       chapterId,
@@ -84,6 +95,15 @@ export function useBunnyDirectUpload() {
     setProgress(0);
     setStatus('requesting');
     setCurrentVideoId(null);
+
+    // ── الخطوة 0: استخراج مدة الفيديو أولاً (قبل أي استهلاك للذاكرة في الرفع) ──
+    let localDuration = 0;
+    try {
+      localDuration = await getVideoDurationLocal(file);
+      console.log("✅ Video duration extracted:", localDuration);
+    } catch (durErr) {
+      console.warn("⚠️ Failed to extract duration, will fallback to 0", durErr);
+    }
 
     // ── الخطوة 1: طلب جلسة الرفع من السيرفر ────────────────────────
     let sessionData;
@@ -111,7 +131,6 @@ export function useBunnyDirectUpload() {
       return;
     }
 
-    // استلام بيانات التوثيق والتوقيع بدلاً من رابط الرفع
     const { bunnyVideoId, libraryId, signature, expiresAt } = sessionData;
     setCurrentVideoId(bunnyVideoId);
     setStatus('uploading');
@@ -122,12 +141,10 @@ export function useBunnyDirectUpload() {
 
       await new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
-          // استخدام الرابط الثابت الرسمي الخاص بـ Bunny TUS
           endpoint: "https://video.bunnycdn.com/tusupload",
-          retryDelays: [0, 3000, 5000, 10000, 20000], // إعادة المحاولة تلقائياً
-          chunkSize: 50 * 1024 * 1024, // 50 MB chunk — مناسب للاتصالات المتذبذبة
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          chunkSize: 50 * 1024 * 1024, 
 
-          // تمرير بيانات التوثيق والتوقيع كترويسات (Headers)
           headers: {
             AuthorizationSignature: signature,
             AuthorizationExpire: String(expiresAt),
@@ -173,9 +190,6 @@ export function useBunnyDirectUpload() {
     setStatus('confirming');
     setProgress(100);
 
-    // 👈 استخراج مدة الفيديو محلياً بالثواني
-    const durationInSeconds = await getVideoDurationLocal(file);
-
     try {
       const confirmRes = await fetch('/api/dashboard/teacher/confirm-upload', {
         method: 'POST',
@@ -186,7 +200,7 @@ export function useBunnyDirectUpload() {
           title: title || file.name,
           notifyStudents,
           sortOrder,
-          durationSeconds: durationInSeconds, // 👈 إرسال المدة مع الطلب
+          durationSeconds: localDuration, // 👈 إرسال المدة المستخرجة مسبقاً بقوة
         }),
       });
 
@@ -205,7 +219,6 @@ export function useBunnyDirectUpload() {
     }
   }, []);
 
-  /** إلغاء الرفع الجاري */
   const cancel = useCallback(() => {
     if (uploadRef.current) {
       uploadRef.current.abort();
@@ -215,7 +228,6 @@ export function useBunnyDirectUpload() {
     setProgress(0);
   }, []);
 
-  /** إعادة التهيئة */
   const reset = useCallback(() => {
     uploadRef.current = null;
     setProgress(0);
@@ -228,9 +240,9 @@ export function useBunnyDirectUpload() {
     startUpload,
     cancel,
     reset,
-    progress,    // رقم 0–100
-    status,      // 'idle' | 'requesting' | 'uploading' | 'confirming' | 'done' | 'error' | 'cancelled'
-    error,       // نص الخطأ أو null
-    currentVideoId, // bunnyVideoId الحالي (مفيد لمتابعة الحالة لاحقاً)
+    progress,    
+    status,      
+    error,       
+    currentVideoId, 
   };
 }
