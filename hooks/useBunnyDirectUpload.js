@@ -39,9 +39,9 @@ export function useBunnyDirectUpload() {
 
   /**
    * بدء عملية الرفع الكاملة:
-   *   1. طلب جلسة رفع من السيرفر (token/URL فقط)
-   *   2. الرفع المباشر إلى Bunny عبر TUS
-   *   3. تأكيد الحفظ في DB
+   * 1. طلب جلسة رفع من السيرفر (token/URL فقط)
+   * 2. الرفع المباشر إلى Bunny عبر TUS
+   * 3. تأكيد الحفظ في DB
    */
   const startUpload = useCallback(async (/** @type {UploadOptions} */ options) => {
     const {
@@ -93,7 +93,8 @@ export function useBunnyDirectUpload() {
       return;
     }
 
-    const { bunnyVideoId, tusUploadUrl } = sessionData;
+    // استلام بيانات التوثيق والتوقيع بدلاً من رابط الرفع
+    const { bunnyVideoId, libraryId, signature, expiresAt } = sessionData;
     setCurrentVideoId(bunnyVideoId);
     setStatus('uploading');
 
@@ -103,13 +104,23 @@ export function useBunnyDirectUpload() {
 
       await new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
-          uploadUrl: tusUploadUrl,      // الـ URL المُوقَّع من Bunny
+          // استخدام الرابط الثابت الرسمي الخاص بـ Bunny TUS
+          endpoint: "https://video.bunnycdn.com/tusupload",
           retryDelays: [0, 3000, 5000, 10000, 20000], // إعادة المحاولة تلقائياً
           chunkSize: 50 * 1024 * 1024, // 50 MB chunk — مناسب للاتصالات المتذبذبة
+
+          // تمرير بيانات التوثيق والتوقيع كترويسات (Headers)
+          headers: {
+            AuthorizationSignature: signature,
+            AuthorizationExpire: String(expiresAt),
+            VideoId: bunnyVideoId,
+            LibraryId: String(libraryId),
+          },
 
           metadata: {
             filename: file.name,
             filetype: file.type || 'video/mp4',
+            title: title || file.name
           },
 
           onError(err) {
