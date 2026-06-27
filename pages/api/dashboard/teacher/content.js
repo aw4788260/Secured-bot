@@ -101,7 +101,7 @@ export default async (req, res) => {
                 *,
                 chapters (
                     id, title, sort_order,
-                    videos (*),
+                    videos (id, title, bunny_video_id, youtube_video_id, duration, sort_order, encoding_status),
                     pdfs (id, title, file_path)
                 ),
                 exams (
