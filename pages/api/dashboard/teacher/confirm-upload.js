@@ -20,8 +20,8 @@ function getLibraryConfig() {
 
 // دالة لتحويل الثواني إلى صيغة MM:SS أو HH:MM:SS لتتوافق مع قاعدة البيانات
 function formatDuration(totalSeconds) {
-  if (!totalSeconds || isNaN(totalSeconds)) return '00:00';
-  
+  if (!totalSeconds || isNaN(totalSeconds) || totalSeconds <= 0) return '00:00';
+
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = Math.floor(totalSeconds % 60);
@@ -57,6 +57,70 @@ async function verifyBunnyVideoExists(libraryId, apiKey, bunnyVideoId) {
   return res.json();
 }
 
+/**
+ * ✅ يستطلع Bunny بصبر حتى تنتهي المعالجة ويظهر الـ length، ثم يحدّث قاعدة البيانات.
+ * يعمل في الخلفية بعد إرسال الرد للعميل (لا ينتظره المعلم).
+ *
+ * المنطق:
+ *  - يحاول كل 30 ثانية لمدة أقصاها 30 دقيقة (60 محاولة)
+ *  - يتوقف حين يحصل على length > 0 أو حين تنتهي المهلة أو تفشل المعالجة
+ */
+async function scheduleDurationBackfill(dbVideoId, bunnyVideoId, libraryId, apiKey) {
+  const MAX_ATTEMPTS = 60;       // 60 × 30 ثانية = 30 دقيقة
+  const POLL_INTERVAL_MS = 30000; // 30 ثانية
+
+  const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  console.log(`🕐 [duration-backfill] Starting poll for db_id=${dbVideoId}, bunny_id=${bunnyVideoId}`);
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await delay(POLL_INTERVAL_MS);
+
+    try {
+      const res = await fetch(
+        `https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`,
+        { headers: { AccessKey: apiKey, accept: 'application/json' } }
+      );
+
+      if (!res.ok) {
+        console.warn(`⚠️ [duration-backfill] Bunny fetch failed (attempt ${attempt}), status=${res.status}`);
+        continue;
+      }
+
+      const bunnyData = await res.json();
+
+      // توقف فوري عند فشل المعالجة
+      if (bunnyData.status === 5 || bunnyData.status === 8) {
+        console.error(`❌ [duration-backfill] Bunny encoding failed for bunny_id=${bunnyVideoId}`);
+        return;
+      }
+
+      const length = bunnyData.length; // بالثواني
+
+      if (length && length > 0) {
+        const formatted = formatDuration(length);
+        const { error: updateErr } = await supabase
+          .from('videos')
+          .update({ duration: formatted })
+          .eq('id', dbVideoId);
+
+        if (updateErr) {
+          console.error(`❌ [duration-backfill] DB update failed for db_id=${dbVideoId}:`, updateErr);
+        } else {
+          console.log(`✅ [duration-backfill] Duration updated: db_id=${dbVideoId}, duration=${formatted} (from Bunny after encoding)`);
+        }
+        return; // تم الهدف — أوقف الـ polling
+      }
+
+      console.log(`🔄 [duration-backfill] Attempt ${attempt}/${MAX_ATTEMPTS}: Bunny length still 0 (status=${bunnyData.status})`);
+    } catch (err) {
+      console.error(`❌ [duration-backfill] Error on attempt ${attempt}:`, err.message);
+    }
+  }
+
+  console.warn(`⏱️ [duration-backfill] Gave up after ${MAX_ATTEMPTS} attempts for db_id=${dbVideoId}`);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -72,7 +136,7 @@ export default async function handler(req, res) {
     title,
     notifyStudents = false,
     sortOrder = 999,
-    durationSeconds = 0, // 👈 استقبال المدة القادمة من المتصفح محلياً
+    durationSeconds = 0, // 👈 المدة المستخرجة من المتصفح محلياً (قد تكون 0 إذا فشل الاستخراج)
   } = req.body;
 
   if (!bunnyVideoId) {
@@ -81,6 +145,10 @@ export default async function handler(req, res) {
   if (!chapterId) {
     return res.status(400).json({ error: 'chapterId مطلوب' });
   }
+
+  // تنظيف: نضمن أن durationSeconds رقم حقيقي وموجب
+  const clientDuration = Number(durationSeconds);
+  const hasValidClientDuration = isFinite(clientDuration) && clientDuration > 0;
 
   // 2. التحقق من ملكية الفصل
   if (user.role !== 'super_admin') {
@@ -106,11 +174,20 @@ export default async function handler(req, res) {
 
   const videoTitle = title || bunnyVideo.title || 'Untitled Video';
 
-  // 👈 نعتمد على المدة المستخرجة من المتصفح، وإذا فشلت (أو كانت 0) نأخذ مدة Bunny كاحتياطي
-  const finalDuration = durationSeconds > 0 ? durationSeconds : bunnyVideo.length;
+  // ✅ ترتيب الأولوية لتحديد المدة:
+  //   1. المدة القادمة من المتصفح (أدق مصدر — مستخرجة قبل الرفع)
+  //   2. المدة القادمة من Bunny (قد تكون 0 مباشرة بعد الرفع لأن المعالجة لم تبدأ بعد)
+  //   3. '00:00' مؤقتاً ريثما يتم التحديث عبر الـ backfill
+  const bunnyLength = Number(bunnyVideo.length) || 0;
+  const finalDurationSecs = hasValidClientDuration ? clientDuration : bunnyLength;
+  const formattedDuration = formatDuration(finalDurationSecs);
 
-  // تحويل مدة الفيديو إلى نص بالصيغة الصحيحة
-  const formattedDuration = formatDuration(finalDuration);
+  // هل نحتاج إلى backfill لاحق؟ (عندما تكون كل المصادر أعطت 0)
+  const needsBackfill = finalDurationSecs <= 0;
+
+  if (needsBackfill) {
+    console.warn(`⚠️ [confirm-upload] No duration available yet for bunny_id=${bunnyVideoId} — will poll Bunny after encoding`);
+  }
 
   // 5. حفظ الفيديو في قاعدة البيانات
   const { data: insertedVideo, error: dbError } = await supabase
@@ -120,7 +197,7 @@ export default async function handler(req, res) {
       title: videoTitle,
       bunny_video_id: bunnyVideoId,
       sort_order: sortOrder,
-      duration: formattedDuration, // تم تصحيح اسم الحقل وصيغته ليتوافق مع قاعدة البيانات
+      duration: formattedDuration,
     })
     .select('id')
     .single();
@@ -173,10 +250,21 @@ export default async function handler(req, res) {
 
   console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}`);
 
-  return res.status(200).json({
+  // ✅ إرسال الرد للعميل أولاً (لا ننتظر backfill)
+  res.status(200).json({
     success: true,
     videoId: insertedVideo.id,
     bunnyVideoId,
     title: videoTitle,
+    duration: formattedDuration,
+    durationPending: needsBackfill, // إشارة للعميل أن المدة ستُحدَّث لاحقاً
   });
+
+  // ✅ ثم نبدأ backfill في الخلفية إذا لم تتوفر المدة
+  // (لا await هنا — يعمل بعد انتهاء الـ request)
+  if (needsBackfill) {
+    scheduleDurationBackfill(insertedVideo.id, bunnyVideoId, libraryId, apiKey).catch((err) => {
+      console.error('❌ [duration-backfill] Unhandled error:', err.message);
+    });
+  }
 }
