@@ -139,7 +139,7 @@ export default async (req, res) => {
           ...ch,
           // ✅ تم تعديل هذا الجزء لفلترة الفيديوهات التي حالتها ready فقط، مع إتاحة رؤيتها للمدرس المالك حتى لو لم تكن جاهزة (اختياري، تم قصرها هنا على ready فقط للجميع بناءً على طلبك)
           videos: (ch.videos || [])
-            .filter(v => v.encoding_status === 'ready' || isOwner) // المدرس يستطيع رؤية فيديوهاته حتى لو لم تكن جاهزة للمراجعة، والطلاب يرون ready فقط
+            .filter(v => v.encoding_status === 'ready') 
             .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
             .map(v => ({
               id: v.id, 
