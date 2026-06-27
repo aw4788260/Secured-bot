@@ -38,7 +38,6 @@ export default async (req, res) => {
         }
 
         let finalQualities = [];
-        let defaultUrl = "";
         
         if (capturedData && capturedData.availableQualities && capturedData.availableQualities.length > 0) {
             finalQualities = capturedData.availableQualities.map(q => ({
@@ -47,9 +46,6 @@ export default async (req, res) => {
                 type: "video",
                 vcodec: "avc1"
             }));
-            
-            // نأخذ رابط الجودة الأولى ليكون هو الرابط الافتراضي الذي سنستخدمه للصوت
-            defaultUrl = capturedData.availableQualities[0].url;
         } else if (capturedData && capturedData.url) {
             finalQualities.push({
                 quality: "Auto",
@@ -57,18 +53,17 @@ export default async (req, res) => {
                 type: "video",
                 vcodec: "avc1"
             });
-            defaultUrl = capturedData.url;
         }
 
-        // ✅ [الخدعة هنا]: إضافة عنصر جديد لمسار الصوت لكي يتوقف التطبيق عن الانتظار
-        if (defaultUrl) {
-            finalQualities.push({
-                quality: "Audio",
-                url: defaultUrl, // نمرر نفس الرابط، والمشغل سيستخرج منه الصوت تلقائياً
-                type: "audio_only",
-                acodec: "mp4a.40.2" // كوديك وهمي لإرضاء فلاتر التطبيق القديمة
-            });
-        }
+        // ✅ [الخدعة العبقرية لتوفير الاستهلاك ومنع التداخل]:
+        // نمرر للتطبيق رابط صوت "صامت" حجمه 2 كيلوبايت فقط من مستودع موثوق ومفتوح.
+        // هكذا التطبيق سيتخطى شاشة التحميل، بينما سيقوم رابط الفيديو بـ Bunny بتشغيل الصوت والصورة معاً.
+        finalQualities.push({
+            quality: "Audio",
+            url: "https://raw.githubusercontent.com/anars/blank-audio/master/1-second-of-silence.mp3",
+            type: "audio_only",
+            acodec: "mp3"
+        });
 
         const formattedResponse = {
             availableQualities: finalQualities,
@@ -82,10 +77,10 @@ export default async (req, res) => {
             subject_name: capturedData?.subject_name || "",
             chapter_name: capturedData?.chapter_name || "",
             offline_mode: capturedData?.offline_mode !== undefined ? capturedData.offline_mode : true,
-            proxy_method: "bunny_stream_injected"
+            proxy_method: "bunny_stream_with_silent_audio"
         };
 
-        console.log(`✅ [PROXY-REDIRECT-${reqId}] Successfully mapped Bunny Stream to old proxy format with Audio Track.`);
+        console.log(`✅ [PROXY-REDIRECT-${reqId}] Optimization applied: Video with Silent Audio track injected.`);
         return res.status(200).json(formattedResponse);
 
     } catch (err) {
