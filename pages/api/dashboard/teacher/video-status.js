@@ -41,7 +41,7 @@ export default async (req, res) => {
     // 2. جلب الفيديو من قاعدة البيانات للتحقق من الملكية ومعرفة bunny_video_id
     const { data: video, error: videoErr } = await supabase
       .from('videos')
-      .select('id, bunny_video_id, duration, chapters ( subjects ( courses ( teacher_id ) ) )')
+      .select('id, bunny_video_id, duration, encoding_status, chapters ( subjects ( courses ( teacher_id ) ) )')
       .eq('id', videoId)
       .single();
 
@@ -87,6 +87,7 @@ export default async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      encoding_status: video.encoding_status || 'encoding', // ← حقل DB
       ...statusResult,
     });
   } catch (err) {
@@ -94,4 +95,3 @@ export default async (req, res) => {
     return res.status(500).json({ error: 'فشل جلب حالة الفيديو من Bunny Stream' });
   }
 };
-
