@@ -8,6 +8,12 @@ import admin from '../../../../lib/firebaseAdmin';
 // يُستدعى من العميل بعد أن يكتمل الرفع TUS مباشرة على Bunny
 // يتحقق من صحة الفيديو على Bunny ثم يحفظ بياناته في جدول videos
 //
+// ملاحظة حول encoding_status:
+//   - يُحفظ الفيديو فوراً بعد اكتمال الرفع بحالة encoding_status = 'encoding'
+//   - يظهر في لوحة المعلم تلقائياً مع شارة "جاري التشفير..."
+//   - عند اكتمال التشفير يُرسل Bunny Webhook ويُحدَّث الحقل إلى 'ready'
+//     → راجع /api/webhooks/bunny-encoding.js
+//
 // ملاحظة حول المدة (duration):
 //   - المصدر الأول: durationSeconds القادمة من المتصفح (مستخرجة قبل الرفع)
 //   - المصدر الاحتياطي: bunnyVideo.length (غالباً 0 مباشرة بعد الرفع)
@@ -129,7 +135,9 @@ export default async function handler(req, res) {
     console.warn(`⚠️ [confirm-upload] No duration yet for bunny_id=${bunnyVideoId} — Bunny Webhook will update it after encoding`);
   }
 
-  // 5. حفظ الفيديو في قاعدة البيانات
+  // 5. حفظ الفيديو في قاعدة البيانات فوراً بحالة encoding_status = 'encoding'
+  //    سيظهر في لوحة المعلم فوراً مع شارة "جاري التشفير..."
+  //    وسيُحدَّث تلقائياً إلى 'ready' عبر Bunny Webhook عند اكتمال التشفير
   const { data: insertedVideo, error: dbError } = await supabase
     .from('videos')
     .insert({
@@ -138,6 +146,7 @@ export default async function handler(req, res) {
       bunny_video_id: bunnyVideoId,
       sort_order: sortOrder,
       duration: formattedDuration,
+      encoding_status: 'encoding', // ← يظهر للمعلم فوراً، يتغير لـ 'ready' عبر Webhook
     })
     .select('id')
     .single();
@@ -188,7 +197,7 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}`);
+  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=encoding`);
 
   return res.status(200).json({
     success: true,
@@ -196,6 +205,7 @@ export default async function handler(req, res) {
     bunnyVideoId,
     title: videoTitle,
     duration: formattedDuration,
+    encoding_status: 'encoding', // ← الفيديو قيد التشفير حتى يُخطر Bunny Webhook
     durationPending, // إشارة للواجهة أن المدة ستُحدَّث تلقائياً عبر Bunny Webhook
   });
 }
