@@ -14,41 +14,65 @@ async function loadTus() {
 }
 
 /**
- * 👈 دالة متطورة لاستخراج مدة الفيديو محلياً من المتصفح 
- * تعالج مشكلة (Infinity Bug) في متصفحات كروم وتضمن استخراج المدة
- * @param {File} file 
- * @returns {Promise<number>} المدة بالثواني
+ * 👈 دالة متطورة لاستخراج مدة الفيديو محلياً من المتصفح
+ * تعالج مشكلة (Infinity Bug) في متصفحات كروم عبر حدث 'seeked' بدلاً من 'ontimeupdate'
+ * مع مهلة احتياطية (5 ثواني) لتجنب الانتظار اللانهائي
+ * @param {File} file
+ * @returns {Promise<number>} المدة بالثواني (0 عند الفشل)
  */
 function getVideoDurationLocal(file) {
   return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId = null;
+    let objectUrl = null;
+
+    const finish = (duration) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      // تنظيف الـ object URL لتحرير الذاكرة
+      if (objectUrl) {
+        try { window.URL.revokeObjectURL(objectUrl); } catch (_) {}
+      }
+      resolve(duration && !isNaN(duration) && isFinite(duration) && duration > 0 ? duration : 0);
+    };
+
     try {
       const video = document.createElement('video');
       video.preload = 'metadata';
-      const url = window.URL.createObjectURL(file);
-      
-      const cleanUpAndResolve = (duration) => {
-        window.URL.revokeObjectURL(url);
-        resolve(duration && !isNaN(duration) && duration !== Infinity ? duration : 0);
-      };
+      // مهلة 10 ثواني كحد أقصى لمنع الانتظار اللانهائي
+      timeoutId = setTimeout(() => {
+        console.warn('⚠️ Duration extraction timed out');
+        finish(0);
+      }, 10000);
+
+      objectUrl = window.URL.createObjectURL(file);
 
       video.onloadedmetadata = () => {
-        // إذا واجهنا خطأ Infinity الشهير، نجبر المتصفح على التوجه لآخر الفيديو لحساب المدة
-        if (video.duration === Infinity || isNaN(video.duration)) {
-          video.currentTime = 1e101; 
-          video.ontimeupdate = () => {
-            video.ontimeupdate = null; // نوقف الحدث بعد أول مرة
-            cleanUpAndResolve(video.duration);
-          };
+        if (!isFinite(video.duration) || isNaN(video.duration)) {
+          // ✅ الإصلاح الحقيقي لـ Infinity Bug:
+          // نستخدم حدث 'seeked' بدلاً من 'ontimeupdate'
+          // لأن ontimeupdate يُطلق قبل انتهاء عملية الـ seek فعلياً
+          video.addEventListener('seeked', function onSeeked() {
+            video.removeEventListener('seeked', onSeeked);
+            finish(video.duration);
+          });
+          // نطلب الانتقال لنهاية الفيديو (1e101 أكبر من أي مدة ممكنة)
+          video.currentTime = 1e101;
         } else {
-          cleanUpAndResolve(video.duration);
+          finish(video.duration);
         }
       };
 
-      video.onerror = () => cleanUpAndResolve(0);
-      video.src = url;
+      video.onerror = () => {
+        console.error('❌ Video element error during metadata load');
+        finish(0);
+      };
+
+      video.src = objectUrl;
     } catch (err) {
-      console.error("Local duration extraction error:", err);
-      resolve(0);
+      console.error('❌ Local duration extraction error:', err);
+      finish(0);
     }
   });
 }
