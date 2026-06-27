@@ -88,12 +88,13 @@ export default function ContentManager() {
   } = useBunnyDirectUpload();
   const isUploadingVideo = ['requesting', 'uploading', 'confirming'].includes(bunnyUploadStatus);
 
-  // ✅ حالة "حالة المعالجة" لكل فيديو (يتم جلبها فقط عند الضغط على زر التحقق لفيديو معين)
+  // حالة المعالجة لكل فيديو — تُملأ تلقائياً من Bunny عند تحميل الصفحة
   // الشكل: { [videoId]: { loading: bool, status: 'waiting'|'processing'|'ready'|'failed', label: string } }
-  const [videoStatusMap, setVideoStatusMap] = useState({});
+  // حالة التشفير تُقرأ مباشرة من encoding_status في DB (يُحدَّث بواسطة Bunny Webhook)
+  // المعلم يضغط refresh → refreshView() → Supabase يُعيد القيمة المحدّثة
+  const [refreshingVideoId, setRefreshingVideoId] = useState(null);
 
- 
- const refreshView = async () => {
+  const refreshView = async () => {
       try {
           const res = await fetch('/api/dashboard/teacher/content');
           const data = await res.json();
@@ -134,6 +135,8 @@ export default function ContentManager() {
       window.scrollTo(0, 0);
       refreshView(); 
   }, []);
+
+
 
   // --- Helpers ---
   const showAlert = (type, msg) => {
@@ -274,12 +277,12 @@ export default function ContentManager() {
               chapterId: selectedChapter.id,
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
-              onComplete: async () => {
-                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد المعالجة.');
+              onComplete: async (confirmData) => {
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال التشفير.');
                   setModalType(null);
                   setVideoFile(null);
                   resetBunnyUpload();
-                  await refreshView();
+                  await refreshView(); // encoding_status يُقرأ من DB تلقائياً بعد refreshView
               },
               onError: (err) => {
                   showAlert('error', err.message || 'فشل رفع الفيديو إلى Bunny Stream');
@@ -342,24 +345,11 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   };
 
   // ✅ التحقق من حالة معالجة فيديو واحد فقط (وليس كل الفيديوهات) عند الضغط على الزر
-  const checkVideoStatus = async (videoId) => {
-      setVideoStatusMap(prev => ({ ...prev, [videoId]: { ...(prev[videoId] || {}), loading: true } }));
-
-      try {
-          const res = await fetch(`/api/dashboard/teacher/video-status?videoId=${videoId}`);
-          const data = await res.json();
-
-          if (res.ok && data.success) {
-              setVideoStatusMap(prev => ({
-                  ...prev,
-                  [videoId]: { loading: false, status: data.status, label: data.label, encodeProgress: data.encodeProgress }
-              }));
-          } else {
-              setVideoStatusMap(prev => ({ ...prev, [videoId]: { loading: false, status: 'error', label: data.error || 'فشل التحقق' } }));
-          }
-      } catch (e) {
-          setVideoStatusMap(prev => ({ ...prev, [videoId]: { loading: false, status: 'error', label: 'خطأ في الاتصال' } }));
-      }
+  // زر التحديث اليدوي — يُعيد جلب البيانات من Supabase (encoding_status محدَّث بواسطة Bunny Webhook)
+  const refreshVideoStatus = async (videoId) => {
+      setRefreshingVideoId(videoId);
+      await refreshView();
+      setRefreshingVideoId(null);
   };
     
 
@@ -704,34 +694,37 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   <div className="media-info-col">
                                       <h4>{v.title}</h4>
 
-                                      {v.bunny_video_id && (
-                                          <div className="video-status-row">
-                                              {videoStatusMap[v.id] ? (
-                                                  <>
-                                                      <span className={`status-badge status-${videoStatusMap[v.id].status}`}>
-                                                          {videoStatusMap[v.id].loading ? 'جاري التحقق... ⏳' : videoStatusMap[v.id].label}
-                                                      </span>
-                                                      {!videoStatusMap[v.id].loading && (
-                                                          <button 
-                                                              className="status-recheck-btn" 
-                                                              title="إعادة التحقق" 
-                                                              onClick={() => checkVideoStatus(v.id)}
-                                                          >
-                                                              {Icons.refresh}
-                                                          </button>
-                                                      )}
-                                                  </>
-                                              ) : (
-                                                  <button 
-                                                      className="status-check-btn" 
-                                                      title="تحقق من حالة معالجة الفيديو"
-                                                      onClick={() => checkVideoStatus(v.id)}
-                                                  >
-                                                      {Icons.refresh} <span>حالة الفيديو</span>
-                                                  </button>
-                                              )}
-                                          </div>
-                                      )}
+                              {v.bunny_video_id && (() => {
+                                  // الحالة تُقرأ مباشرة من حقل encoding_status في Supabase
+                                  // (يُحدَّث تلقائياً بواسطة Bunny Webhook عند اكتمال التشفير)
+                                  const STATUS_MAP = {
+                                      encoding: { status: 'processing', label: 'قيد المعالجة الآن' },
+                                      ready:    { status: 'ready',      label: 'جاهز' },
+                                  };
+                                  const entry   = STATUS_MAP[v.encoding_status] || { status: 'waiting', label: 'في انتظار المعالجة' };
+                                  const isRefreshing  = refreshingVideoId === v.id;
+                                  const notYetReady   = entry.status !== 'ready';
+
+                                  return (
+                                      <div className="video-status-row">
+                                          <span className={`status-badge status-${isRefreshing ? 'loading' : entry.status}`}>
+                                              {isRefreshing
+                                                  ? <><span className="status-spinner"></span> جاري التحديث</>
+                                                  : entry.label
+                                              }
+                                          </span>
+                                          {notYetReady && !isRefreshing && (
+                                              <button
+                                                  className="status-recheck-btn"
+                                                  title="تحديث الحالة"
+                                                  onClick={() => refreshVideoStatus(v.id)}
+                                              >
+                                                  {Icons.refresh}
+                                              </button>
+                                          )}
+                                      </div>
+                                  );
+                              })()}
                                   </div>
 
                                   <div style={{display: 'flex', gap: '8px'}}>
@@ -1353,24 +1346,40 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
         /* ✅ حالة معالجة فيديو Bunny Stream */
         .video-status-row { display: flex; align-items: center; gap: 6px; }
-        .status-check-btn, .status-recheck-btn { 
-            display: flex; align-items: center; gap: 5px; 
+        .status-recheck-btn { 
+            display: flex; align-items: center; justify-content: center;
             background: var(--bg-elevated); border: 1px solid var(--border); 
-            color: var(--text-secondary); border-radius: 6px; padding: 4px 8px; 
-            font-size: 0.75rem; cursor: pointer; transition: all 0.2s; 
+            color: var(--text-secondary); border-radius: 6px; padding: 4px 6px; 
+            cursor: pointer; transition: all 0.2s; 
         }
-        .status-check-btn:hover, .status-recheck-btn:hover { background: var(--bg-hover); color: var(--gold); border-color: var(--gold); }
-        .status-recheck-btn { padding: 4px; }
+        .status-recheck-btn:hover { background: var(--bg-hover); color: var(--gold); border-color: var(--gold); }
         .status-badge { 
-            display: inline-flex; align-items: center; padding: 3px 9px; 
+            display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; 
             border-radius: 20px; font-size: 0.72rem; font-weight: bold; white-space: nowrap; 
         }
-        .status-badge.status-waiting { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+        /* في انتظار المعالجة */
+        .status-badge.status-waiting    { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+        /* قيد المعالجة الآن */
         .status-badge.status-processing { background: rgba(234, 179, 8, 0.15); color: #eab308; }
-        .status-badge.status-ready { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-        .status-badge.status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-        .status-badge.status-error { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-        .status-badge.status-unknown { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+        .status-badge.status-processing { animation: status-pulse 2s ease-in-out infinite; }
+        /* جاهز */
+        .status-badge.status-ready      { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+        /* أخطاء */
+        .status-badge.status-failed,
+        .status-badge.status-error      { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .status-badge.status-unknown,
+        .status-badge.status-loading    { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+        @keyframes status-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        /* spinner صغير بجانب "جاري التحقق" */
+        .status-spinner {
+            width: 10px; height: 10px;
+            border: 2px solid currentColor; border-top-color: transparent;
+            border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ✅ شريط تقدم رفع الفيديو إلى Bunny Stream */
         .upload-progress-track { width: 100%; height: 8px; background: var(--bg-elevated); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
