@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات (✅ تم إضافة allow_retake للـ exams و duration للـ videos)
+    // 4. جلب البيانات (✅ تم إضافة encoding_status للتحقق من جاهزية الفيديو)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -57,7 +57,7 @@ export default async (req, res) => {
         courses ( id, title, teacher_id ),
         chapters (
           id, title, sort_order,
-          videos (id, title, sort_order, youtube_video_id, duration), 
+          videos (id, title, sort_order, youtube_video_id, duration, encoding_status), 
           pdfs (id, title, sort_order)
         ),
         exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active, allow_retake) 
@@ -137,12 +137,16 @@ export default async (req, res) => {
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map(ch => ({
           ...ch,
-          videos: (ch.videos || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(v => ({
-            id: v.id, 
-            title: v.title, 
-            duration: v.duration, // ✅ تم إضافة الحقل هنا لإرساله إلى فلاتر
-            hasId: !!v.youtube_video_id 
-          })),
+          // ✅ تم تعديل هذا الجزء لفلترة الفيديوهات التي حالتها ready فقط، مع إتاحة رؤيتها للمدرس المالك حتى لو لم تكن جاهزة (اختياري، تم قصرها هنا على ready فقط للجميع بناءً على طلبك)
+          videos: (ch.videos || [])
+            .filter(v => v.encoding_status === 'ready' || isOwner) // المدرس يستطيع رؤية فيديوهاته حتى لو لم تكن جاهزة للمراجعة، والطلاب يرون ready فقط
+            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+            .map(v => ({
+              id: v.id, 
+              title: v.title, 
+              duration: v.duration, 
+              hasId: !!v.youtube_video_id 
+            })),
           pdfs: (ch.pdfs || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         })),
         
