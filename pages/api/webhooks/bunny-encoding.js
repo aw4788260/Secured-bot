@@ -137,7 +137,7 @@ export default async function handler(req, res) {
   // ── 7. جلب الفيديو من DB بواسطة bunny_video_id ───────────────
   const { data: video, error: fetchErr } = await supabase
     .from('videos')
-    .select('id, duration')
+    .select('id, duration, encoding_status')
     .eq('bunny_video_id', bunnyVideoId)
     .single();
 
@@ -180,16 +180,17 @@ export default async function handler(req, res) {
   // ── 9. تحديث DB ───────────────────────────────────────────────
   const formatted = formatDuration(durationSeconds);
   const currentDuration = video.duration || '00:00';
+  const currentEncodingStatus = video.encoding_status;
 
-  // لا داعي للتحديث إذا كانت المدة صحيحة بالفعل
-  if (currentDuration !== '00:00' && currentDuration === formatted) {
-    console.log(`✅ [bunny-webhook] Duration already correct (${currentDuration}) for db_id=${video.id}`);
-    return res.status(200).json({ success: true, duration: currentDuration, updated: false });
+  // نحدّث دائماً: encoding_status → 'ready' + المدة إن كانت ناقصة
+  const updatePayload = { encoding_status: 'ready' };
+  if (currentDuration === '00:00') {
+    updatePayload.duration = formatted;
   }
 
   const { error: updateErr } = await supabase
     .from('videos')
-    .update({ duration: formatted })
+    .update(updatePayload)
     .eq('id', video.id);
 
   if (updateErr) {
@@ -198,13 +199,14 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'DB update failed' });
   }
 
-  console.log(`✅ [bunny-webhook] Duration updated: db_id=${video.id}, bunny_id=${bunnyVideoId}, ${currentDuration} → ${formatted}`);
+  console.log(`✅ [bunny-webhook] Video ready: db_id=${video.id}, bunny_id=${bunnyVideoId}, encoding_status: ${currentEncodingStatus} → ready, duration=${updatePayload.duration || currentDuration}`);
 
   return res.status(200).json({
     success: true,
     videoId: video.id,
     bunnyVideoId,
-    duration: formatted,
+    encoding_status: 'ready',
+    duration: updatePayload.duration || currentDuration,
     updated: true,
   });
 }
