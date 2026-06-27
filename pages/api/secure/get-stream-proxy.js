@@ -1,114 +1,237 @@
-import getVideoIdHandler from './get-video-id';
+import { supabase } from '../../../lib/supabaseClient';
+import axios from 'axios';
+import { checkUserAccess } from '../../../lib/authHelper';
+
+// ✅ 1. استيراد مكتبات Firebase
+import { db } from '../../../lib/firebaseAdmin';
+import admin from 'firebase-admin';
 
 export default async (req, res) => {
     const reqId = Math.random().toString(36).substring(7).toUpperCase();
-    console.log(`🔄 [PROXY-REDIRECT-${reqId}] Intercepted call to get-stream-proxy for lesson: ${req.query.lessonId}`);
+    const log = (msg) => console.log(`🔍 [PROXY-${reqId}] ${msg}`);
+    const errLog = (msg) => console.error(`❌ [ERROR-${reqId}] ${msg}`);
 
-    // 1. الاحتفاظ بالدوال الأصلية
-    const originalJson = res.json.bind(res);
-    const originalStatus = res.status.bind(res);
-    const originalSend = res.send.bind(res);
+    // 1. قراءة إعدادات البروكسي (الأساسي، الاحتياطي، والثالث)
+    const PROXY_BASE_URL = process.env.PYTHON_PROXY_URL; 
+    const PROXY_BACKUP_URL = process.env.PYTHON_PROXY_BACKUP_URL; 
+    const PROXY_THIRD_URL = process.env.PYTHON_PROXY_THIRD_URL; // ✅ السيرفر الثالث
 
-    let capturedStatus = 200;
-    let capturedData = null;
+    if (!PROXY_BASE_URL) {
+        errLog("CRITICAL: PYTHON_PROXY_URL is not defined in .env file");
+        return res.status(500).json({ message: "Server Config Error" });
+    }
 
-    // 2. اعتراض الرد لالتقاط بيانات باني ستريم
-    res.status = (code) => {
-        capturedStatus = code;
-        return res;
-    };
+    const { lessonId } = req.query;
 
-    res.json = (data) => {
-        capturedData = data;
-        return res;
-    };
-
-    res.send = (data) => {
-        capturedData = data;
-        return res;
-    };
+    if (!lessonId) {
+        return res.status(400).json({ message: "Missing lessonId" });
+    }
 
     try {
-        // 3. توجيه الطلب داخلياً
-        await getVideoIdHandler(req, res);
-
-        // 4. استرجاع الدوال الأصلية
-        res.status = originalStatus;
-        res.json = originalJson;
-        res.send = originalSend;
-
-        if (capturedStatus !== 200) {
-            return res.status(capturedStatus).json(capturedData);
-        }
-
-        let finalQualities = [];
+        // 2. التحقق الأمني (بوابة المرور)
+        const hasAccess = await checkUserAccess(req, lessonId, 'video');
         
-        // 5. إعادة تشكيل الجودات لتطابق ردود بايثون القديمة بالحرف الواحد
-        if (capturedData && capturedData.availableQualities && capturedData.availableQualities.length > 0) {
-            finalQualities = capturedData.availableQualities.map(q => {
-                // التأكد من وجود حرف p بجوار الجودة كما يتوقع التطبيق
-                let qualityString = q.quality ? q.quality.toString() : "720";
-                if (!qualityString.endsWith("p") && qualityString !== "Auto") {
-                    qualityString += "p";
-                }
-                
-                return {
-                    quality: qualityString,
-                    url: q.url,
-                    type: "video",
-                    vcodec: "avc1.4d401f", // كوديك قياسي متوقع
-                    acodec: "mp4a.40.2",
-                    ext: "mp4" // الامتداد ضروري جداً لمشغل الفيديو في فلاتر
-                };
-            });
-        } else if (capturedData && capturedData.url) {
-            finalQualities.push({
-                quality: "720p",
-                url: capturedData.url,
-                type: "video",
-                vcodec: "avc1.4d401f",
-                acodec: "mp4a.40.2",
-                ext: "mp4"
-            });
+        if (!hasAccess) {
+            errLog("⛔ Access Denied or Token Invalid.");
+            return res.status(403).json({ message: "Access Denied" });
         }
 
-        // 6. إضافة ملف الصوت الصامت بالصيغة القديمة الدقيقة لمنع الشاشة اللانهائية
-        finalQualities.push({
-            quality: "tiny",
-            url: "https://raw.githubusercontent.com/anars/blank-audio/master/1-second-of-silence.m4a",
-            type: "audio_only",
-            acodec: "mp4a.40.2",
-            vcodec: "none",
-            ext: "m4a" // الامتداد القديم للصوت
+        const userId = req.headers['x-user-id']; 
+        
+        // 3. جلب البيانات من قاعدة البيانات (النسخة الآمنة)
+        const { data: videoData, error: vidErr } = await supabase
+            .from('videos')
+            .select(`
+                youtube_video_id, 
+                title, 
+                chapters ( 
+                    title, 
+                    subjects ( 
+                        title,
+                        courses (
+                            title,
+                            teacher_id,
+                            teachers ( name )
+                        )
+                    ) 
+                )
+            `)
+            .eq('id', lessonId)
+            .single();
+
+        if (vidErr || !videoData) {
+            errLog(`Database Fetch Error: ${vidErr?.message}`);
+            return res.status(404).json({ message: "Video not found in DB" });
+        }
+
+        const youtubeId = videoData.youtube_video_id;
+        log(`🎥 Requesting Proxy for: ${videoData.title} (User: ${userId})`);
+
+        // استخراج تفاصيل الكورس والمدرس بشكل آمن
+        const chapter = videoData.chapters;
+        const subject = chapter?.subjects;
+        const course = subject?.courses;
+        
+        const chapterName = chapter?.title || 'بدون فصل';
+        const subjectName = subject?.title || 'بدون مادة';
+        const courseName = course?.title || 'بدون كورس';
+        const teacherId = course?.teacher_id || 'UNKNOWN_TEACHER';
+        const teacherName = course?.teachers?.name || 'بدون مدرس';
+
+        // ================================================================
+        // ✅ 3.5 تسجيل المشاهدة في Firebase بصمت (Fire and Forget)
+        // ================================================================
+        try {
+            if (userId) {
+                const { data: studentData } = await supabase
+                    .from('users')
+                    .select('first_name, username')
+                    .eq('id', userId)
+                    .maybeSingle();
+
+                const studentFullName = studentData 
+                    ? (studentData.first_name || studentData.username || 'مستخدم') 
+                    : 'مستخدم';
+
+                const docId = `${lessonId}_${userId}`;
+
+                db.collection('video_views').doc(docId).set({
+                    videoId: lessonId,
+                    studentId: userId,
+                    teacherId: teacherId.toString(),
+                    teacherName: teacherName,       
+                    studentName: studentFullName,   
+                    videoTitle: videoData.title || 'بدون عنوان',
+                    courseName: courseName,         
+                    subjectName: subjectName,       
+                    chapterName: chapterName,       
+                    lastViewedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(err => errLog(`Firebase View Log Write Error: ${err.message}`));
+                
+                log("📝 Video view logged to Firebase successfully in background.");
+            }
+        } catch (firebaseSetupErr) {
+            errLog(`Failed to setup Firebase log (Ignored): ${firebaseSetupErr.message}`);
+        }
+        // ================================================================
+
+
+        // 4. الاتصال بالبروكسي (أساسي -> احتياطي -> ثالث)
+        let result = null;
+        let proxyMethodUsed = "local_vps_primary";
+
+        try {
+            // --- المحاولة الأولى: السيرفر الأساسي ---
+            log(`➡️ Trying Primary Proxy...`);
+            const primaryResponse = await axios.get(`${PROXY_BASE_URL}/extract`, {
+                params: { id: youtubeId }
+            });
+            result = primaryResponse.data;
+
+        } catch (primaryErr) {
+            errLog(`⚠️ Primary Proxy Failed (${primaryErr.message}). Switching to Backup Proxy...`);
+            
+            if (!PROXY_BACKUP_URL) throw primaryErr; 
+
+            // --- المحاولة الثانية: السيرفر الاحتياطي ---
+            try {
+                const backupResponse = await axios.get(`${PROXY_BACKUP_URL}/extract`, {
+                    params: { id: youtubeId }
+                });
+                result = backupResponse.data;
+                proxyMethodUsed = "local_vps_backup_api";
+                log(`✅ Backup Proxy Succeeded!`);
+                
+            } catch (backupErr) {
+                errLog(`❌ Backup Proxy ALSO Failed: ${backupErr.message}. Switching to Third Proxy...`);
+                
+                if (!PROXY_THIRD_URL) throw backupErr;
+
+                // --- المحاولة الثالثة: السيرفر الثالث (الجديد) ---
+                try {
+                    const thirdResponse = await axios.get(`${PROXY_THIRD_URL}/extract`, {
+                        params: { id: youtubeId }
+                    });
+                    result = thirdResponse.data;
+                    proxyMethodUsed = "local_vps_third_api"; // ✅ تمييز السيرفر الثالث
+                    log(`✅ Third Proxy Succeeded!`);
+                    
+                } catch (thirdErr) {
+                    errLog(`🚨 All 3 Proxies Failed! Last Error: ${thirdErr.message}`);
+                    throw thirdErr; // رمي الخطأ إذا فشلت جميع السيرفرات
+                }
+            }
+        }
+
+        // التأكد من وجود نتائج صالحة
+        if (!result || !result.availableQualities || result.availableQualities.length === 0) {
+            throw new Error("No streams found from any proxy");
+        }
+
+        // 5. فلترة وتنقية الروابط
+        let rawQualities = result.availableQualities;
+        const uniqueQualitiesMap = new Map();
+        const audioStreams = [];
+
+        for (const stream of rawQualities) {
+            if (stream.type === 'audio_only') {
+                audioStreams.push(stream);
+                continue;
+            }
+
+            const quality = stream.quality;
+            const codec = (stream.vcodec || "").toLowerCase();
+            
+            if (!uniqueQualitiesMap.has(quality)) {
+                uniqueQualitiesMap.set(quality, stream);
+            } else {
+                const existingStream = uniqueQualitiesMap.get(quality);
+                const existingCodec = (existingStream.vcodec || "").toLowerCase();
+                
+                if (codec.includes('avc1') && !existingCodec.includes('avc1')) {
+                    uniqueQualitiesMap.set(quality, stream);
+                }
+            }
+        }
+
+        const filteredQualities = [
+            ...Array.from(uniqueQualitiesMap.values()),
+            ...audioStreams
+        ];
+
+        // 6. تجهيز الرد
+        const thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+
+        const { data: settingResult } = await supabase
+            .from('app_settings')
+            .select('value')
+            .eq('key', 'offline_mode')
+            .single();
+        const isOfflineMode = settingResult ? settingResult.value === 'true' : true;
+
+        return res.status(200).json({
+            availableQualities: filteredQualities,
+            title: videoData.title,
+            thumbnail: thumbnail,
+            duration: "0",
+            youtube_video_id: youtubeId,
+            db_video_title: videoData.title,
+            subject_name: subjectName, 
+            chapter_name: chapterName,
+            offline_mode: isOfflineMode,
+            proxy_method: proxyMethodUsed // سيوضح أي سيرفر من الثلاثة تم استخدامه
         });
 
-        const ytId = capturedData?.youtube_video_id || "unknown";
-
-        // 7. الرد النهائي المستنسخ
-        const formattedResponse = {
-            availableQualities: finalQualities,
-            title: capturedData?.db_video_title || "فيديو",
-            thumbnail: `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`,
-            duration: capturedData?.duration || "0",
-            youtube_video_id: ytId,
-            db_video_title: capturedData?.db_video_title || "",
-            subject_name: capturedData?.subject_name || "",
-            chapter_name: capturedData?.chapter_name || "",
-            offline_mode: capturedData?.offline_mode !== undefined ? capturedData.offline_mode : true,
-            proxy_method: "local_vps_primary" // ⚠️ خدعة حاسمة: أعدنا نفس اسم السيرفر القديم حتى لا يرفضه التطبيق
-        };
-
-        console.log(`✅ [PROXY-REDIRECT-${reqId}] Perfect Clone Generated.`);
-        return res.status(200).json(formattedResponse);
-
-    } catch (err) {
-        console.error(`❌ [PROXY-REDIRECT-${reqId}] Error:`, err.message);
+    // معالجة الأخطاء النهائية (لو فشلت السيرفرات الثلاثة)
+    } catch (proxyErr) {
+        errLog(`VPS Proxy Error: ${proxyErr.message}`);
         
-        res.status = originalStatus;
-        res.json = originalJson;
-        
-        if (!res.headersSent) {
-            return res.status(500).json({ message: "Internal Server Error during proxy bridge" });
+        if (proxyErr.code === 'ECONNREFUSED') {
+            return res.status(502).json({ message: "Proxy Services Unreachable" });
         }
+        if (proxyErr.response) {
+            return res.status(502).json({ message: "VPS Extraction Failed", details: proxyErr.response.data });
+        }
+        return res.status(500).json({ message: "Proxy Connection Error" });
     }
 };
