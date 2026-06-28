@@ -166,8 +166,16 @@ export function useBunnyDirectUpload() {
       await new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
           endpoint: "https://video.bunnycdn.com/tusupload",
-          retryDelays: [0, 3000, 5000, 10000, 20000],
-          chunkSize: 50 * 1024 * 1024, 
+
+          // ✅ إعادة المحاولة تلقائياً عند انقطاع الإنترنت:
+          //   المجموع الكلي ~9 دقائق من إعادة المحاولة قبل الاستسلام.
+          retryDelays: [0, 3000, 5000, 10000, 20000, 30000, 60000, 60000, 60000],
+
+          chunkSize: 50 * 1024 * 1024,
+
+          // ✅ يُحفظ offset الرفع في localStorage — إذا أُغلقت الصفحة أو تم تحديثها
+          //   أثناء الانقطاع، عند إعادة الرفع بنفس الملف يستأنف من نقطة التوقف تلقائياً.
+          storageKey: `bunny-upload-${bunnyVideoId}`,
 
           headers: {
             AuthorizationSignature: signature,
@@ -192,6 +200,8 @@ export function useBunnyDirectUpload() {
           },
 
           onSuccess() {
+            // ✅ تنظيف مفتاح localStorage بعد اكتمال الرفع بنجاح
+            try { localStorage.removeItem(`bunny-upload-${bunnyVideoId}`); } catch (_) {}
             resolve();
           },
         });
