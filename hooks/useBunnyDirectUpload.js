@@ -317,9 +317,26 @@ export function useBunnyDirectUpload() {
         setStatus('cancelled');
         return;
       }
-      // ✅ الرفع فشل بعد استنفاد كل المحاولات — نُبقي الجلسة في localStorage
-      //   حتى يتمكن المعلم من استئنافها لاحقاً بمجرد الضغط على رفع مرة أخرى
-      setError('انقطع الاتصال — اضغط رفع مرة أخرى لاستئناف من نقطة التوقف');
+
+      // ✅ التمييز بين فشل مؤقت (انقطاع شبكة — نُبقي الجلسة لاستئنافها) وفشل
+      //   نهائي (401/404 من Bunny — يعني أن الفيديو لم يعد موجوداً أو أن
+      //   التوقيع غير صالح، فلا فائدة من إبقاء الجلسة لأنها ستفشل بالطريقة
+      //   نفسها في كل محاولة قادمة). في الحالة الثانية نحذف الجلسة تلقائياً
+      //   كي تُنشئ المحاولة القادمة فيديو جديداً تماماً على Bunny.
+      const httpStatus = err?.originalResponse?.getStatus?.();
+      const isStaleVideo = httpStatus === 401 || httpStatus === 404;
+
+      if (isStaleVideo) {
+        console.warn(`⚠️ Upload failed permanently (HTTP ${httpStatus}) — clearing stale session`);
+        clearSession(file);
+        clearTusInternalStorage(file);
+        setError('انتهت صلاحية جلسة الرفع السابقة أو لم يعد الفيديو موجوداً على السيرفر — اضغط حفظ لبدء رفع جديد من الصفر');
+      } else {
+        // ✅ الرفع فشل بعد استنفاد كل المحاولات (انقطاع شبكة) — نُبقي الجلسة
+        //   في localStorage حتى يتمكن المعلم من استئنافها لاحقاً بمجرد
+        //   الضغط على حفظ مرة أخرى
+        setError('انقطع الاتصال — اضغط حفظ مرة أخرى لاستئناف من نقطة التوقف');
+      }
       setStatus('error');
       onError?.(err);
       return;
