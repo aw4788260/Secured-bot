@@ -2,28 +2,6 @@
 // ===================================================================
 // 🎯 Hook للرفع المباشر من جهاز المعلم إلى Bunny Stream (بدون المرور بالسيرفر)
 // ===================================================================
-//
-// ✅ منطق الاستئناف عند انقطاع الإنترنت (مطابق لتوصية Bunny الرسمية):
-//   - عند إنشاء جلسة رفع جديدة، تُحفظ بيانات الجلسة الخاصة بنا (bunnyVideoId,
-//     signature, expiresAt, libraryId, chapterId, title, duration, sortOrder,
-//     notifyStudents) في localStorage بمفتاح مرتبط ببصمة الملف، لأن مكتبة
-//     tus-js-client لا تعرف عن هذه البيانات أصلاً (هي بيانات تخص تطبيقنا).
-//   - ⚠️ المحاولة السابقة كانت تمرر uploadUrl يدوياً (مأخوذ من upload.url بعد
-//     onUploadUrlAvailable). هذا تسبب في توقّف الرفع عند 0% بعد الاستئناف:
-//     طلب HEAD الذي ترسله _resumeUpload() كان يفشل بخطأ "missing offset value"
-//     (الهيدر Upload-Offset غير مكشوف عبر CORS من نقطة Bunny في بعض الحالات)،
-//     ثم تعيد المكتبة المحاولة داخلياً (retryDelays) بلا توقف ظاهري — أي تبدو
-//     "متوقفة عند 0%" بينما هي فعلياً تعيد إرسال نفس HEAD الفاشل مراراً.
-//   - ✅ الحل الصحيح وهو ما توصي به Bunny رسمياً في وثائقها: استخدام آلية
-//     tus-js-client المدمجة via findPreviousUploads()/resumeFromPreviousUpload()
-//     بدلاً من تمرير uploadUrl يدوياً. هذه الآلية تستخدم تخزينها الداخلي
-//     الخاص (WebStorageUrlStorage في localStorage تحت مفاتيح "tus::...")
-//     المُختبر من Bunny نفسها مع نقطة tusupload، وتتعامل تلقائياً مع كل
-//     حالات إعادة المحاولة دون أي تدخل يدوي من جهتنا.
-//   - عند اكتمال الرفع بنجاح، تُحذف بيانات جلستنا الخاصة من localStorage
-//     (تخزين tus-js-client الداخلي يُنظَّف تلقائياً بواسطة المكتبة نفسها).
-//   - عند الإلغاء اليدوي من المعلم، تُحذف بيانات جلستنا الخاصة أيضاً.
-// ===================================================================
 
 import { useState, useRef, useCallback } from 'react';
 
@@ -398,6 +376,15 @@ export function useBunnyDirectUpload() {
     // وقد يريد المعلم الاستئناف لاحقاً. clearSession يُستدعى فقط من reset()
   }, []);
 
+  // ✅ دالة جديدة مخصصة للاستكمال لتجنب حلقة إعادة المحاولة الصامتة (CORS)
+  const resume = useCallback(() => {
+    if (uploadRef.current) {
+      setError(null);
+      setStatus('uploading');
+      uploadRef.current.start(); // استئناف الكائن الموجود مباشرةً
+    }
+  }, []);
+
   const reset = useCallback((file) => {
     if (uploadRef.current) {
       uploadRef.current.abort();
@@ -420,6 +407,7 @@ export function useBunnyDirectUpload() {
     startUpload,
     cancel,
     reset,
+    resume, // 👈 تمت الإضافة هنا لتكون متاحة للمكون VideoDirectUploader
     progress,
     status,
     error,
