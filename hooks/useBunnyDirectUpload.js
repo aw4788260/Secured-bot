@@ -9,7 +9,16 @@
 //     في localStorage بمفتاح مرتبط ببصمة الملف (file fingerprint).
 //   - عند استدعاء startUpload مجدداً بنفس الملف، يتم استرجاع الجلسة المحفوظة
 //     وإعادة استخدامها بدلاً من إنشاء جلسة جديدة على Bunny.
-//   - tus-js-client يستأنف الرفع من نقطة التوقف تلقائياً باستخدام نفس storageKey.
+//   - ⚠️ ملاحظة مهمة: خيار "storageKey" غير موجود فعلياً في مكتبة tus-js-client
+//     (تم التحقق من الكود المصدري للمكتبة) — كان تمريره بلا أي تأثير، وكانت
+//     النتيجة أن كل استئناف يُنشئ Upload جديد بدون uploadUrl، فتستدعي المكتبة
+//     _createUpload() (طلب POST جديد) بدلاً من _resumeUpload() (طلب HEAD على
+//     نفس الرابط)، فيبدأ الرفع من 0 رغم وجود نفس الجلسة المحفوظة.
+//   - ✅ الحل: نخزّن رابط الرفع الفعلي (tusUploadUrl) الذي ترجعه tus-js-client
+//     بمجرد توفره (onUploadUrlAvailable) في نفس جلسة localStorage، ثم نمرره
+//     كـ uploadUrl عند إعادة المحاولة — وهذا يجعل tus-js-client يستخدم
+//     _resumeUpload() الذي يرسل HEAD لمعرفة آخر offset ويكمل الرفع منه فعلياً
+//     بدل البدء من الصفر، بصرف النظر عن انقطاع الإنترنت أو إغلاق الصفحة.
 //   - عند اكتمال الرفع بنجاح، تُحذف بيانات الجلسة من localStorage.
 //   - عند الإلغاء اليدوي من المعلم، تُحذف بيانات الجلسة أيضاً.
 // ===================================================================
@@ -247,9 +256,13 @@ export function useBunnyDirectUpload() {
 
           chunkSize: 50 * 1024 * 1024,
 
-          // ✅ storageKey مرتبط بـ bunnyVideoId — يُخزّن offset الرفع في localStorage
-          //   يجب أن يكون ثابتاً بين المحاولات حتى يستأنف tus من نقطة التوقف
-          storageKey: `bunny-tus-offset:${bunnyVideoId}`,
+          // ✅ الاستئناف الحقيقي: إذا كانت الجلسة المحفوظة تحتوي على رابط رفع
+          //   (tusUploadUrl) من محاولة سابقة، نمرره هنا — هذا يجعل tus-js-client
+          //   يستدعي _resumeUpload() (طلب HEAD لمعرفة آخر offset مرفوع فعلياً)
+          //   بدلاً من _createUpload() (طلب POST ينشئ رفعاً جديداً من 0).
+          //   بدون هذا الخيار، لا توجد أي طريقة تجعل المكتبة تتعرف على الرفع
+          //   السابق، وستبدأ كل محاولة من الصفر دائماً.
+          uploadUrl: sessionData.tusUploadUrl || undefined,
 
           headers: {
             AuthorizationSignature: signature,
@@ -264,6 +277,24 @@ export function useBunnyDirectUpload() {
             title: title || file.name,
           },
 
+          // ✅ تُستدعى بمجرد توفر رابط الرفع (upload.url) — سواء عند إنشاء
+          //   الرفع لأول مرة أو عند استئنافه. نخزّنه فوراً في localStorage
+          //   حتى تتمكن أي محاولة لاحقة (بعد انقطاع الإنترنت أو إغلاق الصفحة)
+          //   من استخدامه فعلياً للاستئناف الحقيقي من نقطة التوقف.
+          onUploadUrlAvailable() {
+            try {
+              saveSession(file, {
+                ...sessionData,
+                localDuration,
+                chapterId,
+                title: title || file.name,
+                notifyStudents,
+                sortOrder,
+                tusUploadUrl: upload.url,
+              });
+            } catch (_) {}
+          },
+
           onError(err) {
             reject(err);
           },
@@ -274,9 +305,8 @@ export function useBunnyDirectUpload() {
           },
 
           onSuccess() {
-            // ✅ تنظيف كل بيانات الجلسة والـ offset من localStorage
+            // ✅ تنظيف كل بيانات الجلسة من localStorage (بما فيها tusUploadUrl)
             clearSession(file);
-            try { localStorage.removeItem(`bunny-tus-offset:${bunnyVideoId}`); } catch (_) {}
             resolve();
           },
         });
