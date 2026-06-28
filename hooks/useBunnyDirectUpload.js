@@ -15,31 +15,22 @@ async function loadTus() {
 
 /**
  * بصمة الملف — مفتاح فريد يعتمد على اسم الملف + حجمه + آخر تعديل
- * يُستخدم لربط الجلسة المحفوظة بنفس الملف عند إعادة المحاولة
  */
 function getFileFingerprint(file) {
   return `bunny-session:${file.name}:${file.size}:${file.lastModified}`;
 }
 
-/**
- * حفظ بيانات الجلسة في localStorage مرتبطةً ببصمة الملف
- */
 function saveSession(file, data) {
   try {
     localStorage.setItem(getFileFingerprint(file), JSON.stringify(data));
   } catch (_) {}
 }
 
-/**
- * استرجاع جلسة محفوظة مسبقاً لنفس الملف (إن وُجدت وكانت صالحة)
- * الجلسة تنتهي صلاحيتها عند انتهاء expiresAt (وقت التوقيع)
- */
 function loadSession(file) {
   try {
     const raw = localStorage.getItem(getFileFingerprint(file));
     if (!raw) return null;
     const session = JSON.parse(raw);
-    // التحقق من صلاحية التوقيع — إذا انتهت نحذف الجلسة
     if (session.expiresAt && Date.now() / 1000 > session.expiresAt - 60) {
       localStorage.removeItem(getFileFingerprint(file));
       return null;
@@ -50,19 +41,12 @@ function loadSession(file) {
   }
 }
 
-/**
- * حذف الجلسة المحفوظة لملف معين
- */
 function clearSession(file) {
   try {
     localStorage.removeItem(getFileFingerprint(file));
   } catch (_) {}
 }
 
-/**
- * حذف أي إدخال متبقٍ في تخزين tus-js-client الداخلي الخاص بنفس الملف
- * (يُستخدم فقط عند reset كامل ومتعمَّد، لمنع استئناف غير مقصود لاحقاً)
- */
 async function clearTusInternalStorage(file) {
   try {
     const tus = await loadTus();
@@ -76,13 +60,6 @@ async function clearTusInternalStorage(file) {
   } catch (_) {}
 }
 
-/**
- * 👈 دالة متطورة لاستخراج مدة الفيديو محلياً من المتصفح
- * تعالج مشكلة (Infinity Bug) في متصفحات كروم عبر حدث 'seeked' بدلاً من 'ontimeupdate'
- * مع مهلة احتياطية (10 ثواني) لتجنب الانتظار اللانهائي
- * @param {File} file
- * @returns {Promise<number>} المدة بالثواني (0 عند الفشل)
- */
 function getVideoDurationLocal(file) {
   return new Promise((resolve) => {
     let settled = false;
@@ -134,17 +111,6 @@ function getVideoDurationLocal(file) {
   });
 }
 
-/**
- * @typedef {Object} UploadOptions
- * @property {File}     file            - ملف الفيديو المراد رفعه
- * @property {string}   chapterId       - معرف الفصل في قاعدة البيانات
- * @property {string}   [title]         - عنوان الفيديو
- * @property {boolean}  [notifyStudents]
- * @property {number}   [sortOrder]
- * @property {Function} [onComplete]
- * @property {Function} [onError]
- */
-
 export function useBunnyDirectUpload() {
   const [progress, setProgress]   = useState(0);
   const [status, setStatus]       = useState('idle');
@@ -152,6 +118,8 @@ export function useBunnyDirectUpload() {
   const [currentVideoId, setCurrentVideoId] = useState(null);
 
   const uploadRef = useRef(null);
+  // ✅ FIX: نحتفظ بنسخة من options الخاصة بآخر رفع لإعادة البناء عند الاستئناف
+  const lastUploadOptionsRef = useRef(null);
 
   const startUpload = useCallback(async (options) => {
     const {
@@ -189,15 +157,12 @@ export function useBunnyDirectUpload() {
     let sessionData = loadSession(file);
 
     if (sessionData) {
-      // ✅ جلسة محفوظة موجودة — نستأنف بدون الاتصال بالسيرفر
       console.log('♻️ Resuming existing upload session for bunnyVideoId=', sessionData.bunnyVideoId);
       setStatus('uploading');
-      // نستخدم duration المحفوظة في الجلسة إذا لم نحصل عليها الآن
       if (localDuration <= 0 && sessionData.localDuration > 0) {
         localDuration = sessionData.localDuration;
       }
     } else {
-      // 🆕 لا توجد جلسة — ننشئ واحدة جديدة
       setStatus('requesting');
       try {
         const sessionRes = await fetch('/api/dashboard/teacher/create-upload-session', {
@@ -217,7 +182,6 @@ export function useBunnyDirectUpload() {
 
         sessionData = await sessionRes.json();
 
-        // ✅ حفظ الجلسة في localStorage حتى يمكن استئنافها لاحقاً
         saveSession(file, {
           ...sessionData,
           localDuration,
@@ -239,7 +203,24 @@ export function useBunnyDirectUpload() {
     const { bunnyVideoId, libraryId, signature, expiresAt } = sessionData;
     setCurrentVideoId(bunnyVideoId);
 
+    // ✅ FIX: نحفظ كل options المطلوبة لإعادة بناء كائن TUS عند الاستئناف
+    lastUploadOptionsRef.current = {
+      file,
+      sessionData,
+      localDuration,
+      onComplete,
+      onError,
+    };
+
     // ── الخطوة 2: الرفع المباشر إلى Bunny عبر TUS ──────────────────
+    await _doTusUpload({ file, sessionData, localDuration, onComplete, onError, setProgress, setStatus, setError, uploadRef });
+
+  }, []);
+
+  // ✅ FIX: دالة مساعدة داخلية لبناء وتشغيل كائن TUS — تُستخدم من startUpload ومن resume
+  async function _doTusUpload({ file, sessionData, localDuration, onComplete, onError, setProgress, setStatus, setError, uploadRef }) {
+    const { bunnyVideoId, libraryId, signature, expiresAt, chapterId, title, notifyStudents, sortOrder } = sessionData;
+
     try {
       const tus = await loadTus();
 
@@ -247,14 +228,11 @@ export function useBunnyDirectUpload() {
         const upload = new tus.Upload(file, {
           endpoint: 'https://video.bunnycdn.com/tusupload',
 
-          // ✅ إعادة المحاولة تلقائياً عند انقطاع الإنترنت
-          //   المجموع الكلي ~9 دقائق من إعادة المحاولة قبل الاستسلام
+          // ✅ الطريقة الرسمية من Bunny لإعادة المحاولة تلقائياً عند انقطاع الإنترنت
           retryDelays: [0, 3000, 5000, 10000, 20000, 30000, 60000, 60000, 60000],
 
           chunkSize: 50 * 1024 * 1024,
 
-          // ✅ تنظيف تخزين tus-js-client الداخلي تلقائياً بعد اكتمال الرفع بنجاح
-          //   (بدون هذا، تتراكم سجلات قديمة في localStorage لكل فيديو تم رفعه)
           removeFingerprintOnSuccess: true,
 
           headers: {
@@ -280,8 +258,6 @@ export function useBunnyDirectUpload() {
           },
 
           onSuccess() {
-            // ✅ تنظيف بيانات جلستنا الخاصة من localStorage
-            //   (تخزين tus-js-client الداخلي يُنظَّف تلقائياً بواسطة المكتبة)
             clearSession(file);
             resolve();
           },
@@ -289,14 +265,12 @@ export function useBunnyDirectUpload() {
 
         uploadRef.current = upload;
 
-        // ✅ الطريقة الرسمية الموصى بها من Bunny للاستئناف: نسأل tus-js-client
-        //   نفسها (عبر تخزينها الداخلي المرتبط ببصمة الملف) إن كان هناك رفع
-        //   سابق لم يكتمل لهذا الملف بالتحديد، ونستأنفه عبر resumeFromPreviousUpload
-        //   قبل استدعاء start(). هذا يضمن أن المكتبة تتعرف فعلياً على رابط
-        //   الرفع و offset الصحيح، بعكس تمرير uploadUrl يدوياً.
+        // ✅ الطريقة الرسمية الموصى بها من tus-js-client و Bunny:
+        //   findPreviousUploads ← تجد رابط الـ offset المحفوظ محلياً في localStorage
+        //   resumeFromPreviousUpload ← تُبلغ الـ upload object بنقطة الاستئناف
+        //   ثم start() لبدء/استكمال الرفع
         upload.findPreviousUploads().then((previousUploads) => {
           if (previousUploads.length > 0) {
-            // إذا وُجد أكثر من رفع سابق لنفس الملف (نادر)، نختار الأحدث منها
             const mostRecent = previousUploads.reduce((latest, current) => {
               const latestTime = new Date(latest.creationTime || 0).getTime();
               const currentTime = new Date(current.creationTime || 0).getTime();
@@ -307,7 +281,6 @@ export function useBunnyDirectUpload() {
           }
           upload.start();
         }).catch((err) => {
-          // إذا فشل البحث عن رفع سابق (نادر) — نبدأ رفعاً عادياً بدلاً من تعليق الواجهة
           console.warn('⚠️ findPreviousUploads failed, starting fresh upload', err);
           upload.start();
         });
@@ -318,11 +291,6 @@ export function useBunnyDirectUpload() {
         return;
       }
 
-      // ✅ التمييز بين فشل مؤقت (انقطاع شبكة — نُبقي الجلسة لاستئنافها) وفشل
-      //   نهائي (401/404 من Bunny — يعني أن الفيديو لم يعد موجوداً أو أن
-      //   التوقيع غير صالح، فلا فائدة من إبقاء الجلسة لأنها ستفشل بالطريقة
-      //   نفسها في كل محاولة قادمة). في الحالة الثانية نحذف الجلسة تلقائياً
-      //   كي تُنشئ المحاولة القادمة فيديو جديداً تماماً على Bunny.
       const httpStatus = err?.originalResponse?.getStatus?.();
       const isStaleVideo = httpStatus === 401 || httpStatus === 404;
 
@@ -332,10 +300,7 @@ export function useBunnyDirectUpload() {
         clearTusInternalStorage(file);
         setError('انتهت صلاحية جلسة الرفع السابقة أو لم يعد الفيديو موجوداً على السيرفر — اضغط حفظ لبدء رفع جديد من الصفر');
       } else {
-        // ✅ الرفع فشل بعد استنفاد كل المحاولات (انقطاع شبكة) — نُبقي الجلسة
-        //   في localStorage حتى يتمكن المعلم من استئنافها لاحقاً بمجرد
-        //   الضغط على حفظ مرة أخرى
-        setError('انقطع الاتصال — اضغط حفظ مرة أخرى لاستئناف من نقطة التوقف');
+        setError('انقطع الاتصال — اضغط "استكمال الرفع" لاستئناف من نقطة التوقف');
       }
       setStatus('error');
       onError?.(err);
@@ -346,7 +311,6 @@ export function useBunnyDirectUpload() {
     setStatus('confirming');
     setProgress(100);
 
-    // نستخدم البيانات من الجلسة المحفوظة (مهم في حالة الاستئناف بعد إغلاق الصفحة)
     const finalChapterId     = sessionData.chapterId     || chapterId;
     const finalTitle         = sessionData.title         || title || file.name;
     const finalNotify        = sessionData.notifyStudents ?? notifyStudents;
@@ -380,7 +344,7 @@ export function useBunnyDirectUpload() {
       setStatus('error');
       onError?.(err);
     }
-  }, []);
+  }
 
   const cancel = useCallback(() => {
     if (uploadRef.current) {
@@ -389,17 +353,36 @@ export function useBunnyDirectUpload() {
     }
     setStatus('cancelled');
     setProgress(0);
-    // ملاحظة: لا نحذف الجلسة هنا — الإلغاء اليدوي يحدث من زر الإلغاء
-    // وقد يريد المعلم الاستئناف لاحقاً. clearSession يُستدعى فقط من reset()
   }, []);
 
-  // ✅ دالة جديدة مخصصة للاستكمال لتجنب حلقة إعادة المحاولة الصامتة (CORS)
+  // ✅ FIX: resume الصحيح — يبني كائن TUS جديداً بدلاً من إعادة استخدام كائن ميت
+  // السبب: بعد انقطاع الاتصال، كائن TUS القديم في uploadRef يكون في حالة خطأ داخلية
+  // واستدعاء start() عليه لن يُكمل الرفع بشكل موثوق. الطريقة الرسمية هي
+  // بناء Upload object جديد ثم findPreviousUploads → resumeFromPreviousUpload → start()
   const resume = useCallback(() => {
-    if (uploadRef.current) {
-      setError(null);
-      setStatus('uploading');
-      uploadRef.current.start(); // استئناف الكائن الموجود مباشرةً
+    const savedOptions = lastUploadOptionsRef.current;
+    if (!savedOptions) {
+      console.warn('⚠️ resume called but no saved upload options found');
+      return;
     }
+
+    setError(null);
+    setStatus('uploading');
+
+    // إلغاء الكائن القديم إن وُجد
+    if (uploadRef.current) {
+      try { uploadRef.current.abort(); } catch (_) {}
+      uploadRef.current = null;
+    }
+
+    // بناء كائن TUS جديد ← الطريقة الرسمية الموثوقة للاستئناف
+    _doTusUpload({
+      ...savedOptions,
+      setProgress,
+      setStatus,
+      setError,
+      uploadRef,
+    });
   }, []);
 
   const reset = useCallback((file) => {
@@ -407,13 +390,11 @@ export function useBunnyDirectUpload() {
       uploadRef.current.abort();
       uploadRef.current = null;
     }
-    // ✅ عند reset الكامل (مثلاً بعد إلغاء مقصود) نحذف الجلسة المحفوظة
-    //   الخاصة بنا، وأيضاً سجل الاستئناف الداخلي لمكتبة tus-js-client،
-    //   حتى لا يحاول الرفع التالي لنفس الملف الاستئناف من نقطة قديمة عن طريق الخطأ
     if (file) {
       clearSession(file);
       clearTusInternalStorage(file);
     }
+    lastUploadOptionsRef.current = null;
     setProgress(0);
     setStatus('idle');
     setError(null);
@@ -424,7 +405,7 @@ export function useBunnyDirectUpload() {
     startUpload,
     cancel,
     reset,
-    resume, // 👈 تمت الإضافة هنا لتكون متاحة للمكون VideoDirectUploader
+    resume,
     progress,
     status,
     error,
