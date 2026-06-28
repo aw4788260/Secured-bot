@@ -8,11 +8,13 @@ import admin from '../../../../lib/firebaseAdmin';
 // يُستدعى من العميل بعد أن يكتمل الرفع TUS مباشرة على Bunny
 // يتحقق من صحة الفيديو على Bunny ثم يحفظ بياناته في جدول videos
 //
-// ملاحظة حول encoding_status:
-//   - يُحفظ الفيديو فوراً بعد اكتمال الرفع بحالة encoding_status = 'encoding'
-//   - يظهر في لوحة المعلم تلقائياً مع شارة "جاري التشفير..."
-//   - عند اكتمال التشفير يُرسل Bunny Webhook ويُحدَّث الحقل إلى 'ready'
-//     → راجع /api/webhooks/bunny-encoding.js
+// ملاحظة حول encoding_status — دورة حياة فيديوهات Bunny:
+//   'waiting'  → الرفع TUS اكتمل، الفيديو وصل Bunny لكن المعالجة لم تبدأ بعد
+//   'encoding' → Bunny بدأ المعالجة فعلياً (Webhook Status=1)
+//   'ready'    → اكتملت المعالجة وصار الفيديو متاحاً (Webhook Status=3/4)
+//
+//   يُحفظ الفيديو هنا بـ 'waiting'، ثم يُحدَّث تلقائياً عبر:
+//     → /api/webhooks/bunny-encoding.js
 //
 // ملاحظة حول المدة (duration):
 //   - المصدر الأول: durationSeconds القادمة من المتصفح (مستخرجة قبل الرفع)
@@ -135,9 +137,12 @@ export default async function handler(req, res) {
     console.warn(`⚠️ [confirm-upload] No duration yet for bunny_id=${bunnyVideoId} — Bunny Webhook will update it after encoding`);
   }
 
-  // 5. حفظ الفيديو في قاعدة البيانات فوراً بحالة encoding_status = 'encoding'
-  //    سيظهر في لوحة المعلم فوراً مع شارة "جاري التشفير..."
-  //    وسيُحدَّث تلقائياً إلى 'ready' عبر Bunny Webhook عند اكتمال التشفير
+  // 5. حفظ الفيديو في قاعدة البيانات فوراً بحالة encoding_status = 'waiting'
+  //    المعنى: الرفع اكتمل والملف وصل Bunny، لكن المعالجة لم تبدأ بعد.
+  //    دورة الحياة الكاملة:
+  //      'waiting'  → هنا (الرفع اكتمل، في انتظار Bunny)
+  //      'encoding' → Webhook Status=1  (Bunny بدأ المعالجة)
+  //      'ready'    → Webhook Status=3/4 (اكتملت المعالجة)
   const { data: insertedVideo, error: dbError } = await supabase
     .from('videos')
     .insert({
@@ -146,7 +151,7 @@ export default async function handler(req, res) {
       bunny_video_id: bunnyVideoId,
       sort_order: sortOrder,
       duration: formattedDuration,
-      encoding_status: 'encoding', // ← يظهر للمعلم فوراً، يتغير لـ 'ready' عبر Webhook
+      encoding_status: 'waiting', // ← الرفع اكتمل — ينتظر بدء المعالجة من Bunny
     })
     .select('id')
     .single();
@@ -197,7 +202,7 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=encoding`);
+  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=waiting`);
 
   return res.status(200).json({
     success: true,
@@ -205,7 +210,7 @@ export default async function handler(req, res) {
     bunnyVideoId,
     title: videoTitle,
     duration: formattedDuration,
-    encoding_status: 'encoding', // ← الفيديو قيد التشفير حتى يُخطر Bunny Webhook
+    encoding_status: 'waiting', // ← في انتظار بدء المعالجة من Bunny
     durationPending, // إشارة للواجهة أن المدة ستُحدَّث تلقائياً عبر Bunny Webhook
   });
 }
