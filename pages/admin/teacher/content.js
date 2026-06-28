@@ -278,14 +278,14 @@ export default function ContentManager() {
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
               onComplete: async (confirmData) => {
-                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال التشفير.');
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال المعالجة.');
                   setModalType(null);
                   resetBunnyUpload(videoFile); // ✅ تمرير الملف لحذف الجلسة المحفوظة
                   setVideoFile(null);
                   await refreshView();
               },
               onError: (err) => {
-                  showAlert('error', err.message || 'فشل رفع الفيديو إلى Bunny Stream');
+                  showAlert('error', err.message || 'فشل رفع الفيديو إلى السيرفر');
               },
           });
           return; // confirm-upload يتولى الحفظ في DB
@@ -765,7 +765,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
       {/* --- Unified Modal System --- */}
       {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
-          <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
+          <Modal title={getModalTitle()} onClose={() => setModalType(null)} closeOnOverlayClick={modalType !== 'add_video'}>
               <div className="form-group">
                   <label>العنوان</label>
                   <input 
@@ -807,7 +807,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               {modalType === 'add_video' && (
                   <>
                   <div className="form-group">
-                      <label>ملف الفيديو (رفع إلى Bunny Stream)</label>
+                      <label>ملف الفيديو (رفع إلى السيرفر)</label>
                       <input 
                         className="input file" 
                         type="file" 
@@ -831,7 +831,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                           </div>
                           <small style={{color: 'var(--gold)', display: 'block', marginTop: '6px', textAlign: 'center'}}>
                               {bunnyUploadStatus === 'requesting' && 'جاري إعداد جلسة الرفع...'}
-                              {bunnyUploadStatus === 'uploading' && `جاري رفع الفيديو مباشرة إلى Bunny... ${videoUploadProgress}%`}
+                              {bunnyUploadStatus === 'uploading' && `جاري رفع الفيديو مباشرة إلى السيرفر... ${videoUploadProgress}%`}
                               {bunnyUploadStatus === 'confirming' && 'جاري حفظ البيانات...'}
                           </small>
                           {bunnyUploadStatus === 'uploading' && (
@@ -940,7 +940,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
       
       {/* 2. PDF Modal */}
       {modalType === 'add_pdf' && (
-          <Modal title="رفع ملف PDF" onClose={() => setModalType(null)}>
+          <Modal title="رفع ملف PDF" onClose={() => setModalType(null)} closeOnOverlayClick={false}>
               <form onSubmit={async (e) => {
                   e.preventDefault();
                   const file = e.target.file.files[0];
@@ -1520,8 +1520,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   );
 }
 
-const Modal = ({ title, children, onClose }) => (
-    <div className="modal-overlay" onClick={onClose}>
+const Modal = ({ title, children, onClose, closeOnOverlayClick = true }) => (
+    <div className="modal-overlay" onClick={closeOnOverlayClick ? onClose : undefined}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
                 <h3>{title}</h3>
