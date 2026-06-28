@@ -694,14 +694,15 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   <div className="media-info-col">
                                       <h4>{v.title}</h4>
 
-                              {v.bunny_video_id && (() => {
+                      {v.bunny_video_id && (() => {
                                   // الحالة تُقرأ مباشرة من حقل encoding_status في Supabase
-                                  // (يُحدَّث تلقائياً بواسطة Bunny Webhook عند اكتمال التشفير)
+                                  // دورة الحياة: waiting → encoding → ready
                                   const STATUS_MAP = {
-                                      encoding: { status: 'processing', label: 'قيد المعالجة الآن' },
+                                      waiting:  { status: 'waiting',    label: 'في انتظار المعالجة' },
+                                      encoding: { status: 'processing', label: 'قيد المعالجة...' },
                                       ready:    { status: 'ready',      label: 'جاهز' },
                                   };
-                                  const entry   = STATUS_MAP[v.encoding_status] || { status: 'waiting', label: 'في انتظار المعالجة' };
+                                  const entry   = STATUS_MAP[v.encoding_status] ?? { status: 'waiting', label: 'في انتظار المعالجة' };
                                   const isRefreshing  = refreshingVideoId === v.id;
                                   const notYetReady   = entry.status !== 'ready';
 
