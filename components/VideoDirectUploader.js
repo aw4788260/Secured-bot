@@ -4,7 +4,7 @@
 // استبدل عنصر رفع الفيديو الحالي في content.js بهذا المكوّن
 // ===================================================================
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useBunnyDirectUpload } from '../hooks/useBunnyDirectUpload';
 
 const STATUS_LABELS = {
@@ -13,7 +13,7 @@ const STATUS_LABELS = {
   uploading:   'جاري رفع الفيديو مباشرة إلى Bunny...',
   confirming:  'جاري حفظ البيانات...',
   done:        '✅ تم رفع الفيديو بنجاح',
-  error:       '❌ حدث خطأ',
+  error:       '❌ حدث خطأ أو انقطع الاتصال',
   cancelled:   'تم إلغاء الرفع',
 };
 
@@ -31,13 +31,20 @@ export default function VideoDirectUploader({
   onUploadDone,
 }) {
   const fileInputRef = useRef(null);
-  const { startUpload, cancel, reset, progress, status, error } = useBunnyDirectUpload();
+  
+  // ✅ الاحتفاظ بملف الفيديو في الـ State لاستخدامه عند الاستكمال أو إعادة الضبط
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  // ✅ استخراج دالة resume من الـ Hook
+  const { startUpload, cancel, reset, resume, progress, status, error } = useBunnyDirectUpload();
 
   const isActive = ['requesting', 'uploading', 'confirming'].includes(status);
 
   async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setSelectedFile(file); // حفظ الملف في الـ State
 
     await startUpload({
       file,
@@ -59,7 +66,7 @@ export default function VideoDirectUploader({
   return (
     <div className="video-uploader">
       {/* زر اختيار الملف */}
-      {!isActive && status !== 'done' && (
+      {!isActive && status !== 'done' && status !== 'error' && (
         <>
           <input
             ref={fileInputRef}
@@ -108,19 +115,28 @@ export default function VideoDirectUploader({
             سيظل الفيديو في طور المعالجة على Bunny لبضع دقائق قبل أن يصبح
             قابلاً للمشاهدة. يمكنك متابعة الحالة من قائمة الفيديوهات.
           </p>
-          <button onClick={reset} className="btn-reset">
+          {/* تمرير الملف لعمل تنظيف للجلسة بشكل صحيح */}
+          <button onClick={() => reset(selectedFile)} className="btn-reset">
             رفع فيديو آخر
           </button>
         </div>
       )}
 
-      {/* رسالة الخطأ */}
+      {/* رسالة الخطأ أو انقطاع الإنترنت */}
       {status === 'error' && (
         <div className="upload-error">
           <p>{error}</p>
-          <button onClick={reset} className="btn-reset">
-            حاول مرة أخرى
-          </button>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '15px', justifyContent: 'center' }}>
+            {/* ✅ زر الاستكمال الجديد: يستدعي الكائن الحالي ويكمل من حيث توقف مباشرة */}
+            <button onClick={resume} className="btn-upload">
+              ▶️ استكمال الرفع
+            </button>
+            
+            {/* ✅ زر الإلغاء: يمرر الملف الفعلي لتنظيف الـ localStorage وإنهاء الجلسة المعلقة */}
+            <button onClick={() => reset(selectedFile)} className="btn-cancel">
+              إلغاء ورفع من جديد
+            </button>
+          </div>
         </div>
       )}
 
@@ -128,7 +144,7 @@ export default function VideoDirectUploader({
       {status === 'cancelled' && (
         <div>
           <p>{STATUS_LABELS.cancelled}</p>
-          <button onClick={reset} className="btn-reset">رفع من جديد</button>
+          <button onClick={() => reset(selectedFile)} className="btn-reset">رفع من جديد</button>
         </div>
       )}
     </div>
