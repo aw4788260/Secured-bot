@@ -25,7 +25,6 @@ function loadSession(file) {
     const raw = localStorage.getItem(getFileFingerprint(file));
     if (!raw) return null;
     const session = JSON.parse(raw);
-    // ✅ FIX: توسيع نافذة انتهاء الصلاحية — نتحقق فقط إذا انتهت فعلاً (لا هامش 60 ثانية)
     if (session.expiresAt && Date.now() / 1000 > session.expiresAt) {
       localStorage.removeItem(getFileFingerprint(file));
       return null;
@@ -55,7 +54,6 @@ async function clearTusInternalStorage(file) {
   } catch (_) {}
 }
 
-// ✅ FIX: استخراج مدة الفيديو مع timeout قصير (5s) بدلاً من 10s
 function getVideoDurationLocal(file) {
   return new Promise((resolve) => {
     let settled = false;
@@ -75,14 +73,8 @@ function getVideoDurationLocal(file) {
     try {
       const video = document.createElement('video');
       video.preload = 'metadata';
-      // ✅ FIX: تقليل timeout من 10s إلى 5s لتسريع العملية
-      timeoutId = setTimeout(() => {
-        console.warn('⚠️ Duration extraction timed out');
-        finish(0);
-      }, 5000);
-
+      timeoutId = setTimeout(() => finish(0), 5000);
       objectUrl = window.URL.createObjectURL(file);
-
       video.onloadedmetadata = () => {
         if (!isFinite(video.duration) || isNaN(video.duration)) {
           video.addEventListener('seeked', function onSeeked() {
@@ -94,7 +86,6 @@ function getVideoDurationLocal(file) {
           finish(video.duration);
         }
       };
-
       video.onerror = () => finish(0);
       video.src = objectUrl;
     } catch (err) {
@@ -103,7 +94,6 @@ function getVideoDurationLocal(file) {
   });
 }
 
-// ✅ FIX: wrapper لـ fetch مع timeout لمنع التعليق عند confirm-upload
 async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -129,9 +119,7 @@ export function useBunnyDirectUpload() {
   const uploadRef = useRef(null);
   const lastUploadOptionsRef = useRef(null);
 
-  // ✅ FIX: دالة لإنشاء جلسة جديدة وحذف القديمة
   async function _createFreshSession({ file, chapterId, title, notifyStudents, sortOrder, localDuration }) {
-    // حذف الجلسة القديمة وبيانات TUS
     clearSession(file);
     await clearTusInternalStorage(file);
 
@@ -187,13 +175,13 @@ export function useBunnyDirectUpload() {
     setProgress(0);
     setCurrentVideoId(null);
 
-    // ── الخطوة 0: استخراج مدة الفيديو محلياً ───────────────────────
+    // استخراج مدة الفيديو محلياً
     let localDuration = 0;
     try {
       localDuration = await getVideoDurationLocal(file);
     } catch (_) {}
 
-    // ── الخطوة 1: جلسة الرفع — إعادة استخدام المحفوظة أو إنشاء جديدة ──
+    // جلسة الرفع — إعادة استخدام المحفوظة أو إنشاء جديدة
     let sessionData = loadSession(file);
 
     if (sessionData) {
@@ -215,8 +203,7 @@ export function useBunnyDirectUpload() {
       }
     }
 
-    const { bunnyVideoId } = sessionData;
-    setCurrentVideoId(bunnyVideoId);
+    setCurrentVideoId(sessionData.bunnyVideoId);
 
     lastUploadOptionsRef.current = {
       file,
@@ -244,11 +231,20 @@ export function useBunnyDirectUpload() {
         const upload = new tus.Upload(file, {
           endpoint: 'https://video.bunnycdn.com/tusupload',
 
-          // ✅ FIX: تقليل retryDelays — إعادة المحاولة أسرع بعد الانقطاع
-          retryDelays: [0, 2000, 5000, 10000, 20000, 30000, 60000],
+          // ─── السبب الجذري للتأخير 60 ثانية ───────────────────────────
+          // عند انقطاع الاتصال، tus يدخل دورة retry داخلية ويمر على كل
+          // هذه التأخيرات قبل أن يستسلم ويستدعي onError.
+          // لمّا كان الزر "استكمال" يستدعي abort() على الكائن القديم ثم
+          // ينشئ كائناً جديداً، كان الكائن القديم لا يزال في retry loop
+          // فيأخذ وقتاً ليستجيب للـ abort.
+          //
+          // الحل: نُوقف retry تماماً (retryDelays: null أو []).
+          // بمجرد انقطاع الاتصال يُستدعى onError فوراً → نعرض حالة الخطأ
+          // → المستخدم يضغط حفظ → نبني كائن TUS جديد مع findPreviousUploads
+          // → يستأنف من نقطة التوقف بلا انتظار.
+          retryDelays: null,
 
           chunkSize: 50 * 1024 * 1024,
-
           removeFingerprintOnSuccess: true,
 
           headers: {
@@ -269,7 +265,6 @@ export function useBunnyDirectUpload() {
           },
 
           onProgress(bytesUploaded, bytesTotal) {
-            // ✅ FIX: تحديث التقدم لكن نقف عند 99% حتى يكتمل confirm
             const pct = Math.min(99, Math.round((bytesUploaded / bytesTotal) * 100));
             setProgress(pct);
           },
@@ -282,6 +277,7 @@ export function useBunnyDirectUpload() {
 
         uploadRef.current = upload;
 
+        // البحث عن رفع سابق محفوظ في localStorage لاستئنافه من نقطة التوقف
         upload.findPreviousUploads().then((previousUploads) => {
           if (previousUploads.length > 0) {
             const mostRecent = previousUploads.reduce((latest, current) => {
@@ -289,7 +285,6 @@ export function useBunnyDirectUpload() {
               const currentTime = new Date(current.creationTime || 0).getTime();
               return currentTime > latestTime ? current : latest;
             });
-            console.log('♻️ Found previous tus upload, resuming from offset');
             upload.resumeFromPreviousUpload(mostRecent);
           }
           upload.start();
@@ -299,8 +294,9 @@ export function useBunnyDirectUpload() {
       });
 
     } catch (err) {
+      // abort() صريح من cancel() أو resume()
       if (err?.message === 'CANCELLED') {
-        setStatus('cancelled');
+        // لا نفعل شيئاً — cancel() و resume() يتحكمان في الحالة بأنفسهما
         return;
       }
 
@@ -308,7 +304,7 @@ export function useBunnyDirectUpload() {
       const isStaleSession = httpStatus === 401 || httpStatus === 404;
 
       if (isStaleSession) {
-        // ✅ FIX: جلسة منتهية — ننشئ جلسة جديدة تلقائياً ونحاول مرة أخرى
+        // جلسة منتهية — ننشئ جلسة جديدة تلقائياً ونحاول مرة أخرى
         console.warn(`⚠️ Stale session (HTTP ${httpStatus}) — recreating session automatically`);
         setStatus('requesting');
         setError(null);
@@ -331,12 +327,10 @@ export function useBunnyDirectUpload() {
             localDuration: localDuration || sessionData.localDuration || 0,
           });
 
-          // تحديث lastUploadOptionsRef بالجلسة الجديدة
           lastUploadOptionsRef.current = { ...opts, sessionData: newSession };
           setCurrentVideoId(newSession.bunnyVideoId);
           setStatus('uploading');
 
-          // إعادة المحاولة بالجلسة الجديدة
           await _doTusUpload({
             file: opts.file,
             sessionData: newSession,
@@ -357,33 +351,33 @@ export function useBunnyDirectUpload() {
         }
       }
 
-      setError('انقطع الاتصال — اضغط "استكمال" للمتابعة من نقطة التوقف');
+      // انقطاع عادي أو خطأ شبكة
+      setError('انقطع الاتصال — اضغط "حفظ" للمتابعة من نقطة التوقف');
       setStatus('error');
       onError?.(err);
       return;
     }
 
-    // ── الخطوة 3: تأكيد الحفظ في قاعدة البيانات ────────────────────
+    // ── تأكيد الحفظ في قاعدة البيانات ────────────────────────────────
     setStatus('confirming');
     setProgress(100);
 
-    const finalChapterId     = sessionData.chapterId     || chapterId;
-    const finalTitle         = sessionData.title         || title || file.name;
-    const finalNotify        = sessionData.notifyStudents ?? notifyStudents;
-    const finalSortOrder     = sessionData.sortOrder     ?? sortOrder;
-    const finalDuration      = localDuration > 0 ? localDuration : (sessionData.localDuration || 0);
+    const finalChapterId  = sessionData.chapterId     || chapterId;
+    const finalTitle      = sessionData.title         || title || file.name;
+    const finalNotify     = sessionData.notifyStudents ?? notifyStudents;
+    const finalSortOrder  = sessionData.sortOrder     ?? sortOrder;
+    const finalDuration   = localDuration > 0 ? localDuration : (sessionData.localDuration || 0);
 
     try {
-      // ✅ FIX: timeout 30s لمنع تعليق مرحلة "حفظ البيانات" إلى الأبد
       const confirmRes = await fetchWithTimeout('/api/dashboard/teacher/confirm-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bunnyVideoId,
-          chapterId:      finalChapterId,
-          title:          finalTitle,
-          notifyStudents: finalNotify,
-          sortOrder:      finalSortOrder,
+          chapterId:       finalChapterId,
+          title:           finalTitle,
+          notifyStudents:  finalNotify,
+          sortOrder:       finalSortOrder,
           durationSeconds: finalDuration,
         }),
       }, 30000);
@@ -412,7 +406,12 @@ export function useBunnyDirectUpload() {
     setProgress(0);
   }, []);
 
-  // ✅ FIX: resume موحد — يحاول الاستئناف، وإن فشل بـ 401/404 يُعيد إنشاء الجلسة تلقائياً
+  // ─────────────────────────────────────────────────────────────────
+  // resume: يُلغي الكائن القديم فوراً ثم ينشئ كائن TUS جديد يبحث عن
+  // نقطة التوقف المحفوظة في localStorage ويستأنف منها مباشرة.
+  // لأن retryDelays: null، الكائن القديم يكون قد استدعى onError بالفعل
+  // وليس في retry loop، فالـ abort() يعود فورياً.
+  // ─────────────────────────────────────────────────────────────────
   const resume = useCallback(() => {
     const savedOptions = lastUploadOptionsRef.current;
     if (!savedOptions) {
@@ -420,13 +419,14 @@ export function useBunnyDirectUpload() {
       return;
     }
 
-    setError(null);
-    setStatus('uploading');
-
+    // إلغاء الكائن القديم إن كان لا يزال موجوداً
     if (uploadRef.current) {
       try { uploadRef.current.abort(); } catch (_) {}
       uploadRef.current = null;
     }
+
+    setError(null);
+    setStatus('uploading');
 
     _doTusUpload({
       ...savedOptions,
