@@ -116,7 +116,9 @@ export function useBunnyDirectUpload() {
   const [error, setError]         = useState(null);
   const [currentVideoId, setCurrentVideoId] = useState(null);
 
+  // uploadRef: الكائن الحالي لـ TUS — يُستخدم فقط لـ cancel() الصريح من المستخدم
   const uploadRef = useRef(null);
+  // lastUploadOptionsRef: كل المعطيات اللازمة لإعادة بناء كائن TUS عند الاستئناف
   const lastUploadOptionsRef = useRef(null);
 
   async function _createFreshSession({ file, chapterId, title, notifyStudents, sortOrder, localDuration }) {
@@ -139,90 +141,49 @@ export function useBunnyDirectUpload() {
     }
 
     const sessionData = await sessionRes.json();
-
-    saveSession(file, {
-      ...sessionData,
-      localDuration,
-      chapterId,
-      title: title || file.name,
-      notifyStudents,
-      sortOrder,
-    });
-
+    saveSession(file, { ...sessionData, localDuration, chapterId, title: title || file.name, notifyStudents, sortOrder });
     return sessionData;
   }
 
   const startUpload = useCallback(async (options) => {
-    const {
-      file,
-      chapterId,
-      title,
-      notifyStudents = false,
-      sortOrder = 999,
-      onComplete,
-      onError,
-    } = options;
+    const { file, chapterId, title, notifyStudents = false, sortOrder = 999, onComplete, onError } = options;
 
     if (!file || !chapterId) {
       const msg = 'file و chapterId مطلوبان';
-      setError(msg);
-      setStatus('error');
-      onError?.(new Error(msg));
-      return;
+      setError(msg); setStatus('error'); onError?.(new Error(msg)); return;
     }
 
-    setError(null);
-    setProgress(0);
-    setCurrentVideoId(null);
+    setError(null); setProgress(0); setCurrentVideoId(null);
 
-    // استخراج مدة الفيديو محلياً
     let localDuration = 0;
-    try {
-      localDuration = await getVideoDurationLocal(file);
-    } catch (_) {}
+    try { localDuration = await getVideoDurationLocal(file); } catch (_) {}
 
-    // جلسة الرفع — إعادة استخدام المحفوظة أو إنشاء جديدة
     let sessionData = loadSession(file);
 
     if (sessionData) {
-      console.log('♻️ Resuming existing session for bunnyVideoId=', sessionData.bunnyVideoId);
       setStatus('uploading');
-      if (localDuration <= 0 && sessionData.localDuration > 0) {
-        localDuration = sessionData.localDuration;
-      }
+      if (localDuration <= 0 && sessionData.localDuration > 0) localDuration = sessionData.localDuration;
     } else {
       setStatus('requesting');
       try {
         sessionData = await _createFreshSession({ file, chapterId, title, notifyStudents, sortOrder, localDuration });
         setStatus('uploading');
       } catch (err) {
-        setError(err.message);
-        setStatus('error');
-        onError?.(err);
-        return;
+        setError(err.message); setStatus('error'); onError?.(err); return;
       }
     }
 
     setCurrentVideoId(sessionData.bunnyVideoId);
+    lastUploadOptionsRef.current = { file, sessionData, localDuration, chapterId, title, notifyStudents, sortOrder, onComplete, onError };
 
-    lastUploadOptionsRef.current = {
-      file,
-      sessionData,
-      localDuration,
-      chapterId,
-      title,
-      notifyStudents,
-      sortOrder,
-      onComplete,
-      onError,
-    };
-
-    await _doTusUpload({ file, sessionData, localDuration, onComplete, onError, setProgress, setStatus, setError, uploadRef });
-
+    await _doTusUpload({ file, sessionData, localDuration, onComplete, onError });
   }, []);
 
-  async function _doTusUpload({ file, sessionData, localDuration, onComplete, onError, setProgress, setStatus, setError, uploadRef }) {
+  async function _doTusUpload({ file, sessionData, localDuration, onComplete, onError }) {
     const { bunnyVideoId, libraryId, signature, expiresAt, chapterId, title, notifyStudents, sortOrder } = sessionData;
+
+    uploadRef.current = null;
+    let tusSucceeded = false;
 
     try {
       const tus = await loadTus();
@@ -231,18 +192,10 @@ export function useBunnyDirectUpload() {
         const upload = new tus.Upload(file, {
           endpoint: 'https://video.bunnycdn.com/tusupload',
 
-          // ─── السبب الجذري للتأخير 60 ثانية ───────────────────────────
-          // عند انقطاع الاتصال، tus يدخل دورة retry داخلية ويمر على كل
-          // هذه التأخيرات قبل أن يستسلم ويستدعي onError.
-          // لمّا كان الزر "استكمال" يستدعي abort() على الكائن القديم ثم
-          // ينشئ كائناً جديداً، كان الكائن القديم لا يزال في retry loop
-          // فيأخذ وقتاً ليستجيب للـ abort.
-          //
-          // الحل: نُوقف retry تماماً (retryDelays: null أو []).
-          // بمجرد انقطاع الاتصال يُستدعى onError فوراً → نعرض حالة الخطأ
-          // → المستخدم يضغط حفظ → نبني كائن TUS جديد مع findPreviousUploads
-          // → يستأنف من نقطة التوقف بلا انتظار.
-          retryDelays: null,
+          // retryDelays مُعادة: ضرورية للمقاومة الطبيعية لاهتزاز الشبكة.
+          // لكن هذه المرة resume() لن يستدعي abort() على كائن حي،
+          // لأننا نبني كائناً جديداً فقط بعد أن يموت القديم (status=error).
+          retryDelays: [0, 3000, 6000, 12000, 24000],
 
           chunkSize: 50 * 1024 * 1024,
           removeFingerprintOnSuccess: true,
@@ -260,31 +213,28 @@ export function useBunnyDirectUpload() {
             title: title || file.name,
           },
 
-          onError(err) {
-            reject(err);
-          },
+          onError(err) { reject(err); },
 
           onProgress(bytesUploaded, bytesTotal) {
-            const pct = Math.min(99, Math.round((bytesUploaded / bytesTotal) * 100));
-            setProgress(pct);
+            setProgress(Math.min(99, Math.round((bytesUploaded / bytesTotal) * 100)));
           },
 
           onSuccess() {
             clearSession(file);
+            tusSucceeded = true;
             resolve();
           },
         });
 
+        // نسجّل في uploadRef مباشرة بعد البناء — قبل start() —
+        // حتى يستطيع cancel() الإمساك به إذا طلب المستخدم إلغاءً فورياً.
         uploadRef.current = upload;
 
-        // البحث عن رفع سابق محفوظ في localStorage لاستئنافه من نقطة التوقف
         upload.findPreviousUploads().then((previousUploads) => {
           if (previousUploads.length > 0) {
-            const mostRecent = previousUploads.reduce((latest, current) => {
-              const latestTime = new Date(latest.creationTime || 0).getTime();
-              const currentTime = new Date(current.creationTime || 0).getTime();
-              return currentTime > latestTime ? current : latest;
-            });
+            const mostRecent = previousUploads.reduce((a, b) =>
+              new Date(b.creationTime || 0) > new Date(a.creationTime || 0) ? b : a
+            );
             upload.resumeFromPreviousUpload(mostRecent);
           }
           upload.start();
@@ -294,29 +244,22 @@ export function useBunnyDirectUpload() {
       });
 
     } catch (err) {
-      // abort() صريح من cancel() أو resume()
-      if (err?.message === 'CANCELLED') {
-        // لا نفعل شيئاً — cancel() و resume() يتحكمان في الحالة بأنفسهما
-        return;
-      }
+      // هذا الكائن مات — نزيل مرجعه حتى لا يتم abort() عليه لاحقاً بالخطأ
+      uploadRef.current = null;
+
+      // إلغاء صريح من cancel() — cancel() تتولى تحديث الحالة بنفسها
+      if (err?.message === 'CANCELLED') return;
 
       const httpStatus = err?.originalResponse?.getStatus?.();
-      const isStaleSession = httpStatus === 401 || httpStatus === 404;
 
-      if (isStaleSession) {
-        // جلسة منتهية — ننشئ جلسة جديدة تلقائياً ونحاول مرة أخرى
-        console.warn(`⚠️ Stale session (HTTP ${httpStatus}) — recreating session automatically`);
-        setStatus('requesting');
-        setError(null);
-
+      if (httpStatus === 401 || httpStatus === 404) {
+        // جلسة منتهية — إعادة إنشاء تلقائية
+        setStatus('requesting'); setError(null);
         const opts = lastUploadOptionsRef.current;
         if (!opts) {
           setError('فشل استئناف الرفع — يرجى تحديد الملف مرة أخرى');
-          setStatus('error');
-          onError?.(err);
-          return;
+          setStatus('error'); onError?.(err); return;
         }
-
         try {
           const newSession = await _createFreshSession({
             file: opts.file,
@@ -326,41 +269,26 @@ export function useBunnyDirectUpload() {
             sortOrder: opts.sortOrder ?? sessionData.sortOrder,
             localDuration: localDuration || sessionData.localDuration || 0,
           });
-
           lastUploadOptionsRef.current = { ...opts, sessionData: newSession };
           setCurrentVideoId(newSession.bunnyVideoId);
           setStatus('uploading');
-
-          await _doTusUpload({
-            file: opts.file,
-            sessionData: newSession,
-            localDuration: localDuration || sessionData.localDuration || 0,
-            onComplete: opts.onComplete,
-            onError: opts.onError,
-            setProgress,
-            setStatus,
-            setError,
-            uploadRef,
-          });
+          await _doTusUpload({ file: opts.file, sessionData: newSession, localDuration: localDuration || sessionData.localDuration || 0, onComplete: opts.onComplete, onError: opts.onError });
           return;
         } catch (recreateErr) {
           setError(`فشل إنشاء جلسة جديدة: ${recreateErr.message}`);
-          setStatus('error');
-          onError?.(recreateErr);
-          return;
+          setStatus('error'); onError?.(recreateErr); return;
         }
       }
 
-      // انقطاع عادي أو خطأ شبكة
+      // انقطاع شبكة عادي — الكائن مات بعد استنزاف retryDelays
       setError('انقطع الاتصال — اضغط "حفظ" للمتابعة من نقطة التوقف');
       setStatus('error');
       onError?.(err);
-      return;
     }
 
-    // ── تأكيد الحفظ في قاعدة البيانات ────────────────────────────────
-    setStatus('confirming');
-    setProgress(100);
+    // ── تأكيد الحفظ في قاعدة البيانات ──────────────────────────────
+    if (!tusSucceeded) return; // وصلنا هنا عبر مسار الخطأ — لا نكمل
+    setStatus('confirming'); setProgress(100);
 
     const finalChapterId  = sessionData.chapterId     || chapterId;
     const finalTitle      = sessionData.title         || title || file.name;
@@ -372,14 +300,7 @@ export function useBunnyDirectUpload() {
       const confirmRes = await fetchWithTimeout('/api/dashboard/teacher/confirm-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bunnyVideoId,
-          chapterId:       finalChapterId,
-          title:           finalTitle,
-          notifyStudents:  finalNotify,
-          sortOrder:       finalSortOrder,
-          durationSeconds: finalDuration,
-        }),
+        body: JSON.stringify({ bunnyVideoId, chapterId: finalChapterId, title: finalTitle, notifyStudents: finalNotify, sortOrder: finalSortOrder, durationSeconds: finalDuration }),
       }, 30000);
 
       if (!confirmRes.ok) {
@@ -398,69 +319,39 @@ export function useBunnyDirectUpload() {
   }
 
   const cancel = useCallback(() => {
-    if (uploadRef.current) {
-      uploadRef.current.abort();
-      uploadRef.current = null;
+    const current = uploadRef.current;
+    uploadRef.current = null;
+    if (current) {
+      try { current.abort(); } catch (_) {}
     }
     setStatus('cancelled');
     setProgress(0);
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────
-  // resume: يُلغي الكائن القديم فوراً ثم ينشئ كائن TUS جديد يبحث عن
-  // نقطة التوقف المحفوظة في localStorage ويستأنف منها مباشرة.
-  // لأن retryDelays: null، الكائن القديم يكون قد استدعى onError بالفعل
-  // وليس في retry loop، فالـ abort() يعود فورياً.
-  // ─────────────────────────────────────────────────────────────────
+  // resume: يُنشئ كائن TUS جديداً بالكامل — الكائن القديم مات بالفعل (onError استُدعي).
+  // لا نستدعي abort() على الميت — فقط نبني جديداً يجد نقطة التوقف ويستأنف.
   const resume = useCallback(() => {
     const savedOptions = lastUploadOptionsRef.current;
-    if (!savedOptions) {
-      console.warn('⚠️ resume called but no saved upload options found');
-      return;
-    }
+    if (!savedOptions) return;
 
-    // إلغاء الكائن القديم إن كان لا يزال موجوداً
-    if (uploadRef.current) {
-      try { uploadRef.current.abort(); } catch (_) {}
-      uploadRef.current = null;
-    }
+    // الكائن القديم ميت (uploadRef.current = null تم في catch أعلاه)
+    // لكن نُصفّره هنا أيضاً دفاعياً
+    uploadRef.current = null;
 
     setError(null);
     setStatus('uploading');
 
-    _doTusUpload({
-      ...savedOptions,
-      setProgress,
-      setStatus,
-      setError,
-      uploadRef,
-    });
+    _doTusUpload({ ...savedOptions });
   }, []);
 
   const reset = useCallback((file) => {
-    if (uploadRef.current) {
-      uploadRef.current.abort();
-      uploadRef.current = null;
-    }
-    if (file) {
-      clearSession(file);
-      clearTusInternalStorage(file);
-    }
+    const current = uploadRef.current;
+    uploadRef.current = null;
+    if (current) { try { current.abort(); } catch (_) {} }
+    if (file) { clearSession(file); clearTusInternalStorage(file); }
     lastUploadOptionsRef.current = null;
-    setProgress(0);
-    setStatus('idle');
-    setError(null);
-    setCurrentVideoId(null);
+    setProgress(0); setStatus('idle'); setError(null); setCurrentVideoId(null);
   }, []);
 
-  return {
-    startUpload,
-    cancel,
-    reset,
-    resume,
-    progress,
-    status,
-    error,
-    currentVideoId,
-  };
+  return { startUpload, cancel, reset, resume, progress, status, error, currentVideoId };
 }
