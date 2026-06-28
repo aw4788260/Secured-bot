@@ -278,7 +278,7 @@ export default function ContentManager() {
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
               onComplete: async (confirmData) => {
-                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال التشفير.');
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال المعالجة');
                   setModalType(null);
                   setVideoFile(null);
                   resetBunnyUpload();
