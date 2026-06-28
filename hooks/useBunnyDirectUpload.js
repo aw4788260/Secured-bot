@@ -2,6 +2,17 @@
 // ===================================================================
 // 🎯 Hook للرفع المباشر من جهاز المعلم إلى Bunny Stream (بدون المرور بالسيرفر)
 // ===================================================================
+//
+// ✅ منطق الاستئناف عند انقطاع الإنترنت:
+//   - عند إنشاء جلسة رفع جديدة، تُحفظ بيانات الجلسة (bunnyVideoId, signature,
+//     expiresAt, libraryId, chapterId, title, duration, sortOrder, notifyStudents)
+//     في localStorage بمفتاح مرتبط ببصمة الملف (file fingerprint).
+//   - عند استدعاء startUpload مجدداً بنفس الملف، يتم استرجاع الجلسة المحفوظة
+//     وإعادة استخدامها بدلاً من إنشاء جلسة جديدة على Bunny.
+//   - tus-js-client يستأنف الرفع من نقطة التوقف تلقائياً باستخدام نفس storageKey.
+//   - عند اكتمال الرفع بنجاح، تُحذف بيانات الجلسة من localStorage.
+//   - عند الإلغاء اليدوي من المعلم، تُحذف بيانات الجلسة أيضاً.
+// ===================================================================
 
 import { useState, useRef, useCallback } from 'react';
 
@@ -14,9 +25,55 @@ async function loadTus() {
 }
 
 /**
+ * بصمة الملف — مفتاح فريد يعتمد على اسم الملف + حجمه + آخر تعديل
+ * يُستخدم لربط الجلسة المحفوظة بنفس الملف عند إعادة المحاولة
+ */
+function getFileFingerprint(file) {
+  return `bunny-session:${file.name}:${file.size}:${file.lastModified}`;
+}
+
+/**
+ * حفظ بيانات الجلسة في localStorage مرتبطةً ببصمة الملف
+ */
+function saveSession(file, data) {
+  try {
+    localStorage.setItem(getFileFingerprint(file), JSON.stringify(data));
+  } catch (_) {}
+}
+
+/**
+ * استرجاع جلسة محفوظة مسبقاً لنفس الملف (إن وُجدت وكانت صالحة)
+ * الجلسة تنتهي صلاحيتها عند انتهاء expiresAt (وقت التوقيع)
+ */
+function loadSession(file) {
+  try {
+    const raw = localStorage.getItem(getFileFingerprint(file));
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    // التحقق من صلاحية التوقيع — إذا انتهت نحذف الجلسة
+    if (session.expiresAt && Date.now() / 1000 > session.expiresAt - 60) {
+      localStorage.removeItem(getFileFingerprint(file));
+      return null;
+    }
+    return session;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * حذف الجلسة المحفوظة لملف معين
+ */
+function clearSession(file) {
+  try {
+    localStorage.removeItem(getFileFingerprint(file));
+  } catch (_) {}
+}
+
+/**
  * 👈 دالة متطورة لاستخراج مدة الفيديو محلياً من المتصفح
  * تعالج مشكلة (Infinity Bug) في متصفحات كروم عبر حدث 'seeked' بدلاً من 'ontimeupdate'
- * مع مهلة احتياطية (5 ثواني) لتجنب الانتظار اللانهائي
+ * مع مهلة احتياطية (10 ثواني) لتجنب الانتظار اللانهائي
  * @param {File} file
  * @returns {Promise<number>} المدة بالثواني (0 عند الفشل)
  */
@@ -30,7 +87,6 @@ function getVideoDurationLocal(file) {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
-      // تنظيف الـ object URL لتحرير الذاكرة
       if (objectUrl) {
         try { window.URL.revokeObjectURL(objectUrl); } catch (_) {}
       }
@@ -40,7 +96,6 @@ function getVideoDurationLocal(file) {
     try {
       const video = document.createElement('video');
       video.preload = 'metadata';
-      // مهلة 10 ثواني كحد أقصى لمنع الانتظار اللانهائي
       timeoutId = setTimeout(() => {
         console.warn('⚠️ Duration extraction timed out');
         finish(0);
@@ -50,14 +105,10 @@ function getVideoDurationLocal(file) {
 
       video.onloadedmetadata = () => {
         if (!isFinite(video.duration) || isNaN(video.duration)) {
-          // ✅ الإصلاح الحقيقي لـ Infinity Bug:
-          // نستخدم حدث 'seeked' بدلاً من 'ontimeupdate'
-          // لأن ontimeupdate يُطلق قبل انتهاء عملية الـ seek فعلياً
           video.addEventListener('seeked', function onSeeked() {
             video.removeEventListener('seeked', onSeeked);
             finish(video.duration);
           });
-          // نطلب الانتقال لنهاية الفيديو (1e101 أكبر من أي مدة ممكنة)
           video.currentTime = 1e101;
         } else {
           finish(video.duration);
@@ -81,20 +132,20 @@ function getVideoDurationLocal(file) {
  * @typedef {Object} UploadOptions
  * @property {File}     file            - ملف الفيديو المراد رفعه
  * @property {string}   chapterId       - معرف الفصل في قاعدة البيانات
- * @property {string}   [title]         - عنوان الفيديو 
- * @property {boolean}  [notifyStudents] 
- * @property {number}   [sortOrder]     
- * @property {Function} [onComplete]    
- * @property {Function} [onError]       
+ * @property {string}   [title]         - عنوان الفيديو
+ * @property {boolean}  [notifyStudents]
+ * @property {number}   [sortOrder]
+ * @property {Function} [onComplete]
+ * @property {Function} [onError]
  */
 
 export function useBunnyDirectUpload() {
-  const [progress, setProgress]   = useState(0);   
-  const [status, setStatus]       = useState('idle'); 
+  const [progress, setProgress]   = useState(0);
+  const [status, setStatus]       = useState('idle');
   const [error, setError]         = useState(null);
   const [currentVideoId, setCurrentVideoId] = useState(null);
 
-  const uploadRef = useRef(null); 
+  const uploadRef = useRef(null);
 
   const startUpload = useCallback(async (options) => {
     const {
@@ -117,47 +168,70 @@ export function useBunnyDirectUpload() {
 
     setError(null);
     setProgress(0);
-    setStatus('requesting');
     setCurrentVideoId(null);
 
-    // ── الخطوة 0: استخراج مدة الفيديو أولاً (قبل أي استهلاك للذاكرة في الرفع) ──
+    // ── الخطوة 0: استخراج مدة الفيديو محلياً ───────────────────────
     let localDuration = 0;
     try {
       localDuration = await getVideoDurationLocal(file);
-      console.log("✅ Video duration extracted:", localDuration);
+      console.log('✅ Video duration extracted:', localDuration);
     } catch (durErr) {
-      console.warn("⚠️ Failed to extract duration, will fallback to 0", durErr);
+      console.warn('⚠️ Failed to extract duration, will fallback to 0', durErr);
     }
 
-    // ── الخطوة 1: طلب جلسة الرفع من السيرفر ────────────────────────
-    let sessionData;
-    try {
-      const sessionRes = await fetch('/api/dashboard/teacher/create-upload-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    // ── الخطوة 1: جلسة الرفع — إعادة استخدام المحفوظة أو إنشاء جديدة ──
+    let sessionData = loadSession(file);
+
+    if (sessionData) {
+      // ✅ جلسة محفوظة موجودة — نستأنف بدون الاتصال بالسيرفر
+      console.log('♻️ Resuming existing upload session for bunnyVideoId=', sessionData.bunnyVideoId);
+      setStatus('uploading');
+      // نستخدم duration المحفوظة في الجلسة إذا لم نحصل عليها الآن
+      if (localDuration <= 0 && sessionData.localDuration > 0) {
+        localDuration = sessionData.localDuration;
+      }
+    } else {
+      // 🆕 لا توجد جلسة — ننشئ واحدة جديدة
+      setStatus('requesting');
+      try {
+        const sessionRes = await fetch('/api/dashboard/teacher/create-upload-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chapterId,
+            title: title || file.name,
+            fileSize: file.size,
+          }),
+        });
+
+        if (!sessionRes.ok) {
+          const errData = await sessionRes.json().catch(() => ({}));
+          throw new Error(errData.error || `فشل إنشاء جلسة الرفع (${sessionRes.status})`);
+        }
+
+        sessionData = await sessionRes.json();
+
+        // ✅ حفظ الجلسة في localStorage حتى يمكن استئنافها لاحقاً
+        saveSession(file, {
+          ...sessionData,
+          localDuration,
           chapterId,
           title: title || file.name,
-          fileSize: file.size,
-        }),
-      });
+          notifyStudents,
+          sortOrder,
+        });
 
-      if (!sessionRes.ok) {
-        const errData = await sessionRes.json().catch(() => ({}));
-        throw new Error(errData.error || `فشل إنشاء جلسة الرفع (${sessionRes.status})`);
+        setStatus('uploading');
+      } catch (err) {
+        setError(err.message);
+        setStatus('error');
+        onError?.(err);
+        return;
       }
-
-      sessionData = await sessionRes.json();
-    } catch (err) {
-      setError(err.message);
-      setStatus('error');
-      onError?.(err);
-      return;
     }
 
     const { bunnyVideoId, libraryId, signature, expiresAt } = sessionData;
     setCurrentVideoId(bunnyVideoId);
-    setStatus('uploading');
 
     // ── الخطوة 2: الرفع المباشر إلى Bunny عبر TUS ──────────────────
     try {
@@ -165,17 +239,17 @@ export function useBunnyDirectUpload() {
 
       await new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
-          endpoint: "https://video.bunnycdn.com/tusupload",
+          endpoint: 'https://video.bunnycdn.com/tusupload',
 
-          // ✅ إعادة المحاولة تلقائياً عند انقطاع الإنترنت:
-          //   المجموع الكلي ~9 دقائق من إعادة المحاولة قبل الاستسلام.
+          // ✅ إعادة المحاولة تلقائياً عند انقطاع الإنترنت
+          //   المجموع الكلي ~9 دقائق من إعادة المحاولة قبل الاستسلام
           retryDelays: [0, 3000, 5000, 10000, 20000, 30000, 60000, 60000, 60000],
 
           chunkSize: 50 * 1024 * 1024,
 
-          // ✅ يُحفظ offset الرفع في localStorage — إذا أُغلقت الصفحة أو تم تحديثها
-          //   أثناء الانقطاع، عند إعادة الرفع بنفس الملف يستأنف من نقطة التوقف تلقائياً.
-          storageKey: `bunny-upload-${bunnyVideoId}`,
+          // ✅ storageKey مرتبط بـ bunnyVideoId — يُخزّن offset الرفع في localStorage
+          //   يجب أن يكون ثابتاً بين المحاولات حتى يستأنف tus من نقطة التوقف
+          storageKey: `bunny-tus-offset:${bunnyVideoId}`,
 
           headers: {
             AuthorizationSignature: signature,
@@ -187,7 +261,7 @@ export function useBunnyDirectUpload() {
           metadata: {
             filename: file.name,
             filetype: file.type || 'video/mp4',
-            title: title || file.name
+            title: title || file.name,
           },
 
           onError(err) {
@@ -200,8 +274,9 @@ export function useBunnyDirectUpload() {
           },
 
           onSuccess() {
-            // ✅ تنظيف مفتاح localStorage بعد اكتمال الرفع بنجاح
-            try { localStorage.removeItem(`bunny-upload-${bunnyVideoId}`); } catch (_) {}
+            // ✅ تنظيف كل بيانات الجلسة والـ offset من localStorage
+            clearSession(file);
+            try { localStorage.removeItem(`bunny-tus-offset:${bunnyVideoId}`); } catch (_) {}
             resolve();
           },
         });
@@ -214,7 +289,9 @@ export function useBunnyDirectUpload() {
         setStatus('cancelled');
         return;
       }
-      setError(`فشل الرفع إلى Bunny: ${err.message}`);
+      // ✅ الرفع فشل بعد استنفاد كل المحاولات — نُبقي الجلسة في localStorage
+      //   حتى يتمكن المعلم من استئنافها لاحقاً بمجرد الضغط على رفع مرة أخرى
+      setError('انقطع الاتصال — اضغط رفع مرة أخرى لاستئناف من نقطة التوقف');
       setStatus('error');
       onError?.(err);
       return;
@@ -224,17 +301,24 @@ export function useBunnyDirectUpload() {
     setStatus('confirming');
     setProgress(100);
 
+    // نستخدم البيانات من الجلسة المحفوظة (مهم في حالة الاستئناف بعد إغلاق الصفحة)
+    const finalChapterId     = sessionData.chapterId     || chapterId;
+    const finalTitle         = sessionData.title         || title || file.name;
+    const finalNotify        = sessionData.notifyStudents ?? notifyStudents;
+    const finalSortOrder     = sessionData.sortOrder     ?? sortOrder;
+    const finalDuration      = localDuration > 0 ? localDuration : (sessionData.localDuration || 0);
+
     try {
       const confirmRes = await fetch('/api/dashboard/teacher/confirm-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bunnyVideoId,
-          chapterId,
-          title: title || file.name,
-          notifyStudents,
-          sortOrder,
-          durationSeconds: localDuration, // 👈 إرسال المدة المستخرجة مسبقاً بقوة
+          chapterId:      finalChapterId,
+          title:          finalTitle,
+          notifyStudents: finalNotify,
+          sortOrder:      finalSortOrder,
+          durationSeconds: finalDuration,
         }),
       });
 
@@ -260,10 +344,17 @@ export function useBunnyDirectUpload() {
     }
     setStatus('cancelled');
     setProgress(0);
+    // ملاحظة: لا نحذف الجلسة هنا — الإلغاء اليدوي يحدث من زر الإلغاء
+    // وقد يريد المعلم الاستئناف لاحقاً. clearSession يُستدعى فقط من reset()
   }, []);
 
-  const reset = useCallback(() => {
-    uploadRef.current = null;
+  const reset = useCallback((file) => {
+    if (uploadRef.current) {
+      uploadRef.current.abort();
+      uploadRef.current = null;
+    }
+    // ✅ عند reset الكامل (مثلاً بعد إلغاء مقصود) نحذف الجلسة المحفوظة
+    if (file) clearSession(file);
     setProgress(0);
     setStatus('idle');
     setError(null);
@@ -274,9 +365,9 @@ export function useBunnyDirectUpload() {
     startUpload,
     cancel,
     reset,
-    progress,    
-    status,      
-    error,       
-    currentVideoId, 
+    progress,
+    status,
+    error,
+    currentVideoId,
   };
 }
