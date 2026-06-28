@@ -12,8 +12,24 @@
 //   {
 //     "VideoLibraryId": 133,
 //     "VideoGuid": "657bb740-...",   ← نفس bunny_video_id في DB
-//     "Status": 3                    ← 3=Finished, 4=ResolutionFinished
+//     "Status": 1                    ← انظر جدول الحالات أدناه
 //   }
+//
+// جدول حالات Bunny Status:
+//   0 = Created          (تم إنشاء كائن الفيديو)
+//   1 = Processing       (بدأت المعالجة / التشفير فعلياً)  ← نحدّث DB → 'encoding'
+//   2 = Transcoding      (جزء من المعالجة)
+//   3 = Finished         (اكتملت المعالجة بالكامل)         ← نحدّث DB → 'ready'
+//   4 = ResolutionFinished (دقة واحدة اكتملت — قد يُرسل عدة مرات)  ← نحدّث DB → 'ready'
+//   5 = Failed           (فشل)
+//   6 = PresignedUploadStarted
+//   7 = PresignedUploadFinished
+//   8 = PresignedUploadFailed
+//
+// دورة حياة encoding_status في DB:
+//   'waiting'  → بعد اكتمال رفع TUS (confirm-upload.js)
+//   'encoding' → عند Status=1 Processing  (هنا)
+//   'ready'    → عند Status=3 أو 4 Finished (هنا)
 //
 // الأمان (اختياري):
 //   Bunny يُرفق التوقيع في هذه الترويسات:
@@ -22,10 +38,6 @@
 //     X-BunnyStream-Signature-Algorithm ← "hmac-sha256"
 //   المفتاح هو Library's Read-Only API key
 //   احفظه في .env كـ BUNNY_WEBHOOK_SECRET (اختياري — إذا غاب نقبل بدون تحقق)
-//
-// عند وصول الحدث بـ Status=3 أو 4:
-//   1. نجلب الـ length من Bunny API (لأنه غير موجود في الـ payload)
-//   2. نحدث duration في جدول videos
 // ===================================================================
 
 import { supabase } from '../../../lib/supabaseClient';
@@ -125,9 +137,18 @@ export default async function handler(req, res) {
     return res.status(200).json({ ignored: true, reason: 'wrong library' });
   }
 
-  // ── 6. نهتم فقط بـ Finished(3) أو ResolutionFinished(4) ──────
-  if (statusCode !== 3 && statusCode !== 4) {
-    return res.status(200).json({ ignored: true, reason: `status ${statusCode} not a completion event` });
+  // ── 6. تصنيف الحدث حسب Status ────────────────────────────────
+  //
+  // Status=1  Processing  → نُحدّث DB إلى 'encoding' (بدأت المعالجة فعلياً)
+  // Status=3  Finished    → نُحدّث DB إلى 'ready'    (اكتملت المعالجة بالكامل)
+  // Status=4  ResolutionFinished → نُحدّث DB إلى 'ready' (تُرسَل لكل دقة تنتهي)
+  // بقية الحالات (0,2,5,6,7,8) → نتجاهلها ونُعيد 200
+
+  const isProcessingEvent = statusCode === 1;
+  const isFinishedEvent   = statusCode === 3 || statusCode === 4;
+
+  if (!isProcessingEvent && !isFinishedEvent) {
+    return res.status(200).json({ ignored: true, reason: `status ${statusCode} not handled` });
   }
 
   if (!bunnyVideoId) {
@@ -147,9 +168,30 @@ export default async function handler(req, res) {
     return res.status(200).json({ ignored: true, reason: 'not in DB' });
   }
 
-  // ── 8. جلب المدة من Bunny API (الـ payload لا يحتوي عليها) ───
-  // الـ payload يحتوي فقط على VideoGuid و Status و VideoLibraryId
-  // يجب استعلام Bunny API للحصول على الـ length الفعلي
+  // ── 8. حالة Processing (Status=1) → encoding ─────────────────
+  if (isProcessingEvent) {
+    // لا نتراجع إلى 'encoding' إذا وصل الـ ready مسبقاً (race condition نادر)
+    if (video.encoding_status === 'ready') {
+      console.log(`ℹ️ [bunny-webhook] Already ready, ignoring processing event for bunny_id=${bunnyVideoId}`);
+      return res.status(200).json({ ignored: true, reason: 'already ready' });
+    }
+
+    const { error: encErr } = await supabase
+      .from('videos')
+      .update({ encoding_status: 'encoding' })
+      .eq('id', video.id);
+
+    if (encErr) {
+      console.error(`❌ [bunny-webhook] DB encoding update failed for db_id=${video.id}:`, encErr);
+      return res.status(500).json({ error: 'DB update failed' });
+    }
+
+    console.log(`🔄 [bunny-webhook] Encoding started: db_id=${video.id}, bunny_id=${bunnyVideoId}, status: ${video.encoding_status} → encoding`);
+    return res.status(200).json({ success: true, videoId: video.id, bunnyVideoId, encoding_status: 'encoding' });
+  }
+
+  // ── 9. حالة Finished (Status=3 أو 4) → ready ─────────────────
+  // نجلب الـ length من Bunny API (الـ payload لا يحتوي عليها)
   const apiKey    = process.env.BUNNY_STREAM_API_KEY;
   const libraryId = ourLibraryId;
   let durationSeconds = 0;
@@ -177,12 +219,11 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'duration unavailable yet, will retry' });
   }
 
-  // ── 9. تحديث DB ───────────────────────────────────────────────
+  // ── 10. تحديث DB: encoding_status → 'ready' + المدة إن كانت ناقصة ──
   const formatted = formatDuration(durationSeconds);
   const currentDuration = video.duration || '00:00';
   const currentEncodingStatus = video.encoding_status;
 
-  // نحدّث دائماً: encoding_status → 'ready' + المدة إن كانت ناقصة
   const updatePayload = { encoding_status: 'ready' };
   if (currentDuration === '00:00') {
     updatePayload.duration = formatted;
