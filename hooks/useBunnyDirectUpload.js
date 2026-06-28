@@ -3,24 +3,26 @@
 // 🎯 Hook للرفع المباشر من جهاز المعلم إلى Bunny Stream (بدون المرور بالسيرفر)
 // ===================================================================
 //
-// ✅ منطق الاستئناف عند انقطاع الإنترنت:
-//   - عند إنشاء جلسة رفع جديدة، تُحفظ بيانات الجلسة (bunnyVideoId, signature,
-//     expiresAt, libraryId, chapterId, title, duration, sortOrder, notifyStudents)
-//     في localStorage بمفتاح مرتبط ببصمة الملف (file fingerprint).
-//   - عند استدعاء startUpload مجدداً بنفس الملف، يتم استرجاع الجلسة المحفوظة
-//     وإعادة استخدامها بدلاً من إنشاء جلسة جديدة على Bunny.
-//   - ⚠️ ملاحظة مهمة: خيار "storageKey" غير موجود فعلياً في مكتبة tus-js-client
-//     (تم التحقق من الكود المصدري للمكتبة) — كان تمريره بلا أي تأثير، وكانت
-//     النتيجة أن كل استئناف يُنشئ Upload جديد بدون uploadUrl، فتستدعي المكتبة
-//     _createUpload() (طلب POST جديد) بدلاً من _resumeUpload() (طلب HEAD على
-//     نفس الرابط)، فيبدأ الرفع من 0 رغم وجود نفس الجلسة المحفوظة.
-//   - ✅ الحل: نخزّن رابط الرفع الفعلي (tusUploadUrl) الذي ترجعه tus-js-client
-//     بمجرد توفره (onUploadUrlAvailable) في نفس جلسة localStorage، ثم نمرره
-//     كـ uploadUrl عند إعادة المحاولة — وهذا يجعل tus-js-client يستخدم
-//     _resumeUpload() الذي يرسل HEAD لمعرفة آخر offset ويكمل الرفع منه فعلياً
-//     بدل البدء من الصفر، بصرف النظر عن انقطاع الإنترنت أو إغلاق الصفحة.
-//   - عند اكتمال الرفع بنجاح، تُحذف بيانات الجلسة من localStorage.
-//   - عند الإلغاء اليدوي من المعلم، تُحذف بيانات الجلسة أيضاً.
+// ✅ منطق الاستئناف عند انقطاع الإنترنت (مطابق لتوصية Bunny الرسمية):
+//   - عند إنشاء جلسة رفع جديدة، تُحفظ بيانات الجلسة الخاصة بنا (bunnyVideoId,
+//     signature, expiresAt, libraryId, chapterId, title, duration, sortOrder,
+//     notifyStudents) في localStorage بمفتاح مرتبط ببصمة الملف، لأن مكتبة
+//     tus-js-client لا تعرف عن هذه البيانات أصلاً (هي بيانات تخص تطبيقنا).
+//   - ⚠️ المحاولة السابقة كانت تمرر uploadUrl يدوياً (مأخوذ من upload.url بعد
+//     onUploadUrlAvailable). هذا تسبب في توقّف الرفع عند 0% بعد الاستئناف:
+//     طلب HEAD الذي ترسله _resumeUpload() كان يفشل بخطأ "missing offset value"
+//     (الهيدر Upload-Offset غير مكشوف عبر CORS من نقطة Bunny في بعض الحالات)،
+//     ثم تعيد المكتبة المحاولة داخلياً (retryDelays) بلا توقف ظاهري — أي تبدو
+//     "متوقفة عند 0%" بينما هي فعلياً تعيد إرسال نفس HEAD الفاشل مراراً.
+//   - ✅ الحل الصحيح وهو ما توصي به Bunny رسمياً في وثائقها: استخدام آلية
+//     tus-js-client المدمجة via findPreviousUploads()/resumeFromPreviousUpload()
+//     بدلاً من تمرير uploadUrl يدوياً. هذه الآلية تستخدم تخزينها الداخلي
+//     الخاص (WebStorageUrlStorage في localStorage تحت مفاتيح "tus::...")
+//     المُختبر من Bunny نفسها مع نقطة tusupload، وتتعامل تلقائياً مع كل
+//     حالات إعادة المحاولة دون أي تدخل يدوي من جهتنا.
+//   - عند اكتمال الرفع بنجاح، تُحذف بيانات جلستنا الخاصة من localStorage
+//     (تخزين tus-js-client الداخلي يُنظَّف تلقائياً بواسطة المكتبة نفسها).
+//   - عند الإلغاء اليدوي من المعلم، تُحذف بيانات جلستنا الخاصة أيضاً.
 // ===================================================================
 
 import { useState, useRef, useCallback } from 'react';
@@ -76,6 +78,23 @@ function loadSession(file) {
 function clearSession(file) {
   try {
     localStorage.removeItem(getFileFingerprint(file));
+  } catch (_) {}
+}
+
+/**
+ * حذف أي إدخال متبقٍ في تخزين tus-js-client الداخلي الخاص بنفس الملف
+ * (يُستخدم فقط عند reset كامل ومتعمَّد، لمنع استئناف غير مقصود لاحقاً)
+ */
+async function clearTusInternalStorage(file) {
+  try {
+    const tus = await loadTus();
+    if (!tus.WebStorageUrlStorage) return;
+    const storage = new tus.WebStorageUrlStorage();
+    const fingerprint = await tus.defaultOptions.fingerprint(file, {
+      endpoint: 'https://video.bunnycdn.com/tusupload',
+    });
+    const previousUploads = await storage.findUploadsByFingerprint(fingerprint);
+    await Promise.all(previousUploads.map((u) => storage.removeUpload(u.urlStorageKey)));
   } catch (_) {}
 }
 
@@ -256,13 +275,9 @@ export function useBunnyDirectUpload() {
 
           chunkSize: 50 * 1024 * 1024,
 
-          // ✅ الاستئناف الحقيقي: إذا كانت الجلسة المحفوظة تحتوي على رابط رفع
-          //   (tusUploadUrl) من محاولة سابقة، نمرره هنا — هذا يجعل tus-js-client
-          //   يستدعي _resumeUpload() (طلب HEAD لمعرفة آخر offset مرفوع فعلياً)
-          //   بدلاً من _createUpload() (طلب POST ينشئ رفعاً جديداً من 0).
-          //   بدون هذا الخيار، لا توجد أي طريقة تجعل المكتبة تتعرف على الرفع
-          //   السابق، وستبدأ كل محاولة من الصفر دائماً.
-          uploadUrl: sessionData.tusUploadUrl || undefined,
+          // ✅ تنظيف تخزين tus-js-client الداخلي تلقائياً بعد اكتمال الرفع بنجاح
+          //   (بدون هذا، تتراكم سجلات قديمة في localStorage لكل فيديو تم رفعه)
+          removeFingerprintOnSuccess: true,
 
           headers: {
             AuthorizationSignature: signature,
@@ -277,24 +292,6 @@ export function useBunnyDirectUpload() {
             title: title || file.name,
           },
 
-          // ✅ تُستدعى بمجرد توفر رابط الرفع (upload.url) — سواء عند إنشاء
-          //   الرفع لأول مرة أو عند استئنافه. نخزّنه فوراً في localStorage
-          //   حتى تتمكن أي محاولة لاحقة (بعد انقطاع الإنترنت أو إغلاق الصفحة)
-          //   من استخدامه فعلياً للاستئناف الحقيقي من نقطة التوقف.
-          onUploadUrlAvailable() {
-            try {
-              saveSession(file, {
-                ...sessionData,
-                localDuration,
-                chapterId,
-                title: title || file.name,
-                notifyStudents,
-                sortOrder,
-                tusUploadUrl: upload.url,
-              });
-            } catch (_) {}
-          },
-
           onError(err) {
             reject(err);
           },
@@ -305,14 +302,37 @@ export function useBunnyDirectUpload() {
           },
 
           onSuccess() {
-            // ✅ تنظيف كل بيانات الجلسة من localStorage (بما فيها tusUploadUrl)
+            // ✅ تنظيف بيانات جلستنا الخاصة من localStorage
+            //   (تخزين tus-js-client الداخلي يُنظَّف تلقائياً بواسطة المكتبة)
             clearSession(file);
             resolve();
           },
         });
 
         uploadRef.current = upload;
-        upload.start();
+
+        // ✅ الطريقة الرسمية الموصى بها من Bunny للاستئناف: نسأل tus-js-client
+        //   نفسها (عبر تخزينها الداخلي المرتبط ببصمة الملف) إن كان هناك رفع
+        //   سابق لم يكتمل لهذا الملف بالتحديد، ونستأنفه عبر resumeFromPreviousUpload
+        //   قبل استدعاء start(). هذا يضمن أن المكتبة تتعرف فعلياً على رابط
+        //   الرفع و offset الصحيح، بعكس تمرير uploadUrl يدوياً.
+        upload.findPreviousUploads().then((previousUploads) => {
+          if (previousUploads.length > 0) {
+            // إذا وُجد أكثر من رفع سابق لنفس الملف (نادر)، نختار الأحدث منها
+            const mostRecent = previousUploads.reduce((latest, current) => {
+              const latestTime = new Date(latest.creationTime || 0).getTime();
+              const currentTime = new Date(current.creationTime || 0).getTime();
+              return currentTime > latestTime ? current : latest;
+            });
+            console.log('♻️ Found previous tus upload, resuming from offset');
+            upload.resumeFromPreviousUpload(mostRecent);
+          }
+          upload.start();
+        }).catch((err) => {
+          // إذا فشل البحث عن رفع سابق (نادر) — نبدأ رفعاً عادياً بدلاً من تعليق الواجهة
+          console.warn('⚠️ findPreviousUploads failed, starting fresh upload', err);
+          upload.start();
+        });
       });
     } catch (err) {
       if (err?.message === 'CANCELLED') {
@@ -384,7 +404,12 @@ export function useBunnyDirectUpload() {
       uploadRef.current = null;
     }
     // ✅ عند reset الكامل (مثلاً بعد إلغاء مقصود) نحذف الجلسة المحفوظة
-    if (file) clearSession(file);
+    //   الخاصة بنا، وأيضاً سجل الاستئناف الداخلي لمكتبة tus-js-client،
+    //   حتى لا يحاول الرفع التالي لنفس الملف الاستئناف من نقطة قديمة عن طريق الخطأ
+    if (file) {
+      clearSession(file);
+      clearTusInternalStorage(file);
+    }
     setProgress(0);
     setStatus('idle');
     setError(null);
