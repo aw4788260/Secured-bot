@@ -278,11 +278,11 @@ export default function ContentManager() {
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
               onComplete: async (confirmData) => {
-                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال المعالجة');
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال التشفير.');
                   setModalType(null);
+                  resetBunnyUpload(videoFile); // ✅ تمرير الملف لحذف الجلسة المحفوظة
                   setVideoFile(null);
-                  resetBunnyUpload();
-                  await refreshView(); // encoding_status يُقرأ من DB تلقائياً بعد refreshView
+                  await refreshView();
               },
               onError: (err) => {
                   showAlert('error', err.message || 'فشل رفع الفيديو إلى Bunny Stream');
@@ -368,7 +368,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 });
       setNotifyPdf(false);
       setVideoFile(null);
-      resetBunnyUpload();
+      resetBunnyUpload(); // ✅ يُعيد تعيين الـ UI فقط — لا يحذف الجلسة المحفوظة (تُحذف عند الإلغاء أو الاكتمال)
       
       if (['edit_course', 'edit_subject', 'edit_chapter'].includes(type)) {
           setFormData({ 
@@ -765,7 +765,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
       {/* --- Unified Modal System --- */}
       {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
-          <Modal title={getModalTitle()} onClose={() => setModalType(null)} onOverlayClick={modalType === 'add_video' ? null : undefined}>
+          <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
               <div className="form-group">
                   <label>العنوان</label>
                   <input 
@@ -838,7 +838,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               <button
                                   className="btn-cancel"
                                   style={{marginTop: '8px', width: '100%'}}
-                                  onClick={() => { cancelBunnyUpload(); resetBunnyUpload(); }}
+                                  onClick={() => { cancelBunnyUpload(); resetBunnyUpload(videoFile); }}
                               >
                                   إلغاء الرفع
                               </button>
@@ -846,8 +846,13 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       </div>
                   )}
                   {bunnyUploadStatus === 'error' && bunnyUploadError && (
-                      <div className="form-group" style={{color: 'var(--danger)', marginTop: '8px', fontSize: '0.9em'}}>
-                          ❌ {bunnyUploadError}
+                      <div className="form-group" style={{marginTop: '8px', fontSize: '0.9em'}}>
+                          <div style={{color: 'var(--danger)'}}>❌ {bunnyUploadError}</div>
+                          {videoFile && (
+                              <div style={{marginTop: '8px', color: '#eab308', fontSize: '0.85em', background: 'rgba(234,179,8,0.08)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(234,179,8,0.2)'}}>
+                                  💡 اضغط <strong>رفع</strong> مرة أخرى لاستئناف الرفع من نقطة التوقف
+                              </div>
+                          )}
                       </div>
                   )}
                   {/* مدة الفيديو: مطلوبة فقط عند استخدام رابط يوتيوب بدون ملف */}
@@ -1515,8 +1520,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   );
 }
 
-const Modal = ({ title, children, onClose, onOverlayClick }) => (
-    <div className="modal-overlay" onClick={onOverlayClick !== undefined ? onOverlayClick : onClose}>
+const Modal = ({ title, children, onClose }) => (
+    <div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
                 <h3>{title}</h3>
