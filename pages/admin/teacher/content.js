@@ -82,6 +82,7 @@ export default function ContentManager() {
     startUpload: startBunnyUpload,
     cancel: cancelBunnyUpload,
     reset: resetBunnyUpload,
+    resume: resumeBunnyUpload,
     progress: videoUploadProgress,
     status: bunnyUploadStatus,
     error: bunnyUploadError,
@@ -849,9 +850,34 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <div className="form-group" style={{marginTop: '8px', fontSize: '0.9em'}}>
                           <div style={{color: 'var(--danger)'}}>❌ {bunnyUploadError}</div>
                           {videoFile && (
+                              <>
+                              {/* ✅ استكمال فوري من نفس الجلسة الحالية (نفس تبويب المتصفح بدون إعادة تحميل)
+                                  — أسرع من الضغط على "حفظ" لأنه يستخدم كائن الرفع الموجود في الذاكرة مباشرة */}
+                              <button
+                                  type="button"
+                                  className="btn-primary"
+                                  style={{marginTop: '8px', width: '100%'}}
+                                  onClick={() => resumeBunnyUpload()}
+                              >
+                                  ▶️ استكمال الرفع من نقطة التوقف
+                              </button>
                               <div style={{marginTop: '8px', color: '#eab308', fontSize: '0.85em', background: 'rgba(234,179,8,0.08)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(234,179,8,0.2)'}}>
-                                  💡 اضغط <strong>رفع</strong> مرة أخرى لاستئناف الرفع من نقطة التوقف
+                                  💡 إذا تم إغلاق الصفحة أو إعادة تحميلها، اضغط <strong>حفظ</strong> لاستئناف الرفع من نقطة التوقف تلقائياً
                               </div>
+                              <button
+                                  type="button"
+                                  className="btn-cancel"
+                                  style={{marginTop: '8px', width: '100%', fontSize: '0.85em'}}
+                                  onClick={() => {
+                                      // ✅ يحذف الجلسة المحفوظة وسجل tus الداخلي لهذا الملف بالتحديد
+                                      //   حتى لا تتكرر محاولة استئناف رفع قديم/تالف لا يمكن إكماله
+                                      //   (مثلاً إذا تم حذف الفيديو من Bunny أو انتهت صلاحيته)
+                                      resetBunnyUpload(videoFile);
+                                  }}
+                              >
+                                  ⟲ بدء رفع جديد من الصفر (في حال تعذّر الاستئناف)
+                              </button>
+                              </>
                           )}
                       </div>
                   )}
