@@ -88,7 +88,7 @@ export default async function handler(req, res) {
     if (!bunnyVideoId) throw new Error('لم يتم استلام Video GUID من Bunny');
   } catch (err) {
     console.error('❌ [create-upload-session] Create video error:', err.message);
-    return res.status(502).json({ error: 'فشل إنشاء الفيديو على Bunny Stream' });
+    return res.status(502).json({ error: 'فشل إنشاء الفيديو على السيرفر' });
   }
 
   // 4. إنشاء توقيع (Signature) للرفع المباشر الموثق من Bunny

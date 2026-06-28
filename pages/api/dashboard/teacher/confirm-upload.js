@@ -113,13 +113,13 @@ export default async function handler(req, res) {
   const bunnyVideo = await verifyBunnyVideoExists(libraryId, apiKey, bunnyVideoId);
 
   if (!bunnyVideo) {
-    return res.status(400).json({ error: 'لم يتم العثور على الفيديو في Bunny Stream. تأكد من اكتمال الرفع.' });
+    return res.status(400).json({ error: 'لم يتم العثور على الفيديو في السيرفر. تأكد من اكتمال الرفع.' });
   }
 
   // 4. التحقق من أن الفيديو ليس بحالة فشل
   // status: 5 = Failed, 8 = PresignedUploadFailed
   if (bunnyVideo.status === 5 || bunnyVideo.status === 8) {
-    return res.status(400).json({ error: 'فشل رفع الفيديو على Bunny Stream. يرجى المحاولة مرة أخرى.' });
+    return res.status(400).json({ error: 'فشل رفع الفيديو على السيرفر. يرجى المحاولة مرة أخرى.' });
   }
 
   const videoTitle = title || bunnyVideo.title || 'Untitled Video';
