@@ -851,8 +851,9 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                           <div style={{color: 'var(--danger)'}}>❌ {bunnyUploadError}</div>
                           {videoFile && (
                               <>
-                              {/* ✅ استكمال فوري من نفس الجلسة الحالية (نفس تبويب المتصفح بدون إعادة تحميل)
-                                  — أسرع من الضغط على "حفظ" لأنه يستخدم كائن الرفع الموجود في الذاكرة مباشرة */}
+                              {/* ✅ استكمال الرفع: يبني كائن TUS جديداً ثم يستأنف من نقطة التوقف
+                                  عبر findPreviousUploads → resumeFromPreviousUpload → start()
+                                  (الطريقة الرسمية الموصى بها من tus-js-client و Bunny) */}
                               <button
                                   type="button"
                                   className="btn-primary"
