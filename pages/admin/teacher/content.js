@@ -262,7 +262,7 @@ export default function ContentManager() {
       setLoading(false);
   };
 
-  // ✅ حفظ فيديو جديد عبر TUS Direct Upload إلى Bunny Stream
+  // ✅ حفظ/استكمال فيديو جديد عبر TUS Direct Upload إلى Bunny Stream
   // ─ إذا اختار المعلم ملفاً: يُرفع مباشرةً من المتصفح إلى Bunny عبر TUS
   //   ثم يُحفظ السجل تلقائياً في confirm-upload بدون المرور بالسيرفر.
   // ─ إذا أدخل رابط يوتيوب فقط: يُرسل إلى content API مع مدة مطلوبة.
@@ -273,6 +273,11 @@ export default function ContentManager() {
 
       // ── مسار Bunny TUS: رفع مباشر ──────────────────────────────────
       if (videoFile) {
+          // ✅ FIX: إذا كانت هناك جلسة خطأ نشطة، نستأنف مباشرةً بدلاً من بدء من الصفر
+          if (bunnyUploadStatus === 'error') {
+              resumeBunnyUpload();
+              return;
+          }
           await startBunnyUpload({
               file: videoFile,
               chapterId: selectedChapter.id,
@@ -848,37 +853,18 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   )}
                   {bunnyUploadStatus === 'error' && bunnyUploadError && (
                       <div className="form-group" style={{marginTop: '8px', fontSize: '0.9em'}}>
-                          <div style={{color: 'var(--danger)'}}>❌ {bunnyUploadError}</div>
+                          <div style={{color: 'var(--danger)', marginBottom: '8px'}}>❌ {bunnyUploadError}</div>
                           {videoFile && (
-                              <>
-                              {/* ✅ استكمال الرفع: يبني كائن TUS جديداً ثم يستأنف من نقطة التوقف
-                                  عبر findPreviousUploads → resumeFromPreviousUpload → start()
-                                  (الطريقة الرسمية الموصى بها من tus-js-client و Bunny) */}
+                              /* ✅ زر موحد: يستأنف الرفع تلقائياً — وإن انتهت الجلسة (401/404)
+                                 يُنشئ جلسة جديدة ويحذف القديمة بدون أي تدخل يدوي */
                               <button
                                   type="button"
                                   className="btn-primary"
-                                  style={{marginTop: '8px', width: '100%'}}
+                                  style={{width: '100%'}}
                                   onClick={() => resumeBunnyUpload()}
                               >
-                                  ▶️ استكمال الرفع من نقطة التوقف
+                                  ▶️ استكمال الرفع
                               </button>
-                              <div style={{marginTop: '8px', color: '#eab308', fontSize: '0.85em', background: 'rgba(234,179,8,0.08)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(234,179,8,0.2)'}}>
-                                  💡 إذا تم إغلاق الصفحة أو إعادة تحميلها، اضغط <strong>حفظ</strong> لاستئناف الرفع من نقطة التوقف تلقائياً
-                              </div>
-                              <button
-                                  type="button"
-                                  className="btn-cancel"
-                                  style={{marginTop: '8px', width: '100%', fontSize: '0.85em'}}
-                                  onClick={() => {
-                                      // ✅ يحذف الجلسة المحفوظة وسجل tus الداخلي لهذا الملف بالتحديد
-                                      //   حتى لا تتكرر محاولة استئناف رفع قديم/تالف لا يمكن إكماله
-                                      //   (مثلاً إذا تم حذف الفيديو من Bunny أو انتهت صلاحيته)
-                                      resetBunnyUpload(videoFile);
-                                  }}
-                              >
-                                  ⟲ بدء رفع جديد من الصفر (في حال تعذّر الاستئناف)
-                              </button>
-                              </>
                           )}
                       </div>
                   )}
@@ -960,7 +946,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
                       
                       else if (modalType === 'add_video') handleSaveVideo();
-                  }}>{isUploadingVideo ? 'جاري الرفع... ⏳' : 'حفظ'}</button>
+                  }}>{isUploadingVideo ? 'جاري الرفع... ⏳' : (modalType === 'add_video' && bunnyUploadStatus === 'error' && videoFile) ? '▶️ استكمال' : 'حفظ'}</button>
               </div>
           </Modal>
       )}
