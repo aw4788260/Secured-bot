@@ -853,19 +853,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   )}
                   {bunnyUploadStatus === 'error' && bunnyUploadError && (
                       <div className="form-group" style={{marginTop: '8px', fontSize: '0.9em'}}>
-                          <div style={{color: 'var(--danger)', marginBottom: '8px'}}>❌ {bunnyUploadError}</div>
-                          {videoFile && (
-                              /* ✅ زر موحد: يستأنف الرفع تلقائياً — وإن انتهت الجلسة (401/404)
-                                 يُنشئ جلسة جديدة ويحذف القديمة بدون أي تدخل يدوي */
-                              <button
-                                  type="button"
-                                  className="btn-primary"
-                                  style={{width: '100%'}}
-                                  onClick={() => resumeBunnyUpload()}
-                              >
-                                  ▶️ استكمال الرفع
-                              </button>
-                          )}
+                          <div style={{color: 'var(--danger)'}}>❌ {bunnyUploadError}</div>
                       </div>
                   )}
                   {/* مدة الفيديو: مطلوبة فقط عند استخدام رابط يوتيوب بدون ملف */}
@@ -946,7 +934,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
                       
                       else if (modalType === 'add_video') handleSaveVideo();
-                  }}>{isUploadingVideo ? 'جاري الرفع... ⏳' : (modalType === 'add_video' && bunnyUploadStatus === 'error' && videoFile) ? '▶️ استكمال' : 'حفظ'}</button>
+                  }}>{isUploadingVideo ? 'جاري الرفع... ⏳' : 'حفظ'}</button>
               </div>
           </Modal>
       )}
