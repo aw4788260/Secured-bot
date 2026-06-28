@@ -278,7 +278,7 @@ export default function ContentManager() {
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
               onComplete: async (confirmData) => {
-                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال التشفير.');
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال المعالجة');
                   setModalType(null);
                   setVideoFile(null);
                   resetBunnyUpload();
@@ -699,7 +699,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   // دورة الحياة: waiting → encoding → ready
                                   const STATUS_MAP = {
                                       waiting:  { status: 'waiting',    label: 'في انتظار المعالجة' },
-                                      encoding: { status: 'processing', label: 'جاري التشفير...' },
+                                      encoding: { status: 'processing', label: 'جاري المعالجة...' },
                                       ready:    { status: 'ready',      label: 'جاهز' },
                                   };
                                   const entry   = STATUS_MAP[v.encoding_status] ?? { status: 'waiting', label: 'في انتظار المعالجة' };
