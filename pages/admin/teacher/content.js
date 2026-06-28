@@ -278,7 +278,7 @@ export default function ContentManager() {
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
               onComplete: async (confirmData) => {
-                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال المعالجة');
+                  showAlert('success', '✅ تم رفع الفيديو بنجاح وسيكون متاحاً بعد اكتمال التشفير.');
                   setModalType(null);
                   setVideoFile(null);
                   resetBunnyUpload();
@@ -696,13 +696,12 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
                               {v.bunny_video_id && (() => {
                                   // الحالة تُقرأ مباشرة من حقل encoding_status في Supabase
-                                  // دورة الحياة: waiting → encoding → ready
+                                  // (يُحدَّث تلقائياً بواسطة Bunny Webhook عند اكتمال التشفير)
                                   const STATUS_MAP = {
-                                      waiting:  { status: 'waiting',    label: 'في انتظار المعالجة' },
-                                      encoding: { status: 'processing', label: 'جاري المعالجة...' },
+                                      encoding: { status: 'processing', label: 'قيد المعالجة الآن' },
                                       ready:    { status: 'ready',      label: 'جاهز' },
                                   };
-                                  const entry   = STATUS_MAP[v.encoding_status] ?? { status: 'waiting', label: 'في انتظار المعالجة' };
+                                  const entry   = STATUS_MAP[v.encoding_status] || { status: 'waiting', label: 'في انتظار المعالجة' };
                                   const isRefreshing  = refreshingVideoId === v.id;
                                   const notYetReady   = entry.status !== 'ready';
 
@@ -766,7 +765,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
       {/* --- Unified Modal System --- */}
       {['add_course', 'edit_course', 'add_subject', 'edit_subject', 'add_chapter', 'edit_chapter', 'add_video'].includes(modalType) && (
-          <Modal title={getModalTitle()} onClose={() => setModalType(null)}>
+          <Modal title={getModalTitle()} onClose={() => setModalType(null)} onOverlayClick={modalType === 'add_video' ? null : undefined}>
               <div className="form-group">
                   <label>العنوان</label>
                   <input 
@@ -1516,8 +1515,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   );
 }
 
-const Modal = ({ title, children, onClose }) => (
-    <div className="modal-overlay" onClick={onClose}>
+const Modal = ({ title, children, onClose, onOverlayClick }) => (
+    <div className="modal-overlay" onClick={onOverlayClick !== undefined ? onOverlayClick : onClose}>
         <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
                 <h3>{title}</h3>
