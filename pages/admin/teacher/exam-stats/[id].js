@@ -32,26 +32,32 @@ export default function ExamStatsPage() {
   const [attemptDetails, setAttemptDetails] = useState(null);
   const [loadingAttempt, setLoadingAttempt] = useState(false);
 
+  // ✅ حالات تصحيح الأسئلة المقالية يدوياً
+  const [gradingInputs, setGradingInputs] = useState({}); // { [questionId]: { score, feedback } }
+  const [savingGrades, setSavingGrades] = useState(false);
+  const [gradeError, setGradeError] = useState('');
+
   // حالة الصورة المكبرة
   const [zoomedImage, setZoomedImage] = useState(null);
 
+  const fetchStats = async () => {
+    if (!examId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/teacher/exam-stats?examId=${examId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error("Failed to load stats", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // جلب الإحصائيات العامة للامتحان
   useEffect(() => {
-    if (!examId) return;
-    const fetchStats = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/dashboard/teacher/exam-stats?examId=${examId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data);
-        }
-      } catch (err) {
-        console.error("Failed to load stats", err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchStats();
   }, [examId]);
 
@@ -59,16 +65,80 @@ export default function ExamStatsPage() {
   const openStudentResult = async (attempt_id) => {
     setSelectedAttempt(attempt_id);
     setLoadingAttempt(true);
+    setGradeError('');
     try {
       const res = await fetch(`/api/dashboard/teacher/get-attempt-details?attemptId=${attempt_id}`);
       if (res.ok) {
         const data = await res.json();
         setAttemptDetails(data);
+
+        // ✅ تهيئة قيم التصحيح الابتدائية من البيانات المحفوظة (إن وجدت)
+        const initialInputs = {};
+        (data.questions_details || []).forEach(q => {
+          if (q.question_type === 'essay') {
+            initialInputs[q.id] = {
+              score: q.earned_score !== null && q.earned_score !== undefined ? String(q.earned_score) : '',
+              feedback: q.teacher_feedback || ''
+            };
+          }
+        });
+        setGradingInputs(initialInputs);
       }
     } catch (err) {
       console.error("Failed to load attempt details", err);
     } finally {
       setLoadingAttempt(false);
+    }
+  };
+
+  const updateGradingInput = (questionId, field, value) => {
+    setGradingInputs(prev => ({
+      ...prev,
+      [questionId]: { ...prev[questionId], [field]: value }
+    }));
+  };
+
+  // ✅ نشر تصحيح الأسئلة المقالية وحساب الدرجة النهائية
+  const publishGrades = async () => {
+    if (!attemptDetails) return;
+    setGradeError('');
+
+    const essayQuestions = (attemptDetails.questions_details || []).filter(q => q.question_type === 'essay');
+
+    const grades = [];
+    for (const q of essayQuestions) {
+      const input = gradingInputs[q.id];
+      const scoreVal = parseFloat(input?.score);
+      if (input?.score === '' || input?.score === undefined || isNaN(scoreVal)) {
+        setGradeError(`يجب إدخال درجة لكل سؤال مقالي قبل النشر (السؤال غير مصحح: "${q.text?.substring(0, 30)}...")`);
+        return;
+      }
+      if (scoreVal < 0 || scoreVal > q.max_score) {
+        setGradeError(`الدرجة المدخلة لسؤال "${q.text?.substring(0, 30)}..." يجب أن تكون بين 0 و ${q.max_score}`);
+        return;
+      }
+      grades.push({ questionId: q.id, earnedScore: scoreVal, feedback: input.feedback || '' });
+    }
+
+    setSavingGrades(true);
+    try {
+      const res = await fetch('/api/dashboard/teacher/publish-grades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptId: selectedAttempt, grades })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedAttempt(null);
+        setAttemptDetails(null);
+        await fetchStats();
+      } else {
+        setGradeError(data.error || 'فشل حفظ التصحيح');
+      }
+    } catch (err) {
+      setGradeError('حدث خطأ في الاتصال بالسيرفر');
+    } finally {
+      setSavingGrades(false);
     }
   };
 
@@ -146,6 +216,47 @@ export default function ExamStatsPage() {
 
       {/* ── TAB CONTENT 1: STUDENTS TABLE ── */}
       {activeTab === 'students' && (
+          <>
+          {/* ✅ لوحة المحاولات بانتظار التصحيح اليدوي (أسئلة مقالية) */}
+          {stats.pendingAttempts && stats.pendingAttempts.length > 0 && (
+              <div className="panel animate-fade pending-panel">
+                  <div className="pending-header">
+                      <span className="icon-wrap" style={{color: '#facc15'}}>{Icons.alert}</span>
+                      <h4>بانتظار التصحيح اليدوي ({stats.pendingAttempts.length})</h4>
+                  </div>
+                  <div className="table-responsive">
+                      <table className="custom-table">
+                          <thead>
+                              <tr>
+                                  <th style={{width: '50px'}}>م</th>
+                                  <th>اسم الطالب</th>
+                                  <th style={{textAlign:'center'}}>رقم الهاتف</th>
+                                  <th style={{textAlign:'center'}}>تاريخ التسليم</th>
+                                  <th style={{textAlign:'center'}}>التصحيح</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              {stats.pendingAttempts.map((a, i) => (
+                                  <tr key={a.attempt_id} className="hover-row">
+                                      <td className="muted-text">{i + 1}</td>
+                                      <td className="primary-text bold-text">{a.student_name_input}</td>
+                                      <td className="mono-text center-text ltr-dir">{a.phone}</td>
+                                      <td className="center-text muted-text text-sm">
+                                          {a.completed_at ? new Date(a.completed_at).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                      </td>
+                                      <td className="center-text">
+                                          <button className="btn-view pending-btn" onClick={() => openStudentResult(a.attempt_id)} title="تصحيح الإجابات">
+                                              <span className="icon-wrap">{Icons.eye}</span> تصحيح الآن
+                                          </button>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          )}
+
           <div className="panel animate-fade">
               <div className="table-responsive">
                   <table className="custom-table">
@@ -187,6 +298,7 @@ export default function ExamStatsPage() {
                   </table>
               </div>
           </div>
+          </>
       )}
 
       {/* ── TAB CONTENT 2: QUESTION ANALYSIS ── */}
@@ -285,13 +397,22 @@ export default function ExamStatsPage() {
                           <p>جاري تحميل الإجابات...</p>
                       </div>
                   ) : (
+                      <>
                       <div className="modal-body custom-scrollbar">
                           <div className="student-info-card">
                               <div className="s-name">{attemptDetails.student.name}</div>
-                              <div className="s-score">
-                                  الدرجة: <span className="highlight-yellow">{attemptDetails.exam.score} / {attemptDetails.exam.total_questions}</span> 
-                                  <span className="perc-bracket">({attemptDetails.exam.percentage}%)</span>
-                              </div>
+                              {attemptDetails.status === 'pending_grading' ? (
+                                  <div className="s-score">
+                                      <span className="badge-pill pending-pill">
+                                          <span className="icon-wrap">{Icons.alert}</span> بانتظار التصحيح اليدوي
+                                      </span>
+                                  </div>
+                              ) : (
+                                  <div className="s-score">
+                                      الدرجة: <span className="highlight-yellow">{attemptDetails.exam.score} / {attemptDetails.exam.total_questions}</span> 
+                                      <span className="perc-bracket">({attemptDetails.exam.percentage}%)</span>
+                                  </div>
+                              )}
                           </div>
 
                           <div className="questions-list">
@@ -311,50 +432,105 @@ export default function ExamStatsPage() {
                                               <p>{q.text}</p>
                                           </div>
                                           <div className="q-status">
-                                              {q.is_student_correct ? (
-                                                  <span className="badge-pill green-pill"><span className="icon-wrap">{Icons.check}</span> صحيح</span>
+                                              {q.question_type === 'essay' ? (
+                                                  q.is_graded ? (
+                                                      <span className="badge-pill green-pill">{q.earned_score} / {q.max_score}</span>
+                                                  ) : (
+                                                      <span className="badge-pill pending-pill"><span className="icon-wrap">{Icons.alert}</span> غير مُصحح</span>
+                                                  )
                                               ) : (
-                                                  <span className="badge-pill red-pill"><span className="icon-wrap">{Icons.close}</span> خطأ</span>
+                                                  q.is_student_correct ? (
+                                                      <span className="badge-pill green-pill"><span className="icon-wrap">{Icons.check}</span> صحيح</span>
+                                                  ) : (
+                                                      <span className="badge-pill red-pill"><span className="icon-wrap">{Icons.close}</span> خطأ</span>
+                                                  )
                                               )}
                                           </div>
                                       </div>
 
-                                      <div className="options-list">
-                                          {q.options.map(opt => {
-                                              let optClass = "opt-row ";
-                                              let badge = null;
-
-                                              if (opt.id === q.correct_option_id) {
-                                                  optClass += "correct-opt ";
-                                                  badge = <span className="opt-badge green-badge">الإجابة الصحيحة</span>;
-                                              }
-                                              
-                                              if (opt.id === q.student_selected_option_id && !q.is_student_correct) {
-                                                  optClass += "wrong-opt ";
-                                                  badge = <span className="opt-badge red-badge">اختيار الطالب</span>;
-                                              }
-
-                                              if (opt.id === q.student_selected_option_id && q.is_student_correct) {
-                                                  badge = <span className="opt-badge green-badge">اختيار الطالب (صحيح)</span>;
-                                              }
-
-                                              return (
-                                                  <div key={opt.id} className={optClass}>
-                                                      <div className="opt-text-inner">{opt.text}</div>
-                                                      {badge}
-                                                  </div>
-                                              );
-                                          })}
-                                          {!q.student_selected_option_id && (
-                                              <div className="no-answer-warning">
-                                                  <span className="icon-wrap">{Icons.alert}</span> لم يقم الطالب باختيار أي إجابة لهذا السؤال.
+                                      {q.question_type === 'essay' ? (
+                                          <div className="essay-grading-box">
+                                              <label className="section-label">إجابة الطالب:</label>
+                                              <div className="essay-answer-text">
+                                                  {q.text_answer ? q.text_answer : <span className="no-answer-inline">لم يكتب الطالب إجابة لهذا السؤال.</span>}
                                               </div>
-                                          )}
-                                      </div>
+
+                                              <div className="grading-row">
+                                                  <div className="grading-field">
+                                                      <label className="field-label">الدرجة (من {q.max_score})</label>
+                                                      <input
+                                                          type="number"
+                                                          min="0"
+                                                          max={q.max_score}
+                                                          step="0.5"
+                                                          className="input small"
+                                                          placeholder={`0 - ${q.max_score}`}
+                                                          value={gradingInputs[q.id]?.score ?? ''}
+                                                          onChange={e => updateGradingInput(q.id, 'score', e.target.value)}
+                                                          disabled={attemptDetails.status !== 'pending_grading'}
+                                                      />
+                                                  </div>
+                                                  <div className="grading-field grow">
+                                                      <label className="field-label">ملاحظات للطالب (اختياري)</label>
+                                                      <input
+                                                          type="text"
+                                                          className="input small"
+                                                          placeholder="ملاحظة على إجابة الطالب..."
+                                                          value={gradingInputs[q.id]?.feedback ?? ''}
+                                                          onChange={e => updateGradingInput(q.id, 'feedback', e.target.value)}
+                                                          disabled={attemptDetails.status !== 'pending_grading'}
+                                                      />
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      ) : (
+                                          <div className="options-list">
+                                              {q.options.map(opt => {
+                                                  let optClass = "opt-row ";
+                                                  let badge = null;
+
+                                                  if (opt.id === q.correct_option_id) {
+                                                      optClass += "correct-opt ";
+                                                      badge = <span className="opt-badge green-badge">الإجابة الصحيحة</span>;
+                                                  }
+                                                  
+                                                  if (opt.id === q.student_selected_option_id && !q.is_student_correct) {
+                                                      optClass += "wrong-opt ";
+                                                      badge = <span className="opt-badge red-badge">اختيار الطالب</span>;
+                                                  }
+
+                                                  if (opt.id === q.student_selected_option_id && q.is_student_correct) {
+                                                      badge = <span className="opt-badge green-badge">اختيار الطالب (صحيح)</span>;
+                                                  }
+
+                                                  return (
+                                                      <div key={opt.id} className={optClass}>
+                                                          <div className="opt-text-inner">{opt.text}</div>
+                                                          {badge}
+                                                      </div>
+                                                  );
+                                              })}
+                                              {!q.student_selected_option_id && (
+                                                  <div className="no-answer-warning">
+                                                      <span className="icon-wrap">{Icons.alert}</span> لم يقم الطالب باختيار أي إجابة لهذا السؤال.
+                                                  </div>
+                                              )}
+                                          </div>
+                                      )}
                                   </div>
                               ))}
                           </div>
                       </div>
+
+                      {attemptDetails.status === 'pending_grading' && (
+                          <div className="grading-footer">
+                              {gradeError && <p className="grade-error">{gradeError}</p>}
+                              <button className="btn-save-exam" disabled={savingGrades} onClick={publishGrades}>
+                                  {savingGrades ? 'جاري الحفظ...' : 'حفظ التصحيح ونشر النتيجة للطالب'}
+                              </button>
+                          </div>
+                      )}
+                      </>
                   )}
               </div>
           </div>
@@ -518,6 +694,33 @@ export default function ExamStatsPage() {
         .red-badge { background: #ef4444; color: white; }
 
         .no-answer-warning { color: #fca5a5; font-size: 0.9rem; margin-top: 15px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; text-align: center; border: 1px dashed rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; }
+
+        /* ── PENDING GRADING PANEL ── */
+        .pending-panel { margin-bottom: 24px; border-color: rgba(250, 204, 21, 0.3); }
+        .pending-header { display: flex; align-items: center; gap: 10px; padding: 16px 20px; background: rgba(250, 204, 21, 0.08); border-bottom: 1px solid rgba(250, 204, 21, 0.2); }
+        .pending-header h4 { margin: 0; color: #facc15; font-size: 1rem; font-weight: 800; }
+        .pending-btn { background: rgba(250, 204, 21, 0.12); border-color: rgba(250, 204, 21, 0.4); color: #facc15; }
+        .pending-btn:hover { background: rgba(250, 204, 21, 0.2); border-color: #facc15; }
+        .pending-pill { background: rgba(250, 204, 21, 0.1); color: #facc15; border-color: rgba(250, 204, 21, 0.25); }
+
+        /* ── ESSAY GRADING UI ── */
+        .essay-grading-box { background: var(--bg-base); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 4px; }
+        .essay-answer-text { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 14px; color: var(--text-primary); line-height: 1.7; white-space: pre-wrap; margin-bottom: 16px; font-size: 0.95rem; }
+        .no-answer-inline { color: var(--text-muted); font-style: italic; }
+        .grading-row { display: flex; gap: 16px; flex-wrap: wrap; }
+        .grading-field { display: flex; flex-direction: column; gap: 6px; min-width: 140px; }
+        .grading-field.grow { flex: 1; min-width: 220px; }
+        .grading-footer { padding: 18px 24px; border-top: 1px solid var(--border); background: var(--bg-elevated); display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+        .grade-error { color: #fca5a5; background: rgba(239, 68, 68, 0.1); border: 1px dashed rgba(239, 68, 68, 0.3); padding: 10px; border-radius: 8px; text-align: center; font-size: 0.9rem; font-weight: bold; margin: 0; }
+        .btn-save-exam { background: linear-gradient(135deg, var(--gold), #b8923f); color: #111009; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 800; font-size: 1rem; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(201,168,76,0.25); }
+        .btn-save-exam:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(201,168,76,0.35); }
+        .btn-save-exam:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .section-label { display: block; color: var(--text-secondary); font-size: 0.9rem; font-weight: bold; margin-bottom: 10px; }
+        .field-label { color: var(--text-muted); font-size: 0.82rem; font-weight: bold; }
+        .input { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; width: 100%; box-sizing: border-box; font-family: inherit; }
+        .input:focus { outline: none; border-color: var(--gold); }
+        .input.small { padding: 9px 12px; font-size: 0.9rem; }
+        .input:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .empty-state { text-align: center; padding: 40px; color: var(--text-muted); font-size: 1.05rem; }
         .full-span { grid-column: 1 / -1; }
