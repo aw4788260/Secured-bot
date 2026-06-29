@@ -38,14 +38,27 @@ export default async (req, res) => {
     }
 
     // 4. التحقق من المحاولات السابقة (منع الإعادة)
-    // نستخدم count لتسريع الاستعلام
-    const { count } = await supabase
+    // ✅ المحاولات المكتملة أو التي بانتظار تصحيح المعلم اليدوي تحجب إعادة الدخول لنفس الامتحان
+    const { data: existingAttempt } = await supabase
       .from('user_attempts')
-      .select('id', { count: 'exact', head: true })
-      .match({ user_id: userId, exam_id: examId, status: 'completed' }); 
+      .select('id, status')
+      .match({ user_id: userId, exam_id: examId })
+      .in('status', ['completed', 'pending_grading'])
+      .limit(1)
+      .maybeSingle();
 
-    if (count > 0) {
-      console.warn(`${apiName} ⚠️ User already completed this exam.`);
+    if (existingAttempt) {
+      console.warn(`${apiName} ⚠️ User already submitted this exam (status: ${existingAttempt.status}).`);
+
+      if (existingAttempt.status === 'pending_grading') {
+          // نرسل حالة مختلفة ليفهم التطبيق أن الإجابة بانتظار التصحيح اليدوي وليست منتهية بنتيجة
+          return res.status(409).json({
+              error: 'لقد قمت بتسليم هذا الامتحان من قبل، وهو الآن قيد المراجعة من المعلم.',
+              isCompleted: true,
+              isPendingGrading: true
+          });
+      }
+
       // نرسل رمز 409 (Conflict) ليفهم التطبيق أن الامتحان منتهي
       return res.status(409).json({ 
           error: 'لقد قمت بإنهاء هذا الامتحان من قبل.',

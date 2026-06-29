@@ -94,13 +94,30 @@ export default async (req, res) => {
     }
 
     // 6. التحقق من المحاولات السابقة
-    const { count } = await supabase.from('user_attempts')
-      .select('id', { count: 'exact', head: true })
-      .match({ user_id: userId, exam_id: examId, status: 'completed' });
+    // ✅ نعتبر حالة "بانتظار التصحيح اليدوي" مكافئة لـ "مكتمل" بخصوص منع إعادة الدخول العشوائية
+    const { data: prevAttempt } = await supabase.from('user_attempts')
+      .select('id, status')
+      .match({ user_id: userId, exam_id: examId })
+      .in('status', ['completed', 'pending_grading'])
+      .limit(1)
+      .maybeSingle();
+
+    const count = prevAttempt ? 1 : 0;
     
     let isRetake = false;
 
     if (count > 0) {
+        // ✅ الامتحانات التي بانتظار تصحيح المعلم اليدوي لا يُسمح بإعادتها حتى لو allow_retake مفعّل
+        // لأن إعادة الحل ستتعارض مع الإجابات المقالية التي يصححها المعلم حالياً
+        if (prevAttempt.status === 'pending_grading') {
+            console.warn(`${apiName} ⚠️ Attempt Rejected: Exam pending manual grading.`);
+            return res.status(409).json({
+                error: 'لقد قمت بتسليم هذا الامتحان من قبل، وهو الآن قيد المراجعة من المعلم.',
+                isCompleted: true,
+                isPendingGrading: true
+            });
+        }
+
         // إذا أكمل الطالب الامتحان مسبقاً، نتحقق من سماحية الإعادة للتدريب
         if (examConfig.allow_retake) {
             console.log(`${apiName} 🔄 User already completed, but allow_retake is TRUE. Starting practice mode...`);
@@ -116,7 +133,7 @@ export default async (req, res) => {
         // جلب الأسئلة مع الإجابات الصحيحة (is_correct)
         const { data: questionsWithAnswers, error: qAnsError } = await supabase.from('questions')
           .select(`
-             id, question_text, sort_order, image_file_id, 
+             id, question_text, sort_order, image_file_id, question_type, max_score,
              options ( id, question_id, option_text, sort_order, is_correct )
           `)
           .eq('exam_id', examId)
@@ -159,7 +176,7 @@ export default async (req, res) => {
     // جلب الأسئلة (بدون is_correct)
     const { data: questions, error: qError } = await supabase.from('questions')
       .select(`
-         id, question_text, sort_order, image_file_id, 
+         id, question_text, sort_order, image_file_id, question_type, max_score,
          options ( id, question_id, option_text, sort_order ) 
       `) // ⚠️ هام: لا نرسل is_correct هنا
       .eq('exam_id', examId)

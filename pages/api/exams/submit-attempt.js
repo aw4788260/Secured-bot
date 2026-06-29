@@ -36,17 +36,32 @@ export default async (req, res) => {
         // جلب الأسئلة مع كافة تفاصيلها (الخيارات، الصور، النص) للإرسال للفرونت إند
         const { data: questions, error: qErr } = await supabase
           .from('questions')
-          .select(`id, question_text, image_file_id, options (id, option_text, is_correct)`)
+          .select(`id, question_text, image_file_id, question_type, max_score, options (id, option_text, is_correct)`)
           .eq('exam_id', examId);
 
         if (qErr) throw qErr;
 
         let score = 0;
-        const total = questions?.length || 0;
+        // ✅ الأسئلة المقالية لا تدخل في حساب الإجمالي التلقائي لأنها تحتاج تصحيحاً يدوياً
+        const mcqQuestions = (questions || []).filter(q => q.question_type !== 'essay');
+        const total = mcqQuestions.length;
         let correctedQuestions = [];
 
         // تصحيح الإجابات في الذاكرة وبناء مصفوفة النتائج التفصيلية
         (questions || []).forEach(q => {
+          if (q.question_type === 'essay') {
+            // ✅ الأسئلة المقالية في وضع التدريب: تعرض كإجابة نصية بدون تصحيح تلقائي
+            correctedQuestions.push({
+              id: q.id,
+              question_text: q.question_text,
+              image_file_id: q.image_file_id,
+              question_type: 'essay',
+              user_answer: { text_answer: answers[q.id] || '' },
+              needs_manual_grading: true
+            });
+            return;
+          }
+
           const userSelectedOptionId = answers[q.id];
           const correctOption = q.options.find(o => o.is_correct);
           
@@ -59,6 +74,7 @@ export default async (req, res) => {
             id: q.id,
             question_text: q.question_text,
             image_file_id: q.image_file_id,
+            question_type: 'mcq',
             options: q.options,
             correct_option_id: correctOption?.id,
             user_answer: { selected_option_id: userSelectedOptionId }
@@ -105,18 +121,21 @@ export default async (req, res) => {
 
     const realExamId = attemptData.exam_id;
 
-    // 6. جلب الإجابات الصحيحة للمحاولة الحقيقية
+    // 6. جلب أسئلة الامتحان (شاملة نوع السؤال والدرجة العظمى)
     const { data: questions } = await supabase
       .from('questions')
-      .select(`id, options (id, is_correct)`)
+      .select(`id, question_type, max_score, options (id, is_correct)`)
       .eq('exam_id', realExamId);
 
-    let score = 0;
-    const total = questions?.length || 0;
+    let score = 0; // درجة الأسئلة الاختيارية المصححة تلقائياً فقط
+    const mcqQuestions = (questions || []).filter(q => q.question_type !== 'essay');
+    const essayQuestions = (questions || []).filter(q => q.question_type === 'essay');
+    const total = mcqQuestions.length; // الإجمالي المعروض فوراً يعتمد على الأسئلة الاختيارية فقط
+    const hasEssayQuestions = essayQuestions.length > 0;
     let answersToInsert = [];
 
-    // 7. تصحيح الإجابات وتجهيزها للحفظ
-    (questions || []).forEach(q => {
+    // 7. تصحيح الأسئلة الاختيارية تلقائياً
+    mcqQuestions.forEach(q => {
       const userSelectedOptionId = answers[q.id]; 
       const correctOption = q.options.find(o => o.is_correct);
       
@@ -136,6 +155,20 @@ export default async (req, res) => {
       }
     });
 
+    // ✅ 7.ب. حفظ إجابات الأسئلة المقالية كنص خام بانتظار تصحيح المعلم اليدوي
+    essayQuestions.forEach(q => {
+      const textAnswer = answers[q.id];
+      if (textAnswer !== undefined && textAnswer !== null && String(textAnswer).trim() !== '') {
+          answersToInsert.push({
+              attempt_id: attemptId,
+              question_id: q.id,
+              text_answer: String(textAnswer),
+              earned_score: null, // لم يتم تصحيحه يدوياً بعد
+              is_correct: null
+          });
+      }
+    });
+
     // 8. حفظ الإجابات التفصيلية في جدول user_answers
     if (answersToInsert.length > 0) {
         const { error: ansError } = await supabase
@@ -145,16 +178,42 @@ export default async (req, res) => {
         if (ansError) throw ansError;
     }
 
-    // ✅ حساب النسبة المئوية
+    // ✅ حساب النسبة المئوية المبدئية (تعتمد فقط على الأسئلة الاختيارية المصححة تلقائياً)
     const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
 
-    // 9. تحديث حالة المحاولة بالدرجة والنسبة ووقت الانتهاء
+    if (hasEssayQuestions) {
+        // ✅ في حال وجود أسئلة مقالية: الامتحان ينتظر تصحيح المعلم اليدوي قبل نشر النتيجة النهائية
+        const { error: updateError } = await supabase
+          .from('user_attempts')
+          .update({
+            score: score,           // درجة مبدئية للأسئلة الاختيارية فقط
+            percentage: percentage,  // نسبة مبدئية، ستُعاد حسابها بعد التصحيح اليدوي
+            status: 'pending_grading',
+            is_published: false,
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', attemptId);
+
+        if (updateError) throw updateError;
+
+        console.log(`${apiName} ✅ Exam submitted, pending manual grading. Auto score: ${score}/${total}`);
+
+        return res.status(200).json({
+          success: true,
+          pending_grading: true,
+          message: 'تم تسليم إجابتك بنجاح، وهي الآن قيد المراجعة من المعلم.',
+          is_practice: false
+        });
+    }
+
+    // 9. لا توجد أسئلة مقالية: تحديث حالة المحاولة بالدرجة النهائية مباشرة كالمعتاد
     const { error: updateError } = await supabase
       .from('user_attempts')
       .update({
         score: score,
         percentage: percentage,
         status: 'completed',
+        is_published: true,
         completed_at: new Date().toISOString()
       })
       .eq('id', attemptId);

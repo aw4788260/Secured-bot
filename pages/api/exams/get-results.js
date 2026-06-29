@@ -11,7 +11,7 @@ export default async (req, res) => {
     // 1. جلب المحاولة أولاً لمعرفة معرف الامتحان (للتحقق من الصلاحية)
     const { data: attempt, error: attError } = await supabase
       .from('user_attempts')
-      .select('id, score, question_order, user_id, exam_id, exams ( id, title )')
+      .select('id, score, percentage, status, is_published, question_order, user_id, exam_id, exams ( id, title )')
       .eq('id', attemptId)
       .single();
 
@@ -40,13 +40,22 @@ export default async (req, res) => {
         return res.status(403).json({ error: 'Access Denied: Not your result' });
     }
 
+    // ✅ 4.ب. إذا كان الامتحان يحتوي على أسئلة مقالية ولم يُصحح المعلم بعد، نمنع إرسال النتيجة النهائية
+    if (attempt.is_published === false) {
+        return res.status(200).json({
+            pending_grading: true,
+            exam_title: attempt.exams.title,
+            message: 'النتيجة قيد التصحيح والمراجعة من المعلم، سيتم إشعارك عند اعتمادها.'
+        });
+    }
+
     // 5. جلب الأسئلة والإجابات
     const { data: questions } = await supabase.from('questions')
-      .select(`id, question_text, image_file_id, options ( id, option_text, is_correct )`)
+      .select(`id, question_text, image_file_id, question_type, max_score, options ( id, option_text, is_correct )`)
       .eq('exam_id', attempt.exam_id);
 
     const { data: userAnswers } = await supabase.from('user_answers')
-      .select('question_id, selected_option_id, is_correct')
+      .select('question_id, selected_option_id, is_correct, text_answer, earned_score, teacher_feedback')
       .eq('attempt_id', attemptId);
 
     const userAnsMap = new Map();
@@ -63,10 +72,22 @@ export default async (req, res) => {
 
     // 7. تجهيز البيانات النهائية
     let correctCount = 0;
+    const mcqQuestions = orderedQuestions.filter(q => q.question_type !== 'essay');
     const finalQuestions = orderedQuestions.map(q => {
         const ans = userAnsMap.get(q.id);
+
+        if (q.question_type === 'essay') {
+            return {
+                ...q,
+                // إجابة الطالب النصية ودرجتها وملاحظة المعلم (متاحة دائماً هنا لأن is_published = true)
+                user_answer: ans || null,
+                earned_score: ans?.earned_score ?? 0,
+                teacher_feedback: ans?.teacher_feedback || null
+            };
+        }
+
         if (ans?.is_correct) correctCount++;
-        
+
         return {
             ...q,
             // نرسل ID الإجابة الصحيحة ليقوم التطبيق بتلوينها
@@ -81,10 +102,10 @@ export default async (req, res) => {
     return res.status(200).json({
         exam_title: attempt.exams.title,
         score_details: { 
-            percentage: questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0,
+            percentage: attempt.percentage ?? (mcqQuestions.length > 0 ? Math.round((correctCount / mcqQuestions.length) * 100) : 0),
             correct: correctCount, 
             total: questions.length,
-            score: attempt.score // الدرجة المسجلة
+            score: attempt.score // الدرجة النهائية المسجلة (تشمل المقالي بعد النشر)
         },
         corrected_questions: finalQuestions
     });
