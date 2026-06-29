@@ -77,7 +77,7 @@ export default async (req, res) => {
     }));
 
     // ========================================================
-    // 6. جلب محاولات الطلاب (مع إضافة id كممثل لـ attempt_id)
+    // 6. جلب محاولات الطلاب المكتملة (مع إضافة id كممثل لـ attempt_id)
     // ========================================================
     const { data: attemptsData, error: attemptsError } = await supabase
       .from('user_attempts')
@@ -97,6 +97,24 @@ export default async (req, res) => {
       .order('percentage', { ascending: false });
 
     if (attemptsError) throw attemptsError;
+
+    // ✅ 6.ب. جلب المحاولات التي بانتظار التصحيح اليدوي (أسئلة مقالية لم تُصحح بعد)
+    const { data: pendingData, error: pendingError } = await supabase
+      .from('user_attempts')
+      .select(`
+        id,
+        student_name_input,
+        completed_at,
+        users (
+          first_name,
+          phone
+        )
+      `)
+      .eq('exam_id', examId)
+      .eq('status', 'pending_grading')
+      .order('completed_at', { ascending: false });
+
+    if (pendingError) throw pendingError;
 
     // 7. الحسابات الأساسية
     const totalAttempts = attemptsData ? attemptsData.length : 0;
@@ -122,7 +140,24 @@ export default async (req, res) => {
         score: attempt.score,
         percentage: attempt.percentage,
         completed_at: attempt.completed_at,
-        phone: userData?.phone
+        phone: userData?.phone,
+        status: 'completed'
+      };
+    }) : [];
+
+    // ✅ 8.ب. تنسيق قائمة الطلاب الذين بانتظار التصحيح اليدوي
+    const formattedPending = pendingData ? pendingData.map((attempt) => {
+      const userData = Array.isArray(attempt.users) ? attempt.users[0] : attempt.users;
+      const finalName = attempt.student_name_input || userData?.first_name || 'طالب غير مسجل';
+
+      return {
+        attempt_id: attempt.id,
+        student_name_input: finalName,
+        score: null,
+        percentage: null,
+        completed_at: attempt.completed_at,
+        phone: userData?.phone,
+        status: 'pending_grading'
       };
     }) : [];
 
@@ -132,7 +167,8 @@ export default async (req, res) => {
       averageScore: averageScore,        
       averagePercentage: averagePercentage, 
       totalAttempts: totalAttempts,
-      attempts: formattedAttempts,         
+      attempts: formattedAttempts,
+      pendingAttempts: formattedPending, // ✅ محاولات بانتظار تصحيح الأسئلة المقالية
       questionStats: formattedQuestionStats // ✅ إحصائيات الأسئلة + الاختيارات + الصور معاً
     });
 

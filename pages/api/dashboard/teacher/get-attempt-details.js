@@ -24,6 +24,8 @@ export default async (req, res) => {
         student_name_input, 
         question_order,
         exam_id,
+        status,
+        is_published,
         exams ( title, teacher_id ),
         users ( first_name, phone )
       `)
@@ -48,6 +50,8 @@ export default async (req, res) => {
         id, 
         question_text, 
         image_file_id,
+        question_type,
+        max_score,
         options ( id, option_text, is_correct )
       `)
       .eq('exam_id', attempt.exam_id);
@@ -59,7 +63,7 @@ export default async (req, res) => {
     // ========================================================
     const { data: userAnswers, error: uaError } = await supabase
       .from('user_answers')
-      .select('question_id, selected_option_id, is_correct')
+      .select('question_id, selected_option_id, is_correct, text_answer, earned_score, teacher_feedback')
       .eq('attempt_id', attemptId);
 
     if (uaError) throw uaError;
@@ -89,11 +93,29 @@ export default async (req, res) => {
     // بناء المصفوفة النهائية التي ستذهب للواجهة الأمامية
     const finalQuestions = orderedQuestions.map(q => {
        const studentAns = studentAnswersMap[q.id]; // جلب إجابة الطالب لهذا السؤال
-       
+       const isEssay = q.question_type === 'essay';
+
+       if (isEssay) {
+           return {
+             id: q.id,
+             text: q.question_text,
+             image: q.image_file_id,
+             question_type: 'essay',
+             max_score: q.max_score || 1,
+             // إجابة الطالب النصية
+             text_answer: studentAns?.text_answer || '',
+             // الدرجة التي وضعها المعلم (null إذا لم يتم تصحيحها بعد)
+             earned_score: studentAns?.earned_score ?? null,
+             teacher_feedback: studentAns?.teacher_feedback || '',
+             is_graded: studentAns?.earned_score !== null && studentAns?.earned_score !== undefined
+           };
+       }
+
        return {
          id: q.id,
          text: q.question_text,
          image: q.image_file_id,
+         question_type: 'mcq',
          options: q.options.map(opt => ({
              id: opt.id,
              text: opt.option_text,
@@ -112,6 +134,7 @@ export default async (req, res) => {
     // 6. إرسال الرد النهائي
     // ========================================================
     const studentData = Array.isArray(attempt.users) ? attempt.users[0] : attempt.users;
+    const hasEssayQuestions = finalQuestions.some(q => q.question_type === 'essay');
 
     return res.status(200).json({
       success: true,
@@ -126,6 +149,10 @@ export default async (req, res) => {
           percentage: attempt.percentage,
           completed_at: attempt.completed_at
       },
+      attempt_id: attempt.id,
+      status: attempt.status,
+      is_published: attempt.is_published,
+      has_essay_questions: hasEssayQuestions,
       questions_details: finalQuestions
     });
 
