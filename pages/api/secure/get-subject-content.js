@@ -109,15 +109,20 @@ export default async (req, res) => {
     let attemptsMap = {}; 
 
     if (examIds.length > 0) {
+      // ✅ جلب المحاولات المكتملة والتي بانتظار التصحيح اليدوي معاً
       const { data: attempts } = await supabase
         .from('user_attempts')
-        .select('id, exam_id') 
+        .select('id, exam_id, status') 
         .eq('user_id', userId)
         .in('exam_id', examIds)
-        .eq('status', 'completed'); 
+        .in('status', ['completed', 'pending_grading']); 
         
       attempts?.forEach(attempt => {
-        attemptsMap[attempt.exam_id] = attempt.id;
+        // completed تأخذ الأولوية على pending_grading في حال وجود كلتيهما
+        const existing = attemptsMap[attempt.exam_id];
+        if (!existing || (existing.status === 'pending_grading' && attempt.status === 'completed')) {
+          attemptsMap[attempt.exam_id] = { id: attempt.id, status: attempt.status };
+        }
       });
     }
 
@@ -167,22 +172,27 @@ export default async (req, res) => {
         })
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map(ex => {
-          const attemptId = attemptsMap[ex.id] || null;
-          const isCompleted = !!attemptId;
+          const attemptEntry = attemptsMap[ex.id] || null;
+          // ✅ isPendingGrading: صحيح فقط إذا كانت المحاولة بانتظار تصحيح المعلم اليدوي
+          const isPendingGrading = attemptEntry?.status === 'pending_grading';
+          // ✅ isCompleted: صحيح إذا أُنجز الامتحان بأي شكل (completed أو pending_grading)
+          const isCompleted = !!attemptEntry && attemptEntry.status === 'completed';
+          const attemptId = attemptEntry?.id || null;
           
           // فحص هل انتهى وقت الامتحان؟
           let isExpired = false;
           if (ex.end_time) {
               const endTime = new Date(ex.end_time);
-              // إذا انتهى الوقت ولم يحل الطالب الامتحان
-              if (now > endTime && !isCompleted) {
+              // إذا انتهى الوقت ولم يحل الطالب الامتحان (أو لم يُسلِّم)
+              if (now > endTime && !isCompleted && !isPendingGrading) {
                   isExpired = true;
               }
           }
 
           return {
             ...ex,
-            isCompleted: isCompleted, 
+            isCompleted: isCompleted,      // true فقط إذا اكتمل بنتيجة منشورة
+            isPendingGrading: isPendingGrading, // ✅ حالة جديدة: بانتظار تصحيح المعلم
             isExpired: isExpired, 
             attempt_id: attemptId        
           };
