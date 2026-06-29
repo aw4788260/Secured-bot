@@ -61,7 +61,7 @@ export default function ContentManager() {
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
   const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [], notifyStudents: false, allowRetake: false });
-  const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+  const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -415,8 +415,10 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                           notifyStudents: false,
                           questions: fullExam.questions ? fullExam.questions.map(q => ({
                               id: q.id, text: q.question_text, image: q.image_file_id,
-                              options: q.options.map(o => o.option_text),
-                              correctIndex: q.options.findIndex(o => o.is_correct)
+                              questionType: q.question_type === 'essay' ? 'essay' : 'mcq',
+                              maxScore: q.max_score || 1,
+                              options: q.options ? q.options.map(o => o.option_text) : [],
+                              correctIndex: q.options ? q.options.findIndex(o => o.is_correct) : 0
                           })) : []
                       });
                   } else {
@@ -438,7 +440,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 });
           }
           setDeletedQIds([]); setEditingQIndex(-1); 
-          setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+          setCurrentQ({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, options: ['', '', '', ''], correctIndex: 0 });
       }
       setModalType(type);
   };
@@ -482,11 +484,15 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   };
   const resetCurrentQuestion = () => {
       setEditingQIndex(-1);
-      setCurrentQ({ id: null, text: '', image: null, options: ['', '', '', ''], correctIndex: 0 });
+      setCurrentQ({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, options: ['', '', '', ''], correctIndex: 0 });
   };
   const saveQuestion = () => {
       if (!currentQ.text || !currentQ.text.trim()) return showAlert('error', 'نص السؤال مطلوب');
-      if (currentQ.options.some(opt => !opt || !opt.trim())) return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة.');
+      if (currentQ.questionType === 'essay') {
+          if (!currentQ.maxScore || parseFloat(currentQ.maxScore) <= 0) return showAlert('error', 'يجب تحديد الدرجة العظمى للسؤال المقالي');
+      } else {
+          if (currentQ.options.some(opt => !opt || !opt.trim())) return showAlert('error', 'لا يمكن إضافة سؤال باختيارات فارغة.');
+      }
       const newQs = [...examForm.questions];
       if (editingQIndex >= 0) newQs[editingQIndex] = currentQ;
       else newQs.push(currentQ);
@@ -1072,6 +1078,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   <div key={i} className={`q-item ${editingQIndex === i ? 'active' : ''}`} onClick={() => editQuestion(i)}>
                                       <span className="q-num">{i+1}</span>
                                       <span className="q-text">{q.text.substring(0, 15)}...</span>
+                                      {q.questionType === 'essay' && <span className="q-type-badge">مقالي</span>}
                                       <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteQuestion(i); }}>×</button>
                                   </div>
                               ))}
@@ -1087,6 +1094,18 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       {/* Right: Main Editor */}
                       <div className="editor-main">
                           <h4>{editingQIndex === -1 ? 'إضافة سؤال جديد' : `تعديل السؤال رقم ${editingQIndex + 1}`}</h4>
+
+                          <label className="field-label">نوع السؤال</label>
+                          <select
+                              className="input"
+                              style={{marginBottom: '15px'}}
+                              value={currentQ.questionType || 'mcq'}
+                              onChange={e => setCurrentQ({ ...currentQ, questionType: e.target.value })}
+                          >
+                              <option value="mcq">اختياري (متعدد الإجابات)</option>
+                              <option value="essay">مقالي (تصحيح يدوي)</option>
+                          </select>
+
                           <textarea className="input area" placeholder="نص السؤال هنا..." value={currentQ.text} onChange={e=>setCurrentQ({...currentQ, text: e.target.value})} rows="3"></textarea>
                           <div className="image-upload">
                               <label style={{ opacity: uploadingImg ? 0.5 : 1, pointerEvents: uploadingImg ? 'none' : 'auto', cursor: uploadingImg ? 'wait' : 'pointer' }}>
@@ -1096,19 +1115,38 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               {uploadingImg && <span style={{marginLeft: '10px', color: 'var(--gold)', fontSize: '0.9em', fontWeight: 'bold'}}>جاري رفع الصورة... ⏳</span>}
                               {currentQ.image && <img src={`/api/dashboard/teacher/file-proxy?type=exam_images&filename=${currentQ.image}`} alt="preview" />}
                           </div>
-                          <div className="options-section">
-                              <label className="section-label">الاختيارات (حدد الإجابة الصحيحة):</label>
-                              <div className="options-container dynamic">
-                                  {currentQ.options.map((opt, i) => (
-                                      <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
-                                          <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>{currentQ.correctIndex === i && <div className="dot"></div>}</div>
-                                          <input className="input small" value={opt} onChange={e => handleOptionChange(i, e.target.value)} placeholder={`الخيار ${i+1}`} />
-                                          {currentQ.options.length > 2 && <button className="btn-remove-opt" onClick={() => removeOption(i)} title="حذف">×</button>}
-                                      </div>
-                                  ))}
+
+                          {currentQ.questionType === 'essay' ? (
+                              <div className="options-section">
+                                  <label className="section-label">الدرجة العظمى لهذا السؤال:</label>
+                                  <input
+                                      type="number"
+                                      min="0.5"
+                                      step="0.5"
+                                      className="input"
+                                      style={{maxWidth: '160px'}}
+                                      value={currentQ.maxScore}
+                                      onChange={e => setCurrentQ({ ...currentQ, maxScore: e.target.value })}
+                                  />
+                                  <p style={{color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '10px'}}>
+                                      سيكتب الطالب إجابته في مربع نصي، وستحتاج لتصحيحها يدوياً بعد التسليم.
+                                  </p>
                               </div>
-                              <button className="btn-add-opt" onClick={addOption}>+ إضافة خيار</button>
-                          </div>
+                          ) : (
+                              <div className="options-section">
+                                  <label className="section-label">الاختيارات (حدد الإجابة الصحيحة):</label>
+                                  <div className="options-container dynamic">
+                                      {currentQ.options.map((opt, i) => (
+                                          <div key={i} className={`option-row ${currentQ.correctIndex === i ? 'correct' : ''}`}>
+                                              <div className="radio" onClick={() => setCurrentQ({...currentQ, correctIndex: i})}>{currentQ.correctIndex === i && <div className="dot"></div>}</div>
+                                              <input className="input small" value={opt} onChange={e => handleOptionChange(i, e.target.value)} placeholder={`الخيار ${i+1}`} />
+                                              {currentQ.options.length > 2 && <button className="btn-remove-opt" onClick={() => removeOption(i)} title="حذف">×</button>}
+                                          </div>
+                                      ))}
+                                  </div>
+                                  <button className="btn-add-opt" onClick={addOption}>+ إضافة خيار</button>
+                              </div>
+                          )}
                           <div className="editor-actions">
                               <button className="btn-primary full" onClick={saveQuestion}>{editingQIndex === -1 ? 'إضافة السؤال للقائمة' : 'تحديث السؤال'}</button>
                           </div>
@@ -1463,6 +1501,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .q-item { padding: 12px; background: var(--bg-base); border-radius: 8px; margin-bottom: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 0.9rem; border: 1px solid var(--border); transition: 0.2s; }
         .q-item:hover, .q-item.active { background: var(--bg-elevated); border-color: var(--gold); color: var(--text-primary); }
         .q-num { background: var(--bg-surface); border: 1px solid var(--border); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; color: var(--gold); }
+        .q-type-badge { background: var(--gold-dim); color: var(--gold); font-size: 0.7rem; padding: 2px 8px; border-radius: 6px; font-weight: bold; flex-shrink: 0; }
         .del-btn { background: none; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; padding: 0 5px; opacity: 0.7; transition: 0.2s; }
         .del-btn:hover { opacity: 1; transform: scale(1.1); }
         .add-q-btn { width: 100%; padding: 12px; background: var(--gold-dimmer); border: 1px dashed var(--border-accent); color: var(--gold); border-radius: 8px; cursor: pointer; margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; transition: 0.2s; }
