@@ -197,6 +197,8 @@ export default async (req, res) => {
                     question_type: questionType,
                     // ✅ الدرجة العظمى: للأسئلة المقالية تُؤخذ من إدخال المعلم، وللاختيارية تبقى 1 دائماً
                     max_score: questionType === 'essay' ? (parseFloat(q.maxScore) || 1) : 1,
+                    // ✅ الإجابة النموذجية: تُحفظ فقط للأسئلة المقالية، ليراها الطالب في النتيجة/المراجعة
+                    model_answer: questionType === 'essay' ? (q.modelAnswer || null) : null,
                 }).select().single();
 
                 if (qErr) throw qErr;
