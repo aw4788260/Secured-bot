@@ -18,6 +18,36 @@ const extractYouTubeID = (url) => {
   return match ? match[1] : url;
 };
 
+// 🛠️ دالة مساعدة لحذف الفيديو فعلياً من خوادم Bunny Stream
+// (نفس المنطق المستخدم في لوحة تحكم الويب — يضمن عدم بقاء فيديوهات يتيمة
+//  على Bunny عند حذف فيديو مرفوع من التطبيق)
+async function deleteVideoFromBunny(bunnyVideoId) {
+  if (!bunnyVideoId) return;
+
+  const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
+  const apiKey = process.env.BUNNY_STREAM_API_KEY;
+
+  if (!libraryId || !apiKey) {
+    console.error('⚠️ [Bunny] Missing credentials for deletion');
+    return;
+  }
+
+  try {
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
+      method: 'DELETE',
+      headers: { AccessKey: apiKey, accept: 'application/json' },
+    });
+
+    if (!res.ok) {
+      console.error(`⚠️ [Bunny] Failed to delete video ${bunnyVideoId}, status: ${res.status}`);
+    } else {
+      console.log(`✅ [Bunny] Video ${bunnyVideoId} deleted successfully from Bunny Stream.`);
+    }
+  } catch (err) {
+    console.error('⚠️ [Bunny] Error deleting video:', err.message);
+  }
+}
+
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
@@ -96,18 +126,27 @@ export default async (req, res) => {
       let insertData = { ...data };
 
       // 🚀 التحقق الإجباري من الفيديو والمدة
+      // ✅ ملاحظة: فيديوهات Bunny (المرفوعة كملف من التطبيق) تُحفظ مباشرة عبر
+      //    /api/teacher/confirm-upload.js وليس من هنا. هذا المسار (create/videos)
+      //    يبقى مخصصاً بشكل أساسي لإضافة فيديوهات بروابط يوتيوب، لكننا لا نمنع
+      //    أيضاً إدخالاً يحمل bunny_video_id مباشرة لو احتاج التطبيق ذلك مستقبلاً.
       if (type === 'videos') {
+          const hasBunnyId = !!insertData.bunny_video_id;
           const videoUrl = insertData.url || insertData.youtube_video_id;
-          if (!videoUrl) {
+
+          if (!hasBunnyId && !videoUrl) {
               return res.status(400).json({ error: 'رابط الفيديو مطلوب.' });
           }
 
-          insertData.youtube_video_id = extractYouTubeID(videoUrl);
-          delete insertData.url; 
-          delete insertData.notifyStudents; 
+          if (videoUrl) {
+              insertData.youtube_video_id = extractYouTubeID(videoUrl);
+          }
+          delete insertData.url;
+          delete insertData.notifyStudents;
 
           // 🚨 [تحقق إجباري]: لا تتم الإضافة إلا إذا تم إرسال مدة صحيحة من التطبيق
-          if (!insertData.duration || insertData.duration.trim() === '' || insertData.duration === '00:00') {
+          // (Bunny قد يرسل المدة لاحقاً تلقائياً عبر الـ Webhook بعد المعالجة)
+          if (!hasBunnyId && (!insertData.duration || insertData.duration.trim() === '' || insertData.duration === '00:00')) {
               return res.status(400).json({ error: 'إرسال مدة الفيديو الفعلي إلزامي، ولا يمكن تركها فارغة أو أصفاراً.' });
           }
       }
@@ -265,9 +304,24 @@ export default async (req, res) => {
            return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
        }
 
+       // ✅ تنظيف Bunny Stream إذا كان الفيديو مرفوعاً كملف (وليس رابط يوتيوب)
+       let bunnyVideoIdToDelete = null;
+       if (type === 'videos') {
+           const { data: videoRecord } = await supabase.from('videos').select('bunny_video_id').eq('id', id).single();
+           if (videoRecord?.bunny_video_id) {
+               bunnyVideoIdToDelete = videoRecord.bunny_video_id;
+           }
+       }
+
        const { error } = await supabase.from(type).delete().eq('id', id);
 
        if (error) throw error;
+
+       if (type === 'videos' && bunnyVideoIdToDelete) {
+           // لا ننتظر النتيجة حتى لا نؤخر الرد على التطبيق
+           deleteVideoFromBunny(bunnyVideoIdToDelete);
+       }
+
        return res.status(200).json({ success: true });
     }
 
