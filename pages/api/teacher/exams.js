@@ -191,17 +191,23 @@ export default async (req, res) => {
         // =================================================
         if (action !== 'delete' && questions && questions.length > 0) {
             for (const [index, q] of questions.entries()) {
+                // ✅ نوع السؤال: اختياري (mcq) أو مقالي (essay) - افتراضياً mcq للتوافق مع البيانات القديمة
+                const questionType = q.questionType === 'essay' ? 'essay' : 'mcq';
+
                 const { data: newQ, error: qErr } = await supabase.from('questions').insert({
                     exam_id: targetExamId, 
                     question_text: q.text,
                     image_file_id: q.image || null,
                     sort_order: index,
+                    question_type: questionType,
+                    // ✅ الدرجة العظمى: للأسئلة المقالية تُؤخذ من إدخال المعلم، وللاختيارية تبقى 1 دائماً
+                    max_score: questionType === 'essay' ? (parseFloat(q.maxScore) || 1) : 1,
                 }).select().single();
 
                 if (qErr) console.error("Error creating question:", qErr);
 
-                // إضافة الخيارات
-                if (newQ && q.options) {
+                // ✅ الخيارات تُحفظ فقط للأسئلة الاختيارية - الأسئلة المقالية لا تحتاج جدول options
+                if (newQ && questionType === 'mcq' && q.options) {
                     const optionsData = q.options.map((optText, i) => ({
                         question_id: newQ.id,
                         option_text: optText,
