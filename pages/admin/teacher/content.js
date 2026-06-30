@@ -61,7 +61,7 @@ export default function ContentManager() {
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
   const [examForm, setExamForm] = useState({ id: null, title: '', duration: 30, requiresName: true, randQ: true, randO: true, startTime: '', endTime: '', questions: [], notifyStudents: false, allowRetake: false });
-  const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, options: ['', '', '', ''], correctIndex: 0 });
+  const [currentQ, setCurrentQ] = useState({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, modelAnswer: '', options: ['', '', '', ''], correctIndex: 0 });
   const [editingQIndex, setEditingQIndex] = useState(-1);
   const [deletedQIds, setDeletedQIds] = useState([]);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -417,6 +417,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               id: q.id, text: q.question_text, image: q.image_file_id,
                               questionType: q.question_type === 'essay' ? 'essay' : 'mcq',
                               maxScore: q.max_score || 1,
+                              modelAnswer: q.model_answer || '',
                               options: q.options ? q.options.map(o => o.option_text) : [],
                               correctIndex: q.options ? q.options.findIndex(o => o.is_correct) : 0
                           })) : []
@@ -440,7 +441,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 });
           }
           setDeletedQIds([]); setEditingQIndex(-1); 
-          setCurrentQ({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, options: ['', '', '', ''], correctIndex: 0 });
+          setCurrentQ({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, modelAnswer: '', options: ['', '', '', ''], correctIndex: 0 });
       }
       setModalType(type);
   };
@@ -484,7 +485,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   };
   const resetCurrentQuestion = () => {
       setEditingQIndex(-1);
-      setCurrentQ({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, options: ['', '', '', ''], correctIndex: 0 });
+      setCurrentQ({ id: null, text: '', image: null, questionType: 'mcq', maxScore: 1, modelAnswer: '', options: ['', '', '', ''], correctIndex: 0 });
   };
   const saveQuestion = () => {
       if (!currentQ.text || !currentQ.text.trim()) return showAlert('error', 'نص السؤال مطلوب');
@@ -1130,6 +1131,18 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   />
                                   <p style={{color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '10px'}}>
                                       سيكتب الطالب إجابته في مربع نصي، وستحتاج لتصحيحها يدوياً بعد التسليم.
+                                  </p>
+
+                                  <label className="section-label" style={{marginTop: '15px'}}>الإجابة النموذجية (اختياري):</label>
+                                  <textarea
+                                      className="input area"
+                                      placeholder="اكتب الإجابة النموذجية هنا ليراها الطالب بعد ظهور النتيجة..."
+                                      value={currentQ.modelAnswer || ''}
+                                      onChange={e => setCurrentQ({ ...currentQ, modelAnswer: e.target.value })}
+                                      rows="3"
+                                  ></textarea>
+                                  <p style={{color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '6px'}}>
+                                      ستظهر هذه الإجابة للطالب في شاشة النتيجة والمراجعة بعد التصحيح، كمرجع لمقارنة إجابته.
                                   </p>
                               </div>
                           ) : (
