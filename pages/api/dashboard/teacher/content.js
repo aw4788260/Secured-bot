@@ -72,7 +72,7 @@ export default async (req, res) => {
             .select(`
                 *,
                 questions (
-                    id, question_text, image_file_id, sort_order, question_type, max_score,
+                    id, question_text, image_file_id, sort_order, question_type, max_score, model_answer,
                     options ( id, option_text, is_correct, sort_order )
                 )
             `)
