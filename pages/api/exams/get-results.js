@@ -51,7 +51,7 @@ export default async (req, res) => {
 
     // 5. جلب الأسئلة والإجابات
     const { data: questions } = await supabase.from('questions')
-      .select(`id, question_text, image_file_id, question_type, max_score, options ( id, option_text, is_correct )`)
+      .select(`id, question_text, image_file_id, question_type, max_score, model_answer, options ( id, option_text, is_correct )`)
       .eq('exam_id', attempt.exam_id);
 
     const { data: userAnswers } = await supabase.from('user_answers')
@@ -73,6 +73,11 @@ export default async (req, res) => {
     // 7. تجهيز البيانات النهائية
     let correctCount = 0;
     const mcqQuestions = orderedQuestions.filter(q => q.question_type !== 'essay');
+    const essayQuestions = orderedQuestions.filter(q => q.question_type === 'essay');
+
+    // ✅ إجمالي النقاط القصوى للامتحان كاملاً: كل سؤال اختياري = نقطة واحدة + مجموع الدرجة العظمى لكل سؤال مقالي
+    const totalPoints = mcqQuestions.length + essayQuestions.reduce((sum, q) => sum + (parseFloat(q.max_score) || 1), 0);
+
     const finalQuestions = orderedQuestions.map(q => {
         const ans = userAnsMap.get(q.id);
 
@@ -105,7 +110,8 @@ export default async (req, res) => {
             percentage: attempt.percentage ?? (mcqQuestions.length > 0 ? Math.round((correctCount / mcqQuestions.length) * 100) : 0),
             correct: correctCount, 
             total: questions.length,
-            score: attempt.score // الدرجة النهائية المسجلة (تشمل المقالي بعد النشر)
+            score: attempt.score, // الدرجة النهائية المسجلة (تشمل المقالي بعد النشر)
+            total_points: totalPoints // ✅ إجمالي النقاط القصوى لعرض الدرجة بصيغة "8/10"
         },
         corrected_questions: finalQuestions
     });

@@ -36,7 +36,7 @@ export default async (req, res) => {
         // جلب الأسئلة مع كافة تفاصيلها (الخيارات، الصور، النص) للإرسال للفرونت إند
         const { data: questions, error: qErr } = await supabase
           .from('questions')
-          .select(`id, question_text, image_file_id, question_type, max_score, options (id, option_text, is_correct)`)
+          .select(`id, question_text, image_file_id, question_type, max_score, model_answer, options (id, option_text, is_correct)`)
           .eq('exam_id', examId);
 
         if (qErr) throw qErr;
@@ -50,12 +50,14 @@ export default async (req, res) => {
         // تصحيح الإجابات في الذاكرة وبناء مصفوفة النتائج التفصيلية
         (questions || []).forEach(q => {
           if (q.question_type === 'essay') {
-            // ✅ الأسئلة المقالية في وضع التدريب: تعرض كإجابة نصية بدون تصحيح تلقائي
+            // ✅ الأسئلة المقالية في وضع التدريب: تعرض كإجابة نصية مع الإجابة النموذجية للمراجعة الذاتية
             correctedQuestions.push({
               id: q.id,
               question_text: q.question_text,
               image_file_id: q.image_file_id,
               question_type: 'essay',
+              max_score: q.max_score,
+              model_answer: q.model_answer || null,
               user_answer: { text_answer: answers[q.id] || '' },
               needs_manual_grading: true
             });
