@@ -49,7 +49,7 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'You do not own this content' });
     }
 
-    // 4. جلب البيانات (✅ تم إضافة encoding_status للتحقق من جاهزية الفيديو)
+    // 4. جلب البيانات (✅ تم إضافة encoding_status و bunny_video_id للتحقق من جاهزية الفيديو)
     const { data: subjectData, error: contentError } = await supabase
       .from('subjects')
       .select(`
@@ -57,7 +57,7 @@ export default async (req, res) => {
         courses ( id, title, teacher_id ),
         chapters (
           id, title, sort_order,
-          videos (id, title, sort_order, youtube_video_id, duration, encoding_status), 
+          videos (id, title, sort_order, youtube_video_id, duration, encoding_status, bunny_video_id), 
           pdfs (id, title, sort_order)
         ),
         exams (id, title, duration_minutes, sort_order, start_time, end_time, is_active, allow_retake) 
@@ -142,15 +142,23 @@ export default async (req, res) => {
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         .map(ch => ({
           ...ch,
-          // ✅ تم تعديل هذا الجزء لفلترة الفيديوهات التي حالتها ready فقط، مع إتاحة رؤيتها للمدرس المالك حتى لو لم تكن جاهزة (اختياري، تم قصرها هنا على ready فقط للجميع بناءً على طلبك)
+          // ✅ الطلاب (وأي مدرس غير مالك) يرون الفيديوهات الجاهزة (ready) فقط.
+          //    المدرس المالك للكورس يرى كل الفيديوهات بغض النظر عن حالتها
+          //    (waiting/encoding/ready) حتى يستطيع متابعة تقدم المعالجة من
+          //    داخل التطبيق، مع إرفاق encoding_status و bunny_video_id له
+          //    فقط ليتمكن من عرض شارة الحالة وزر التحديث اليدوي.
           videos: (ch.videos || [])
-            .filter(v => v.encoding_status === 'ready') 
+            .filter(v => isOwner || v.encoding_status === 'ready')
             .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
             .map(v => ({
               id: v.id, 
               title: v.title, 
               duration: v.duration, 
-              hasId: !!v.youtube_video_id 
+              hasId: !!v.youtube_video_id,
+              ...(isOwner ? {
+                encoding_status: v.encoding_status,
+                bunny_video_id: v.bunny_video_id,
+              } : {}),
             })),
           pdfs: (ch.pdfs || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
         })),
