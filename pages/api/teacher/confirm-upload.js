@@ -49,6 +49,40 @@ async function verifyChapterOwnership(chapterId, teacherId) {
   return courseTeacherId && String(courseTeacherId) === String(teacherId);
 }
 
+// ✅ يتحقق أن الفيديو المُراد استبداله موجود فعلاً ويملكه نفس المعلم،
+// ويرجع بيانات الفيديو القديم (وعلى رأسها bunny_video_id القديم) لتنظيفه لاحقاً
+async function verifyVideoOwnership(videoId, teacherId) {
+  if (!videoId) return null;
+  const { data: video } = await supabase
+    .from('videos')
+    .select('id, bunny_video_id, chapters ( subjects ( courses ( teacher_id ) ) )')
+    .eq('id', videoId)
+    .single();
+
+  const courseTeacherId = video?.chapters?.subjects?.courses?.teacher_id;
+  if (!video || !courseTeacherId || String(courseTeacherId) !== String(teacherId)) {
+    return null;
+  }
+  return video;
+}
+
+async function deleteVideoFromBunny(libraryId, apiKey, bunnyVideoId) {
+  if (!bunnyVideoId) return;
+  try {
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
+      method: 'DELETE',
+      headers: { AccessKey: apiKey, accept: 'application/json' },
+    });
+    if (!res.ok) {
+      console.error(`⚠️ [teacher/confirm-upload] Failed to delete old Bunny video ${bunnyVideoId}, status: ${res.status}`);
+    } else {
+      console.log(`✅ [teacher/confirm-upload] Old Bunny video ${bunnyVideoId} deleted after replacement.`);
+    }
+  } catch (err) {
+    console.error('⚠️ [teacher/confirm-upload] Error deleting old Bunny video:', err.message);
+  }
+}
+
 async function verifyBunnyVideoExists(libraryId, apiKey, bunnyVideoId) {
   const res = await fetch(
     `https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`,
@@ -76,6 +110,8 @@ export default async function handler(req, res) {
     notifyStudents = false,
     sortOrder = 999,
     durationSeconds = 0, // المدة المستخرجة محلياً على الجهاز (قد تكون 0 إذا فشل الاستخراج)
+    replaceVideoId = null, // ✅ إذا أُرسل: نحدّث صف فيديو موجود بدلاً من إنشاء صف جديد
+                            // (يُستخدم عند "استبدال" ملف فيديو مرفوع مسبقاً أثناء التعديل)
   } = req.body || {};
 
   if (!bunnyVideoId) {
@@ -92,6 +128,16 @@ export default async function handler(req, res) {
   const isOwner = await verifyChapterOwnership(chapterId, auth.teacherId);
   if (!isOwner) {
     return res.status(403).json({ error: 'غير مصرح لك بالإضافة في هذا الفصل.' });
+  }
+
+  // 2.b إذا كان هذا "استبدالاً" لفيديو موجود (تعديل): تحقق من ملكية الفيديو
+  // القديم نفسه قبل أي تعديل، ولا نسمح بالاستمرار إن لم يكن مملوكاً لنفس المعلم
+  let oldVideo = null;
+  if (replaceVideoId) {
+    oldVideo = await verifyVideoOwnership(replaceVideoId, auth.teacherId);
+    if (!oldVideo) {
+      return res.status(403).json({ error: 'غير مصرح لك بتعديل هذا الفيديو.' });
+    }
   }
 
   // 3. التحقق من وجود الفيديو فعلاً على Bunny (منع التزوير)
@@ -119,26 +165,57 @@ export default async function handler(req, res) {
   }
 
   // 5. حفظ الفيديو في قاعدة البيانات بحالة encoding_status = 'waiting'
-  const { data: insertedVideo, error: dbError } = await supabase
-    .from('videos')
-    .insert({
-      chapter_id: chapterId,
-      title: videoTitle,
-      bunny_video_id: bunnyVideoId,
-      sort_order: sortOrder,
-      duration: formattedDuration,
-      encoding_status: 'waiting',
-    })
-    .select('id')
-    .single();
+  //    - فيديو جديد: إدراج صف جديد
+  //    - استبدال (تعديل): تحديث نفس الصف القديم بالـ bunny_video_id الجديد
+  //      حتى يبقى نفس معرف الفيديو في قاعدة البيانات (لا يتغير id الذي
+  //      يستخدمه الطلاب بالفعل لمشاهدته) ثم حذف الفيديو القديم من Bunny
+  let savedVideoId;
+  let dbError;
+
+  if (replaceVideoId && oldVideo) {
+    const { error } = await supabase
+      .from('videos')
+      .update({
+        title: videoTitle,
+        bunny_video_id: bunnyVideoId,
+        youtube_video_id: null, // ✅ كان قد يكون يوتيوب سابقاً — الآن أصبح Bunny فقط
+        duration: formattedDuration,
+        encoding_status: 'waiting',
+      })
+      .eq('id', replaceVideoId);
+    dbError = error;
+    savedVideoId = replaceVideoId;
+  } else {
+    const { data: insertedVideo, error } = await supabase
+      .from('videos')
+      .insert({
+        chapter_id: chapterId,
+        title: videoTitle,
+        bunny_video_id: bunnyVideoId,
+        sort_order: sortOrder,
+        duration: formattedDuration,
+        encoding_status: 'waiting',
+      })
+      .select('id')
+      .single();
+    dbError = error;
+    savedVideoId = insertedVideo?.id;
+  }
 
   if (dbError) {
-    console.error('❌ [teacher/confirm-upload] DB Insert Error:', dbError);
+    console.error('❌ [teacher/confirm-upload] DB Save Error:', dbError);
     return res.status(500).json({ error: 'فشل حفظ بيانات الفيديو في قاعدة البيانات' });
   }
 
-  // 6. إرسال إشعار للطلاب (اختياري)
-  if (notifyStudents === true || notifyStudents === 'true') {
+  // ✅ بعد نجاح الاستبدال: احذف ملف الفيديو القديم من Bunny حتى لا يبقى يتيماً
+  // (لا ننتظر النتيجة حتى لا نؤخر الرد على التطبيق)
+  if (replaceVideoId && oldVideo?.bunny_video_id && oldVideo.bunny_video_id !== bunnyVideoId) {
+    deleteVideoFromBunny(libraryId, apiKey, oldVideo.bunny_video_id);
+  }
+
+  // 6. إرسال إشعار للطلاب (اختياري) — يُتجاهل في حالة "الاستبدال" لأنه ليس
+  // محتوى جديداً فعلياً، فقط استبدال لملف فيديو موجود مسبقاً
+  if (!replaceVideoId && (notifyStudents === true || notifyStudents === 'true')) {
     try {
       const { data: chapterInfo } = await supabase
         .from('chapters')
@@ -177,15 +254,16 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`✅ [teacher/confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=waiting`);
+  console.log(`✅ [teacher/confirm-upload] Video saved. db_id=${savedVideoId}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=waiting, replaced=${!!replaceVideoId}`);
 
   return res.status(200).json({
     success: true,
-    videoId: insertedVideo.id,
+    videoId: savedVideoId,
     bunnyVideoId,
     title: videoTitle,
     duration: formattedDuration,
     encoding_status: 'waiting',
     durationPending,
+    replaced: !!replaceVideoId,
   });
 }
