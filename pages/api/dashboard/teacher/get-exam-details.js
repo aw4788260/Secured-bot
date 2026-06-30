@@ -25,7 +25,7 @@ export default async (req, res) => {
     const { data: questions } = await supabase
       .from('questions')
       .select(`
-        id, question_text, image_file_id, sort_order,
+        id, question_text, image_file_id, sort_order, question_type, max_score, model_answer,
         options ( id, option_text, is_correct, sort_order )
       `)
       .eq('exam_id', examId)
