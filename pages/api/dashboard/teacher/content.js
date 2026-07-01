@@ -1,6 +1,6 @@
-import { supabase } from '../../../lib/supabaseClient';
-import { verifyTeacher } from '../../../lib/teacherAuth';
-import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد أداة فايربيز لإرسال الإشعارات
+import { supabase } from '../../../../lib/supabaseClient';
+import { verifyTeacher } from '../../../../lib/teacherAuth';
+import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد أداة فايربيز لإرسال الإشعارات
 
 // ============================================================
 // 🛠️ دوال مساعدة لمعالجة فيديوهات يوتيوب
