@@ -8,9 +8,29 @@ export default async (req, res) => {
   if (auth.error) return res.status(auth.status).json({ error: auth.error });
 
   // 🛠️ دالة تحويل التوقيت
+  //   ⚠️ ملاحظة هامة: بعض العملاء (تطبيق الموبايل) يرسلون start_time كـ ISO
+  //   UTC صحيح بالفعل (مثال: "2026-07-05T12:30:00.000Z")، بينما الداشبورد
+  //   الويب يرسل وقتاً محلياً "ساذجاً" بدون منطقة زمنية (مثال: "2026-07-05T14:30"
+  //   من input[type=datetime-local]).
+  //   إذا كان النص يحمل معلومة منطقة زمنية بالفعل (Z أو +HH:MM / -HH:MM)
+  //   فهو يمثّل لحظة UTC صحيحة ولا يجب إزاحته مرة أخرى بفارق توقيت القاهرة،
+  //   وإلا سيُزاح مرتين وينتج عنه وقت بدء أبكر بساعتين/ثلاث من المقصود —
+  //   وهو ما كان يجعل الامتحان يبدو أنه "بدأ بالفعل" فيُرسل الإشعار فوراً عند الإنشاء.
+  const hasExplicitTimezone = (dateString) => /Z$|[+-]\d{2}:?\d{2}$/.test(dateString.trim());
+
   const toEgyptUTC = (dateString) => {
       if (!dateString) return null;
       try {
+        // ✅ إذا كان التوقيت يحمل بالفعل منطقة زمنية صريحة (من تطبيق الموبايل)،
+        //    فهو UTC صحيح جاهز — لا نزيحه، فقط نُطبّعه بصيغة ISO
+        if (hasExplicitTimezone(dateString)) {
+          const parsedUtc = new Date(dateString);
+          if (isNaN(parsedUtc.getTime())) return null;
+          return parsedUtc.toISOString();
+        }
+
+        // 🕒 وإلا فهو وقت محلي "ساذج" (من الداشبورد الويب) — نفترض أنه بتوقيت القاهرة
+        //    ونحوله إلى UTC عبر إزاحة فارق التوقيت
         const cleanDate = dateString.replace('Z', '');
         const dateAsUtc = new Date(cleanDate + 'Z');
         if (isNaN(dateAsUtc.getTime())) return null;
