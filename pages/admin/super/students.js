@@ -118,7 +118,7 @@ export default function SuperStudentsPage() {
       setEditFormData({
           first_name: user.first_name,
           username: user.username,
-          phone: user.phone,
+          phone: user.phone || '',
           password: '' 
       });
       
@@ -185,13 +185,13 @@ export default function SuperStudentsPage() {
   };
 
   const handleSaveChanges = () => {
-      if (!editFormData.first_name || !editFormData.phone) return showToast('الاسم والهاتف مطلوبان', 'error');
+      if (!editFormData.first_name) return showToast('الاسم مطلوب', 'error');
       
       const payload = {
           userId: viewUser.id,
           data: {
               first_name: editFormData.first_name,
-              phone: editFormData.phone,
+              phone: editFormData.phone && editFormData.phone.trim() !== '' ? editFormData.phone.trim() : null,
               username: editFormData.username,
               ...(editFormData.password ? { password: editFormData.password } : {}) 
           }
@@ -419,7 +419,7 @@ export default function SuperStudentsPage() {
                           
                           <div className="data-row">
                               <div className="data-item">
-                                  <label>رقم الهاتف</label>
+                                  <label>رقم الهاتف (اختياري)</label>
                                   {isEditing ? (
                                       <input className="input-field ltr" value={editFormData.phone} onChange={e => setEditFormData({...editFormData, phone: e.target.value})} />
                                   ) : (
