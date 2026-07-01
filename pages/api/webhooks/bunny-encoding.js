@@ -11,7 +11,7 @@
 // الـ Payload الذي يرسله Bunny (3 حقول فقط — لا يوجد VideoLength):
 //   {
 //     "VideoLibraryId": 133,
-//     "VideoGuid": "657bb740-...",   ← نفس bunny_video_id في DB
+//     "VideoGuid": "657bb740-...",  ← نفس bunny_video_id في DB
 //     "Status": 1                    ← انظر جدول الحالات أدناه
 //   }
 //
@@ -39,7 +39,7 @@
 //
 // الأمان (اختياري):
 //   Bunny يُرفق التوقيع في هذه الترويسات:
-//     X-BunnyStream-Signature         ← HMAC-SHA256 hex
+//     X-BunnyStream-Signature          ← HMAC-SHA256 hex
 //     X-BunnyStream-Signature-Version ← "v1"
 //     X-BunnyStream-Signature-Algorithm ← "hmac-sha256"
 //   المفتاح هو Library's Read-Only API key
