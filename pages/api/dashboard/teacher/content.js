@@ -44,6 +44,36 @@ async function deleteVideoFromBunny(bunnyVideoId) {
   }
 }
 
+// ============================================================
+// 🔢 دالة مساعدة: جلب قيمة sort_order التالية لعنصر جديد
+// بدلاً من 999 الثابتة، نحسب: MAX(sort_order) + 1 داخل نفس الحاوية
+// ============================================================
+async function getNextSortOrder(type, data, teacherId = null) {
+  try {
+    let query = supabase.from(type).select('sort_order');
+
+    if (type === 'courses') {
+      if (teacherId) query = query.eq('teacher_id', teacherId);
+    } else if (type === 'subjects') {
+      if (data.course_id) query = query.eq('course_id', data.course_id);
+    } else if (type === 'chapters') {
+      if (data.subject_id) query = query.eq('subject_id', data.subject_id);
+    } else if (type === 'exams') {
+      if (data.subject_id) query = query.eq('subject_id', data.subject_id);
+    } else if (type === 'videos' || type === 'pdfs') {
+      if (data.chapter_id) query = query.eq('chapter_id', data.chapter_id);
+    }
+
+    const { data: rows } = await query;
+    if (!rows || rows.length === 0) return 0;
+
+    const maxOrder = Math.max(...rows.map(r => r.sort_order ?? 0));
+    return maxOrder + 1;
+  } catch {
+    return 0; // fallback آمن
+  }
+}
+
 export default async (req, res) => {
   // 1. التحقق من الصلاحية (مدرس أو أدمن)
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -266,10 +296,12 @@ export default async (req, res) => {
            } else {
                if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
            }
-           insertData.sort_order = 999;
+           // ✅ تعيين الترتيب تلقائياً: آخر عنصر + 1 بدلاً من القيمة الثابتة 999
+           insertData.sort_order = await getNextSortOrder(type, insertData);
         } else {
            insertData.teacher_id = auth.teacherId;
-           insertData.sort_order = 999;
+           // ✅ تعيين الترتيب تلقائياً للكورسات: آخر كورس للمعلم + 1
+           insertData.sort_order = await getNextSortOrder(type, insertData, auth.teacherId);
            if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
         }
 

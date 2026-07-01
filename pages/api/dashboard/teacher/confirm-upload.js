@@ -22,6 +22,24 @@ import { supabase } from '../../../../lib/supabaseClient';
 //     → راجع /api/webhooks/bunny-encoding.js
 // ===================================================================
 
+// ============================================================
+// 🔢 دالة مساعدة: جلب قيمة sort_order التالية للفيديو الجديد
+// ============================================================
+async function getNextVideoSortOrder(chapterId) {
+  try {
+    const { data: rows } = await supabase
+      .from('videos')
+      .select('sort_order')
+      .eq('chapter_id', chapterId);
+
+    if (!rows || rows.length === 0) return 0;
+    const maxOrder = Math.max(...rows.map(r => r.sort_order ?? 0));
+    return maxOrder + 1;
+  } catch {
+    return 0;
+  }
+}
+
 function getLibraryConfig() {
   const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
   const apiKey = process.env.BUNNY_STREAM_API_KEY;
@@ -84,7 +102,7 @@ export default async function handler(req, res) {
     chapterId,
     title,
     notifyStudents = false, // نستقبل القيمة من واجهة الويب
-    sortOrder = 999,
+    sortOrder = null, // إذا لم يُرسل، يُحسب تلقائياً من قاعدة البيانات
     durationSeconds = 0, // المدة المستخرجة من المتصفح محلياً (قد تكون 0 إذا فشل الاستخراج)
   } = req.body;
 
@@ -145,13 +163,19 @@ export default async function handler(req, res) {
   //     'waiting'  → هنا (الرفع اكتمل، في انتظار Bunny)
   //     'encoding' → Webhook Status=1  (Bunny بدأ المعالجة)
   //     'ready'    → Webhook Status=3/4 (اكتملت المعالجة)
+
+  // ✅ تحديد ترتيب الفيديو: إذا أُرسل من الواجهة نستخدمه، وإلا نحسبه تلقائياً
+  const finalSortOrder = (sortOrder !== null && sortOrder !== undefined)
+    ? sortOrder
+    : await getNextVideoSortOrder(chapterId);
+
   const { data: insertedVideo, error: dbError } = await supabase
     .from('videos')
     .insert({
       chapter_id: chapterId,
       title: videoTitle,
       bunny_video_id: bunnyVideoId,
-      sort_order: sortOrder,
+      sort_order: finalSortOrder,
       duration: formattedDuration,
       encoding_status: 'waiting', // ← الرفع اكتمل — ينتظر بدء المعالجة من Bunny
       notify_students: wantsNotify, // ✅ تمرير المتغير الجديد لحفظ الخيار في قاعدة البيانات
