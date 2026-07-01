@@ -133,7 +133,7 @@ export default async (req, res) => {
 
             // ✅ نخزّن علَم notify_students على الصف بدلاً من الإرسال الفوري
             //    الكرون (/api/cron/exam-notifications) يُرسل الإشعار عند حلول start_time
-            const wantsNotify = notifyStudents === true;
+            const wantsNotify = notifyStudents === true || notifyStudents === 'true' || notifyStudents === 1 || notifyStudents === '1';
             const examStartTime = adjustedStartTime ? new Date(adjustedStartTime) : null;
             const startsNow = examStartTime && (examStartTime.getTime() - Date.now()) <= 60_000;
 
