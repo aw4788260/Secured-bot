@@ -31,6 +31,12 @@
 //   'encoding' → عند Status=1 Processing  (هنا)
 //   'ready'    → عند Status=3 أو 4 Finished (هنا)
 //
+// 🔔 إشعار الطلاب (notify_students):
+//   إذا فعّل المعلم "إشعار الطلاب" عند إضافة فيديو Bunny، لا يُرسل الإشعار فوراً
+//   (لأن الفيديو غير قابل للمشاهدة بعد). بدلاً من ذلك يُخزَّن علَم notify_students=true
+//   على صف الفيديو (من confirm-upload.js أو content.js)، ثم هذا الملف هو من يرسل
+//   الإشعار الفعلي بمجرد وصول Status=3/4 (Finished) — أي بعد اكتمال التشفير حقاً.
+//
 // الأمان (اختياري):
 //   Bunny يُرفق التوقيع في هذه الترويسات:
 //     X-BunnyStream-Signature         ← HMAC-SHA256 hex
@@ -41,6 +47,7 @@
 // ===================================================================
 
 import { supabase } from '../../../lib/supabaseClient';
+import admin from '../../../lib/firebaseAdmin'; // ✅ لإرسال إشعار الطلاب بمجرد اكتمال التشفير فعلياً
 import crypto from 'crypto';
 
 // ✅ تعطيل bodyParser حتى نقرأ الجسم الخام للتحقق من التوقيع
@@ -156,9 +163,11 @@ export default async function handler(req, res) {
   }
 
   // ── 7. جلب الفيديو من DB بواسطة bunny_video_id ───────────────
+  // ✅ نجلب أيضاً title, chapter_id, notify_students حتى نتمكن من إرسال
+  // إشعار "تم رفع فيديو" للطلاب بمجرد اكتمال التشفير فعلياً (وليس عند الإضافة)
   const { data: video, error: fetchErr } = await supabase
     .from('videos')
-    .select('id, duration, encoding_status')
+    .select('id, title, chapter_id, duration, encoding_status, notify_students')
     .eq('bunny_video_id', bunnyVideoId)
     .single();
 
@@ -241,6 +250,67 @@ export default async function handler(req, res) {
   }
 
   console.log(`✅ [bunny-webhook] Video ready: db_id=${video.id}, bunny_id=${bunnyVideoId}, encoding_status: ${currentEncodingStatus} → ready, duration=${updatePayload.duration || currentDuration}`);
+
+  // ── 11. 🔔 إرسال الإشعار المؤجَّل للطلاب (إن كان المعلم قد فعّله عند الإضافة) ──
+  // هذا هو المكان الصحيح لإرسال إشعار "تم رفع فيديو": الآن فقط أصبح الفيديو
+  // جاهزاً فعلياً للمشاهدة، وليس لحظة ضغط المعلم على "إضافة".
+  //
+  // Status=3 و 4 قد يصلان للفيديو نفسه (أو عدة أحداث 4 لكل دقة عرض)، لذا نستخدم
+  // تحديثاً شرطياً (eq('notify_students', true)) كـ"قفل" ذري: فقط أول طلب يصل
+  // فعلياً يُحدّث notify_students إلى false وينجح بإرسال الإشعار، أي طلب لاحق
+  // لن يجد notify_students=true فيتجاهل الإرسال — فلا يتكرر الإشعار.
+  if (video.notify_students) {
+    try {
+      const { data: claimed } = await supabase
+        .from('videos')
+        .update({ notify_students: false })
+        .eq('id', video.id)
+        .eq('notify_students', true)
+        .select('id')
+        .maybeSingle();
+
+      if (claimed) {
+        const { data: chapterInfo } = await supabase
+          .from('chapters')
+          .select('subject_id, subjects!inner(courses!inner(title))')
+          .eq('id', video.chapter_id)
+          .single();
+
+        const subjectId = chapterInfo?.subject_id;
+        if (subjectId) {
+          const courseTitle = chapterInfo.subjects?.courses?.title || 'تحديث جديد في الكورس';
+          const videoTitle = video.title || 'فيديو جديد';
+
+          const message = {
+            notification: { title: courseTitle, body: `تم رفع فيديو: ${videoTitle}` },
+            topic: `subject_${subjectId}`,
+            android: { priority: 'high', notification: { sound: 'default' } },
+            apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
+            data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectId.toString() },
+          };
+
+          await admin.messaging().send(message);
+
+          await supabase.from('notifications').insert({
+            title: courseTitle,
+            body: `تم رفع فيديو: ${videoTitle}`,
+            target_type: 'subject',
+            target_id: subjectId.toString(),
+            sender_role: 'teacher',
+          });
+
+          console.log(`🔔 [bunny-webhook] Deferred notification sent: db_id=${video.id}, subject_id=${subjectId}`);
+        } else {
+          console.warn(`⚠️ [bunny-webhook] Could not resolve subject for db_id=${video.id} — notification skipped`);
+        }
+      } else {
+        console.log(`ℹ️ [bunny-webhook] Notification already claimed/sent by another event for db_id=${video.id}`);
+      }
+    } catch (notifyErr) {
+      console.error(`⚠️ [bunny-webhook] Deferred notification error for db_id=${video.id}:`, notifyErr.message);
+      // فشل الإشعار لا يجب أن يفشّل الـ webhook — الفيديو أصبح 'ready' بنجاح فعلاً
+    }
+  }
 
   return res.status(200).json({
     success: true,
