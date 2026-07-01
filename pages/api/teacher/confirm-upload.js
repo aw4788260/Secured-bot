@@ -92,6 +92,24 @@ async function verifyBunnyVideoExists(libraryId, apiKey, bunnyVideoId) {
   return res.json();
 }
 
+// ============================================================
+// 🔢 دالة مساعدة: جلب قيمة sort_order التالية للفيديو الجديد
+// ============================================================
+async function getNextVideoSortOrder(chapterId) {
+  try {
+    const { data: rows } = await supabase
+      .from('videos')
+      .select('sort_order')
+      .eq('chapter_id', chapterId);
+
+    if (!rows || rows.length === 0) return 0;
+    const maxOrder = Math.max(...rows.map(r => r.sort_order ?? 0));
+    return maxOrder + 1;
+  } catch {
+    return 0;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -108,7 +126,7 @@ export default async function handler(req, res) {
     chapterId,
     title,
     notifyStudents = false,
-    sortOrder = 999,
+    sortOrder = null, // إذا لم يُرسل، يُحسب تلقائياً من قاعدة البيانات
     durationSeconds = 0, // المدة المستخرجة محلياً على الجهاز (قد تكون 0 إذا فشل الاستخراج)
     replaceVideoId = null, // ✅ إذا أُرسل: نحدّث صف فيديو موجود بدلاً من إنشاء صف جديد
                             // (يُستخدم عند "استبدال" ملف فيديو مرفوع مسبقاً أثناء التعديل)
@@ -193,13 +211,18 @@ export default async function handler(req, res) {
     dbError = error;
     savedVideoId = replaceVideoId;
   } else {
+    // ✅ تحديد ترتيب الفيديو: إذا أُرسل من التطبيق نستخدمه، وإلا نحسبه تلقائياً
+    const finalSortOrder = (sortOrder !== null && sortOrder !== undefined)
+      ? sortOrder
+      : await getNextVideoSortOrder(chapterId);
+
     const { data: insertedVideo, error } = await supabase
       .from('videos')
       .insert({
         chapter_id: chapterId,
         title: videoTitle,
         bunny_video_id: bunnyVideoId,
-        sort_order: sortOrder,
+        sort_order: finalSortOrder,
         duration: formattedDuration,
         encoding_status: 'waiting',
         notify_students: wantsNotify, // 🔔 يُستهلك لاحقاً بواسطة الـ webhook عند الجاهزية
