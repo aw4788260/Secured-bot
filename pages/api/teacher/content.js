@@ -124,6 +124,7 @@ export default async (req, res) => {
     // --- إضافة عنصر جديد (Create) ---
     if (action === 'create') {
       let insertData = { ...data };
+      let isBunnyVideo = false; // 👈 يُحدَّد أدناه — يُستخدم لاحقاً لتأجيل الإشعار حتى اكتمال التشفير
 
       // 🚀 التحقق الإجباري من الفيديو والمدة
       // ✅ ملاحظة: فيديوهات Bunny (المرفوعة كملف من التطبيق) تُحفظ مباشرة عبر
@@ -132,6 +133,7 @@ export default async (req, res) => {
       //    أيضاً إدخالاً يحمل bunny_video_id مباشرة لو احتاج التطبيق ذلك مستقبلاً.
       if (type === 'videos') {
           const hasBunnyId = !!insertData.bunny_video_id;
+          isBunnyVideo = hasBunnyId;
           const videoUrl = insertData.url || insertData.youtube_video_id;
 
           if (!hasBunnyId && !videoUrl) {
@@ -154,6 +156,13 @@ export default async (req, res) => {
       const shouldNotify = data.notifyStudents === true || data.notifyStudents === 'true';
       if (insertData.notifyStudents !== undefined) {
           delete insertData.notifyStudents;
+      }
+
+      // 🔔 فيديوهات Bunny تحتاج وقتاً للمعالجة (Encoding) قبل أن تصبح قابلة للتشغيل.
+      // بدلاً من إرسال الإشعار فور الإضافة، نخزّنه كعلَم على صف الفيديو نفسه
+      // ليُرسله /api/webhooks/bunny-encoding.js تلقائياً عند اكتمال التشفير فعلاً.
+      if (type === 'videos' && isBunnyVideo) {
+          insertData.notify_students = shouldNotify;
       }
       
       // 🛡️ التحقق الأمني
@@ -206,8 +215,10 @@ export default async (req, res) => {
           } catch (permError) { console.error("Error granting permissions:", permError); }
       }
 
-      // إرسال الإشعارات
-      if (shouldNotify && (type === 'videos' || type === 'pdfs')) {
+      // إرسال الإشعارات فوراً — فقط لفيديوهات يوتيوب (لا معالجة/تشفير لها) والملفات PDF.
+      // فيديوهات Bunny (isBunnyVideo) تم تخزين علَم notify_students عليها أعلاه،
+      // وسيُرسل الإشعار الفعلي لاحقاً من /api/webhooks/bunny-encoding.js عند الجاهزية.
+      if (shouldNotify && (type === 'pdfs' || (type === 'videos' && !isBunnyVideo))) {
           try {
               const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
               if (subjectInfo && subjectInfo.subjectId) {
