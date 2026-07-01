@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     bunnyVideoId,
     chapterId,
     title,
-    notifyStudents = false, // تمت إزالة إرسال الإشعار من هنا، ولكن يمكنك حفظ هذا المتغير في قاعدة البيانات إذا أردت استخدامه في الـ Webhook
+    notifyStudents = false, // نستقبل القيمة من واجهة الويب
     sortOrder = 999,
     durationSeconds = 0, // المدة المستخرجة من المتصفح محلياً (قد تكون 0 إذا فشل الاستخراج)
   } = req.body;
@@ -94,6 +94,9 @@ export default async function handler(req, res) {
   if (!chapterId) {
     return res.status(400).json({ error: 'chapterId مطلوب' });
   }
+
+  // ✅ تنظيف وتحويل قيمة الإشعار إلى Boolean صريح للتأكد من حفظها كـ true/false
+  const wantsNotify = notifyStudents === true || notifyStudents === 'true';
 
   // تنظيف: نضمن أن durationSeconds رقم حقيقي وموجب
   const clientDuration = Number(durationSeconds);
@@ -151,9 +154,7 @@ export default async function handler(req, res) {
       sort_order: sortOrder,
       duration: formattedDuration,
       encoding_status: 'waiting', // ← الرفع اكتمل — ينتظر بدء المعالجة من Bunny
-      // ملاحظة: إذا كنت ترغب في أن يتحقق الـ webhook مما إذا كان المعلم اختار إرسال إشعار أم لا،
-      // يُفضل إضافة عمود `notify_students` لقاعدة البيانات وتمريره هنا:
-      // notify_students: notifyStudents 
+      notify_students: wantsNotify, // ✅ تمرير المتغير الجديد لحفظ الخيار في قاعدة البيانات
     })
     .select('id')
     .single();
@@ -163,9 +164,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'فشل حفظ بيانات الفيديو في قاعدة البيانات' });
   }
 
-  // ملاحظة: تم نقل كود إرسال الإشعار (الخطوة 6) إلى الـ Webhook ليعمل بعد انتهاء عملية التشفير (Encoding).
-
-  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=waiting`);
+  console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, notify=${wantsNotify}, duration=${formattedDuration}, status=waiting`);
 
   return res.status(200).json({
     success: true,
