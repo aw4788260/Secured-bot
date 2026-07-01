@@ -272,8 +272,9 @@ export default async (req, res) => {
            throw error;
         }
 
-        // إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
-        if (type === 'videos' && shouldNotify && newItem) {
+        // ✅ التعديل: إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار *وليس* مرفوعاً على باني ستريم
+        // فيديوهات باني ستريم ستُرسل إشعاراتها تلقائياً لاحقاً عبر الـ Webhook عند انتهاء التشفير.
+        if (type === 'videos' && shouldNotify && newItem && !newItem.bunny_video_id) {
             try {
                 const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
 
