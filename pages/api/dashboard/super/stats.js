@@ -1,6 +1,59 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
 
+// ============================================================
+// ✅ أدوات التوقيت الخاصة بمصر (تدعم التبديل التلقائي صيفي/شتوي)
+// نعتمد على IANA timezone "Africa/Cairo" بدلاً من توقيت السيرفر
+// (والذي غالباً ما يكون UTC على Vercel)، فلا يهم متى تتغير قوانين
+// التوقيت الصيفي في مصر، فهذا يُحسب تلقائياً حسب بيانات النظام.
+// ============================================================
+
+// حساب فرق التوقيت الحالي لمصر (+02:00 شتاءً أو +03:00 صيفاً) لتاريخ معين
+const getEgyptOffset = (dateInput) => {
+  try {
+    const date = new Date(dateInput);
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', timeZoneName: 'shortOffset' });
+    const parts = fmt.formatToParts(date);
+    const offsetString = parts.find(p => p.type === 'timeZoneName').value;
+    const hours = parseInt(offsetString.replace(/[^\d+-]/g, '')) || 2;
+    const sign = hours >= 0 ? '+' : '-';
+    const paddedHours = Math.abs(hours).toString().padStart(2, '0');
+    return `${sign}${paddedHours}:00`;
+  } catch (e) {
+    return '+02:00';
+  }
+};
+
+// تحويل تاريخ مصر (YYYY-MM-DD) إلى لحظة UTC الموافقة لبداية ذلك اليوم بتوقيت القاهرة
+const getUtcBoundary = (dateStr) => {
+  const offset = getEgyptOffset(`${dateStr}T00:00:00`);
+  return new Date(`${dateStr}T00:00:00${offset}`).toISOString();
+};
+
+// استخراج التاريخ (YYYY-MM-DD) بتوقيت القاهرة لأي لحظة زمنية (بدلاً من توقيت السيرفر)
+const cairoDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit'
+});
+const getCairoDateStr = (date) => cairoDateFormatter.format(date);
+
+// إزاحة تاريخ (YYYY-MM-DD) بعدد أيام مع الحفاظ على اليوم التقويمي الصحيح
+// (نستخدم ظهر UTC كمرجع حيادي حتى لا يتأثر الحساب بأي انزياح ساعة)
+const shiftDateStr = (dateStr, days) => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+};
+
+const daysMap = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const getDayNameFromDateStr = (dateStr) => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return daysMap[new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay()];
+};
+
 export default async function handler(req, res) {
   // 1. التحقق من الصلاحية (سوبر أدمن فقط)
   const authResult = await requireSuperAdmin(req, res);
@@ -10,18 +63,12 @@ export default async function handler(req, res) {
     // ✅ تحديث إحصائيات اليوم في قاعدة البيانات قبل جلبها (لضمان دقة الأرقام الحالية)
     await supabase.rpc('update_daily_user_stats');
 
-    // تحديد نطاق التاريخ (آخر 7 أيام)
-    // نقوم بتصفير الوقت (الساعة 00:00) لضمان شمولية اليوم بالكامل
-    const dateLimitObj = new Date();
-    dateLimitObj.setDate(dateLimitObj.getDate() - 7);
-    dateLimitObj.setHours(0, 0, 0, 0); 
-    const dateLimit = dateLimitObj.toISOString();
+    // ✅ تاريخ "اليوم" بتوقيت القاهرة الفعلي (وليس توقيت السيرفر)
+    const todayCairoStr = getCairoDateStr(new Date());
 
-    // استخراج التاريخ المحلي لاستخدامه كفلتر لجدول الإحصائيات اليومية
-    const limitYear = dateLimitObj.getFullYear();
-    const limitMonth = String(dateLimitObj.getMonth() + 1).padStart(2, '0');
-    const limitDay = String(dateLimitObj.getDate()).padStart(2, '0');
-    const localLimitDateStr = `${limitYear}-${limitMonth}-${limitDay}`;
+    // تحديد نطاق التاريخ (آخر 7 أيام) بتوقيت القاهرة
+    const localLimitDateStr = shiftDateStr(todayCairoStr, -7);
+    const dateLimit = getUtcBoundary(localLimitDateStr);
 
     // استخدام Promise.all لتنفيذ جميع الاستعلامات في نفس الوقت
     const [
@@ -83,47 +130,37 @@ export default async function handler(req, res) {
     // --- معالجة بيانات الرسوم البيانية ---
     const chartDataFinal = [];
     const activeUsersChartFinal = []; // ✅ مصفوفة بيانات رسم النشاط
-    const daysMap = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-    
+
     const rawChartData = chartDataResult.data || [];
     const rawDailyStats = dailyStatsResult.data || [];
 
     // ✅ الترتيب: من 6 أيام للوراء تنازلياً وصولاً لليوم (لضبط اتجاه الرسم البياني من اليسار لليمين)
+    // ✅ كل الحسابات هنا مبنية على تاريخ اليوم بتوقيت القاهرة (todayCairoStr) وليس توقيت السيرفر،
+    //    فتنضبط تلقائياً سواء كانت مصر بالتوقيت الصيفي (+3) أو الشتوي (+2)
     for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i); 
-        const dayName = daysMap[d.getDay()]; 
-        
+        const targetDateStr = shiftDateStr(todayCairoStr, -i);
+        const dayName = getDayNameFromDateStr(targetDateStr);
+
         // ========================================================
-        // 💰 الجزء الخاص بالأرباح (تم تركه كما هو بتوقيت UTC كما طلبت)
+        // 💰 الجزء الخاص بالأرباح (تم تصحيحه ليعتمد على توقيت القاهرة بدلاً من UTC)
         // ========================================================
-        const utcDateStr = d.toISOString().split('T')[0];
-        
         const dayTotal = rawChartData
-            .filter(item => {
-                const itemDateStr = new Date(item.created_at).toISOString().split('T')[0];
-                return itemDateStr === utcDateStr;
-            })
+            .filter(item => getCairoDateStr(new Date(item.created_at)) === targetDateStr)
             .reduce((sum, item) => sum + (item.total_price || 0), 0);
             
         chartDataFinal.push({ 
             name: i === 0 ? 'اليوم' : dayName,
-            date: utcDateStr, 
+            date: targetDateStr, 
             sales: dayTotal 
         });
 
         // ========================================================
-        // 👥 الجزء الخاص بعدد المستخدمين النشطين (تم تعديله للتوقيت المحلي)
+        // 👥 الجزء الخاص بعدد المستخدمين النشطين (بتوقيت القاهرة الصحيح)
         // ========================================================
-        const localYear = d.getFullYear();
-        const localMonth = String(d.getMonth() + 1).padStart(2, '0');
-        const localDay = String(d.getDate()).padStart(2, '0');
-        const localDateStr = `${localYear}-${localMonth}-${localDay}`;
-
-        const foundStat = rawDailyStats.find(s => s.record_date === localDateStr);
+        const foundStat = rawDailyStats.find(s => s.record_date === targetDateStr);
         activeUsersChartFinal.push({
             name: i === 0 ? 'اليوم' : dayName,
-            date: localDateStr,
+            date: targetDateStr,
             users: foundStat ? foundStat.active_users_today : 0
         });
     }
