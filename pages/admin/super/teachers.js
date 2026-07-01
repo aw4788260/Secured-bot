@@ -14,7 +14,9 @@ const Icons = {
   warn: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>,
   check: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
   user: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
-  teachers: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+  teachers: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
+  upgrade: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 8l-4-4-4 4"></path><path d="M18 4v11"></path></svg>,
+  back: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
 };
 
 // --- مكون Toast للإشعارات ---
@@ -79,6 +81,21 @@ export default function SuperTeachers() {
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [teacherToLogin, setTeacherToLogin] = useState(null);
 
+  // --- حالة مودال ترقية طالب إلى مدرس ---
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeStep, setUpgradeStep] = useState('search'); // search | form
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentResults, setStudentResults] = useState([]);
+  const [searchingStudents, setSearchingStudents] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [upgradeError, setUpgradeError] = useState('');
+  const [upgradeSubmitting, setUpgradeSubmitting] = useState(false);
+  const [upgradeFormData, setUpgradeFormData] = useState({
+    specialty: '', bio: '', whatsapp_number: '',
+    cash_numbers: '', instapay_numbers: '', instapay_links: '',
+    dashboard_username: '', dashboard_password: ''
+  });
+
   const fetchTeachers = async () => {
     setLoading(true);
     try {
@@ -97,6 +114,90 @@ export default function SuperTeachers() {
   };
 
   useEffect(() => { fetchTeachers(); }, []);
+
+  // --- بحث الطلاب (Debounced) لمودال الترقية ---
+  useEffect(() => {
+    if (!upgradeModalOpen || upgradeStep !== 'search') return;
+    if (!studentSearch.trim()) { setStudentResults([]); return; }
+
+    const timer = setTimeout(async () => {
+      setSearchingStudents(true);
+      try {
+        const res = await fetch(`/api/dashboard/super/upgrade-student?search=${encodeURIComponent(studentSearch.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          setStudentResults(data.students || []);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setSearchingStudents(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [studentSearch, upgradeModalOpen, upgradeStep]);
+
+  // --- دوال مودال ترقية طالب إلى مدرس ---
+  const openUpgradeModal = () => {
+    setUpgradeStep('search');
+    setStudentSearch('');
+    setStudentResults([]);
+    setSelectedStudent(null);
+    setUpgradeError('');
+    setUpgradeFormData({
+      specialty: '', bio: '', whatsapp_number: '',
+      cash_numbers: '', instapay_numbers: '', instapay_links: '',
+      dashboard_username: '', dashboard_password: ''
+    });
+    setUpgradeModalOpen(true);
+  };
+
+  const closeUpgradeModal = () => setUpgradeModalOpen(false);
+
+  const handleSelectStudent = (student) => {
+    setSelectedStudent(student);
+    setUpgradeError('');
+    setUpgradeStep('form');
+  };
+
+  const handleUpgradeSubmit = async (e) => {
+    e.preventDefault();
+    setUpgradeError('');
+    setUpgradeSubmitting(true);
+
+    try {
+      const payment_details = {
+        cash_numbers: upgradeFormData.cash_numbers.split(',').map(s => s.trim()).filter(Boolean),
+        instapay_numbers: upgradeFormData.instapay_numbers.split(',').map(s => s.trim()).filter(Boolean),
+        instapay_links: upgradeFormData.instapay_links.split(',').map(s => s.trim()).filter(Boolean)
+      };
+
+      const res = await fetch('/api/dashboard/super/upgrade-student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: selectedStudent.id,
+          ...upgradeFormData,
+          payment_details
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        await fetchTeachers();
+        setUpgradeModalOpen(false);
+        showToast(`تم ترقية ${selectedStudent.first_name} إلى مدرس بنجاح`, 'success');
+      } else {
+        setUpgradeError(data.error || 'حدث خطأ غير معروف');
+      }
+    } catch (err) {
+      setUpgradeError('خطأ في الاتصال بالشبكة');
+    } finally {
+      setUpgradeSubmitting(false);
+    }
+  };
 
   // --- دوال عرض التفاصيل والإحصائيات والمشرفين ---
   const handleViewStats = async (teacher) => {
@@ -280,9 +381,14 @@ export default function SuperTeachers() {
             </div>
             <p>إدارة الحسابات، المشرفين، والبيانات المالية.</p>
           </div>
-          <button className="btn-primary" onClick={() => handleOpenForm()}>
-            {Icons.add} مدرس جديد
-          </button>
+          <div className="top-actions">
+            <button className="btn-secondary" onClick={openUpgradeModal}>
+              {Icons.upgrade} ترقية طالب لمدرس
+            </button>
+            <button className="btn-primary" onClick={() => handleOpenForm()}>
+              {Icons.add} مدرس جديد
+            </button>
+          </div>
         </div>
 
         <div className="search-bar">
@@ -538,7 +644,131 @@ export default function SuperTeachers() {
             </div>
         </div>
       )}
-  
+
+      {/* --- نافذة ترقية طالب إلى مدرس --- */}
+      {upgradeModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal form-modal">
+            <div className="modal-header">
+              <h3>
+                {upgradeStep === 'form' && (
+                  <button type="button" className="header-back" onClick={() => { setUpgradeStep('search'); setUpgradeError(''); }}>{Icons.back}</button>
+                )}
+                {upgradeStep === 'search' ? 'ترقية طالب إلى مدرس - البحث' : `ترقية: ${selectedStudent?.first_name}`}
+              </h3>
+              <button onClick={closeUpgradeModal}>{Icons.close}</button>
+            </div>
+
+            {upgradeStep === 'search' && (
+              <>
+                <p className="hint-text">ابحث عن الطالب بالاسم، اليوزرنيم، رقم الهاتف، أو المعرف (ID) لترقية حسابه إلى حساب مدرس.</p>
+                <div className="search-input upgrade-search">
+                  {Icons.search}
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="ابحث عن طالب..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                  />
+                </div>
+
+                <div className="student-results">
+                  {searchingStudents && <div className="loading small">جاري البحث...</div>}
+                  {!searchingStudents && studentSearch.trim() && studentResults.length === 0 && (
+                    <p className="no-mods">لا يوجد طلاب مطابقين لبحثك.</p>
+                  )}
+                  {!searchingStudents && studentResults.map(s => (
+                    <div key={s.id} className="mod-item clickable" onClick={() => handleSelectStudent(s)}>
+                      <div className="mod-icon">{Icons.user}</div>
+                      <div className="mod-info">
+                        <span className="mod-name">{s.first_name}</span>
+                        <span className="mod-user">@{s.username} · <span dir="ltr">{s.phone}</span></span>
+                      </div>
+                      <span className="mod-role">طالب</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" className="btn-cancel" onClick={closeUpgradeModal}>إلغاء</button>
+                </div>
+              </>
+            )}
+
+            {upgradeStep === 'form' && selectedStudent && (
+              <form onSubmit={handleUpgradeSubmit}>
+                {upgradeError && <div className="error-banner">⚠️ {upgradeError}</div>}
+
+                <div className="selected-student-card">
+                  <div className="avatar">{selectedStudent.first_name?.[0]}</div>
+                  <div className="mod-info">
+                    <span className="mod-name">{selectedStudent.first_name}</span>
+                    <span className="mod-user">@{selectedStudent.username} · <span dir="ltr">{selectedStudent.phone}</span></span>
+                  </div>
+                </div>
+
+                <div className="form-section">
+                  <h4>1. بيانات المدرس الأساسية</h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>التخصص</label>
+                      <input type="text" required value={upgradeFormData.specialty} onChange={e => setUpgradeFormData({...upgradeFormData, specialty: e.target.value})}/>
+                    </div>
+                    <div className="form-group">
+                      <label>رقم واتساب (اختياري)</label>
+                      <input type="text" dir="ltr" value={upgradeFormData.whatsapp_number} onChange={e => setUpgradeFormData({...upgradeFormData, whatsapp_number: e.target.value})} placeholder="مثال: 01xxxxxxxxx"/>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>نبذة مختصرة (Bio)</label>
+                    <input type="text" value={upgradeFormData.bio} onChange={e => setUpgradeFormData({...upgradeFormData, bio: e.target.value})} placeholder="مدرس أول في..."/>
+                  </div>
+                </div>
+
+                <div className="form-section">
+                  <h4>2. بيانات الدفع (Payment Details)</h4>
+                  <div className="form-group">
+                    <label>أرقام فودافون كاش (افصل بفاصلة)</label>
+                    <input type="text" dir="ltr" value={upgradeFormData.cash_numbers} onChange={e => setUpgradeFormData({...upgradeFormData, cash_numbers: e.target.value})} placeholder="010xxxx, 012xxxx"/>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>أرقام إنستا باي (IPN)</label>
+                      <input type="text" dir="ltr" value={upgradeFormData.instapay_numbers} onChange={e => setUpgradeFormData({...upgradeFormData, instapay_numbers: e.target.value})} placeholder="01xxxx, 012xxx"/>
+                    </div>
+                    <div className="form-group">
+                      <label>روابط/يوزرنيم إنستا باي (Links)</label>
+                      <input type="text" dir="ltr" value={upgradeFormData.instapay_links} onChange={e => setUpgradeFormData({...upgradeFormData, instapay_links: e.target.value})} placeholder="name@instapay, url..."/>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-section">
+                  <h4>3. دخول لوحة التحكم (جديد للمدرس)</h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>اسم المستخدم (Dashboard)</label>
+                      <input type="text" required dir="ltr" className="input-dash" value={upgradeFormData.dashboard_username} onChange={e => setUpgradeFormData({...upgradeFormData, dashboard_username: e.target.value})}/>
+                    </div>
+                    <div className="form-group">
+                      <label>كلمة المرور</label>
+                      <input type="password" required dir="ltr" className="input-dash" value={upgradeFormData.dashboard_password} onChange={e => setUpgradeFormData({...upgradeFormData, dashboard_password: e.target.value})} placeholder="******"/>
+                    </div>
+                  </div>
+                  <p className="hint-text">💡 حساب الطالب الحالي في التطبيق (@{selectedStudent.username}) سيبقى كما هو ويُستخدم كبيانات دخول المدرس للتطبيق.</p>
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" className="btn-cancel" onClick={() => setUpgradeStep('search')}>رجوع</button>
+                  <button type="submit" className="btn-submit" disabled={upgradeSubmitting}>{upgradeSubmitting ? 'جاري الترقية...' : 'تأكيد الترقية'}</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         /* ================= Theme-Aware Styling ================= */
         .page-container { padding-bottom: 50px; }
@@ -558,8 +788,30 @@ export default function SuperTeachers() {
         .top-bar h1 { margin: 0; color: var(--text-primary); font-size: 1.75rem; font-weight: 800; }
         .top-bar p { margin: 0; color: var(--text-muted); font-size: 0.95rem; }
         
+        .top-actions { display: flex; gap: 12px; align-items: center; }
+
         .btn-primary { background: var(--gold); color: #111009; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 8px; align-items: center; transition: 0.2s; }
         .btn-primary:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 4px 12px var(--gold-dim); }
+
+        .btn-secondary { background: var(--bg-elevated); color: var(--gold); padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border-accent); font-weight: bold; cursor: pointer; display: flex; gap: 8px; align-items: center; transition: 0.2s; }
+        .btn-secondary:hover { background: var(--gold-dim); transform: translateY(-2px); }
+
+        .hint-text { color: var(--text-muted); font-size: 0.85rem; margin: 0 0 15px 0; line-height: 1.5; }
+
+        .upgrade-search { margin-bottom: 15px; }
+
+        .header-back { background: none; border: none; color: var(--text-muted); cursor: pointer; display: inline-flex; margin-left: 10px; transition: 0.2s; }
+        .header-back:hover { color: var(--gold); }
+        .modal-header h3 { display: flex; align-items: center; }
+
+        .student-results { display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; margin-bottom: 15px; }
+        .mod-item.clickable { cursor: pointer; transition: 0.2s; }
+        .mod-item.clickable:hover { border-color: var(--gold); background: var(--gold-dimmer); transform: translateY(-1px); }
+
+        .selected-student-card { display: flex; align-items: center; gap: 12px; background: var(--gold-dimmer); border: 1px solid var(--border-accent); border-radius: 10px; padding: 12px 15px; margin-bottom: 20px; }
+        .selected-student-card .avatar { width: 40px; height: 40px; background: var(--gold-dim); color: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 1px solid var(--border-accent); flex-shrink: 0; }
+
+        .loading.small { padding: 15px; font-size: 0.9rem; }
 
         .search-bar { margin-bottom: 20px; }
         .search-input { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 15px; display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
