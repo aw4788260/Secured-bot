@@ -253,6 +253,39 @@ export default async function handler(req, res) {
           successMessage = 'تم سحب الصلاحية';
           break;
 
+        // 7. حذف كل طلاب كورس معين (سحب صلاحية الكورس + مواده من جميع الطلاب دفعة واحدة)
+        case 'delete_all_course_students':
+          if (!courseId) return res.status(400).json({ error: 'لم يتم تحديد الكورس' });
+
+          // أ. جلب كل مواد هذا الكورس أولاً
+          const { data: courseSubjectsRows, error: courseSubjectsErr } = await supabase
+            .from('subjects')
+            .select('id')
+            .eq('course_id', courseId);
+          if (courseSubjectsErr) throw courseSubjectsErr;
+
+          const courseSubjectIds = (courseSubjectsRows || []).map(s => s.id);
+
+          // ب. حذف صلاحيات هذه المواد لكل الطلاب (لأنها تابعة للكورس المحذوف)
+          if (courseSubjectIds.length > 0) {
+            const { error: delSubjErr } = await supabase
+              .from('user_subject_access')
+              .delete()
+              .in('subject_id', courseSubjectIds);
+            if (delSubjErr) throw delSubjErr;
+          }
+
+          // ج. حذف صلاحية الكورس نفسه لكل الطلاب
+          const { data: deletedCourseRows, error: delCourseErr } = await supabase
+            .from('user_course_access')
+            .delete()
+            .eq('course_id', courseId)
+            .select('user_id');
+          if (delCourseErr) throw delCourseErr;
+
+          successMessage = `تم حذف صلاحية الكورس وموادّه من ${deletedCourseRows?.length || 0} طالب بنجاح`;
+          break;
+
         default:
           return res.status(400).json({ error: 'إجراء غير معروف' });
       }
