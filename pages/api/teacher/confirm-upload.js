@@ -1,6 +1,6 @@
 import { verifyTeacher } from '../../../lib/teacherAuth';
 import { supabase } from '../../../lib/supabaseClient';
-import admin from '../../../lib/firebaseAdmin';
+// ملاحظة: لم نعد نحتاج firebaseAdmin هنا — الإشعار يُرسل من webhooks/bunny-encoding.js بعد اكتمال التشفير
 
 // ===================================================================
 // 📱 [APP] تأكيد اكتمال الرفع المباشر (TUS) وحفظ الفيديو في قاعدة البيانات
@@ -172,6 +172,12 @@ export default async function handler(req, res) {
   let savedVideoId;
   let dbError;
 
+  // ✅ الإشعار لا يُرسل الآن — يُخزَّن كعلَم (notify_students) على صف الفيديو نفسه
+  // وسيُرسَل تلقائياً بواسطة /api/webhooks/bunny-encoding.js بمجرد اكتمال التشفير
+  // (Status=3/4 → encoding_status='ready'). هذا يمنع وصول إشعار "تم رفع فيديو"
+  // للطلاب بينما الفيديو لا يزال قيد المعالجة ولا يمكن تشغيله فعلياً.
+  const wantsNotify = !replaceVideoId && (notifyStudents === true || notifyStudents === 'true');
+
   if (replaceVideoId && oldVideo) {
     const { error } = await supabase
       .from('videos')
@@ -181,6 +187,7 @@ export default async function handler(req, res) {
         youtube_video_id: null, // ✅ كان قد يكون يوتيوب سابقاً — الآن أصبح Bunny فقط
         duration: formattedDuration,
         encoding_status: 'waiting',
+        notify_students: false, // استبدال ملف موجود ليس محتوى جديداً — لا إشعار إطلاقاً
       })
       .eq('id', replaceVideoId);
     dbError = error;
@@ -195,6 +202,7 @@ export default async function handler(req, res) {
         sort_order: sortOrder,
         duration: formattedDuration,
         encoding_status: 'waiting',
+        notify_students: wantsNotify, // 🔔 يُستهلك لاحقاً بواسطة الـ webhook عند الجاهزية
       })
       .select('id')
       .single();
@@ -213,45 +221,11 @@ export default async function handler(req, res) {
     deleteVideoFromBunny(libraryId, apiKey, oldVideo.bunny_video_id);
   }
 
-  // 6. إرسال إشعار للطلاب (اختياري) — يُتجاهل في حالة "الاستبدال" لأنه ليس
-  // محتوى جديداً فعلياً، فقط استبدال لملف فيديو موجود مسبقاً
-  if (!replaceVideoId && (notifyStudents === true || notifyStudents === 'true')) {
-    try {
-      const { data: chapterInfo } = await supabase
-        .from('chapters')
-        .select('subject_id, subjects(courses(title))')
-        .eq('id', chapterId)
-        .single();
-
-      if (chapterInfo?.subject_id) {
-        const courseTitle = chapterInfo.subjects?.courses?.title || 'تحديث جديد في الكورس';
-        const subjectId = chapterInfo.subject_id;
-
-        const message = {
-          notification: { title: courseTitle, body: `تم رفع فيديو: ${videoTitle}` },
-          topic: `subject_${subjectId}`,
-          android: { priority: 'high', notification: { sound: 'default' } },
-          apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
-          data: {
-            click_action: 'FLUTTER_NOTIFICATION_CLICK',
-            type: 'subject',
-            id: subjectId.toString(),
-          },
-        };
-
-        await admin.messaging().send(message);
-
-        await supabase.from('notifications').insert({
-          title: courseTitle,
-          body: `تم رفع فيديو: ${videoTitle}`,
-          target_type: 'subject',
-          target_id: subjectId.toString(),
-          sender_role: 'teacher',
-        });
-      }
-    } catch (notifyErr) {
-      console.error('⚠️ [teacher/confirm-upload] Notification error:', notifyErr.message);
-    }
+  // 6. ✅ لم يعد الإشعار يُرسل هنا. تم تخزينه كعلَم notify_students على صف
+  // الفيديو أعلاه، وسيُرسله /api/webhooks/bunny-encoding.js تلقائياً بمجرد
+  // أن يُصبح الفيديو 'ready' فعلياً (اكتمل التشفير على Bunny).
+  if (wantsNotify) {
+    console.log(`🔔 [teacher/confirm-upload] Notification deferred until encoding is ready. db_id=${savedVideoId}, bunny_id=${bunnyVideoId}`);
   }
 
   console.log(`✅ [teacher/confirm-upload] Video saved. db_id=${savedVideoId}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=waiting, replaced=${!!replaceVideoId}`);
