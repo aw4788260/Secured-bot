@@ -111,47 +111,53 @@ export default async (req, res) => {
             const adjustedStartTime = toEgyptUTC(start_time);
             const adjustedEndTime = toEgyptUTC(end_time);
 
+            // ✅ نخزّن علَم notify_students على الصف بدلاً من الإرسال الفوري
+            //    الكرون (/api/cron/exam-notifications) يُرسل الإشعار عند حلول start_time
+            const wantsNotify = notifyStudents === true;
+            const examStartTime = adjustedStartTime ? new Date(adjustedStartTime) : null;
+            const startsNow = examStartTime && (examStartTime.getTime() - Date.now()) <= 60_000;
+
             const { data: newExam, error: examErr } = await supabase.from('exams').insert({
                 title, 
                 subject_id: subjectId,
                 duration_minutes: duration,
                 requires_student_name: true,
                 sort_order: 999,
-                teacher_id: auth.teacherId, // تسجيل الملكية
+                teacher_id: auth.teacherId,
                 start_time: adjustedStartTime,
                 end_time: adjustedEndTime,
                 is_active: true,
                 randomize_questions: randomizeQuestions || false,
                 randomize_options: randomizeOptions || false,
-                allow_retake: allow_retake || false // ✅ حفظ قيمة إعادة الامتحان للتدريب
+                allow_retake: allow_retake || false,
+                // 🔔 العلَم الذي يقرأه الكرون لمعرفة من يحتاج إرسال إشعار
+                notify_students: wantsNotify
             }).select().single();
 
             if (examErr) throw examErr;
             targetExamId = newExam.id;
 
-            // ✅ 🚀 إرسال إشعار فوري للطلاب إذا تم تفعيل الخيار من التطبيق
-            if (notifyStudents === true) {
+            // إذا كان الامتحان يبدأ الآن (أو تجاوز) — نرسل الإشعار فوراً ونمسح العلَم
+            if (wantsNotify && startsNow) {
                 try {
                     const courseTitle = subjectInfo.courses?.title || 'تحديث جديد';
                     const message = {
-                        notification: { title: courseTitle, body: `تم رفع اختبار جديد: ${title}` },
-                        topic: `subject_${subjectId}`, // التنبيه للمشتركين في المادة فقط
-                        android: { priority: 'high', notification: { sound: 'default' } },
-                        apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
-                        data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectId.toString() }
+                        notification: { title: courseTitle, body: `🔔 بدأ الاختبار الآن: ${title}` },
+                        topic: `subject_${subjectId}`,
+                        android: { priority: 'high', notification: { sound: 'default', priority: 'max', channelId: 'fcm_channel' } },
+                        apns: { headers: { 'apns-priority': '10' }, payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
+                        data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'exam', id: newExam.id.toString(), subject_id: subjectId.toString() }
                     };
-
                     await admin.messaging().send(message);
-
-                    // حفظ في سجل الإشعارات في قاعدة البيانات ليظهر بداخل التطبيق
                     await supabase.from('notifications').insert({
                         title: courseTitle,
-                        body: `تم رفع اختبار جديد: ${title}`,
-                        target_type: 'subject',
-                        target_id: subjectId.toString(),
+                        body: `🔔 بدأ الاختبار الآن: ${title}`,
+                        target_type: 'exam',
+                        target_id: newExam.id.toString(),
                         sender_role: 'teacher'
                     });
-                    console.log(`✅ Exam Notification sent successfully for exam: ${title}`);
+                    await supabase.from('exams').update({ notify_students: false }).eq('id', newExam.id);
+                    console.log(`✅ Exam notification sent immediately for: ${title}`);
                 } catch (notifyErr) {
                     console.error("⚠️ FCM Exam Notify Error:", notifyErr.message);
                 }
@@ -166,6 +172,10 @@ export default async (req, res) => {
             const adjustedStartTime = toEgyptUTC(start_time);
             const adjustedEndTime = toEgyptUTC(end_time);
 
+            // ✅ عند التعديل: إذا أبقى المعلم خيار الإشعار مفعلاً، نُعيد ضبط العلَم
+            //    حتى يُرسل الكرون الإشعار عند موعد البدء الجديد
+            const wantsNotify = notifyStudents === true;
+
             // 1. تحديث بيانات الامتحان (مع شرط teacher_id للحماية)
             const { error: updateErr } = await supabase.from('exams').update({
                 title,
@@ -174,7 +184,8 @@ export default async (req, res) => {
                 end_time: adjustedEndTime,
                 randomize_questions: randomizeQuestions || false,
                 randomize_options: randomizeOptions || false,
-                allow_retake: allow_retake || false // ✅ تحديث قيمة إعادة الامتحان للتدريب
+                allow_retake: allow_retake || false,
+                notify_students: wantsNotify // ← نُعيد ضبط العلَم عند كل تعديل
             })
             .eq('id', targetExamId)
             .eq('teacher_id', auth.teacherId); 
