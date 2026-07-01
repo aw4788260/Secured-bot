@@ -247,16 +247,8 @@ export default async (req, res) => {
         // ✅ تحديد encoding_status صراحةً حسب نوع الفيديو:
         //   يوتيوب → 'ready' فوراً  (لا يحتاج معالجة، التطبيق يعرضه مباشرة)
         //   Bunny  → 'waiting'      (confirm-upload.js يضعها هكذا — هذا السطر احتياط)
-        const isBunnyVideo = type === 'videos' && !!insertData.bunny_video_id;
         if (type === 'videos' && !insertData.encoding_status) {
           insertData.encoding_status = insertData.youtube_video_id ? 'ready' : 'waiting';
-        }
-
-        // 🔔 فيديوهات Bunny تحتاج وقتاً للمعالجة قبل أن تصبح قابلة للتشغيل.
-        // بدلاً من الإشعار الفوري، نخزّنه كعلَم على صف الفيديو ليُرسله
-        // /api/webhooks/bunny-encoding.js تلقائياً عند اكتمال التشفير فعلاً.
-        if (isBunnyVideo) {
-          insertData.notify_students = shouldNotify;
         }
 
         if (type !== 'courses') {
@@ -280,10 +272,8 @@ export default async (req, res) => {
            throw error;
         }
 
-        // إرسال الإشعار فوراً — فقط لفيديوهات يوتيوب (لا معالجة/تشفير لها).
-        // فيديوهات Bunny (isBunnyVideo) تم تخزين علَم notify_students عليها أعلاه،
-        // وسيُرسل الإشعار الفعلي لاحقاً من /api/webhooks/bunny-encoding.js عند الجاهزية.
-        if (type === 'videos' && shouldNotify && !isBunnyVideo && newItem) {
+        // إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
+        if (type === 'videos' && shouldNotify && newItem) {
             try {
                 const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
 
