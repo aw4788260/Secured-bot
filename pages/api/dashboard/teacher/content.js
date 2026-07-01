@@ -1,10 +1,8 @@
 import { supabase } from '../../../../lib/supabaseClient';
-import { verifyTeacher } from '../../../../lib/teacherAuth';
-import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد أداة فايربيز لإرسال الإشعارات
+import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 
-// ============================================================
-// 🛠️ دوال مساعدة لمعالجة فيديوهات يوتيوب
-// ============================================================
+// 🛠️ دالة مساعدة لاستخراج معرف الفيديو من رابط يوتيوب (محدثة لدعم جميع الروابط)
 const extractYouTubeID = (url) => {
   if (!url) return null;
   
@@ -19,29 +17,27 @@ const extractYouTubeID = (url) => {
 };
 
 // 🛠️ دالة مساعدة لحذف الفيديو فعلياً من خوادم Bunny Stream
-// (نفس المنطق المستخدم في لوحة تحكم الويب — يضمن عدم بقاء فيديوهات يتيمة
-//  على Bunny عند حذف فيديو مرفوع من التطبيق)
 async function deleteVideoFromBunny(bunnyVideoId) {
   if (!bunnyVideoId) return;
-
+  
   const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
   const apiKey = process.env.BUNNY_STREAM_API_KEY;
-
+  
   if (!libraryId || !apiKey) {
     console.error('⚠️ [Bunny] Missing credentials for deletion');
     return;
   }
-
+  
   try {
     const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
       method: 'DELETE',
       headers: { AccessKey: apiKey, accept: 'application/json' },
     });
-
+    
     if (!res.ok) {
-      console.error(`⚠️ [Bunny] Failed to delete video ${bunnyVideoId}, status: ${res.status}`);
+       console.error(`⚠️ [Bunny] Failed to delete video ${bunnyVideoId}, status: ${res.status}`);
     } else {
-      console.log(`✅ [Bunny] Video ${bunnyVideoId} deleted successfully from Bunny Stream.`);
+       console.log(`✅ [Bunny] Video ${bunnyVideoId} deleted successfully from Bunny Stream.`);
     }
   } catch (err) {
     console.error('⚠️ [Bunny] Error deleting video:', err.message);
@@ -49,344 +45,371 @@ async function deleteVideoFromBunny(bunnyVideoId) {
 }
 
 export default async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  // 1. التحقق من الصلاحية (مدرس أو أدمن)
+  const { user, error } = await requireTeacherOrAdmin(req, res);
+  if (error) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
-  // 1. التحقق من الصلاحية
-  const auth = await verifyTeacher(req);
-  if (auth.error) return res.status(auth.status).json({ error: auth.error });
-
-  // ✅ استقبال الخيارات والبيانات
-  const { action, type, data } = req.body; 
+  const auth = {
+    teacherId: user.teacherId,
+    userId: user.id
+  };
 
   // ============================================================
-  // 🛡️ دالة للتحقق من ملكية الكورس
+  // GET: جلب البيانات بنظام (Lazy Loading) لتقليل الضغط
   // ============================================================
-  const checkCourseOwnership = async (courseId) => {
+  if (req.method === 'GET') {
+    const { mode, id } = req.query;
+
+    try {
+      // 🟢 الحالة 1: جلب تفاصيل امتحان محدد (شاملة الأسئلة والاختيارات)
+      if (mode === 'exam_details') {
+          if (!id) return res.status(400).json({ error: 'Exam ID required' });
+
+          const { data: exam, error: examError } = await supabase
+            .from('exams')
+            .select(`
+                *,
+                questions (
+                    id, question_text, image_file_id, sort_order, question_type, max_score, model_answer,
+                    options ( id, option_text, is_correct, sort_order )
+                )
+            `)
+            .eq('id', id)
+            .single();
+
+          if (examError) throw examError;
+
+          if (exam.questions) {
+             exam.questions.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+             exam.questions.forEach(q => {
+                 if(q.options) q.options.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+             });
+          }
+
+          return res.status(200).json({ success: true, exam });
+      }
+
+      // 🟡 الحالة 2: جلب تفاصيل مادة محددة (شاملة الفصول والامتحانات "بدون أسئلة")
+      else if (mode === 'subject_details') {
+          if (!id) return res.status(400).json({ error: 'Subject ID required' });
+
+          const { data: subject, error: subError } = await supabase
+            .from('subjects')
+            .select(`
+                *,
+                chapters (
+                    id, title, sort_order,
+                    videos (id, title, bunny_video_id, youtube_video_id, duration, sort_order, encoding_status),
+                    pdfs (id, title, file_path)
+                ),
+                exams (
+                    id, title, duration_minutes, start_time, end_time, 
+                    requires_student_name, randomize_questions, randomize_options, 
+                    sort_order, is_active
+                )
+            `)
+            .eq('id', id)
+            .single();
+
+          if (subError) throw subError;
+
+          if (subject.chapters) {
+              subject.chapters.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+              subject.chapters.forEach(ch => {
+                  if (ch.videos) { 
+                      ch.videos.forEach(v => { v.url = v.youtube_video_id; }); 
+                      ch.videos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)); 
+                  }
+                  if (ch.pdfs) ch.pdfs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+              });
+          }
+          if (subject.exams) {
+              subject.exams.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+          }
+
+          return res.status(200).json({ success: true, subject });
+      }
+
+      // 🔴 الحالة 3: جلب الهيكل الأساسي (كورسات ومواد فقط)
+      else {
+          const { data: courses, error: fetchError } = await supabase
+            .from('courses')
+            .select(`
+                *,
+                subjects ( id, title, sort_order, price ) 
+            `)
+            .eq('teacher_id', auth.teacherId)
+            .order('sort_order', { ascending: true });
+
+          if (fetchError) throw fetchError;
+
+          courses.forEach(c => {
+              if (c.subjects) c.subjects.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+          });
+
+          return res.status(200).json({ success: true, courses });
+      }
+
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ============================================================
+  // POST: تنفيذ العمليات (Create, Update, Delete)
+  // ============================================================
+  if (req.method === 'POST') {
+    const { action, type } = req.body;
+    let data = req.body.data || req.body.payload;
+
+    if (!data && action !== 'delete') {
+       return res.status(400).json({ error: 'بيانات الطلب مفقودة' });
+    }
+    
+    if (action === 'delete' && !data) {
+        data = { id: req.body.id };
+    }
+
+    // ✅ معالجة بيانات الفيديو: يوتيوب (url → youtube_video_id) أو Bunny (bunny_video_id)
+    if (type === 'videos') {
+      if (data?.url) {
+        data.youtube_video_id = extractYouTubeID(data.url);
+        delete data.url;
+      }
+
+      // المدة مطلوبة فقط لروابط يوتيوب — فيديوهات Bunny تحفظ duration_seconds عبر confirm-upload
+      if (data && !data.bunny_video_id) {
+        data.duration = data.duration || '00:00';
+      }
+    }
+
+    const checkCourseOwnership = async (courseId) => {
       if (!courseId) return false;
-      const { data: course } = await supabase
-          .from('courses')
-          .select('teacher_id')
-          .eq('id', courseId)
-          .single();
-      return course && course.teacher_id === auth.teacherId;
-  };
+      const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', courseId).single();
+      return course && String(course.teacher_id) === String(auth.teacherId);
+    };
 
-  // ============================================================
-  // 🛡️ دالة لاستخراج معرف الكورس (Course ID) من العناصر الفرعية
-  // ============================================================
-  const getParentCourseId = async (itemType, itemData, isUpdateOrDelete = false) => {
-      if (itemType === 'subjects') {
-          if (!isUpdateOrDelete) return itemData.course_id;
-          const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.id).single();
-          return subject?.course_id;
-      }
+    const getParentCourseId = async (itemType, itemData, isUpdateOrDelete = false) => {
+       try {
+          if (itemType === 'subjects') {
+             if (!isUpdateOrDelete) return itemData.course_id;
+             const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', itemData.id).single();
+             return subject?.course_id;
+          }
+          if (itemType === 'chapters') {
+             let subjectId = itemData.subject_id;
+             if (isUpdateOrDelete) {
+                const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.id).single();
+                subjectId = chapter?.subject_id;
+             }
+             if (subjectId) {
+                const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', subjectId).single();
+                return subject?.course_id;
+             }
+          }
+          if (itemType === 'videos' || itemType === 'pdfs') {
+             let chapterId = itemData.chapter_id;
+             if (isUpdateOrDelete) {
+                const { data: item } = await supabase.from(itemType).select('chapter_id').eq('id', itemData.id).single();
+                chapterId = item?.chapter_id;
+             }
+             if (chapterId) {
+                const { data: chapter } = await supabase.from('chapters').select('subjects (course_id)').eq('id', chapterId).single();
+                return chapter?.subjects?.course_id;
+             }
+          }
+          return null;
+       } catch (e) { return null; }
+    };
 
-      if (itemType === 'chapters') {
-          let subjectId = itemData.subject_id;
-          if (isUpdateOrDelete) {
-              const { data: chapter } = await supabase.from('chapters').select('subject_id').eq('id', itemData.id).single();
-              subjectId = chapter?.subject_id;
-          }
-          if (subjectId) {
-              const { data: subject } = await supabase.from('subjects').select('course_id').eq('id', subjectId).single();
-              return subject?.course_id;
-          }
-      }
-
-      if (itemType === 'videos' || itemType === 'pdfs') {
-          let chapterId = itemData.chapter_id;
-          if (isUpdateOrDelete) {
-              const { data: item } = await supabase.from(itemType).select('chapter_id').eq('id', itemData.id).single();
-              chapterId = item?.chapter_id;
-          }
-          if (chapterId) {
-              const { data: chapter } = await supabase
-                  .from('chapters')
-                  .select('subjects (course_id)')
-                  .eq('id', chapterId)
-                  .single();
-              return chapter?.subjects?.course_id;
-          }
-      }
-      return null;
-  };
-
-  // ============================================================
-  // 🛡️ دالة مساعدة للحصول على subject_id من chapter_id (للإشعارات)
-  // ============================================================
-  const getSubjectIdFromChapter = async (chapterId) => {
+    // 🛡️ دالة مساعدة للحصول على subject_id من chapter_id (للإشعارات)
+    const getSubjectIdFromChapter = async (chapterId) => {
       if (!chapterId) return null;
       const { data: chapter } = await supabase.from('chapters').select('subject_id, subjects!inner(courses!inner(title))').eq('id', chapterId).single();
       return chapter ? { subjectId: chapter.subject_id, courseTitle: chapter.subjects?.courses?.title } : null;
-  };
+    };
 
-  try {
-    // --- إضافة عنصر جديد (Create) ---
-    if (action === 'create') {
-      let insertData = { ...data };
+    try {
+      if (action === 'create') {
+        let insertData = { ...data };
+        
+        // استخراج حالة خيار الإشعار وحذفه من بيانات الإدخال لجدول الفيديوهات لتجنب أخطاء الـ SQL
+        const shouldNotify = insertData.notifyStudents === true;
+        delete insertData.notifyStudents;
 
-      // 🚀 التحقق الإجباري من الفيديو والمدة
-      // ✅ ملاحظة: فيديوهات Bunny (المرفوعة كملف من التطبيق) تُحفظ مباشرة عبر
-      //    /api/teacher/confirm-upload.js وليس من هنا. هذا المسار (create/videos)
-      //    يبقى مخصصاً بشكل أساسي لإضافة فيديوهات بروابط يوتيوب، لكننا لا نمنع
-      //    أيضاً إدخالاً يحمل bunny_video_id مباشرة لو احتاج التطبيق ذلك مستقبلاً.
-      if (type === 'videos') {
-          const hasBunnyId = !!insertData.bunny_video_id;
-          const videoUrl = insertData.url || insertData.youtube_video_id;
+        // ✅ يجب توفر مصدر واحد على الأقل للفيديو: ملف مرفوع على Bunny و/أو رابط يوتيوب
+        if (type === 'videos' && !insertData.bunny_video_id && !insertData.youtube_video_id) {
+          return res.status(400).json({ error: 'يجب رفع ملف الفيديو أو إدخال رابط يوتيوب على الأقل.' });
+        }
 
-          if (!hasBunnyId && !videoUrl) {
-              return res.status(400).json({ error: 'رابط الفيديو مطلوب.' });
-          }
+        // ✅ تحديد encoding_status صراحةً حسب نوع الفيديو:
+        //   يوتيوب → 'ready' فوراً  (لا يحتاج معالجة، التطبيق يعرضه مباشرة)
+        //   Bunny  → 'waiting'      (confirm-upload.js يضعها هكذا — هذا السطر احتياط)
+        if (type === 'videos' && !insertData.encoding_status) {
+          insertData.encoding_status = insertData.youtube_video_id ? 'ready' : 'waiting';
+        }
 
-          if (videoUrl) {
-              insertData.youtube_video_id = extractYouTubeID(videoUrl);
-          }
-          delete insertData.url;
-          delete insertData.notifyStudents;
-
-          // 🚨 [تحقق إجباري]: لا تتم الإضافة إلا إذا تم إرسال مدة صحيحة من التطبيق
-          // (Bunny قد يرسل المدة لاحقاً تلقائياً عبر الـ Webhook بعد المعالجة)
-          if (!hasBunnyId && (!insertData.duration || insertData.duration.trim() === '' || insertData.duration === '00:00')) {
-              return res.status(400).json({ error: 'إرسال مدة الفيديو الفعلي إلزامي، ولا يمكن تركها فارغة أو أصفاراً.' });
-          }
-      }
-      
-      const shouldNotify = data.notifyStudents === true || data.notifyStudents === 'true';
-      if (insertData.notifyStudents !== undefined) {
-          delete insertData.notifyStudents;
-      }
-      
-      // 🛡️ التحقق الأمني
-      if (type !== 'courses') {
-          const targetCourseId = await getParentCourseId(type, insertData, false);
-
-          if (targetCourseId) {
-              const isOwner = await checkCourseOwnership(targetCourseId);
-              if (!isOwner) {
-                  return res.status(403).json({ error: 'غير مسموح لك بالإضافة في هذا الكورس.' });
-              }
-          } else {
-               if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) {
-                   return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
-               }
-          }
-      }
-
-      if (type === 'courses') {
-        insertData.teacher_id = auth.teacherId;
-        insertData.sort_order = 999; 
-        if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
-      } else {
-        insertData.sort_order = 999;
-      }
-      
-      const { data: newItem, error } = await supabase
-        .from(type)
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) {
-          if (error.code === '23505') { 
-             return res.status(400).json({ error: 'تكرار في البيانات (Duplicate Code/ID)' });
-          }
-          throw error;
-      }
-
-      if (type === 'courses' && newItem) {
-          try {
-            const accessList = [];
-            const currentUserId = auth.userId || auth.id;
-            if (currentUserId) accessList.push({ user_id: currentUserId, course_id: newItem.id });
-            const { data: mainTeacherUser } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).eq('role', 'teacher').maybeSingle();
-            if (mainTeacherUser && mainTeacherUser.id !== currentUserId) accessList.push({ user_id: mainTeacherUser.id, course_id: newItem.id });
-            const { data: moderators } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).eq('role', 'moderator');
-            if (moderators) moderators.forEach(mod => { if (!accessList.some(item => item.user_id === mod.id)) accessList.push({ user_id: mod.id, course_id: newItem.id }); });
-            if (accessList.length > 0) await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' });
-          } catch (permError) { console.error("Error granting permissions:", permError); }
-      }
-
-      // إرسال الإشعارات
-      if (shouldNotify && (type === 'videos' || type === 'pdfs')) {
-          try {
-              const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
-              if (subjectInfo && subjectInfo.subjectId) {
-                  const courseTitle = subjectInfo.courseTitle || 'تحديث جديد';
-                  const itemTitle = insertData.title || 'محتوى جديد';
-                  const itemTypeName = type === 'videos' ? 'فيديو جديد' : 'ملف جديد';
-
-                  const message = {
-                      notification: { title: courseTitle, body: `تم رفع ${itemTypeName}: ${itemTitle}` },
-                      topic: `subject_${subjectInfo.subjectId}`, 
-                      android: { priority: 'high', notification: { sound: 'default' } },
-                      apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
-                      data: { click_action: 'FLUTTER_NOTIFICATION_CLICK', type: 'subject', id: subjectInfo.subjectId.toString() }
-                  };
-
-                  await admin.messaging().send(message);
-
-                  await supabase.from('notifications').insert({
-                      title: courseTitle,
-                      body: `تم رفع ${itemTypeName}: ${itemTitle}`,
-                      target_type: 'subject',
-                      target_id: subjectInfo.subjectId.toString(),
-                      sender_role: 'teacher'
-                  });
-              }
-          } catch (notifyErr) {
-              console.error("⚠️ FCM Notify Error:", notifyErr.message);
-          }
-      }
-
-      return res.status(200).json({ success: true, item: newItem });
-    }
-
-    // --- تعديل عنصر (Update) ---
-    if (action === 'update') {
-       const { id, ...updates } = data;
-       let isAuthorized = false;
-
-       if (updates.notifyStudents !== undefined) delete updates.notifyStudents;
-
-       if (type === 'videos') {
-           const videoUrl = updates.url || updates.youtube_video_id;
-           if (videoUrl) {
-               updates.youtube_video_id = extractYouTubeID(videoUrl);
-               delete updates.url;
+        if (type !== 'courses') {
+           const targetCourseId = await getParentCourseId(type, insertData, false);
+           if (targetCourseId) {
+               const isOwner = await checkCourseOwnership(targetCourseId);
+               if (!isOwner) return res.status(403).json({ error: 'غير مسموح لك بالإضافة في هذا الكورس.' });
+           } else {
+               if (['subjects', 'chapters', 'videos', 'pdfs'].includes(type)) return res.status(400).json({ error: 'بيانات غير كافية للتحقق من الأمان.' });
            }
+           insertData.sort_order = 999;
+        } else {
+           insertData.teacher_id = auth.teacherId;
+           insertData.sort_order = 999;
+           if (!insertData.code) insertData.code = Math.floor(100000 + Math.random() * 900000);
+        }
 
-           // 🚨 [تحقق إجباري]: التأكد من أن المدة المرسلة للتحديث صالحة
-           if (updates.duration !== undefined && (updates.duration.trim() === '' || updates.duration === '00:00')) {
-               return res.status(400).json({ error: 'تحديث مدة الفيديو إلزامي، ولا يمكن تركها فارغة أو أصفاراً.' });
-           }
-       }
+        const { data: newItem, error } = await supabase.from(type).insert(insertData).select().single();
+        if (error) {
+           if (error.code === '23505') return res.status(400).json({ error: 'تكرار في البيانات (Duplicate Code/ID)' });
+           throw error;
+        }
 
-       if (type === 'courses') {
-           const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
-           if (course && course.teacher_id === auth.teacherId) {
-               isAuthorized = true;
-           }
-       } else {
-           const targetCourseId = await getParentCourseId(type, { id }, true);
-           if (targetCourseId && await checkCourseOwnership(targetCourseId)) {
-               isAuthorized = true;
-           }
-       }
+        // إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار
+        if (type === 'videos' && shouldNotify && newItem) {
+            try {
+                const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
 
-       if (!isAuthorized) {
-           return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا المحتوى.' });
-       }
+                if (subjectInfo && subjectInfo.subjectId) {
+                    const courseTitle = subjectInfo.courseTitle || 'تحديث جديد في الكورس';
+                    const subjectId = subjectInfo.subjectId;
+                    const videoTitle = newItem.title;
 
-       const { error } = await supabase.from(type).update(updates).eq('id', id);
-       
-       if (error) throw error;
-       return res.status(200).json({ success: true });
-    }
+                    const message = {
+                        notification: { 
+                            title: courseTitle, 
+                            body: `تم رفع فيديو: ${videoTitle}` 
+                        },
+                        topic: `subject_${subjectId}`,
+                        android: { 
+                            priority: 'high', 
+                            notification: { sound: 'default' } 
+                        },
+                        apns: { 
+                            payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } 
+                        },
+                        data: { 
+                            click_action: 'FLUTTER_NOTIFICATION_CLICK', 
+                            type: 'subject', 
+                            id: subjectId.toString() 
+                        }
+                    };
 
-    // --- حذف عنصر (Delete) ---
-    if (action === 'delete') {
-       const { id } = data;
-       let isAuthorized = false;
+                    await admin.messaging().send(message);
 
-       if (type === 'courses') {
-           const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
-           if (course && course.teacher_id === auth.teacherId) {
-               isAuthorized = true;
-           }
-       } else {
-           const targetCourseId = await getParentCourseId(type, { id }, true);
-           if (targetCourseId && await checkCourseOwnership(targetCourseId)) {
-               isAuthorized = true;
-           }
-       }
+                    await supabase.from('notifications').insert({
+                        title: courseTitle,
+                        body: `تم رفع فيديو: ${videoTitle}`,
+                        target_type: 'subject',
+                        target_id: subjectId.toString(),
+                        sender_role: 'teacher'
+                    });
+                }
+            } catch (notifyErr) {
+                console.error("Failed to send notification:", notifyErr.message);
+            }
+        }
 
-       if (!isAuthorized) {
-           return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
-       }
-
-       // ============================================================
-       // 🗑️ حذف كورس كامل (Course) — تنظيف شامل يدوي
-       // ============================================================
-       // ✅ عند حذف الكورس الأساسي، يجب حذف كل ما يتبعه يدوياً حتى لا تبقى
-       //    صلاحيات وصول "يتيمة" (orphaned) تشير إلى مواد/كورس لم يعد موجوداً:
-       //    - صلاحيات وصول الطلاب للمواد الفرعية (user_subject_access)
-       //    - صلاحيات وصول الطلاب للكورس نفسه (user_course_access)
-       //    - الفصول والفيديوهات والملفات التابعة للمواد (تحسباً لعدم وجود
-       //      ON DELETE CASCADE على مستوى قاعدة البيانات)
-       if (type === 'courses') {
+        if (type === 'courses' && newItem) {
+           let accessList = [{ user_id: auth.userId, course_id: newItem.id }];
            try {
-               // 1. جلب كل المواد التابعة لهذا الكورس
-               const { data: subjectsRows } = await supabase
-                   .from('subjects')
-                   .select('id')
-                   .eq('course_id', id);
-               const subjectIds = (subjectsRows || []).map(s => s.id);
+               const { data: teamMembers } = await supabase.from('users').select('id').eq('teacher_profile_id', auth.teacherId).neq('role', 'student');
+               if (teamMembers?.length > 0) teamMembers.forEach(member => { if (member.id !== auth.userId) accessList.push({ user_id: member.id, course_id: newItem.id }); });
+               await supabase.from('user_course_access').upsert(accessList, { onConflict: 'user_id, course_id' });
+           } catch (permError) {}
+        }
 
-               if (subjectIds.length > 0) {
-                   // 2. جلب كل الفصول (chapters) التابعة لهذه المواد
-                   const { data: chaptersRows } = await supabase
-                       .from('chapters')
-                       .select('id')
-                       .in('subject_id', subjectIds);
-                   const chapterIds = (chaptersRows || []).map(c => c.id);
+        if (type === 'videos' && newItem) newItem.url = newItem.youtube_video_id;
 
-                   if (chapterIds.length > 0) {
-                       // 3. جلب فيديوهات Bunny المرفوعة كملفات لحذفها من Bunny Stream لاحقاً
-                       const { data: videoRows } = await supabase
-                           .from('videos')
-                           .select('bunny_video_id')
-                           .in('chapter_id', chapterIds)
-                           .not('bunny_video_id', 'is', null);
-                       (videoRows || []).forEach(v => {
-                           if (v.bunny_video_id) deleteVideoFromBunny(v.bunny_video_id);
-                       });
+        return res.status(200).json({ success: true, item: newItem });
+      }
 
-                       // 4. حذف الفيديوهات والملفات التابعة لهذه الفصول
-                       await supabase.from('videos').delete().in('chapter_id', chapterIds);
-                       await supabase.from('pdfs').delete().in('chapter_id', chapterIds);
+      if (action === 'update') {
+         const { id, ...updates } = data;
+         let isAuthorized = false;
 
-                       // 5. حذف الفصول نفسها
-                       await supabase.from('chapters').delete().in('id', chapterIds);
-                   }
+         // 🚀 معالجة الفيديو في حالة تعديل الرابط
+         const videoUrl = updates.url || updates.youtube_video_id;
+         if (type === 'videos' && videoUrl) {
+             updates.youtube_video_id = extractYouTubeID(videoUrl);
+             delete updates.url;
 
-                   // 6. ✅ حذف صلاحيات وصول الطلاب لهذه المواد تحديداً (المطلب الأساسي)
-                   await supabase.from('user_subject_access').delete().in('subject_id', subjectIds);
+             // المدة اختيارية في التعديل — لا نضع '00:00' افتراضياً لتجنب الكتابة فوق قيمة صحيحة
+             if (updates.duration === '') {
+                 delete updates.duration;
+             }
+         }
 
-                   // 7. حذف المواد نفسها
-                   await supabase.from('subjects').delete().in('id', subjectIds);
-               }
+         if (type === 'courses') {
+            const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
+            if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
+         } else if (type === 'exams') {
+             const { data: exam } = await supabase.from('exams').select('subjects(courses(teacher_id))').eq('id', id).single();
+             const teacherId = exam?.subjects?.courses?.teacher_id;
+             if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
+         } else {
+            const targetCourseId = await getParentCourseId(type, { id }, true);
+            if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
+         }
 
-               // 8. حذف صلاحيات وصول الطلاب للكورس نفسه
-               await supabase.from('user_course_access').delete().eq('course_id', id);
-           } catch (cleanupErr) {
-               console.error('⚠️ Course cascade cleanup error:', cleanupErr.message);
-               // نكمل عملية الحذف حتى لو فشل جزء من التنظيف، لكن نسجل الخطأ في الـ log
-           }
-       }
+         if (!isAuthorized) return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا المحتوى.' });
 
-       // ✅ تنظيف Bunny Stream إذا كان الفيديو مرفوعاً كملف (وليس رابط يوتيوب)
-       let bunnyVideoIdToDelete = null;
-       if (type === 'videos') {
-           const { data: videoRecord } = await supabase.from('videos').select('bunny_video_id').eq('id', id).single();
-           if (videoRecord?.bunny_video_id) {
-               bunnyVideoIdToDelete = videoRecord.bunny_video_id;
-           }
-       }
+         const { error } = await supabase.from(type).update(updates).eq('id', id);
+         if (error) throw error;
+         return res.status(200).json({ success: true });
+      }
 
-       const { error } = await supabase.from(type).delete().eq('id', id);
+      if (action === 'delete') {
+         const { id } = data;
+         let isAuthorized = false;
+         let bunnyVideoIdToDelete = null; // 👈 متغير لتخزين معرف باني ستريم
 
-       if (error) throw error;
+         if (type === 'courses') {
+            const { data: course } = await supabase.from('courses').select('teacher_id').eq('id', id).single();
+            if (course && String(course.teacher_id) === String(auth.teacherId)) isAuthorized = true;
+         } else if (type === 'exams') {
+             const { data: exam } = await supabase.from('exams').select('subjects(courses(teacher_id))').eq('id', id).single();
+             const teacherId = exam?.subjects?.courses?.teacher_id;
+             if (teacherId && String(teacherId) === String(auth.teacherId)) isAuthorized = true;
+         } else {
+            // 👈 إذا كان العنصر المحذوف فيديو، نقوم بجلب معرفه على Bunny قبل الحذف
+            if (type === 'videos') {
+                const { data: videoRecord } = await supabase.from('videos').select('bunny_video_id').eq('id', id).single();
+                if (videoRecord) {
+                    bunnyVideoIdToDelete = videoRecord.bunny_video_id;
+                }
+            }
 
-       if (type === 'videos' && bunnyVideoIdToDelete) {
-           // لا ننتظر النتيجة حتى لا نؤخر الرد على التطبيق
-           deleteVideoFromBunny(bunnyVideoIdToDelete);
-       }
+            const targetCourseId = await getParentCourseId(type, { id }, true);
+            if (targetCourseId && await checkCourseOwnership(targetCourseId)) isAuthorized = true;
+         }
 
-       return res.status(200).json({ success: true });
+         if (!isAuthorized) return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
+
+         // حذف العنصر من قاعدة البيانات
+         const { error } = await supabase.from(type).delete().eq('id', id);
+         if (error) throw error;
+
+         // 👈 إذا تم الحذف من قاعدة البيانات بنجاح وكان هناك فيديو مرتبط، نحذفه من Bunny
+         if (type === 'videos' && bunnyVideoIdToDelete) {
+             // نرسل أمر الحذف في الخلفية ولا ننتظر النتيجة (لكي لا نعطل الاستجابة للعميل)
+             deleteVideoFromBunny(bunnyVideoIdToDelete);
+         }
+
+         return res.status(200).json({ success: true });
+      }
+
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
     }
-
-  } catch (err) {
-    console.error("Teacher Content API Error:", err);
-    return res.status(500).json({ error: err.message });
   }
+
+  return res.status(405).json({ error: 'Method Not Allowed' });
 };
