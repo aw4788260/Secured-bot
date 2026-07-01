@@ -116,7 +116,7 @@ export default async (req, res) => {
             // ✅ نحدد هل الامتحان يبدأ الآن (خلال دقيقة) أم في المستقبل
             //    إذا كان start_time في المستقبل: نخزّن notify_students=true كعلَم على الصف
             //    ويُرسل الإشعار تلقائياً عند موعد البدء الفعلي عبر:
-            //    → /api/cron/exam-notifications.js (يُستدعى كل 10 دقائق من GitHub Actions)
+            //    → /api/cron/exam-notifications.js (يُستدعى كل دقيقة من GitHub Actions)
             const wantsNotify = notifyStudents === true;
             const examStartTime = adjustedStartTime ? new Date(adjustedStartTime) : null;
             const startsNow = examStartTime && (examStartTime.getTime() - Date.now()) <= 60_000;
