@@ -412,7 +412,9 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                           allowRetake: fullExam.allow_retake || false,
                           startTime: formatDateForInput(fullExam.start_time),
                           endTime: formatDateForInput(fullExam.end_time),
-                          notifyStudents: false,
+                          // ✅ نحمّل القيمة الحقيقية من قاعدة البيانات بدل تصفيرها دائماً،
+                          //    حتى يرى المعلم إن كان الإشعار سيُرسل عند تعديل موعد البدء
+                          notifyStudents: fullExam.notify_students === true,
                           questions: fullExam.questions ? fullExam.questions.map(q => ({
                               id: q.id, text: q.question_text, image: q.image_file_id,
                               questionType: q.question_type === 'essay' ? 'essay' : 'mcq',
@@ -1061,15 +1063,15 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                       </label>
                                   </div>
 
-                                  {!examForm.id && (
-                                      <div className="toggle-row" style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)'}}>
-                                          <span style={{color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 'bold'}}>إرسال إشعار للطلاب</span>
-                                          <label className="switch">
-                                              <input type="checkbox" checked={examForm.notifyStudents} onChange={e=>setExamForm({...examForm, notifyStudents: e.target.checked})} />
-                                              <span className="slider round"></span>
-                                          </label>
-                                      </div>
-                                  )}
+                                  {/* ✅ يظهر التبديل عند الإنشاء والتعديل معاً — الإشعار سيُرسل عند حلول موعد بدء الامتحان (start_time)
+                                        وليس عند لحظة الحفظ، سواء كان إنشاءً جديداً أو تعديلاً لموعد امتحان موجود */}
+                                  <div className="toggle-row" style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)'}}>
+                                      <span style={{color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 'bold'}}>إرسال إشعار للطلاب عند بدء الامتحان</span>
+                                      <label className="switch">
+                                          <input type="checkbox" checked={examForm.notifyStudents} onChange={e=>setExamForm({...examForm, notifyStudents: e.target.checked})} />
+                                          <span className="slider round"></span>
+                                      </label>
+                                  </div>
                               </div>
                           </div>
                           
