@@ -235,9 +235,11 @@ export default async (req, res) => {
       if (action === 'create') {
         let insertData = { ...data };
         
-        // استخراج حالة خيار الإشعار وحذفه من بيانات الإدخال لجدول الفيديوهات لتجنب أخطاء الـ SQL
-        const shouldNotify = insertData.notifyStudents === true;
-        delete insertData.notifyStudents;
+        // استخراج حالة خيار الإشعار كـ Boolean وحذفه من الإدخال الأصلي
+        const shouldNotify = insertData.notifyStudents === true || insertData.notifyStudents === 'true';
+        if (insertData.notifyStudents !== undefined) {
+            delete insertData.notifyStudents; // تجنب أخطاء قواعد البيانات
+        }
 
         // ✅ يجب توفر مصدر واحد على الأقل للفيديو: ملف مرفوع على Bunny و/أو رابط يوتيوب
         if (type === 'videos' && !insertData.bunny_video_id && !insertData.youtube_video_id) {
@@ -249,6 +251,11 @@ export default async (req, res) => {
         //   Bunny  → 'waiting'      (confirm-upload.js يضعها هكذا — هذا السطر احتياط)
         if (type === 'videos' && !insertData.encoding_status) {
           insertData.encoding_status = insertData.youtube_video_id ? 'ready' : 'waiting';
+        }
+
+        // ✅ التعديل الأهم: إضافة notify_students إلى قاعدة البيانات فقط لفيديوهات Bunny Stream
+        if (type === 'videos' && insertData.bunny_video_id) {
+          insertData.notify_students = shouldNotify;
         }
 
         if (type !== 'courses') {
@@ -272,21 +279,21 @@ export default async (req, res) => {
            throw error;
         }
 
-        // ✅ التعديل: إرسال الإشعار بعد إضافة فيديو جديد بنجاح إذا تم تفعيل الخيار *وليس* مرفوعاً على باني ستريم
-        // فيديوهات باني ستريم ستُرسل إشعاراتها تلقائياً لاحقاً عبر الـ Webhook عند انتهاء التشفير.
-        if (type === 'videos' && shouldNotify && newItem && !newItem.bunny_video_id) {
+        // ✅ التعديل: إرسال الإشعار فوراً لملفات الـ PDF أو فيديوهات يوتيوب (التي ليس لها bunny_video_id)
+        if (shouldNotify && (type === 'pdfs' || (type === 'videos' && !newItem.bunny_video_id))) {
             try {
                 const subjectInfo = await getSubjectIdFromChapter(insertData.chapter_id);
 
                 if (subjectInfo && subjectInfo.subjectId) {
                     const courseTitle = subjectInfo.courseTitle || 'تحديث جديد في الكورس';
                     const subjectId = subjectInfo.subjectId;
-                    const videoTitle = newItem.title;
+                    const itemTitle = newItem.title;
+                    const typeName = type === 'videos' ? 'فيديو' : 'ملف';
 
                     const message = {
                         notification: { 
                             title: courseTitle, 
-                            body: `تم رفع فيديو: ${videoTitle}` 
+                            body: `تم رفع ${typeName}: ${itemTitle}` 
                         },
                         topic: `subject_${subjectId}`,
                         android: { 
@@ -307,7 +314,7 @@ export default async (req, res) => {
 
                     await supabase.from('notifications').insert({
                         title: courseTitle,
-                        body: `تم رفع فيديو: ${videoTitle}`,
+                        body: `تم رفع ${typeName}: ${itemTitle}`,
                         target_type: 'subject',
                         target_id: subjectId.toString(),
                         sender_role: 'teacher'
