@@ -49,6 +49,10 @@ export default async (req, res) => {
         
         // ✅ إرسال خيار السماح بإعادة الامتحان (التدريب)
         allow_retake: exam.allow_retake || false,
+
+        // ✅ إرسال الحالة الحالية لعلَم الإشعار، ليقرر التطبيق ما يعرضه للمعلم
+        //    عند فتح الامتحان للتعديل (مفعّل/غير مفعّل)
+        notify_students: exam.notify_students || false,
         
         questions: questions
     };
