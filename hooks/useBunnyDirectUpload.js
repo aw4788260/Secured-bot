@@ -141,10 +141,19 @@ export function useBunnyDirectUpload() {
     }
 
     const sessionData = await sessionRes.json();
-    saveSession(file, { ...sessionData, localDuration, chapterId, title: title || file.name, notifyStudents, sortOrder });
-    return sessionData;
+    // ✅ إنشاء كائن يحتوي على جميع البيانات بما فيها notifyStudents
+    const fullSessionData = { 
+      ...sessionData, 
+      localDuration, 
+      chapterId, 
+      title: title || file.name, 
+      notifyStudents, 
+      sortOrder 
+    };
+    
+    saveSession(file, fullSessionData);
+    return fullSessionData; // ✅ إرجاع الكائن الكامل
   }
-
   const startUpload = useCallback(async (options) => {
     const { file, chapterId, title, notifyStudents = false, sortOrder = 999, onComplete, onError } = options;
 
