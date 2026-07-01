@@ -24,6 +24,11 @@ export default async function handler(req, res) {
   const authHeader = req.headers['authorization'];
   const providedSecret = authHeader?.replace('Bearer ', '') || req.query.secret;
 
+  // --- 🛠️ إضافة أسطر الطباعة (Debugging) لاكتشاف المسافات المخفية ---
+  console.log("Server Secret Length:", CRON_SECRET?.length);
+  console.log("Provided Secret Length:", providedSecret?.length);
+  // -------------------------------------------------------------
+
   if (CRON_SECRET && providedSecret !== CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
