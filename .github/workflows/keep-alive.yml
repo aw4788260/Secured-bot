@@ -1,49 +1,77 @@
-name: Supabase Keep-Alive
+name: Supabase Keep-Alive & Exam Notifications
 
 on:
   schedule:
-    # الأفضل تشغيله كل 6 ساعات لضمان عدم احتساب فترة خمول طويلة
-    - cron: "0 */6 * * *"
+    # كل 10 دقائق لضمان دقة إشعارات الامتحانات (±10 دقيقة كحد أقصى للتأخير)
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
 jobs:
-  wake-up-and-verify:
+  # ============================================================
+  # الوظيفة 1: إيقاظ Supabase (كل 6 ساعات فقط — نتحقق بالوقت)
+  # ============================================================
+  keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase and Verify Status
+      - name: Ping Supabase (every 6h)
+        # نشغل الـ ping فقط عند بداية كل 6 ساعات لتوفير الـ requests
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && startsWith(github.run_id, '') && true) }}
         env:
-          # تم تعديل الرابط لاستخدام select=* لتجنب خطأ عدم وجود عمود id
           SUPABASE_URL: 'https://guoobhdvfiqlvdomrbvo.supabase.co/rest/v1/app_settings?select=*&limit=1'
           SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          MAX_RETRIES=5
-          RETRY_DELAY=15
-          
-          echo "📡 Connecting to Supabase..."
-          
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+
+          echo "📡 Pinging Supabase to prevent sleep..."
+
           for ((i=1; i<=MAX_RETRIES; i++)); do
-            # نرسل الطلب ونخزن كود الحالة فقط
             HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -X GET "$SUPABASE_URL" \
               -H "apikey: $SUPABASE_KEY" \
               -H "Authorization: Bearer $SUPABASE_KEY")
-            
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "✅ Success! Database is Active and Responding (Status: 200)."
-              exit 0
-            else
-              echo "⚠️ Attempt $i/$MAX_RETRIES failed (Status: $HTTP_STATUS). Database might be sleeping..."
-              
-              # طباعة رد السيرفر للمساعدة في التشخيص إذا فشل مرة أخرى (اختياري)
-              if [ "$HTTP_STATUS" -eq 400 ]; then
-                 echo "❌ Error 400: Check if Table or Column exists."
-              fi
 
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "✅ Supabase is Active (Status: 200)."
+              break
+            else
+              echo "⚠️ Attempt $i/$MAX_RETRIES failed (Status: $HTTP_STATUS)."
               if [ $i -lt $MAX_RETRIES ]; then
-                echo "⏳ Waiting ${RETRY_DELAY} seconds for wake-up..."
                 sleep $RETRY_DELAY
               fi
             fi
           done
-          
-          echo "❌ Critical: Failed to wake up database after $MAX_RETRIES attempts."
-          exit 1
+
+  # ============================================================
+  # الوظيفة 2: إرسال إشعارات الامتحانات عند بدء موعدها
+  # ============================================================
+  exam-notifications:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Exam Notifications Cron
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "⚠️ APP_URL secret not set — skipping exam notifications."
+            exit 0
+          fi
+
+          echo "🔔 Checking for exams that started and need notifications..."
+
+          HTTP_STATUS=$(curl -o /tmp/cron_response.json -s -w "%{http_code}" \
+            -X POST "${APP_URL}/api/cron/exam-notifications" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+
+          RESPONSE=$(cat /tmp/cron_response.json)
+          echo "Response: $RESPONSE"
+
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Exam notifications cron completed (Status: 200)."
+          elif [ "$HTTP_STATUS" -eq 401 ]; then
+            echo "❌ Unauthorized — check CRON_SECRET secret."
+            exit 1
+          else
+            echo "⚠️ Cron responded with Status: $HTTP_STATUS — may be no exams pending."
+          fi
