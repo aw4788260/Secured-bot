@@ -40,6 +40,7 @@ export default async (req, res) => {
         randomizeQuestions: exam.randomize_questions, 
         randomizeOptions: exam.randomize_options,
         allow_retake: exam.allow_retake || false, // ✅ إضافة الحقل هنا ليتم إرساله للوحة التحكم
+        notify_students: exam.notify_students || false,
         questions: questions || []
     };
 
