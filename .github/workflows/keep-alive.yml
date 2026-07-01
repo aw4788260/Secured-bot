@@ -1,81 +1,49 @@
-name: Supabase Keep-Alive & Exam Notifications
+name: Supabase Keep-Alive
 
 on:
   schedule:
-    # كل دقيقة لضمان دقة إشعارات الامتحانات (±دقيقة واحدة كحد أقصى للتأخير)
-    # ⚠️ ملاحظة: GitHub Actions لا يضمن رسمياً تشغيل الجدولة كل دقيقة بدقة —
-    #    الحد الأدنى الموثق هو 5 دقائق، وقد يتأخر التنفيذ أكثر وقت الضغط على المنصة.
-    #    إذا احتجت دقة مضمونة كل دقيقة، استخدم خدمة cron خارجية مثل cron-job.org
-    #    لاستدعاء POST /api/cron/exam-notifications بنفس الـ Authorization header.
-    - cron: "* * * * *"
+    # الأفضل تشغيله كل 6 ساعات لضمان عدم احتساب فترة خمول طويلة
+    - cron: "0 */6 * * *"
   workflow_dispatch: {}
 
 jobs:
-  # ============================================================
-  # الوظيفة 1: إيقاظ Supabase (كل 6 ساعات فقط — نتحقق بالوقت)
-  # ============================================================
-  keep-alive:
+  wake-up-and-verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase (every 6h)
-        # نشغل الـ ping فقط عند بداية كل 6 ساعات لتوفير الـ requests
-        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && startsWith(github.run_id, '') && true) }}
+      - name: Ping Supabase and Verify Status
         env:
+          # تم تعديل الرابط لاستخدام select=* لتجنب خطأ عدم وجود عمود id
           SUPABASE_URL: 'https://guoobhdvfiqlvdomrbvo.supabase.co/rest/v1/app_settings?select=*&limit=1'
           SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          MAX_RETRIES=3
-          RETRY_DELAY=10
-
-          echo "📡 Pinging Supabase to prevent sleep..."
-
+          MAX_RETRIES=5
+          RETRY_DELAY=15
+          
+          echo "📡 Connecting to Supabase..."
+          
           for ((i=1; i<=MAX_RETRIES; i++)); do
+            # نرسل الطلب ونخزن كود الحالة فقط
             HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -X GET "$SUPABASE_URL" \
               -H "apikey: $SUPABASE_KEY" \
               -H "Authorization: Bearer $SUPABASE_KEY")
-
+            
             if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "✅ Supabase is Active (Status: 200)."
-              break
+              echo "✅ Success! Database is Active and Responding (Status: 200)."
+              exit 0
             else
-              echo "⚠️ Attempt $i/$MAX_RETRIES failed (Status: $HTTP_STATUS)."
+              echo "⚠️ Attempt $i/$MAX_RETRIES failed (Status: $HTTP_STATUS). Database might be sleeping..."
+              
+              # طباعة رد السيرفر للمساعدة في التشخيص إذا فشل مرة أخرى (اختياري)
+              if [ "$HTTP_STATUS" -eq 400 ]; then
+                 echo "❌ Error 400: Check if Table or Column exists."
+              fi
+
               if [ $i -lt $MAX_RETRIES ]; then
+                echo "⏳ Waiting ${RETRY_DELAY} seconds for wake-up..."
                 sleep $RETRY_DELAY
               fi
             fi
           done
-
-  # ============================================================
-  # الوظيفة 2: إرسال إشعارات الامتحانات عند بدء موعدها (تُفحص كل دقيقة)
-  # ============================================================
-  exam-notifications:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Exam Notifications Cron
-        env:
-          APP_URL: ${{ secrets.APP_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          if [ -z "$APP_URL" ]; then
-            echo "⚠️ APP_URL secret not set — skipping exam notifications."
-            exit 0
-          fi
-
-          echo "🔔 Checking for exams that started and need notifications..."
-
-          HTTP_STATUS=$(curl -o /tmp/cron_response.json -s -w "%{http_code}" \
-            -X POST "${APP_URL}/api/cron/exam-notifications" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${CRON_SECRET}")
-
-          RESPONSE=$(cat /tmp/cron_response.json)
-          echo "Response: $RESPONSE"
-
-          if [ "$HTTP_STATUS" -eq 200 ]; then
-            echo "✅ Exam notifications cron completed (Status: 200)."
-          elif [ "$HTTP_STATUS" -eq 401 ]; then
-            echo "❌ Unauthorized — check CRON_SECRET secret."
-            exit 1
-          else
-            echo "⚠️ Cron responded with Status: $HTTP_STATUS — may be no exams pending."
-          fi
+          
+          echo "❌ Critical: Failed to wake up database after $MAX_RETRIES attempts."
+          exit 1
