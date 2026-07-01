@@ -1,6 +1,5 @@
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { supabase } from '../../../../lib/supabaseClient';
-import admin from '../../../../lib/firebaseAdmin';
 
 // ===================================================================
 // ✅ تأكيد اكتمال الرفع المباشر وحفظ الفيديو في قاعدة البيانات
@@ -84,7 +83,7 @@ export default async function handler(req, res) {
     bunnyVideoId,
     chapterId,
     title,
-    notifyStudents = false,
+    notifyStudents = false, // تمت إزالة إرسال الإشعار من هنا، ولكن يمكنك حفظ هذا المتغير في قاعدة البيانات إذا أردت استخدامه في الـ Webhook
     sortOrder = 999,
     durationSeconds = 0, // المدة المستخرجة من المتصفح محلياً (قد تكون 0 إذا فشل الاستخراج)
   } = req.body;
@@ -138,11 +137,11 @@ export default async function handler(req, res) {
   }
 
   // 5. حفظ الفيديو في قاعدة البيانات فوراً بحالة encoding_status = 'waiting'
-  //    المعنى: الرفع اكتمل والملف وصل Bunny، لكن المعالجة لم تبدأ بعد.
-  //    دورة الحياة الكاملة:
-  //      'waiting'  → هنا (الرفع اكتمل، في انتظار Bunny)
-  //      'encoding' → Webhook Status=1  (Bunny بدأ المعالجة)
-  //      'ready'    → Webhook Status=3/4 (اكتملت المعالجة)
+  //   المعنى: الرفع اكتمل والملف وصل Bunny، لكن المعالجة لم تبدأ بعد.
+  //   دورة الحياة الكاملة:
+  //     'waiting'  → هنا (الرفع اكتمل، في انتظار Bunny)
+  //     'encoding' → Webhook Status=1  (Bunny بدأ المعالجة)
+  //     'ready'    → Webhook Status=3/4 (اكتملت المعالجة)
   const { data: insertedVideo, error: dbError } = await supabase
     .from('videos')
     .insert({
@@ -152,6 +151,9 @@ export default async function handler(req, res) {
       sort_order: sortOrder,
       duration: formattedDuration,
       encoding_status: 'waiting', // ← الرفع اكتمل — ينتظر بدء المعالجة من Bunny
+      // ملاحظة: إذا كنت ترغب في أن يتحقق الـ webhook مما إذا كان المعلم اختار إرسال إشعار أم لا،
+      // يُفضل إضافة عمود `notify_students` لقاعدة البيانات وتمريره هنا:
+      // notify_students: notifyStudents 
     })
     .select('id')
     .single();
@@ -161,46 +163,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'فشل حفظ بيانات الفيديو في قاعدة البيانات' });
   }
 
-  // 6. إرسال إشعار للطلاب (اختياري)
-  if (notifyStudents) {
-    try {
-      const { data: chapterInfo } = await supabase
-        .from('chapters')
-        .select('subject_id, subjects(courses(title))')
-        .eq('id', chapterId)
-        .single();
-
-      if (chapterInfo?.subject_id) {
-        const courseTitle = chapterInfo.subjects?.courses?.title || 'تحديث جديد في الكورس';
-        const subjectId = chapterInfo.subject_id;
-
-        const message = {
-          notification: { title: courseTitle, body: `تم رفع فيديو: ${videoTitle}` },
-          topic: `subject_${subjectId}`,
-          android: { priority: 'high', notification: { sound: 'default' } },
-          apns: { payload: { aps: { sound: 'default', badge: 1, 'content-available': 1 } } },
-          data: {
-            click_action: 'FLUTTER_NOTIFICATION_CLICK',
-            type: 'subject',
-            id: subjectId.toString(),
-          },
-        };
-
-        await admin.messaging().send(message);
-
-        await supabase.from('notifications').insert({
-          title: courseTitle,
-          body: `تم رفع فيديو: ${videoTitle}`,
-          target_type: 'subject',
-          target_id: subjectId.toString(),
-          sender_role: 'teacher',
-        });
-      }
-    } catch (notifyErr) {
-      // فشل الإشعار لا يوقف العملية — الفيديو حُفظ بنجاح
-      console.error('⚠️ [confirm-upload] Notification error:', notifyErr.message);
-    }
-  }
+  // ملاحظة: تم نقل كود إرسال الإشعار (الخطوة 6) إلى الـ Webhook ليعمل بعد انتهاء عملية التشفير (Encoding).
 
   console.log(`✅ [confirm-upload] Video saved. db_id=${insertedVideo.id}, bunny_id=${bunnyVideoId}, duration=${formattedDuration}, status=waiting`);
 
