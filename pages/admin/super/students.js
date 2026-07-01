@@ -355,21 +355,6 @@ export default function SuperStudentsPage() {
                               <label className="checkbox-row main">
                                   <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
                                   <span>📦 {course.title}</span>
-                                  <button
-                                      type="button"
-                                      className="remove-course-students-btn"
-                                      title="إزالة كل الطلاب المسجلين في هذا الكورس"
-                                      onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          showConfirm(
-                                              `هل أنت متأكد من إزالة كل الطلاب من كورس "${course.title}"؟ سيتم سحب صلاحية الوصول للكورس ومواده من جميع الطلاب المسجلين فيه. هذا الإجراء لا يمكن التراجع عنه.`,
-                                              () => runApiCall('remove_all_course_students', { courseId: course.id }, false)
-                                          );
-                                      }}
-                                  >
-                                      🗑️ إزالة كل الطلاب
-                                  </button>
                               </label>
                               <div className="filter-subs">
                                   {course.subjects?.map(subject => (
@@ -652,9 +637,6 @@ export default function SuperStudentsPage() {
         
         .checkbox-row { display: flex; align-items: center; gap: 12px; padding: 5px; cursor: pointer; }
         .checkbox-row.main { font-weight: 700; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px dashed var(--border); padding-bottom: 12px; margin-bottom: 15px; }
-        .checkbox-row.main span { flex: 1; }
-        .remove-course-students-btn { background: rgba(239, 68, 68, 0.12); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.35); padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: 0.2s; }
-        .remove-course-students-btn:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
         .checkbox-row.sub { margin-right: 0; font-size: 0.95em; font-weight: 500; color: var(--text-secondary); background: var(--bg-surface); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); transition: 0.2s; }
         .checkbox-row.sub:hover { border-color: var(--gold); color: var(--text-primary); }
         
