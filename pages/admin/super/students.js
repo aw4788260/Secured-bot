@@ -235,12 +235,27 @@ export default function SuperStudentsPage() {
   const toggleSelectAll = (e) => setSelectedUsers(e.target.checked ? students.map(u => u.id) : []);
   const toggleSelectUser = (id) => setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   
+  // حذف كل طلاب كورس معين (سحب صلاحية الكورس + مواده من الجميع)
+  const handleDeleteAllCourseStudents = (course) => {
+      showConfirm(
+        `⚠️ تحذير: سيتم سحب صلاحية كورس "${course.title}" وجميع مواده من كل الطلاب المشتركين فيه. هل أنت متأكد؟`,
+        () => runApiCall('delete_all_course_students', { courseId: course.id })
+      );
+  };
+
   const handleBulkAction = (actionType) => {
       if (!selectedUsers.length) return;
       if (actionType === 'grant') openGrantModal('bulk');
       else if (actionType === 'delete') {
           showConfirm(`هل أنت متأكد من حذف ${selectedUsers.length} طلاب؟`, () => {
               runApiCall('delete_user_bulk', { userIds: selectedUsers }, true);
+          });
+      }
+      else if (actionType === 'revoke_filtered') {
+          if (!activeFilters.courses.length && !activeFilters.subjects.length) return showToast('يجب تفعيل فلتر أولاً لمعرفة ما سيتم سحبه', 'error');
+          showConfirm('سحب الكورسات/المواد المفلترة من هؤلاء الطلاب؟', () => {
+              activeFilters.courses.forEach(cid => runApiCall('revoke_access', { userIds: selectedUsers, courseId: cid }));
+              activeFilters.subjects.forEach(sid => runApiCall('revoke_access', { userIds: selectedUsers, subjectId: sid }));
           });
       }
   };
@@ -275,7 +290,7 @@ export default function SuperStudentsPage() {
           </div>
           
           <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => { setTempFilters(activeFilters); setShowFilterModal(true); }}>
-              🌪️ فلترة
+              🌪️ فلترة {hasActiveFilters && `(${activeFilters.courses.length + activeFilters.subjects.length})`}
           </button>
 
           <button onClick={() => { setCurrentPage(1); fetchData(); }} className="btn-refresh" title="تحديث البيانات">🔄</button>
@@ -286,6 +301,11 @@ export default function SuperStudentsPage() {
               <div className="bulk-info"><span className="count-badge">{selectedUsers.length}</span> <span>محدد</span></div>
               <div className="bulk-actions">
                   <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ منح صلاحية</button>
+                  {hasActiveFilters && (
+                      <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn danger">
+                          🚫 سحب المفلتر
+                      </button>
+                  )}
                   <button onClick={() => handleBulkAction('delete')} className="glass-btn danger">🗑️ حذف الكل</button>
               </div>
           </div>
@@ -352,10 +372,20 @@ export default function SuperStudentsPage() {
                   <div className="modal-content scrollable custom-scrollbar">
                       {allCourses.map(course => (
                           <div key={course.id} className="filter-group">
-                              <label className="checkbox-row main">
-                                  <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
-                                  <span>📦 {course.title}</span>
-                              </label>
+                              <div className="checkbox-row main course-row-head">
+                                  <label className="course-row-check">
+                                      <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
+                                      <span>📦 {course.title}</span>
+                                  </label>
+                                  <button
+                                      type="button"
+                                      className="delete-course-students-btn"
+                                      title="حذف كل طلاب هذا الكورس (سحب صلاحية الكورس ومواده من الجميع)"
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteAllCourseStudents(course); }}
+                                  >
+                                      🗑️ حذف كل الطلاب
+                                  </button>
+                              </div>
                               <div className="filter-subs">
                                   {course.subjects?.map(subject => (
                                       <label key={subject.id} className="checkbox-row sub">
@@ -637,6 +667,10 @@ export default function SuperStudentsPage() {
         
         .checkbox-row { display: flex; align-items: center; gap: 12px; padding: 5px; cursor: pointer; }
         .checkbox-row.main { font-weight: 700; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px dashed var(--border); padding-bottom: 12px; margin-bottom: 15px; }
+        .course-row-head { justify-content: space-between; cursor: default; flex-wrap: wrap; gap: 10px; }
+        .course-row-check { display: flex; align-items: center; gap: 12px; cursor: pointer; margin: 0; }
+        .delete-course-students-btn { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 6px 12px; border-radius: 8px; font-size: 0.8em; font-weight: bold; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        .delete-course-students-btn:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
         .checkbox-row.sub { margin-right: 0; font-size: 0.95em; font-weight: 500; color: var(--text-secondary); background: var(--bg-surface); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); transition: 0.2s; }
         .checkbox-row.sub:hover { border-color: var(--gold); color: var(--text-primary); }
         
