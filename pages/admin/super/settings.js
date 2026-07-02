@@ -17,25 +17,34 @@ export default function SuperSettings() {
   const [saving, setSaving] = useState(false);
   
   // 1. حالة الإعدادات العامة (مضاف إليها player_settings)
+  // ✅ player_settings أصبحت ديناميكية: مصفوفة "players" غير محدودة العدد
+  // بدلاً من 3 خانات ثابتة، حتى يمكن للأدمن إضافة/حذف أي عدد من المشغلات.
   const [settings, setSettings] = useState({
     platform_percentage: '',
     support_telegram: '',
     support_whatsapp: '',
     free_mode: false,
     player_settings: {
-      player_1: { enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)", order: 1 },
-      player_2: { enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع", order: 2 },
-      player_3: { enabled: true, name: "مشغل يوتيوب", description: "جودة متعددة", order: 3 },
+      players: [
+        { id: 'player_1', engine: 'explode_direct', enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)", order: 1 },
+        { id: 'player_2', engine: 'bunny_hls', enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع", order: 2 },
+        { id: 'player_3', engine: 'youtube', enabled: true, name: "مشغل يوتيوب", description: "جودة متعددة", order: 3 },
+        { id: 'player_4', engine: 'bunny_native', enabled: false, name: "مشغل بديل", description: "جرّب هذا إذا واجهت مشاكل في التشغيل مع المشغلات الأخرى", order: 4 },
+      ],
       downloads: { video_enabled: true, pdf_enabled: true }
     }
   });
 
-  // قائمة توضيحية لأسماء المشغلات في لوحة التحكم
-  const playersList = [
-    { id: 'player_1', title: 'المشغل الأول (الأساسي)' },
-    { id: 'player_2', title: 'المشغل الثاني (الاحتياطي)' },
-    { id: 'player_3', title: 'المشغل الثالث (اليوتيوب)' },
+  // ✅ محرك (مصدر) كل مشغل: يحدد للتطبيق أي منطق جلب/تشغيل يجب استخدامه.
+  // عند إضافة مشغل جديد يستخدم نفس مصدر بيانات موجود (مثلاً Bunny)، يكفي
+  // اختيار نفس الـ engine هنا دون أي حاجة لتعديل كود جديد في الباك إند.
+  const ENGINE_OPTIONS = [
+    { value: 'explode_direct', label: 'استخراج مباشر (Direct Extraction)' },
+    { value: 'bunny_hls', label: 'Bunny Stream (HLS - media_kit)' },
+    { value: 'bunny_native', label: 'Bunny Stream (مشغل بديل - يعمل بدون media_kit)' },
+    { value: 'youtube', label: 'مشغل يوتيوب (YouTube)' },
   ];
+
 
   // 2. حالة إصدارات التطبيق
   const [versions, setVersions] = useState([]);
@@ -71,8 +80,12 @@ export default function SuperSettings() {
             support_telegram: data.support_telegram || '',
             support_whatsapp: data.support_whatsapp || '',
             free_mode: data.free_mode === 'true' || data.free_mode === true,
-            // دمج الإعدادات القادمة من السيرفر مع الافتراضية
-            player_settings: data.player_settings ? { ...prev.player_settings, ...data.player_settings } : prev.player_settings
+            // ✅ السيرفر يرجع الشكل الديناميكي دائماً (مطبّعاً تلقائياً حتى
+            // لو كانت البيانات القديمة محفوظة بالشكل السابق)، فنستخدمه مباشرة
+            // إن وُجدت مصفوفة players صالحة، وإلا نبقي على القيمة الافتراضية.
+            player_settings: (data.player_settings && Array.isArray(data.player_settings.players))
+              ? data.player_settings
+              : prev.player_settings
         }));
       }
     } catch (err) {
@@ -103,16 +116,46 @@ export default function SuperSettings() {
     }
   };
 
-  // دالة تحديث بيانات مشغل معين
+  // دالة تحديث حقل معين لمشغل موجود في المصفوفة (بحث عبر id)
   const handlePlayerChange = (playerId, field, value) => {
     setSettings(prev => ({
       ...prev,
       player_settings: {
         ...prev.player_settings,
-        [playerId]: {
-          ...prev.player_settings[playerId],
-          [field]: value
-        }
+        players: prev.player_settings.players.map(p =>
+          p.id === playerId ? { ...p, [field]: value } : p
+        )
+      }
+    }));
+  };
+
+  // ✅ إضافة مشغل جديد فارغ إلى المصفوفة (يظهر مباشرة في النموذج للتعديل)
+  const handleAddPlayer = () => {
+    setSettings(prev => {
+      const players = prev.player_settings.players;
+      const newPlayer = {
+        id: `player_${Date.now()}`,
+        engine: 'bunny_hls',
+        enabled: true,
+        name: 'مشغل جديد',
+        description: '',
+        order: players.length + 1,
+      };
+      return {
+        ...prev,
+        player_settings: { ...prev.player_settings, players: [...players, newPlayer] }
+      };
+    });
+  };
+
+  // ✅ حذف مشغل من المصفوفة
+  const handleRemovePlayer = (playerId) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا المشغل؟')) return;
+    setSettings(prev => ({
+      ...prev,
+      player_settings: {
+        ...prev.player_settings,
+        players: prev.player_settings.players.filter(p => p.id !== playerId)
       }
     }));
   };
@@ -237,26 +280,36 @@ export default function SuperSettings() {
                 </div>
                 <div className="card-body">
                   <p className="hint mb-4">
-                    يمكنك هنا تفعيل أو إيقاف المشغلات، وتغيير أسمائها، وتغيير ترتيبها في نافذة الطالب (الرقم الأقل يظهر أولاً).
+                    يمكنك هنا إضافة أو حذف أي عدد من المشغلات، تفعيلها أو إيقافها، تغيير أسمائها،
+                    ترتيبها في نافذة الطالب (الرقم الأقل يظهر أولاً)، وتحديد مصدر الفيديو (Engine) الذي يعمل به كل مشغل.
                   </p>
-                  
-                  {playersList.map((p) => {
-                    const pData = settings.player_settings[p.id];
-                    return (
-                      <div key={p.id} className="player-config-box">
+
+                  {[...settings.player_settings.players]
+                    .sort((a, b) => (a.order || 0) - (b.order || 0))
+                    .map((pData) => (
+                      <div key={pData.id} className="player-config-box">
                         <div className="player-box-header">
-                          <h4>{p.title}</h4>
+                          <h4>{pData.name || 'مشغل بدون اسم'}</h4>
                           <label className="switch">
                             <input 
                               type="checkbox" 
                               checked={pData.enabled} 
-                              onChange={e => handlePlayerChange(p.id, 'enabled', e.target.checked)}
+                              onChange={e => handlePlayerChange(pData.id, 'enabled', e.target.checked)}
                             />
                             <span className="slider round"></span>
                           </label>
                           <span className="status-text" style={{ color: pData.enabled ? '#4ade80' : 'var(--text-muted)' }}>
                             {pData.enabled ? 'مفعل' : 'معطل'}
                           </span>
+                          <button
+                            type="button"
+                            className="save-btn small-action"
+                            style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', boxShadow: 'none' }}
+                            onClick={() => handleRemovePlayer(pData.id)}
+                            title="حذف هذا المشغل"
+                          >
+                            حذف
+                          </button>
                         </div>
 
                         <div className="grid-3 mt-3">
@@ -266,7 +319,7 @@ export default function SuperSettings() {
                               type="text" 
                               className="input-field" 
                               value={pData.name} 
-                              onChange={e => handlePlayerChange(p.id, 'name', e.target.value)} 
+                              onChange={e => handlePlayerChange(pData.id, 'name', e.target.value)} 
                               required 
                             />
                           </div>
@@ -276,7 +329,7 @@ export default function SuperSettings() {
                               type="text" 
                               className="input-field" 
                               value={pData.description} 
-                              onChange={e => handlePlayerChange(p.id, 'description', e.target.value)} 
+                              onChange={e => handlePlayerChange(pData.id, 'description', e.target.value)} 
                             />
                           </div>
                           <div className="form-group">
@@ -285,15 +338,45 @@ export default function SuperSettings() {
                               type="number" 
                               className="input-field ltr text-center" 
                               value={pData.order} 
-                              onChange={e => handlePlayerChange(p.id, 'order', Number(e.target.value))} 
+                              onChange={e => handlePlayerChange(pData.id, 'order', Number(e.target.value))} 
                               min="1" 
                               required 
                             />
                           </div>
                         </div>
+
+                        <div className="form-group mt-3">
+                          <label>مصدر الفيديو (Engine)</label>
+                          <select
+                            className="input-field"
+                            value={pData.engine}
+                            onChange={e => handlePlayerChange(pData.id, 'engine', e.target.value)}
+                          >
+                            {ENGINE_OPTIONS.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                          <span className="hint mt-2">
+                            {pData.engine === 'youtube'
+                              ? 'هذا المشغل يظهر فقط للفيديوهات التي تملك رابط يوتيوب مرتبط بها.'
+                              : pData.engine === 'bunny_hls'
+                              ? 'يستخدم روابط Bunny Stream (HLS) القادمة من get-video-id، ويُشغَّل بواجهة media_kit.'
+                              : pData.engine === 'bunny_native'
+                              ? 'نفس روابط Bunny Stream (HLS)، لكن يُشغَّل بواجهة مشغل بديلة (لا تعتمد على media_kit) لحل مشاكل التوافق على بعض الأجهزة.'
+                              : 'يستخدم الاستخراج المباشر لروابط الفيديو عبر get-stream-proxy.'}
+                          </span>
+                        </div>
                       </div>
-                    )
-                  })}
+                    ))}
+
+                  <button
+                    type="button"
+                    className="save-btn small-action"
+                    style={{ width: '100%', marginTop: '4px' }}
+                    onClick={handleAddPlayer}
+                  >
+                    + إضافة مشغل جديد
+                  </button>
                 </div>
               </div>
 
