@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper';
+import { parsePlayerSettings, defaultPlayerSettings } from '../../../lib/playerSettingsHelper';
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -84,22 +85,13 @@ export default async (req, res) => {
       .eq('key', 'player_settings')
       .maybeSingle();
 
-    // قيم افتراضية في حال لم يتم إدخالها في قاعدة البيانات بعد (تتضمن الترتيب order)
-    let playerSettings = {
-      player_1: { enabled: true, name: "المشغل الأساسي", description: "سريع ومستقر (ينصح به)", order: 1 },
-      player_2: { enabled: true, name: "سيرفر احتياطي", description: "استخدمه في حال التقطيع", order: 2 },
-      player_3: { enabled: true, name: "مشغل يوتيوب", description: "جودة متعددة", order: 3 },
-      downloads: { video_enabled: true, pdf_enabled: true }
-    };
-
-    // فك التشفير إذا كانت القيمة موجودة
-    if (settingsData && settingsData.value) {
-      try {
-        playerSettings = JSON.parse(settingsData.value);
-      } catch (e) {
-        console.error("Error parsing player_settings JSON:", e);
-      }
-    }
+    // ✅ إعدادات ديناميكية: مصفوفة "players" غير محدودة العدد بدلاً من
+    // خانات ثابتة (player_1/2/3). الدالة تتكفل أيضاً بتحويل أي بيانات
+    // قديمة محفوظة بالشكل السابق تلقائياً، وبإرجاع قيم افتراضية آمنة
+    // إذا لم يوجد أي إعداد محفوظ بعد.
+    const playerSettings = settingsData?.value
+      ? parsePlayerSettings(settingsData.value)
+      : defaultPlayerSettings();
 
     // 6. جلب محاولات الطالب المكتملة (بشكل آمن)
     const safeExams = subjectData.exams || [];
