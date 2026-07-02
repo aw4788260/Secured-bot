@@ -1,5 +1,10 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import {
+  normalizePlayerSettings,
+  defaultPlayerSettings,
+  validatePlayerSettingsPayload,
+} from '../../../../lib/playerSettingsHelper';
 
 export default async function handler(req, res) {
   // 1. التحقق من الصلاحية (سوبر أدمن فقط)
@@ -30,17 +35,24 @@ export default async function handler(req, res) {
       // ملء القيم الموجودة في قاعدة البيانات
       if (data) {
         data.forEach(item => {
-          // ✅ فك تشفير JSON إذا كان المفتاح هو player_settings
+          // ✅ فك تشفير JSON إذا كان المفتاح هو player_settings، ثم تطبيع
+          // الشكل (تحويل الشكل القديم player_1/2/3 تلقائياً إلى مصفوفة
+          // players الديناميكية الجديدة إن لزم الأمر)
           if (item.key === 'player_settings' && item.value) {
             try {
-              settings[item.key] = JSON.parse(item.value);
+              settings[item.key] = normalizePlayerSettings(JSON.parse(item.value));
             } catch (e) {
-              settings[item.key] = item.value; // في حالة حدوث خطأ في فك التشفير
+              settings[item.key] = defaultPlayerSettings();
             }
           } else {
             settings[item.key] = item.value;
           }
         });
+      }
+
+      // إذا لم يوجد أي صف player_settings بعد في قاعدة البيانات
+      if (!settings.player_settings || settings.player_settings === '') {
+        settings.player_settings = defaultPlayerSettings();
       }
 
       return res.status(200).json(settings);
@@ -57,6 +69,15 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     try {
       const updates = req.body; // نتوقع كائن يحتوي على المفاتيح والقيم
+
+      // ✅ التحقق من صحة إعدادات المشغلات الديناميكية قبل الحفظ
+      // (كل مشغل يجب أن يملك id فريد، اسم، وengine صالح)
+      if (updates.player_settings) {
+        const validationError = validatePlayerSettingsPayload(updates.player_settings);
+        if (validationError) {
+          return res.status(400).json({ error: `player_settings: ${validationError}` });
+        }
+      }
 
       // تجهيز البيانات للإدخال (Upsert)
       const rowsToUpsert = TARGET_KEYS.map(key => {
