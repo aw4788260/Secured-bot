@@ -1,29 +1,9 @@
 import { supabase } from '../../../lib/supabaseClient';
 import bcrypt from 'bcryptjs';
-import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 
 export default async (req, res) => {
   // السماح فقط بطلبات POST
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
-
-  // 🚀 =========================================================
-  // 🚀 التحقق من Firebase App Check أولاً لمنع إنشاء حسابات وهمية (Spam/Bots)
-  // 🚀 =========================================================
-  const appCheckToken = req.headers['x-firebase-appcheck'];
-
-  if (!appCheckToken) {
-    console.error('❌ [Signup API] Missing App Check Token');
-    return res.status(401).json({ success: false, message: 'Unauthorized: Missing App Check token' });
-  }
-
-  try {
-    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
-    await admin.appCheck().verifyToken(appCheckToken);
-  } catch (appCheckError) {
-    console.error('❌ [Signup API] App Check Failed:', appCheckError.message);
-    return res.status(401).json({ success: false, message: 'Unauthorized: Invalid App Check token' });
-  }
-  // =========================================================
 
   const { firstName, username, password, phone } = req.body;
 
