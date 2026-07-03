@@ -1,32 +1,11 @@
 // pages/api/public/check-version.js
 import { supabase } from '../../../lib/supabaseClient';
-import admin from '../../../lib/firebaseAdmin'; // ✅ 1. استيراد فايربيز آدمن
 
 export default async function handler(req, res) {
   // السماح فقط بطلبات GET
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
-
-  // 🚀 =========================================================
-  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
-  // 🚀 =========================================================
-  const appCheckToken = req.headers['x-firebase-appcheck'];
-
-  if (!appCheckToken) {
-    console.error('❌ [CheckVersion API] Missing App Check Token');
-    return res.status(401).json({ message: 'Unauthorized: Missing App Check token' });
-  }
-
-  try {
-    // فحص صحة التوكن عبر سيرفرات جوجل
-    await admin.appCheck().verifyToken(appCheckToken);
-    // console.log('✅ [CheckVersion API] App Check Verified');
-  } catch (appCheckError) {
-    console.error('❌ [CheckVersion API] App Check Failed:', appCheckError.message);
-    return res.status(401).json({ message: 'Unauthorized: Invalid App Check token' });
-  }
-  // =========================================================
 
   const { platform } = req.query;
 
