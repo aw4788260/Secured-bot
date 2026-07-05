@@ -171,7 +171,16 @@ export default async function handler(req, res) {
               .delete()
               .in('user_id', targetIds);
           if (resetErr) throw resetErr;
-          successMessage = 'تم تصفير الأجهزة المرتبطة';
+
+          // ✅ إبطال توكن الدخول (JWT) أيضاً حتى يتم تسجيل خروج التطبيق فوراً
+          // بدون هذا، يبقى التطبيق القديم يعمل بتوكن صالح رغم حذف بصمة الجهاز
+          const { error: tokenClearErr } = await supabase
+              .from('users')
+              .update({ jwt_token: null })
+              .in('id', targetIds);
+          if (tokenClearErr) throw tokenClearErr;
+
+          successMessage = 'تم تصفير الأجهزة المرتبطة وتسجيل خروج التطبيق';
           break;
 
         // 3. حذف مستخدم
