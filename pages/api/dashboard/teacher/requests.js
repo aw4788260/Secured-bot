@@ -1,6 +1,7 @@
 // pages/api/dashboard/teacher/requests.js
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { notifyStudentSubscriptionDecision } from '../../../../lib/notifyHelper';
 
 export default async (req, res) => {
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -79,6 +80,16 @@ export default async (req, res) => {
                .eq('id', request.discount_code_id);
          }
 
+         // ج. 🔔 إشعار الطالب بالرفض
+         await notifyStudentSubscriptionDecision({
+             userId: request.user_id,
+             decision: 'reject',
+             courseTitle: request.course_title,
+             rejectionReason: rejectionReason || 'مرفوض',
+             requestId: request.id,
+             senderRole: 'teacher'
+         });
+
          return res.status(200).json({ success: true, message: 'تم رفض الطلب وإعادة تفعيل كود الخصم (إن وجد) بنجاح' });
       }
 
@@ -112,6 +123,16 @@ export default async (req, res) => {
          }
 
          await supabase.from('subscription_requests').update({ status: 'approved', user_id: targetUserId }).eq('id', requestId);
+
+         // 🔔 إشعار الطالب بالقبول
+         await notifyStudentSubscriptionDecision({
+             userId: targetUserId,
+             decision: 'approve',
+             courseTitle: request.course_title,
+             requestId: request.id,
+             senderRole: 'teacher'
+         });
+
          return res.status(200).json({ success: true, message: 'تم تفعيل الاشتراك بنجاح' });
       }
     } catch (err) {
