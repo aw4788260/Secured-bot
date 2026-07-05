@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { notifyStudentSubscriptionDecision } from '../../../lib/notifyHelper';
 
 export default async (req, res) => {
   // 1. التحقق من صلاحية المعلم
@@ -192,6 +193,16 @@ export default async (req, res) => {
                    .eq('id', reqData.discount_code_id);
              }
 
+             // 🔔 إشعار الطالب بالرفض
+             await notifyStudentSubscriptionDecision({
+                 userId: reqData.user_id,
+                 decision: 'reject',
+                 courseTitle: reqData.course_title,
+                 rejectionReason: rejectionReason || 'تم الرفض',
+                 requestId: reqData.id,
+                 senderRole: 'teacher'
+             });
+
              return res.status(200).json({ success: true, message: 'Rejected' });
          }
 
@@ -218,6 +229,16 @@ export default async (req, res) => {
              }
 
              await supabase.from('subscription_requests').update({ status: 'approved', user_id: targetUserId }).eq('id', requestId);
+
+             // 🔔 إشعار الطالب بالقبول
+             await notifyStudentSubscriptionDecision({
+                 userId: targetUserId,
+                 decision: 'approve',
+                 courseTitle: reqData.course_title,
+                 requestId: reqData.id,
+                 senderRole: 'teacher'
+             });
+
              return res.status(200).json({ success: true, message: 'Approved' });
          }
       }
