@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper';
+import admin from '../../../lib/firebaseAdmin';
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
@@ -243,24 +244,28 @@ export default async (req, res) => {
       const finalTitle = titleList.join('\n──────────────────────\n');
       
       // 3. الحفظ في القاعدة
-      const { error: dbError } = await supabase.from('subscription_requests').insert({
-        user_id: user.id,
-        user_name: user.first_name,
-        user_username: user.username,
-        phone: user.phone,
-        
-        course_title: finalTitle,
-        total_price: originalTotalPrice,       
-        actual_paid_price: finalTotalPrice,    
-        discount_code_id: discountCodeId,      
-        
-        user_note: userNote,                   
-        payment_file_path: fileName,
-        status: 'pending',
-        requested_data: requestedData,
-        
-        teacher_id: detectedTeacherId
-      });
+      const { data: newRequest, error: dbError } = await supabase
+        .from('subscription_requests')
+        .insert({
+          user_id: user.id,
+          user_name: user.first_name,
+          user_username: user.username,
+          phone: user.phone,
+
+          course_title: finalTitle,
+          total_price: originalTotalPrice,
+          actual_paid_price: finalTotalPrice,
+          discount_code_id: discountCodeId,
+
+          user_note: userNote,
+          payment_file_path: fileName,
+          status: 'pending',
+          requested_data: requestedData,
+
+          teacher_id: detectedTeacherId
+        })
+        .select('id')
+        .single();
 
       if (dbError) {
          try { fs.unlinkSync(receiptFile.filepath); } catch (e) {}
@@ -270,6 +275,54 @@ export default async (req, res) => {
       // 4. حرق الكود (تحديث حالته لمستخدَم) بعد التأكد من حفظ الطلب بنجاح
       if (discountCodeId) {
          await supabase.from('discount_codes').update({ is_used: true }).eq('id', discountCodeId);
+      }
+
+      // =========================================================
+      // 🔔 5. إشعار المدرس (صاحب الكورس) بوجود طلب اشتراك جديد
+      // =========================================================
+      if (detectedTeacherId) {
+        try {
+          const { data: teacherUser } = await supabase
+            .from('users')
+            .select('id, fcm_token')
+            .eq('teacher_profile_id', detectedTeacherId)
+            .eq('role', 'teacher')
+            .maybeSingle();
+
+          if (teacherUser?.fcm_token) {
+            const notifTitle = '🔔 طلب اشتراك جديد';
+            const notifBody = `${user.first_name} طلب الاشتراك في: ${titleList.join(' | ')}`;
+
+            await admin.messaging().send({
+              token: teacherUser.fcm_token,
+              notification: { title: notifTitle, body: notifBody },
+              android: {
+                priority: 'high',
+                notification: { sound: 'default', priority: 'max', channelId: 'fcm_channel', clickAction: 'FLUTTER_NOTIFICATION_CLICK' }
+              },
+              apns: {
+                headers: { 'apns-priority': '10' },
+                payload: { aps: { sound: 'default', badge: 1, contentAvailable: true } }
+              },
+              data: {
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                type: 'subscription_request',
+                id: newRequest.id.toString()
+              }
+            });
+
+            await supabase.from('notifications').insert({
+              title: notifTitle,
+              body: notifBody,
+              target_type: 'subscription_request',
+              target_id: newRequest.id.toString(),
+              sender_role: 'student'
+            });
+          }
+        } catch (notifyErr) {
+          // لا نفشل الطلب الأساسي بسبب فشل الإشعار فقط
+          console.error('⚠️ FCM Teacher Notify Error:', notifyErr.message);
+        }
       }
 
       return res.status(200).json({ success: true, message: 'تم إرسال طلب الاشتراك بنجاح! سيتم مراجعته.' });
