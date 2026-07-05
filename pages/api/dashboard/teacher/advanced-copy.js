@@ -104,7 +104,13 @@ export default async function handler(req, res) {
 
                   if (oldChap.videos && oldChap.videos.length > 0) {
                       const videosToCopy = oldChap.videos.map(v => ({
-                          title: v.title, youtube_video_id: v.youtube_video_id, sort_order: v.sort_order, chapter_id: newChap.id
+                          title: v.title,
+                          youtube_video_id: v.youtube_video_id,
+                          bunny_video_id: v.bunny_video_id,
+                          duration: v.duration,
+                          encoding_status: v.encoding_status,
+                          sort_order: v.sort_order,
+                          chapter_id: newChap.id
                       }));
                       await supabase.from('videos').insert(videosToCopy);
                   }
@@ -139,7 +145,12 @@ export default async function handler(req, res) {
                   if (vids && vids.length > 0) {
                       const vidsToCopy = vids.map(v => ({
                           title: v.title, // الاسم الأصلي
-                          youtube_video_id: v.youtube_video_id, sort_order: v.sort_order, chapter_id: finalChapterId
+                          youtube_video_id: v.youtube_video_id,
+                          bunny_video_id: v.bunny_video_id,
+                          duration: v.duration,
+                          encoding_status: v.encoding_status,
+                          sort_order: v.sort_order,
+                          chapter_id: finalChapterId
                       }));
                       await supabase.from('videos').insert(vidsToCopy);
                   }
@@ -178,7 +189,15 @@ export default async function handler(req, res) {
                   }).select().single();
 
                   if (oldChap.videos && oldChap.videos.length > 0) {
-                      const videosToCopy = oldChap.videos.map(v => ({ title: v.title, youtube_video_id: v.youtube_video_id, sort_order: v.sort_order, chapter_id: newChap.id }));
+                      const videosToCopy = oldChap.videos.map(v => ({
+                          title: v.title,
+                          youtube_video_id: v.youtube_video_id,
+                          bunny_video_id: v.bunny_video_id,
+                          duration: v.duration,
+                          encoding_status: v.encoding_status,
+                          sort_order: v.sort_order,
+                          chapter_id: newChap.id
+                      }));
                       await supabase.from('videos').insert(videosToCopy);
                   }
                   if (oldChap.pdfs && oldChap.pdfs.length > 0) {
