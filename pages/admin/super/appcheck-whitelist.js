@@ -77,11 +77,11 @@ export default function AppCheckWhitelistManager() {
           <div>
             <h1>🛡️ القائمة البيضاء لفحص App Check</h1>
             <p>
-              أضف يدوياً <strong>معرّف المستخدم (user_id)</strong> لمستخدم متأثر بمشكلة عدم توليد توكن
-              Firebase App Check (مثل بعض هواتف هواوي). تجده في صفحة "إدارة الطلاب" أو في جدول
-              users بقاعدة البيانات. أي طلب مُصادَق (Login/محتوى) يحمل توكن هذا المستخدم سيتم قبوله
-              حتى بدون توكن App Check صالح. (استثناء: شاشة التسجيل الجديد فقط تقبل أيضاً اسم
-              المستخدم أو رقم الهاتف، لأن الحساب غير موجود بعد وقتها).
+              أضف مستخدماً متأثراً بمشكلة عدم توليد توكن Firebase App Check (مثل بعض هواتف هواوي)
+              بكتابة <strong>اسم المستخدم</strong> أو <strong>رقم الهاتف</strong> أو
+              <strong> معرّف المستخدم (user_id)</strong> مباشرة - سيبحث النظام تلقائياً عن الحساب
+              في قاعدة البيانات ويستخرج user_id الحقيقي ويخزّنه، دون الحاجة للبحث عنه يدوياً. أي
+              طلب مُصادَق يحمل توكن هذا المستخدم سيتم قبوله حتى بدون توكن App Check صالح.
             </p>
           </div>
         </div>
@@ -93,11 +93,11 @@ export default function AppCheckWhitelistManager() {
           <div className="panel-body">
             <form onSubmit={handleAdd} className="add-form">
               <div className="form-group">
-                <label>المعرّف (user_id، أو استثناءً اسم المستخدم/رقم الهاتف للتسجيل الجديد) *</label>
+                <label>اسم المستخدم أو رقم الهاتف أو user_id (سيتم استخراج user_id تلقائياً) *</label>
                 <input
                   className="input"
                   type="text"
-                  placeholder="مثال: 42 (user_id) أو username123 أو 01012345678"
+                  placeholder="مثال: username123 أو 01012345678 أو 42"
                   value={formData.value}
                   onChange={(e) => setFormData({ ...formData, value: e.target.value })}
                 />
