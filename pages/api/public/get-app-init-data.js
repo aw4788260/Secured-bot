@@ -2,28 +2,38 @@ import { supabase } from '../../../lib/supabaseClient';
 import jwt from 'jsonwebtoken';
 import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
+import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
 
 export default async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  // 🚀 =========================================================
-  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
-  // 🚀 =========================================================
-  const appCheckToken = req.headers['x-firebase-appcheck'];
+  // 1. محاولة التعرف على المستخدم من التوكن (Soft Check)
+  const authHeader = req.headers['authorization'];
+  const deviceIdHeader = req.headers['x-device-id'];
+  const fcmTokenHeader = req.headers['x-fcm-token']; // ✅ استلام توكن فايربيز من التطبيق
 
-  if (!appCheckToken) {
-    console.error('❌ [AppInit API] Missing App Check Token');
-    return res.status(401).json({ message: 'Unauthorized: Missing App Check token' });
+  // 🆕 فحص ناعم مبكر لاستخراج user_id فقط لغرض مطابقة القائمة البيضاء
+  // (بدون شرط تطابق الجهاز، فقط لمعرفة هوية صاحب التوكن قبل بوابة App Check)
+  let softUserIdForWhitelist = null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+          const softDecoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+          softUserIdForWhitelist = softDecoded?.userId || null;
+      } catch (e) {
+          // توكن غير صالح/منتهي - سيُعامل كزائر لاحقاً كما كان
+      }
   }
 
-  try {
-    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
-    await admin.appCheck().verifyToken(appCheckToken);
-  } catch (appCheckError) {
-    console.error('❌ [AppInit API] App Check Failed:', appCheckError.message);
-    return res.status(401).json({ message: 'Unauthorized: Invalid App Check token' });
+  // 🚀 =========================================================
+  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
+  // 🚀 🆕 + مراعاة القائمة البيضاء اليدوية (user_id)
+  // 🚀 =========================================================
+  const appCheckResult = await verifyAppCheckWithWhitelist(req, [softUserIdForWhitelist], 'AppInit API');
+
+  if (!appCheckResult.ok) {
+    return res.status(appCheckResult.status).json({ message: appCheckResult.message });
   }
   // =========================================================
 
@@ -35,11 +45,6 @@ export default async (req, res) => {
   let libraryData = []; 
   let isLoggedIn = false;
   let userId = null;
-
-  // 1. محاولة التعرف على المستخدم من التوكن (Soft Check)
-  const authHeader = req.headers['authorization'];
-  const deviceIdHeader = req.headers['x-device-id'];
-  const fcmTokenHeader = req.headers['x-fcm-token']; // ✅ استلام توكن فايربيز من التطبيق
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];

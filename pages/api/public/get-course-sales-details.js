@@ -1,26 +1,35 @@
 import { supabase } from '../../../lib/supabaseClient';
 import jwt from 'jsonwebtoken';
 import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
+import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  // 🚀 =========================================================
-  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
-  // 🚀 =========================================================
-  const appCheckToken = req.headers['x-firebase-appcheck'];
-
-  if (!appCheckToken) {
-    console.error('❌ [CourseSalesDetails API] Missing App Check Token');
-    return res.status(401).json({ error: 'Unauthorized: Missing App Check token' });
+  // 🆕 فحص ناعم مبكر لاستخراج user_id فقط لغرض مطابقة القائمة البيضاء
+  let softUserIdForWhitelist = null;
+  const earlyAuthHeader = req.headers['authorization'];
+  if (earlyAuthHeader && earlyAuthHeader.startsWith('Bearer ')) {
+      try {
+          const softDecoded = jwt.verify(earlyAuthHeader.split(' ')[1], process.env.JWT_SECRET);
+          softUserIdForWhitelist = softDecoded?.userId || null;
+      } catch (e) {
+          // توكن غير صالح/منتهي - سيُعامل كزائر لاحقاً كما كان
+      }
   }
 
-  try {
-    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
-    await admin.appCheck().verifyToken(appCheckToken);
-  } catch (appCheckError) {
-    console.error('❌ [CourseSalesDetails API] App Check Failed:', appCheckError.message);
-    return res.status(401).json({ error: 'Unauthorized: Invalid App Check token' });
+  // 🚀 =========================================================
+  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
+  // 🚀 🆕 + مراعاة القائمة البيضاء اليدوية (user_id)
+  // 🚀 =========================================================
+  const appCheckResult = await verifyAppCheckWithWhitelist(
+    req,
+    [softUserIdForWhitelist],
+    'CourseSalesDetails API'
+  );
+
+  if (!appCheckResult.ok) {
+    return res.status(appCheckResult.status).json({ error: appCheckResult.message });
   }
   // =========================================================
 
