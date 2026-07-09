@@ -1,11 +1,31 @@
 import { supabase } from '../../../lib/supabaseClient';
 import jwt from 'jsonwebtoken';
 import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
+import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 
 export default async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
+
+  // 🚀 =========================================================
+  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
+  // 🚀 =========================================================
+  const appCheckToken = req.headers['x-firebase-appcheck'];
+
+  if (!appCheckToken) {
+    console.error('❌ [AppInit API] Missing App Check Token');
+    return res.status(401).json({ message: 'Unauthorized: Missing App Check token' });
+  }
+
+  try {
+    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
+    await admin.appCheck().verifyToken(appCheckToken);
+  } catch (appCheckError) {
+    console.error('❌ [AppInit API] App Check Failed:', appCheckError.message);
+    return res.status(401).json({ message: 'Unauthorized: Invalid App Check token' });
+  }
+  // =========================================================
 
   // 🔴 إضافة مؤقتة لطباعة كل الهيدرز القادمة من التطبيق
   console.log("📥 [DEBUG] Incoming Request Headers:", JSON.stringify(req.headers, null, 2));
@@ -264,7 +284,7 @@ export default async (req, res) => {
           telegram: contactInfo['support_telegram'] || ''
       },
       // ✅ إرسال حالة الوضع المجاني
-      freeModeV4: contactInfo['free_mode'] === 'true'
+      freeModeV3: contactInfo['free_mode'] === 'true'
     });
 
   } catch (err) {

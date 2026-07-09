@@ -1,8 +1,28 @@
 import { supabase } from '../../../lib/supabaseClient';
 import jwt from 'jsonwebtoken';
+import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
+
+  // 🚀 =========================================================
+  // 🚀 التحقق من Firebase App Check أولاً قبل أي شيء
+  // 🚀 =========================================================
+  const appCheckToken = req.headers['x-firebase-appcheck'];
+
+  if (!appCheckToken) {
+    console.error('❌ [CourseSalesDetails API] Missing App Check Token');
+    return res.status(401).json({ error: 'Unauthorized: Missing App Check token' });
+  }
+
+  try {
+    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
+    await admin.appCheck().verifyToken(appCheckToken);
+  } catch (appCheckError) {
+    console.error('❌ [CourseSalesDetails API] App Check Failed:', appCheckError.message);
+    return res.status(401).json({ error: 'Unauthorized: Invalid App Check token' });
+  }
+  // =========================================================
 
   const { courseCode } = req.query;
   
