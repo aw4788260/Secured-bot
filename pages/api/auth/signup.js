@@ -1,31 +1,11 @@
 import { supabase } from '../../../lib/supabaseClient';
 import bcrypt from 'bcryptjs';
-import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
-import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
 
 export default async (req, res) => {
   // السماح فقط بطلبات POST
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   const { firstName, username, password, phone } = req.body;
-
-  // 🚀 =========================================================
-  // 🚀 التحقق من Firebase App Check أولاً لمنع إنشاء حسابات وهمية (Spam/Bots)
-  // 🚀 🆕 + مراعاة القائمة البيضاء اليدوية
-  // 🚀 ملاحظة: باقي الملفات تطابق على user_id، لكن هنا لا يوجد مستخدم بعد
-  // 🚀 (الحساب لم يُنشأ بعد)، لذلك نطابق على رقم الهاتف/اسم المستخدم المُدخل
-  // 🚀 كأفضل بديل متاح في هذه اللحظة تحديداً فقط.
-  // 🚀 =========================================================
-  const appCheckResult = await verifyAppCheckWithWhitelist(
-    req,
-    [phone, username],
-    'Signup API'
-  );
-
-  if (!appCheckResult.ok) {
-    return res.status(appCheckResult.status).json({ success: false, message: appCheckResult.message });
-  }
-  // =========================================================
 
   // ✅ تعديل 1: معالجة رقم الهاتف ليكون null حقيقي إذا لم يتم إدخاله
   // نعالج الحالة إذا كان "null" كنص، أو نص فارغ، أو undefined
