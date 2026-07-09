@@ -35,16 +35,62 @@ export default async function handler(req, res) {
     try {
       // 1. إضافة عنصر جديد إلى القائمة البيضاء
       if (action === 'add') {
-        const value = (payload?.value || '').trim();
-        const label = (payload?.label || '').trim() || null;
+        const rawInput = (payload?.value || '').trim();
         const note = (payload?.note || '').trim() || null;
+        let label = (payload?.label || '').trim() || null;
 
-        if (!value) {
-          return res.status(400).json({ error: 'يجب إدخال معرّف الجهاز أو اسم المستخدم أو رقم الهاتف' });
+        if (!rawInput) {
+          return res.status(400).json({ error: 'يجب إدخال معرّف المستخدم (user_id) أو اسم المستخدم أو رقم الهاتف' });
         }
 
+        // 🆕 =========================================================
+        // 🆕 استخراج user_id تلقائياً من المُدخل مهما كانت صيغته:
+        // 🆕 - إذا كان رقماً صحيحاً: نتحقق أولاً إن كان user_id، وإلا نجرّبه كرقم هاتف.
+        // 🆕 - إذا كان نصاً: نبحث عنه كاسم مستخدم في جدول users.
+        // 🆕 في كل الحالات نستخرج id الحقيقي تلقائياً ونخزّنه بدل القيمة المُدخلة.
+        // 🆕 =========================================================
+        let resolvedUserId = null;
+        let matchedUser = null;
+
+        const isNumericId = /^\d+$/.test(rawInput);
+
+        if (isNumericId) {
+          const { data: byId } = await supabase
+            .from('users')
+            .select('id, username, phone')
+            .eq('id', rawInput)
+            .maybeSingle();
+
+          if (byId) {
+            matchedUser = byId;
+          } else {
+            const { data: byPhone } = await supabase
+              .from('users')
+              .select('id, username, phone')
+              .eq('phone', rawInput)
+              .maybeSingle();
+            matchedUser = byPhone || null;
+          }
+        } else {
+          const { data: byUsername } = await supabase
+            .from('users')
+            .select('id, username, phone')
+            .eq('username', rawInput)
+            .maybeSingle();
+          matchedUser = byUsername || null;
+        }
+
+        if (matchedUser) {
+          resolvedUserId = String(matchedUser.id);
+          if (!label) label = matchedUser.username || null;
+        }
+
+        // القيمة التي سنخزنها: user_id الحقيقي إذا وجدنا المستخدم في قاعدة البيانات،
+        // وإلا نخزّن المُدخل كما هو كحل احتياطي (مثلاً إذا لم يُطابق أي مستخدم بعد).
+        const valueToStore = resolvedUserId || rawInput;
+
         const { error } = await supabase.from('app_check_whitelist').insert({
-          value,
+          value: valueToStore,
           label,
           note,
           is_active: true,
@@ -58,7 +104,12 @@ export default async function handler(req, res) {
         }
 
         invalidateAppCheckWhitelistCache();
-        return res.status(200).json({ success: true, message: '✅ تمت إضافة المستخدم إلى القائمة البيضاء' });
+
+        const successMessage = resolvedUserId
+          ? `✅ تم العثور على المستخدم "${matchedUser.username}" وإضافته للقائمة البيضاء بمعرّف (user_id: ${resolvedUserId})`
+          : '⚠️ لم يتم العثور على مستخدم مطابق بقاعدة البيانات، تمت إضافة القيمة المُدخلة كما هي كحل احتياطي';
+
+        return res.status(200).json({ success: true, message: successMessage, resolvedUserId });
       }
 
       // 2. تفعيل / تعطيل عنصر
