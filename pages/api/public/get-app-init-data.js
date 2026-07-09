@@ -37,8 +37,7 @@ export default async (req, res) => {
   }
   // =========================================================
 
-  // 🔴 إضافة مؤقتة لطباعة كل الهيدرز القادمة من التطبيق
-  console.log("📥 [DEBUG] Incoming Request Headers:", JSON.stringify(req.headers, null, 2));
+  
 
   let userData = null;
   let userAccess = { courses: [], subjects: [], topics: [] }; // ✅ إضافة topics هنا
