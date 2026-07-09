@@ -15,6 +15,7 @@ const WheelIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="n
 const FinanceIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>);
 const NotifIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>);
 const SettingsIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"></path></svg>);
+const ShieldIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>);
 
 export default function SuperLayout({ children, title }) {
   const router = useRouter();
@@ -138,6 +139,7 @@ export default function SuperLayout({ children, title }) {
     { name: 'التقارير المالية', path: '/admin/super/finance', icon: <FinanceIcon /> },
     { name: 'إرسال الإشعارات', path: '/admin/super/notifications', icon: <NotifIcon /> },
     { name: 'إعدادات المنصة', path: '/admin/super/settings', icon: <SettingsIcon /> },
+    { name: 'قائمة App Check البيضاء', path: '/admin/super/appcheck-whitelist', icon: <ShieldIcon /> },
   ];
 
   if (isChecking) {
