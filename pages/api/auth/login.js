@@ -2,9 +2,29 @@ import { supabase } from '../../../lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
+import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
+
+  // 🚀 =========================================================
+  // 🚀 التحقق من Firebase App Check أولاً لمنع هجمات البوتات (Brute-force/Spam)
+  // 🚀 =========================================================
+  const appCheckToken = req.headers['x-firebase-appcheck'];
+
+  if (!appCheckToken) {
+    console.error('❌ [Login API] Missing App Check Token');
+    return res.status(401).json({ success: false, message: 'Unauthorized: Missing App Check token' });
+  }
+
+  try {
+    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
+    await admin.appCheck().verifyToken(appCheckToken);
+  } catch (appCheckError) {
+    console.error('❌ [Login API] App Check Failed:', appCheckError.message);
+    return res.status(401).json({ success: false, message: 'Unauthorized: Invalid App Check token' });
+  }
+  // =========================================================
 
   // ✅ 2. التحقق من App Secret (طبقة الحماية الثانية من داخل التطبيق)
   const appSecret = req.headers['x-app-secret'];
