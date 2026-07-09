@@ -3,46 +3,45 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
+import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
 
 export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
-  // 🚀 =========================================================
-  // 🚀 التحقق من Firebase App Check أولاً لمنع هجمات البوتات (Brute-force/Spam)
-  // 🚀 =========================================================
-  const appCheckToken = req.headers['x-firebase-appcheck'];
-
-  if (!appCheckToken) {
-    console.error('❌ [Login API] Missing App Check Token');
-    return res.status(401).json({ success: false, message: 'Unauthorized: Missing App Check token' });
-  }
-
-  try {
-    // فحص صحة التوكن عبر سيرفرات جوجل (لضمان أن الطلب من التطبيق الرسمي)
-    await admin.appCheck().verifyToken(appCheckToken);
-  } catch (appCheckError) {
-    console.error('❌ [Login API] App Check Failed:', appCheckError.message);
-    return res.status(401).json({ success: false, message: 'Unauthorized: Invalid App Check token' });
-  }
-  // =========================================================
-
-  // ✅ 2. التحقق من App Secret (طبقة الحماية الثانية من داخل التطبيق)
-  const appSecret = req.headers['x-app-secret'];
-  if (appSecret !== process.env.APP_SECRET) {
-    return res.status(403).json({ success: false, message: 'غير مصرح لك باستخدام هذا الرابط (Invalid App Secret)' });
-  }
-
   const { identifier, password, deviceId } = req.body;
 
   try {
-    // 3. البحث عن المستخدم
-    // ✅ جلب أعمدة failed_attempts و lockout_until بالإضافة للحقول السابقة
+    // 0. البحث المبكر عن المستخدم (قبل بوابة App Check) حتى نستطيع مطابقة
+    //    القائمة البيضاء بناءً على user_id الحقيقي بدلاً من device_id.
+    //    نفس هذا الاستعلام كان سيُنفذ لاحقاً على أي حال، فقط قدّمناه للأمام.
     const { data: user } = await supabase
       .from('users')
       .select('id, password, first_name, username, is_admin, is_blocked, role, teacher_profile_id, failed_attempts, lockout_until') 
       .or(`username.eq.${identifier},phone.eq.${identifier}`)
       .maybeSingle();
 
+    // 🚀 =========================================================
+    // 🚀 التحقق من Firebase App Check أولاً لمنع هجمات البوتات (Brute-force/Spam)
+    // 🚀 🆕 + مراعاة القائمة البيضاء اليدوية (بناءً على user_id)
+    // 🚀 =========================================================
+    const appCheckResult = await verifyAppCheckWithWhitelist(
+      req,
+      [user?.id],
+      'Login API'
+    );
+
+    if (!appCheckResult.ok) {
+      return res.status(appCheckResult.status).json({ success: false, message: appCheckResult.message });
+    }
+    // =========================================================
+
+    // ✅ 2. التحقق من App Secret (طبقة الحماية الثانية من داخل التطبيق)
+    const appSecret = req.headers['x-app-secret'];
+    if (appSecret !== process.env.APP_SECRET) {
+      return res.status(403).json({ success: false, message: 'غير مصرح لك باستخدام هذا الرابط (Invalid App Secret)' });
+    }
+
+    // 3. التأكد من وجود المستخدم (تم البحث عنه في الخطوة 0 أعلاه)
     if (!user) {
       return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
