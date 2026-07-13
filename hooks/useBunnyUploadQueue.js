@@ -126,7 +126,7 @@ function makeId() {
 
 export function useBunnyUploadQueue() {
   // uploads: مصفوفة عناصر الرفع الظاهرة للمستخدم (أحدثها أولاً)
-  // كل عنصر: { id, fileName, chapterId, chapterTitle, title, status, progress, error, videoId, createdAt }
+  // كل عنصر: { id, fileName, chapterId, chapterTitle, subjectTitle, courseTitle, title, status, progress, error, videoId, createdAt }
   const [uploads, setUploads] = useState([]);
 
   // uploadRefs: id -> كائن TUS الحالي (لاستخدام cancel() الصريح فقط)
@@ -172,7 +172,7 @@ export function useBunnyUploadQueue() {
   }
 
   const startUpload = useCallback((options) => {
-    const { file, chapterId, chapterTitle = '', title, notifyStudents = false, sortOrder = 999, onComplete, onError } = options;
+    const { file, chapterId, chapterTitle = '', subjectTitle = '', courseTitle = '', title, notifyStudents = false, sortOrder = 999, onComplete, onError } = options;
 
     if (!file || !chapterId) {
       const msg = 'file و chapterId مطلوبان';
@@ -188,6 +188,8 @@ export function useBunnyUploadQueue() {
         fileName: file.name,
         chapterId,
         chapterTitle,
+        subjectTitle,
+        courseTitle,
         title: title || file.name,
         status: 'requesting',
         progress: 0,
