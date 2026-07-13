@@ -279,6 +279,8 @@ export default function ContentManager() {
               file: videoFile,
               chapterId: selectedChapter.id,
               chapterTitle: selectedChapter.title,
+              subjectTitle: selectedSubject?.title,
+              courseTitle: selectedCourse?.title,
               title: formData.title || videoFile.name,
               notifyStudents: formData.notifyStudents,
               onComplete: async () => {
