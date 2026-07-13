@@ -209,33 +209,50 @@ export default function SuperFinance() {
                 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 24px; background: #fff; color: #1a1508; }
                 .sheet { max-width: 980px; margin: 0 auto; }
 
-                /* ── HEADER BANNER ── */
+                /* ── The banner, dashboard, and footer are plain blocks outside
+                   the table, so they render exactly once (header at the top
+                   of page 1, footer at the end of the last page). The column
+                   header row is a normal <tbody> row (not a native <thead>),
+                   so it also renders once instead of repeating on every
+                   printed page. */
+                .report-table { width:100%; border-collapse: collapse; }
+                .report-table tr { page-break-inside: avoid; break-inside: avoid; }
+
+                /* ── HEADER BANNER (plain block, sits before the table so it
+                   only ever renders once — at the top of the first page).
+                   The logo lives inside it again; sized to stay clearly
+                   larger than the original while keeping the band compact. ── */
                 .banner {
                   background: linear-gradient(160deg, #14110c 0%, #000 100%);
                   border: 1px solid #b8903a; border-radius: 18px;
-                  padding: 34px 20px 26px; text-align: center; position: relative; overflow: hidden;
+                  padding: 10px 20px 12px; text-align: center; position: relative; overflow: hidden;
+                  margin-bottom: 14px;
+                  page-break-inside: avoid; break-inside: avoid; page-break-after: avoid;
                   -webkit-print-color-adjust: exact; print-color-adjust: exact;
                 }
                 .banner::before, .banner::after {
                   content: ''; position: absolute; left: 24px; right: 24px; height: 2px;
                   background: linear-gradient(90deg, transparent, var(--gold-light), transparent);
                 }
-                .banner::before { top: 10px; } .banner::after { bottom: 10px; }
-                .brand { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom: 6px; }
-                .brand svg { flex-shrink:0; }
-                .brand-logo { height: 48px; max-width: 220px; object-fit: contain; }
-                .brand-name { font-size: 30px; font-weight: 800; background: linear-gradient(180deg,#f0d896,#b8903a); -webkit-background-clip:text; background-clip:text; color: transparent; letter-spacing: 1px; }
-                .banner h1 { color:#fff; font-size: 22px; margin: 10px 0 4px; font-weight: 800; }
-                .banner .academy { color: var(--gold-light); font-size: 16px; font-weight: 700; margin: 0 0 14px; }
+                .banner::before { top: 8px; } .banner::after { bottom: 8px; }
+                .corner { position:absolute; width: 100px; height: 100px; opacity: 0.9; }
+                .corner.tl { top: -6px; left: -6px; transform: scaleX(-1); }
+                .corner.tr { top: -6px; right: -6px; }
+                .brand { display:flex; align-items:center; justify-content:center; margin-bottom: 0; }
+                .brand-logo { height: 130px; max-width: 320px; object-fit: contain; }
+                .brand-name { font-size: 34px; font-weight: 800; background: linear-gradient(180deg,#f0d896,#b8903a); -webkit-background-clip:text; background-clip:text; color: transparent; letter-spacing: 1px; }
+                .banner h1 { color:#fff; font-size: 20px; margin: 0 0 3px; font-weight: 800; }
+                .banner .academy { color: var(--gold-light); font-size: 15px; font-weight: 700; margin: 0 0 8px; display:flex; align-items:center; justify-content:center; gap:10px; }
+                .banner .academy .deco { color: #8a6e2e; font-size: 12px; }
                 .date-chip {
                   display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.06);
-                  border: 1px solid rgba(184,144,58,0.5); color: #ecdcb2; padding: 7px 18px; border-radius: 30px; font-size: 13px; font-weight: 700;
+                  border: 1px solid rgba(184,144,58,0.5); color: #ecdcb2; padding: 5px 16px; border-radius: 30px; font-size: 12px; font-weight: 700;
                 }
 
                 /* ── STAT CARDS ── */
-                .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin: 22px 0; }
+                .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 22px; page-break-inside: avoid; break-inside: avoid; }
                 .card { border: 1px solid #e8e0cc; border-radius: 14px; padding: 18px 10px; text-align: center; background:#fff; }
-                .card .icn { width: 46px; height: 46px; border-radius: 50%; background:#f7edd7; color:var(--gold); display:flex; align-items:center; justify-content:center; margin: 0 auto 10px; -webkit-print-color-adjust:exact; }
+                .card .icn { width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(160deg,#e3c179,#c9a24c); color:#fff; font-size:20px; display:flex; align-items:center; justify-content:center; margin: 0 auto 10px; -webkit-print-color-adjust:exact; }
                 .card .label { color:#7a7368; font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
                 .card .value { font-size: 21px; font-weight: 800; color:#1a1508; }
                 .card .value.gold { color: var(--gold); } .card .value.red { color: var(--red); } .card .value.green { color: var(--green); }
@@ -243,7 +260,7 @@ export default function SuperFinance() {
                 .subline .ok { color: var(--green); } .subline .no { color: var(--red); }
 
                 /* ── SUMMARY + DONUT ── */
-                .two-col { display:grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 22px; }
+                .two-col { display:grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 20px; page-break-inside: avoid; break-inside: avoid; }
                 .panel { border:1px solid #e8e0cc; border-radius: 14px; padding: 20px; }
                 .panel h3 { margin:0 0 16px; font-size:15px; color:#333; border-bottom:2px solid var(--gold); display:inline-block; padding-bottom:6px; }
                 .bar-row { margin-bottom: 16px; }
@@ -256,51 +273,63 @@ export default function SuperFinance() {
                 .legend-item { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; margin-bottom:10px; }
                 .dot { width:11px; height:11px; border-radius:50%; -webkit-print-color-adjust:exact; }
 
-                /* ── TABLE ── */
-                .table-title { font-size: 15px; font-weight:800; color:#333; margin: 4px 0 10px; }
-                table { width:100%; border-collapse: collapse; font-size: 12px; }
-                th, td { border:1px solid #e5decb; padding: 10px 8px; text-align:right; vertical-align: middle; }
-                th { background:#fbf6e8; color: var(--gold); font-weight:800; -webkit-print-color-adjust:exact; }
-                tr.approved td { background: #f4fbf6; -webkit-print-color-adjust:exact; }
-                tr.rejected td { background: #fdf3f3; -webkit-print-color-adjust:exact; }
-                .status-pill { display:inline-block; padding:3px 10px; border-radius:20px; font-weight:800; font-size:11px; -webkit-print-color-adjust:exact; }
+                /* ── DATA TABLE (column header row + rows) ── */
+                .col-head-row th { border: 1px solid #e5decb; padding: 10px 8px; text-align:right; background:#fbf6e8; color: var(--gold); font-weight:800; font-size:11.5px; -webkit-print-color-adjust:exact; }
+                tbody.data-body td { border: 1px solid #e5decb; padding: 10px 8px; text-align:right; vertical-align: middle; background:#fff; -webkit-print-color-adjust:exact; }
+                .status-pill { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; border-radius:20px; font-weight:800; font-size:11px; -webkit-print-color-adjust:exact; }
                 .status-pill.approved { background:#dcf6e3; color:#15803d; }
                 .status-pill.rejected { background:#fbdede; color:#b91c1c; }
+                .student-cell { display:flex; align-items:center; gap:8px; }
+                .avatar { width:26px; height:26px; border-radius:50%; background:#eee7d4; color:#8a8375; display:flex; align-items:center; justify-content:center; flex-shrink:0; -webkit-print-color-adjust:exact; }
                 .student-name { font-weight:800; display:block; }
                 .student-user { font-size:11px; color:#8a8375; }
-                .course-line { display:block; font-size:11px; color:#4a4536; margin-bottom:2px; white-space:pre-wrap; }
+                .course-line { display:flex; align-items:center; gap:5px; font-size:11px; color:#4a4536; margin-bottom:3px; }
+                .course-line:last-child { margin-bottom:0; }
+                .course-line .dot-ic { width:14px; text-align:center; flex-shrink:0; }
                 .price-old { color:#9a9384; text-decoration:line-through; }
-                .price-paid { color: var(--green); font-weight:800; }
+                .price-paid.approved { color: var(--green); font-weight:800; }
+                .price-paid.rejected { color: var(--red); font-weight:800; }
                 .note-rejected { color: var(--red); font-weight:700; }
 
-                /* ── FOOTER BAR ── */
+                /* ── FOOTER BAR (plain block after the table — renders once,
+                   naturally falling on the last printed page) ── */
                 .footer-bar {
-                  margin-top: 22px; background: linear-gradient(160deg, #14110c 0%, #000 100%); border:1px solid #b8903a;
+                  margin-top: 20px; background: linear-gradient(160deg, #14110c 0%, #000 100%); border:1px solid #b8903a;
                   border-radius: 14px; padding: 16px 10px; display:grid; grid-template-columns: repeat(4,1fr);
-                  gap: 10px; text-align:center; -webkit-print-color-adjust:exact;
+                  gap: 10px; text-align:center; page-break-inside: avoid; break-inside: avoid;
+                  -webkit-print-color-adjust:exact;
                 }
                 .footer-bar .f-label { color:#a89a72; font-size:11px; font-weight:700; margin-bottom:4px; }
                 .footer-bar .f-value { color:#f3e4bb; font-size:13px; font-weight:800; }
                 .footer-bar .thanks { color: var(--gold-light); font-size:12px; font-weight:800; }
                 .footer-bar .thanks small { display:block; color:#8f8564; font-weight:600; margin-top:2px; }
 
-                @media print { body{ padding:0; } .sheet{ max-width:100%; } }
+                @media print {
+                  body{ padding:0; } .sheet{ max-width:100%; }
+                }
               </style>
             </head>
             <body>
               <div class="sheet">
 
+                <!-- ── HEADER: logo row + compact band, plain blocks (not
+                     part of the table), so they appear exactly once, at the
+                     top of the first page ── -->
                 <div class="banner">
+                  <svg class="corner tl" viewBox="0 0 130 130" fill="none"><path d="M2 90C2 40 40 2 90 2" stroke="url(#g1)" stroke-width="2.5"/><path d="M2 70C2 32 32 2 70 2" stroke="url(#g1)" stroke-width="1.5" opacity="0.6"/><defs><linearGradient id="g1" x1="2" y1="2" x2="90" y2="90"><stop stop-color="#d4af6a"/><stop offset="1" stop-color="#7a5c1e" stop-opacity="0"/></linearGradient></defs></svg>
+                  <svg class="corner tr" viewBox="0 0 130 130" fill="none"><path d="M2 90C2 40 40 2 90 2" stroke="url(#g2)" stroke-width="2.5"/><path d="M2 70C2 32 32 2 70 2" stroke="url(#g2)" stroke-width="1.5" opacity="0.6"/><defs><linearGradient id="g2" x1="2" y1="2" x2="90" y2="90"><stop stop-color="#d4af6a"/><stop offset="1" stop-color="#7a5c1e" stop-opacity="0"/></linearGradient></defs></svg>
                   <div class="brand">
                     <img src="${medaadLogo.src}" alt="مداد" class="brand-logo"
                          onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" />
                     <span class="brand-name" style="display:none;">مداد</span>
                   </div>
                   <h1>تقرير حسابات مدرس</h1>
-                  <p class="academy">${data.teacherName}</p>
+                  <p class="academy"><span class="deco">✦</span>${data.teacherName}<span class="deco">✦</span></p>
                   <span class="date-chip">📅 الفترة من ${dateRange.startDate} إلى ${dateRange.endDate}</span>
                 </div>
 
+                <!-- ── DASHBOARD: plain block, renders once right under the
+                     header, before the (possibly multi-page) data table ── -->
                 <div class="cards">
                   <div class="card">
                     <div class="icn">👛</div>
@@ -362,9 +391,9 @@ export default function SuperFinance() {
                   </div>
                 </div>
 
-                <table>
-                  <thead>
-                    <tr>
+                <table class="report-table">
+                  <tbody class="col-head-body">
+                    <tr class="col-head-row">
                       <th style="width:80px;">التاريخ</th>
                       <th>الطالب</th>
                       <th>الكورس / المواد</th>
@@ -373,26 +402,33 @@ export default function SuperFinance() {
                       <th>الحالة</th>
                       <th>ملاحظات</th>
                     </tr>
-                  </thead>
-                  <tbody>
+                  </tbody>
+
+                  <tbody class="data-body">
                     ${data.requests.map(req => {
                        const orig = req.total_price || 0;
                        const act = req.actual_paid_price !== null ? req.actual_paid_price : orig;
                        const hasCustomPrice = req.actual_paid_price !== null;
                        const isRejected = req.status === 'rejected';
+                       const lineIcons = ['📘','🏅','🌿'];
                        const courseLines = (req.course_title || '').split('\n').filter(Boolean)
-                         .map(line => `<span class="course-line">${line}</span>`).join('');
+                         .map((line, i) => `<span class="course-line"><span class="dot-ic">${lineIcons[i % lineIcons.length]}</span>${line.replace(/^[^\u0600-\u0669a-zA-Z]*/, '')}</span>`).join('');
 
                        return `
-                      <tr class="${req.status}">
+                      <tr>
                         <td>${fmtDate(req.created_at)}</td>
                         <td>
-                          <span class="student-name">👤 ${req.user_name || 'بدون اسم'}</span>
-                          <span class="student-user">${req.user_username ? `@${req.user_username}` : ''}</span>
+                          <div class="student-cell">
+                            <span class="avatar">👤</span>
+                            <div>
+                              <span class="student-name">${req.user_name || 'بدون اسم'}</span>
+                              <span class="student-user">${req.user_username ? `${req.user_username}` : ''}</span>
+                            </div>
+                          </div>
                         </td>
                         <td>${courseLines}</td>
                         <td class="${hasCustomPrice ? 'price-old' : ''}">${fmt(orig)} ج.م</td>
-                        <td class="price-paid">${fmt(act)} ج.م</td>
+                        <td class="price-paid ${req.status}">${fmt(act)} ج.م</td>
                         <td><span class="status-pill ${req.status}">${req.status === 'approved' ? '✅ مقبول' : '❌ مرفوض'}</span></td>
                         <td class="${isRejected ? 'note-rejected' : ''}">${req.user_note || '—'}</td>
                       </tr>
@@ -401,6 +437,8 @@ export default function SuperFinance() {
                   </tbody>
                 </table>
 
+                <!-- ── FOOTER: plain block after the table, so it only ever
+                     falls once, naturally at the end of the last page ── -->
                 <div class="footer-bar">
                   <div>
                     <div class="f-label">🏅 أعلى كورس مبيعاً</div>
@@ -421,7 +459,6 @@ export default function SuperFinance() {
                     <small>نسعى دائماً لنجاحك</small>
                   </div>
                 </div>
-
               </div>
               <script>
                 window.onload = function() { window.print(); }
