@@ -11,15 +11,27 @@ const STATUS_LABELS = {
   requesting: 'جاري إعداد جلسة الرفع...',
   uploading: 'جاري الرفع...',
   confirming: 'جاري حفظ البيانات...',
-  done: 'اكتمل الرفع ✅',
+  done: 'اكتمل الرفع',
   error: 'حدث خطأ',
   cancelled: 'تم الإلغاء',
 };
 
+// --- أيقونات SVG (بنفس أسلوب الأيقونات المستخدمة في باقي لوحة التحكم) ---
+const Icons = {
+  upload: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>,
+  chevronUp: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>,
+  chevronDown: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>,
+  folder: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
+  close: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+  checkCircle: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>,
+  xCircle: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>,
+  stopCircle: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><rect x="9" y="9" width="6" height="6"></rect></svg>,
+};
+
 function StatusIcon({ status }) {
-  if (status === 'done') return <span style={{ color: 'var(--success, #22c55e)' }}>✅</span>;
-  if (status === 'error') return <span style={{ color: 'var(--danger, #ef4444)' }}>❌</span>;
-  if (status === 'cancelled') return <span style={{ color: 'var(--text-muted)' }}>⏹</span>;
+  if (status === 'done') return <span style={{ color: 'var(--success, #22c55e)', display: 'inline-flex' }}>{Icons.checkCircle}</span>;
+  if (status === 'error') return <span style={{ color: 'var(--danger, #ef4444)', display: 'inline-flex' }}>{Icons.xCircle}</span>;
+  if (status === 'cancelled') return <span style={{ color: 'var(--text-muted)', display: 'inline-flex' }}>{Icons.stopCircle}</span>;
   return <span className="spinner" />;
 }
 
@@ -36,7 +48,8 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
     <div className={`upload-queue-widget ${collapsed ? 'collapsed' : ''}`}>
       <div className="uqw-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="uqw-title">
-          📤 رفع الفيديوهات {activeCount > 0 ? `(${activeCount} جارٍ)` : ''}
+          <span className="uqw-title-icon">{Icons.upload}</span>
+          رفع الفيديوهات {activeCount > 0 ? `(${activeCount} جارٍ)` : ''}
         </span>
         <button
           type="button"
@@ -44,7 +57,7 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
           onClick={(e) => { e.stopPropagation(); setCollapsed((c) => !c); }}
           aria-label={collapsed ? 'توسيع' : 'تصغير'}
         >
-          {collapsed ? '▲' : '▼'}
+          {collapsed ? Icons.chevronUp : Icons.chevronDown}
         </button>
       </div>
 
@@ -56,8 +69,13 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
                 <StatusIcon status={u.status} />
                 <div className="uqw-item-text">
                   <div className="uqw-item-title" title={u.title}>{u.title}</div>
-                  {u.chapterTitle && (
-                    <div className="uqw-item-sub">📂 {u.chapterTitle}</div>
+                  {(u.chapterTitle || u.subjectTitle || u.courseTitle) && (
+                    <div className="uqw-item-sub" title={[u.title, u.chapterTitle, u.subjectTitle, u.courseTitle].filter(Boolean).join(' - ')}>
+                      <span className="uqw-sub-icon">{Icons.folder}</span>
+                      <span className="uqw-sub-path">
+                        {[u.chapterTitle, u.subjectTitle, u.courseTitle].filter(Boolean).join(' - ')}
+                      </span>
+                    </div>
                   )}
                 </div>
                 {['done', 'error', 'cancelled'].includes(u.status) && (
@@ -67,7 +85,7 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
                     onClick={() => onDismiss?.(u.id)}
                     aria-label="إغلاق"
                   >
-                    ✕
+                    {Icons.close}
                   </button>
                 )}
               </div>
@@ -132,17 +150,27 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
         }
 
         .uqw-title {
+          display: flex;
+          align-items: center;
+          gap: 6px;
           font-size: 0.9rem;
           font-weight: 700;
           color: var(--gold);
         }
 
+        .uqw-title-icon {
+          display: inline-flex;
+          flex-shrink: 0;
+        }
+
         .uqw-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: none;
           border: none;
           color: var(--gold);
           cursor: pointer;
-          font-size: 0.8rem;
           padding: 4px;
         }
 
@@ -182,20 +210,35 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
         }
 
         .uqw-item-sub {
+          display: flex;
+          align-items: center;
+          gap: 4px;
           font-size: 0.75rem;
           color: var(--text-muted);
           margin-top: 2px;
+          min-width: 0;
+        }
+
+        .uqw-sub-icon {
+          display: inline-flex;
+          flex-shrink: 0;
+        }
+
+        .uqw-sub-path {
+          min-width: 0;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
         .uqw-dismiss {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: none;
           border: none;
           color: var(--text-muted);
           cursor: pointer;
-          font-size: 0.85rem;
           padding: 2px 4px;
         }
         .uqw-dismiss:hover { color: var(--danger, #ef4444); }
