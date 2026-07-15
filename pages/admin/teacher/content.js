@@ -55,6 +55,10 @@ export default function ContentManager() {
   // 'existing' = عرض قائمة اختيار من المجلدات الموجودة بالفعل في المادة،
   // 'new' = عرض حقل نصي لكتابة اسم مجلد جديد.
   const [folderMode, setFolderMode] = useState('existing');
+  // ✅ [جديد] أسماء المجلدات المطوية حالياً في قائمة الفصول (مغلقة
+  // افتراضياً عند ظهورها لأول مرة، بنفس منطق تطبيق الموبايل).
+  const [collapsedChapterFolders, setCollapsedChapterFolders] = useState(() => new Set());
+  const knownChapterFolderNamesRef = useRef(new Set());
   const [notifyPdf, setNotifyPdf] = useState(false); 
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
@@ -141,6 +145,62 @@ export default function ContentManager() {
       window.scrollTo(0, 0);
       refreshView(); 
   }, []);
+
+  // ✅ [جديد] عند ظهور مجلد جديد لأول مرة ضمن فصول المادة المختارة، يُضاف
+  // إلى قائمة المجلدات المطوية افتراضياً. المجلدات التي فتحها المدرس يدوياً
+  // لا تتأثر بإعادة جلب البيانات (نفس منطق تطبيق الموبايل).
+  useEffect(() => {
+      const chapters = selectedSubject?.chapters || [];
+      const newlySeen = [];
+      chapters.forEach(ch => {
+          const name = (ch.folder_name || '').trim();
+          if (name && !knownChapterFolderNamesRef.current.has(name)) {
+              knownChapterFolderNamesRef.current.add(name);
+              newlySeen.push(name);
+          }
+      });
+      if (newlySeen.length > 0) {
+          setCollapsedChapterFolders(prev => {
+              const next = new Set(prev);
+              newlySeen.forEach(name => next.add(name));
+              return next;
+          });
+      }
+  }, [selectedSubject?.chapters]);
+
+  // ✅ [جديد] تجميع فصول المادة المختارة: كل فصل بدون مجلد يبقى عنصراً
+  // منفرداً في مكانه، وكل مجموعة فصول تشترك بنفس اسم المجلد تُجمع في أول
+  // مكان ظهر فيه اسم هذا المجلد — بنفس منطق تجميع الفصول في تطبيق الموبايل.
+  const getChapterEntries = () => {
+      const chapters = selectedSubject?.chapters || [];
+      const entries = [];
+      const folderPosition = {};
+
+      chapters.forEach((ch, index) => {
+          const folderName = (ch.folder_name || '').trim();
+          if (!folderName) {
+              entries.push({ isFolder: false, chapter: ch, index });
+              return;
+          }
+          if (folderPosition[folderName] !== undefined) {
+              entries[folderPosition[folderName]].items.push({ chapter: ch, index });
+          } else {
+              folderPosition[folderName] = entries.length;
+              entries.push({ isFolder: true, folderName, items: [{ chapter: ch, index }] });
+          }
+      });
+
+      return entries;
+  };
+
+  const toggleChapterFolder = (folderName) => {
+      setCollapsedChapterFolders(prev => {
+          const next = new Set(prev);
+          if (next.has(folderName)) next.delete(folderName);
+          else next.add(folderName);
+          return next;
+      });
+  };
 
 
 
@@ -476,6 +536,27 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
       return '';
   };
 
+  // ✅ [جديد] عنصر فصل واحد داخل قائمة الفصول — نفس التصميم الأصلي، فقط
+  // يصغر قليلاً (compact) لما يُعرض داخل مجموعة مجلد.
+  const renderChapterItem = (ch, index, compact = false) => (
+      <div
+        key={ch.id}
+        className={`list-item clickable draggable-item${compact ? ' chapter-item-compact' : ''}`}
+        onClick={() => setSelectedChapter(ch)}
+        draggable
+        onDragStart={(e) => onDragStart(e, index)}
+        onDragEnter={(e) => onDragEnter(e, index)}
+        onDragEnd={(e) => onDragEnd(e, 'chapters')}
+      >
+          <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
+          <div className="info">
+              <strong>{ch.title}</strong>
+              <small className="chapter-counts">{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small>
+          </div>
+          <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
+      </div>
+  );
+
   // --- Exam Logic ---
   const handleImageUpload = async (e) => {
       const file = e.target.files[0];
@@ -679,16 +760,27 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   </div>
                   <div className="list-group">
                       {selectedSubject.chapters?.length === 0 && <div className="empty">لا توجد فصول</div>}
-                      {selectedSubject.chapters?.map((ch, index) => (
-                          <div key={ch.id} className="list-item clickable draggable-item" onClick={() => setSelectedChapter(ch)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'chapters')}>
-                              <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
-                              <div className="info">
-                                  <strong>{ch.title}</strong>
-                                  {ch.folder_name && <span className="folder-badge">📁 {ch.folder_name}</span>}
-                                  <small className="chapter-counts">{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small>
+                      {getChapterEntries().map((entry) => (
+                          entry.isFolder ? (
+                              <div key={`folder-${entry.folderName}`} className="chapter-folder-group">
+                                  <div
+                                    className="chapter-folder-header"
+                                    onClick={() => toggleChapterFolder(entry.folderName)}
+                                  >
+                                      <span className="chapter-folder-icon">{Icons.folder}</span>
+                                      <span className="chapter-folder-name">{entry.folderName}</span>
+                                      <span className="chapter-folder-count">{entry.items.length}</span>
+                                      <span className="chapter-folder-chevron">
+                                          {collapsedChapterFolders.has(entry.folderName) ? '▾' : '▴'}
+                                      </span>
+                                  </div>
+                                  {!collapsedChapterFolders.has(entry.folderName) && (
+                                      <div className="chapter-folder-items">
+                                          {entry.items.map(({ chapter, index }) => renderChapterItem(chapter, index, true))}
+                                      </div>
+                                  )}
                               </div>
-                              <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
-                          </div>
+                          ) : renderChapterItem(entry.chapter, entry.index, false)
                       ))}
                   </div>
               </div>
@@ -1449,6 +1541,20 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .list-item .info small { color: var(--text-muted); }
         .folder-badge { display: inline-block; font-size: 0.75em; color: var(--gold); background: rgba(212, 175, 55, 0.12); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 6px; padding: 2px 8px; margin-bottom: 5px; }
         .list-item .info .chapter-counts { display: block; margin-top: 4px; }
+
+        /* ✅ [جديد] مجموعة مجلد قابلة للطي في قائمة الفصول */
+        .chapter-folder-group { margin-bottom: 12px; }
+        .chapter-folder-header { display: flex; align-items: center; gap: 10px; background: var(--bg-base); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: all 0.2s; }
+        .chapter-folder-header:hover { background: var(--bg-hover); border-color: var(--gold); }
+        .chapter-folder-icon { display: flex; color: var(--gold); }
+        .chapter-folder-icon svg { width: 18px; height: 18px; }
+        .chapter-folder-name { flex: 1; font-weight: bold; color: var(--text-primary); font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chapter-folder-count { font-size: 0.8em; font-weight: bold; color: var(--text-muted); }
+        .chapter-folder-chevron { color: var(--text-muted); font-size: 0.9em; width: 14px; text-align: center; }
+        .chapter-folder-items { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-inline-start: 14px; border-inline-start: 2px solid rgba(212, 175, 55, 0.2); }
+        .chapter-item-compact { padding: 10px 12px; }
+        .chapter-item-compact .info strong { font-size: 0.92em; }
+        .chapter-item-compact .info small { font-size: 0.85em; }
         .list-item .icon-text { margin-left: 10px; display: inline-flex; vertical-align: middle; }
         .list-item .pdf-icon { color: #f472b6; }
         
