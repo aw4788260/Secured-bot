@@ -371,7 +371,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
   const openModal = async (type, data = {}) => {
       setFormData({ 
     title: '', url: '', price: 0, description: '', notifyStudents: false,
-    durHours: '', durMinutes: '', durSeconds: ''
+    durHours: '', durMinutes: '', durSeconds: '', folderName: ''
 });
       setNotifyPdf(false);
       setVideoFile(null);
@@ -384,7 +384,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               url: '', 
               price: data.price || 0 ,
               description: data.description || '',
-              notifyStudents: false
+              notifyStudents: false,
+              folderName: data.folder_name || ''
           });
       }
 
@@ -664,7 +665,11 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       {selectedSubject.chapters?.map((ch, index) => (
                           <div key={ch.id} className="list-item clickable draggable-item" onClick={() => setSelectedChapter(ch)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'chapters')}>
                               <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
-                              <div className="info"><strong>{ch.title}</strong><small>{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small></div>
+                              <div className="info">
+                                  <strong>{ch.title}</strong>
+                                  {ch.folder_name && <span className="folder-badge">📁 {ch.folder_name}</span>}
+                                  <small>{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small>
+                              </div>
                               <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
                           </div>
                       ))}
@@ -794,6 +799,21 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   />
               </div>
 
+              {['add_chapter', 'edit_chapter'].includes(modalType) && (
+                  <div className="form-group">
+                      <label>المجلد (اختياري)</label>
+                      <input 
+                        className="input" 
+                        value={formData.folderName} 
+                        onChange={e=>setFormData({...formData, folderName: e.target.value})} 
+                        placeholder="مثال: الترم الأول (اتركه فارغاً لعدم استخدام مجلد)" 
+                      />
+                      <small style={{color: 'var(--text-muted)', display: 'block', marginTop: '6px'}}>
+                          الفصول التي تحمل نفس اسم المجلد تُعرض مجمّعة معاً للطالب داخل التطبيق.
+                      </small>
+                  </div>
+              )}
+
               {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
                   <div className="form-group">
                       <label>السعر (جنية)</label>
@@ -917,8 +937,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       else if (modalType === 'add_subject') apiCall('create', 'subjects', { course_id: selectedCourse.id, title: formData.title, price: formData.price });
                       else if (modalType === 'edit_subject') apiCall('update', 'subjects', { id: selectedSubject.id, title: formData.title, price: formData.price });
                       
-                      else if (modalType === 'add_chapter') apiCall('create', 'chapters', { subject_id: selectedSubject.id, title: formData.title });
-                      else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title });
+                      else if (modalType === 'add_chapter') apiCall('create', 'chapters', { subject_id: selectedSubject.id, title: formData.title, folder_name: formData.folderName?.trim() || null });
+                      else if (modalType === 'edit_chapter') apiCall('update', 'chapters', { id: selectedChapter.id, title: formData.title, folder_name: formData.folderName?.trim() || null });
                       
                       else if (modalType === 'add_video') handleSaveVideo();
                   }}>حفظ</button>
@@ -1360,6 +1380,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .list-item .info { flex: 1; }
         .list-item .info strong { display: block; color: var(--text-primary); margin-bottom: 3px; }
         .list-item .info small { color: var(--text-muted); }
+        .folder-badge { display: inline-block; font-size: 0.75em; color: var(--gold); background: rgba(212, 175, 55, 0.12); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 6px; padding: 2px 8px; margin-bottom: 5px; }
         .list-item .icon-text { margin-left: 10px; display: inline-flex; vertical-align: middle; }
         .list-item .pdf-icon { color: #f472b6; }
         
