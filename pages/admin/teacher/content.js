@@ -51,6 +51,10 @@ export default function ContentManager() {
     durMinutes: '',   
     durSeconds: ''    
   });
+  // ✅ [جديد] وضع اختيار المجلد داخل نافذة إضافة/تعديل الفصل:
+  // 'existing' = عرض قائمة اختيار من المجلدات الموجودة بالفعل في المادة،
+  // 'new' = عرض حقل نصي لكتابة اسم مجلد جديد.
+  const [folderMode, setFolderMode] = useState('existing');
   const [notifyPdf, setNotifyPdf] = useState(false); 
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
@@ -389,6 +393,19 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
           });
       }
 
+      if (['add_chapter', 'edit_chapter'].includes(type)) {
+          // لو الفصل الحالي (عند التعديل) له مجلد بالفعل، أو المادة تحتوي
+          // على مجلدات موجودة مسبقاً، نبدأ بوضع "اختيار من الموجود" لتسهيل
+          // العملية على المدرس. لو المادة لا تحتوي على أي مجلدات، نعرض حقل
+          // كتابة مباشرة.
+          const existing = Array.from(new Set(
+              (selectedSubject?.chapters || [])
+                  .map(c => (c.folder_name || '').trim())
+                  .filter(Boolean)
+          ));
+          setFolderMode(existing.length > 0 ? 'existing' : 'new');
+      }
+
       if (type === 'exam_editor') {
           if (data.id && data.attempts_count > 0) {
               showAlert('error', '⛔ لا يمكن تعديل هذا الامتحان لأنه تم حله من قبل طلاب مسبقاً.');
@@ -668,7 +685,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               <div className="info">
                                   <strong>{ch.title}</strong>
                                   {ch.folder_name && <span className="folder-badge">📁 {ch.folder_name}</span>}
-                                  <small>{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small>
+                                  <small className="chapter-counts">{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small>
                               </div>
                               <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
                           </div>
@@ -799,20 +816,70 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   />
               </div>
 
-              {['add_chapter', 'edit_chapter'].includes(modalType) && (
-                  <div className="form-group">
-                      <label>المجلد (اختياري)</label>
-                      <input 
-                        className="input" 
-                        value={formData.folderName} 
-                        onChange={e=>setFormData({...formData, folderName: e.target.value})} 
-                        placeholder="مثال: الترم الأول (اتركه فارغاً لعدم استخدام مجلد)" 
-                      />
-                      <small style={{color: 'var(--text-muted)', display: 'block', marginTop: '6px'}}>
-                          الفصول التي تحمل نفس اسم المجلد تُعرض مجمّعة معاً للطالب داخل التطبيق.
-                      </small>
-                  </div>
-              )}
+              {['add_chapter', 'edit_chapter'].includes(modalType) && (() => {
+                  const existingFolders = Array.from(new Set(
+                      (selectedSubject?.chapters || [])
+                          .map(c => (c.folder_name || '').trim())
+                          .filter(Boolean)
+                  ));
+                  const showDropdown = existingFolders.length > 0 && folderMode !== 'new';
+
+                  return (
+                      <div className="form-group">
+                          <label>المجلد (اختياري)</label>
+
+                          {existingFolders.length > 0 && (
+                              <select
+                                className="input"
+                                value={showDropdown ? (formData.folderName || '') : '__new__'}
+                                onChange={e => {
+                                    const v = e.target.value;
+                                    if (v === '__new__') {
+                                        setFolderMode('new');
+                                        setFormData({...formData, folderName: ''});
+                                    } else {
+                                        setFolderMode('existing');
+                                        setFormData({...formData, folderName: v});
+                                    }
+                                }}
+                                style={{marginBottom: showDropdown ? 0 : '8px'}}
+                              >
+                                  <option value="">بدون مجلد</option>
+                                  {existingFolders.map(f => (
+                                      <option key={f} value={f}>📁 {f}</option>
+                                  ))}
+                                  <option value="__new__">➕ مجلد جديد...</option>
+                              </select>
+                          )}
+
+                          {!showDropdown && (
+                              <input
+                                className="input"
+                                autoFocus={existingFolders.length > 0}
+                                value={formData.folderName}
+                                onChange={e=>setFormData({...formData, folderName: e.target.value})}
+                                placeholder="مثال: الترم الأول (اتركه فارغاً لعدم استخدام مجلد)"
+                                style={{marginTop: existingFolders.length > 0 ? '8px' : 0}}
+                              />
+                          )}
+
+                          {existingFolders.length > 0 && folderMode === 'new' && (
+                              <button
+                                type="button"
+                                className="btn-small"
+                                style={{marginTop: '8px'}}
+                                onClick={() => { setFolderMode('existing'); setFormData({...formData, folderName: ''}); }}
+                              >
+                                  {Icons.back} الاختيار من المجلدات الموجودة
+                              </button>
+                          )}
+
+                          <small style={{color: 'var(--text-muted)', display: 'block', marginTop: '6px'}}>
+                              الفصول التي تحمل نفس اسم المجلد تُعرض مجمّعة معاً للطالب داخل التطبيق.
+                          </small>
+                      </div>
+                  );
+              })()}
 
               {['add_course', 'edit_course', 'add_subject', 'edit_subject'].includes(modalType) && (
                   <div className="form-group">
@@ -1381,6 +1448,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .list-item .info strong { display: block; color: var(--text-primary); margin-bottom: 3px; }
         .list-item .info small { color: var(--text-muted); }
         .folder-badge { display: inline-block; font-size: 0.75em; color: var(--gold); background: rgba(212, 175, 55, 0.12); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 6px; padding: 2px 8px; margin-bottom: 5px; }
+        .list-item .info .chapter-counts { display: block; margin-top: 4px; }
         .list-item .icon-text { margin-left: 10px; display: inline-flex; vertical-align: middle; }
         .list-item .pdf-icon { color: #f472b6; }
         
