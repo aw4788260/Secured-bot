@@ -60,7 +60,8 @@ export default function ContentManager() {
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
   // ✅ [جديد] مجموعات الفصول القابلة للطي حسب اسم المجلد (folder_name)
-  const [collapsedChapterFolders, setCollapsedChapterFolders] = useState(() => new Set());
+  // مغلقة افتراضيًا: هنا بنتتبع أسماء المجلدات المفتوحة فقط، أي مجلد مش موجود في المجموعة يبقى مقفول.
+  const [openChapterFolders, setOpenChapterFolders] = useState(() => new Set());
 
   // Drag & Drop State
   const dragItem = useRef();
@@ -225,7 +226,7 @@ export default function ContentManager() {
   };
 
   const toggleChapterFolder = (folderName) => {
-      setCollapsedChapterFolders(prev => {
+      setOpenChapterFolders(prev => {
           const next = new Set(prev);
           if (next.has(folderName)) next.delete(folderName);
           else next.add(folderName);
@@ -799,10 +800,10 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                       <span className="chapter-folder-name" style={{flex: 1, fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '0.95em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{entry.folderName}</span>
                                       <span className="chapter-folder-count" style={{fontSize: '0.8em', fontWeight: 'bold', color: 'var(--text-muted)'}}>{entry.items.length}</span>
                                       <span className="chapter-folder-chevron" style={{color: 'var(--text-muted)', fontSize: '0.9em', width: '14px', textAlign: 'center'}}>
-                                          {collapsedChapterFolders.has(entry.folderName) ? '▾' : '▴'}
+                                          {openChapterFolders.has(entry.folderName) ? '▴' : '▾'}
                                       </span>
                                   </div>
-                                  {!collapsedChapterFolders.has(entry.folderName) && (
+                                  {openChapterFolders.has(entry.folderName) && (
                                       <div className="chapter-folder-items" style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', paddingInlineStart: '14px', borderInlineStart: '2px solid rgba(212, 175, 55, 0.2)'}}>
                                           {entry.items.map(({ chapter, index }) => renderChapterItem(chapter, index, true))}
                                       </div>
