@@ -55,14 +55,13 @@ export default function ContentManager() {
   // 'existing' = عرض قائمة اختيار من المجلدات الموجودة بالفعل في المادة،
   // 'new' = عرض حقل نصي لكتابة اسم مجلد جديد.
   const [folderMode, setFolderMode] = useState('existing');
-  // ✅ [جديد] أسماء المجلدات المطوية حالياً في قائمة الفصول (مغلقة
-  // افتراضياً عند ظهورها لأول مرة، بنفس منطق تطبيق الموبايل).
-  const [collapsedChapterFolders, setCollapsedChapterFolders] = useState(() => new Set());
-  const knownChapterFolderNamesRef = useRef(new Set());
   const [notifyPdf, setNotifyPdf] = useState(false); 
   const [alertData, setAlertData] = useState({ show: false, type: 'info', msg: '' });
   const [confirmData, setConfirmData] = useState({ show: false, msg: '', onConfirm: null });
   
+  // ✅ [جديد] مجموعات الفصول القابلة للطي حسب اسم المجلد (folder_name)
+  const [collapsedChapterFolders, setCollapsedChapterFolders] = useState(() => new Set());
+
   // Drag & Drop State
   const dragItem = useRef();
   const dragOverItem = useRef();
@@ -146,62 +145,6 @@ export default function ContentManager() {
       refreshView(); 
   }, []);
 
-  // ✅ [جديد] عند ظهور مجلد جديد لأول مرة ضمن فصول المادة المختارة، يُضاف
-  // إلى قائمة المجلدات المطوية افتراضياً. المجلدات التي فتحها المدرس يدوياً
-  // لا تتأثر بإعادة جلب البيانات (نفس منطق تطبيق الموبايل).
-  useEffect(() => {
-      const chapters = selectedSubject?.chapters || [];
-      const newlySeen = [];
-      chapters.forEach(ch => {
-          const name = (ch.folder_name || '').trim();
-          if (name && !knownChapterFolderNamesRef.current.has(name)) {
-              knownChapterFolderNamesRef.current.add(name);
-              newlySeen.push(name);
-          }
-      });
-      if (newlySeen.length > 0) {
-          setCollapsedChapterFolders(prev => {
-              const next = new Set(prev);
-              newlySeen.forEach(name => next.add(name));
-              return next;
-          });
-      }
-  }, [selectedSubject?.chapters]);
-
-  // ✅ [جديد] تجميع فصول المادة المختارة: كل فصل بدون مجلد يبقى عنصراً
-  // منفرداً في مكانه، وكل مجموعة فصول تشترك بنفس اسم المجلد تُجمع في أول
-  // مكان ظهر فيه اسم هذا المجلد — بنفس منطق تجميع الفصول في تطبيق الموبايل.
-  const getChapterEntries = () => {
-      const chapters = selectedSubject?.chapters || [];
-      const entries = [];
-      const folderPosition = {};
-
-      chapters.forEach((ch, index) => {
-          const folderName = (ch.folder_name || '').trim();
-          if (!folderName) {
-              entries.push({ isFolder: false, chapter: ch, index });
-              return;
-          }
-          if (folderPosition[folderName] !== undefined) {
-              entries[folderPosition[folderName]].items.push({ chapter: ch, index });
-          } else {
-              folderPosition[folderName] = entries.length;
-              entries.push({ isFolder: true, folderName, items: [{ chapter: ch, index }] });
-          }
-      });
-
-      return entries;
-  };
-
-  const toggleChapterFolder = (folderName) => {
-      setCollapsedChapterFolders(prev => {
-          const next = new Set(prev);
-          if (next.has(folderName)) next.delete(folderName);
-          else next.add(folderName);
-          return next;
-      });
-  };
-
 
 
   // --- Helpers ---
@@ -255,6 +198,102 @@ export default function ContentManager() {
       }
       setLoading(false);
   };
+
+  // ✅ [جديد] تجميع الفصول حسب اسم المجلد (folder_name) مع الحفاظ على ترتيب الظهور.
+  // أي فصل بدون folder_name يظهر منفرد كما هو. أي فصول لها نفس اسم المجلد
+  // (حتى لو مش متتالية في الترتيب) بتتجمع تحت نفس عنوان المجلد القابل للطي.
+  const getChapterEntries = () => {
+      const chapters = selectedSubject?.chapters || [];
+      const entries = [];
+      const folderPosition = {};
+
+      chapters.forEach((ch, index) => {
+          const name = (ch.folder_name || '').trim();
+          if (!name) {
+              entries.push({ isFolder: false, chapter: ch, index });
+              return;
+          }
+          if (folderPosition[name] === undefined) {
+              folderPosition[name] = entries.length;
+              entries.push({ isFolder: true, folderName: name, items: [{ chapter: ch, index }] });
+          } else {
+              entries[folderPosition[name]].items.push({ chapter: ch, index });
+          }
+      });
+
+      return entries;
+  };
+
+  const toggleChapterFolder = (folderName) => {
+      setCollapsedChapterFolders(prev => {
+          const next = new Set(prev);
+          if (next.has(folderName)) next.delete(folderName);
+          else next.add(folderName);
+          return next;
+      });
+  };
+
+  // ✅ [جديد] عنصر الفصل (card) بستايلات inline صريحة بجانب الكلاسات —
+  // بالشكل ده الكارت بيظهر وبيشتغل صح حتى لو حصل أي تعارض/مشكلة في الـ CSS
+  // classes (زي اللي كان بيحصل جوه مجموعات المجلدات القابلة للطي).
+  const renderChapterItem = (ch, index, compact = false) => (
+      <div
+        key={ch.id}
+        className={`list-item clickable draggable-item${compact ? ' chapter-item-compact' : ''}`}
+        onClick={() => setSelectedChapter(ch)}
+        draggable
+        onDragStart={(e) => onDragStart(e, index)}
+        onDragEnter={(e) => onDragEnter(e, index)}
+        onDragEnd={(e) => onDragEnd(e, 'chapters')}
+        style={{
+            background: 'var(--bg-base)',
+            padding: compact ? '10px 12px' : '15px',
+            borderRadius: '10px',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            flexWrap: 'nowrap',
+            alignItems: 'center',
+            gap: '12px',
+            justifyContent: 'space-between',
+            position: 'relative',
+            cursor: 'pointer'
+        }}
+      >
+          <div className="drag-handle" onClick={e => e.stopPropagation()} style={{flexShrink: 0, cursor: 'grab', color: 'var(--text-muted)'}}>{Icons.drag}</div>
+          <div className="info" style={{minWidth: 0, overflow: 'hidden', flex: 1}}>
+              <div style={{
+                  fontWeight: 'bold',
+                  color: 'var(--text-primary)',
+                  marginBottom: '4px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+              }}>
+                  {ch.title}
+              </div>
+              <div className="chapter-counts" style={{color: 'var(--text-muted)', fontSize: '0.85em'}}>
+                  {ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف
+              </div>
+          </div>
+          <button
+            className="btn-icon danger"
+            onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}
+            style={{
+                flexShrink: 0,
+                width: '34px',
+                height: '34px',
+                borderRadius: '8px',
+                border: '1px solid transparent',
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+            }}
+          >{Icons.trash}</button>
+      </div>
+  );
 
   // --- Drag & Drop ---
   const onDragStart = (e, index) => {
@@ -536,45 +575,6 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
       return '';
   };
 
-  // ✅ [جديد] عنصر فصل واحد داخل قائمة الفصول — نفس التصميم الأصلي، فقط
-  // يصغر قليلاً (compact) لما يُعرض داخل مجموعة مجلد.
-  // ملحوظة: تم إضافة أنماط inline بجانب كلاسات CSS كضمان إضافي حتى لو
-  // كانت نسخة الـ CSS المخزّنة مؤقتاً (cache) على السيرفر قديمة — بحيث لا
-  // يظهر عنوان الفصل ملتصقاً بعدد الفيديوهات/الملفات في نفس السطر أبداً.
-  const renderChapterItem = (ch, index, compact = false) => (
-      <div
-        key={ch.id}
-        className={`list-item clickable draggable-item${compact ? ' chapter-item-compact' : ''}`}
-        onClick={() => setSelectedChapter(ch)}
-        draggable
-        onDragStart={(e) => onDragStart(e, index)}
-        onDragEnter={(e) => onDragEnter(e, index)}
-        onDragEnd={(e) => onDragEnd(e, 'chapters')}
-      >
-          <div className="drag-handle" onClick={e => e.stopPropagation()} style={{flexShrink: 0}}>{Icons.drag}</div>
-          <div className="info" style={{minWidth: 0, overflow: 'hidden'}}>
-              {/* ✅ استخدام <div> بدل <strong>/<small>: الـ <div> عنصر block
-                  افتراضياً حسب متصفح المستخدم نفسه (user-agent stylesheet)،
-                  فمستحيل يظهر ملتصق بالسطر اللي بعده حتى لو الـ CSS المبني
-                  (build) على السيرفر قديم أو متخزن مؤقتاً (cache). */}
-              <div style={{
-                  fontWeight: 'bold',
-                  color: 'var(--text-primary)',
-                  marginBottom: '4px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-              }}>
-                  {ch.title}
-              </div>
-              <div className="chapter-counts" style={{color: 'var(--text-muted)', fontSize: '0.85em'}}>
-                  {ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف
-              </div>
-          </div>
-          <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}} style={{flexShrink: 0}}>{Icons.trash}</button>
-      </div>
-  );
-
   // --- Exam Logic ---
   const handleImageUpload = async (e) => {
       const file = e.target.files[0];
@@ -784,16 +784,26 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   <div
                                     className="chapter-folder-header"
                                     onClick={() => toggleChapterFolder(entry.folderName)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        background: 'var(--bg-base)',
+                                        border: '1px solid rgba(212, 175, 55, 0.3)',
+                                        borderRadius: '10px',
+                                        padding: '10px 14px',
+                                        cursor: 'pointer'
+                                    }}
                                   >
-                                      <span className="chapter-folder-icon">{Icons.folder}</span>
-                                      <span className="chapter-folder-name">{entry.folderName}</span>
-                                      <span className="chapter-folder-count">{entry.items.length}</span>
-                                      <span className="chapter-folder-chevron">
+                                      <span className="chapter-folder-icon" style={{display: 'flex', color: 'var(--gold)'}}>{Icons.folder}</span>
+                                      <span className="chapter-folder-name" style={{flex: 1, fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '0.95em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{entry.folderName}</span>
+                                      <span className="chapter-folder-count" style={{fontSize: '0.8em', fontWeight: 'bold', color: 'var(--text-muted)'}}>{entry.items.length}</span>
+                                      <span className="chapter-folder-chevron" style={{color: 'var(--text-muted)', fontSize: '0.9em', width: '14px', textAlign: 'center'}}>
                                           {collapsedChapterFolders.has(entry.folderName) ? '▾' : '▴'}
                                       </span>
                                   </div>
                                   {!collapsedChapterFolders.has(entry.folderName) && (
-                                      <div className="chapter-folder-items">
+                                      <div className="chapter-folder-items" style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', paddingInlineStart: '14px', borderInlineStart: '2px solid rgba(212, 175, 55, 0.2)'}}>
                                           {entry.items.map(({ chapter, index }) => renderChapterItem(chapter, index, true))}
                                       </div>
                                   )}
@@ -1550,7 +1560,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
         /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; padding: 15px; }
-        .list-item { background: var(--bg-base); padding: 15px; border-radius: 10px; border: 1px solid var(--border); display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; justify-content: space-between; position: relative; transition: all 0.2s; }
+        .list-item { background: var(--bg-base); padding: 15px; border-radius: 10px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: relative; transition: all 0.2s; }
         .drag-handle { cursor: grab; padding: 5px; color: var(--text-muted); margin-left: 10px; z-index: 10; }
         .list-item.clickable { cursor: pointer; }
         .list-item.clickable:hover { border-color: var(--gold); background: var(--bg-hover); }
@@ -1562,17 +1572,12 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
         /* ✅ [جديد] مجموعة مجلد قابلة للطي في قائمة الفصول */
         .chapter-folder-group { margin-bottom: 12px; }
-        .chapter-folder-header { display: flex; align-items: center; gap: 10px; background: var(--bg-base); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: all 0.2s; }
         .chapter-folder-header:hover { background: var(--bg-hover); border-color: var(--gold); }
-        .chapter-folder-icon { display: flex; color: var(--gold); }
         .chapter-folder-icon svg { width: 18px; height: 18px; }
-        .chapter-folder-name { flex: 1; font-weight: bold; color: var(--text-primary); font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .chapter-folder-count { font-size: 0.8em; font-weight: bold; color: var(--text-muted); }
-        .chapter-folder-chevron { color: var(--text-muted); font-size: 0.9em; width: 14px; text-align: center; }
-        .chapter-folder-items { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-inline-start: 14px; border-inline-start: 2px solid rgba(212, 175, 55, 0.2); }
-        .chapter-item-compact { padding: 10px 12px; }
-        .chapter-item-compact .info strong { font-size: 0.92em; }
-        .chapter-item-compact .info small { font-size: 0.85em; }
+        .chapter-item-compact .info strong,
+        .chapter-item-compact .info > div:first-child { font-size: 0.92em; }
+        .chapter-item-compact .info small,
+        .chapter-item-compact .chapter-counts { font-size: 0.85em; }
         .list-item .icon-text { margin-left: 10px; display: inline-flex; vertical-align: middle; }
         .list-item .pdf-icon { color: #f472b6; }
         
