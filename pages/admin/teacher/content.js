@@ -538,6 +538,9 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
   // ✅ [جديد] عنصر فصل واحد داخل قائمة الفصول — نفس التصميم الأصلي، فقط
   // يصغر قليلاً (compact) لما يُعرض داخل مجموعة مجلد.
+  // ملحوظة: تم إضافة أنماط inline بجانب كلاسات CSS كضمان إضافي حتى لو
+  // كانت نسخة الـ CSS المخزّنة مؤقتاً (cache) على السيرفر قديمة — بحيث لا
+  // يظهر عنوان الفصل ملتصقاً بعدد الفيديوهات/الملفات في نفس السطر أبداً.
   const renderChapterItem = (ch, index, compact = false) => (
       <div
         key={ch.id}
@@ -548,12 +551,27 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         onDragEnter={(e) => onDragEnter(e, index)}
         onDragEnd={(e) => onDragEnd(e, 'chapters')}
       >
-          <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
-          <div className="info">
-              <strong>{ch.title}</strong>
-              <small className="chapter-counts">{ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف</small>
+          <div className="drag-handle" onClick={e => e.stopPropagation()} style={{flexShrink: 0}}>{Icons.drag}</div>
+          <div className="info" style={{minWidth: 0, overflow: 'hidden'}}>
+              {/* ✅ استخدام <div> بدل <strong>/<small>: الـ <div> عنصر block
+                  افتراضياً حسب متصفح المستخدم نفسه (user-agent stylesheet)،
+                  فمستحيل يظهر ملتصق بالسطر اللي بعده حتى لو الـ CSS المبني
+                  (build) على السيرفر قديم أو متخزن مؤقتاً (cache). */}
+              <div style={{
+                  fontWeight: 'bold',
+                  color: 'var(--text-primary)',
+                  marginBottom: '4px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+              }}>
+                  {ch.title}
+              </div>
+              <div className="chapter-counts" style={{color: 'var(--text-muted)', fontSize: '0.85em'}}>
+                  {ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف
+              </div>
           </div>
-          <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}}>{Icons.trash}</button>
+          <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('chapters', ch.id)}} style={{flexShrink: 0}}>{Icons.trash}</button>
       </div>
   );
 
@@ -1532,7 +1550,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
 
         /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; padding: 15px; }
-        .list-item { background: var(--bg-base); padding: 15px; border-radius: 10px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: relative; transition: all 0.2s; }
+        .list-item { background: var(--bg-base); padding: 15px; border-radius: 10px; border: 1px solid var(--border); display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; justify-content: space-between; position: relative; transition: all 0.2s; }
         .drag-handle { cursor: grab; padding: 5px; color: var(--text-muted); margin-left: 10px; z-index: 10; }
         .list-item.clickable { cursor: pointer; }
         .list-item.clickable:hover { border-color: var(--gold); background: var(--bg-hover); }
