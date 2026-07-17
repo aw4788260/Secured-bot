@@ -63,9 +63,15 @@ export default function ContentManager() {
   // مغلقة افتراضيًا: هنا بنتتبع أسماء المجلدات المفتوحة فقط، أي مجلد مش موجود في المجموعة يبقى مقفول.
   const [openChapterFolders, setOpenChapterFolders] = useState(() => new Set());
 
-  // Drag & Drop State
+  // Drag & Drop State (courses / subjects / exams / videos / pdfs)
   const dragItem = useRef();
   const dragOverItem = useRef();
+
+  // ✅ [جديد] حالة السحب والإفلات الخاصة بالفصول — بتدعم مستويين:
+  // 'top'    = ترتيب على مستوى القائمة الرئيسية (فصل منفرد أو مجلد كامل ككتلة واحدة)
+  // 'folder' = ترتيب داخل مجلد مفتوح معين (بين الفصول اللي جوه نفس المجلد بس)
+  const chapterDragRef = useRef(null);
+  const chapterDragOverRef = useRef(null);
 
   // Exam Editor
   const [showExamSidebar, setShowExamSidebar] = useState(false);
@@ -237,15 +243,18 @@ export default function ContentManager() {
   // ✅ [جديد] عنصر الفصل (card) بستايلات inline صريحة بجانب الكلاسات —
   // بالشكل ده الكارت بيظهر وبيشتغل صح حتى لو حصل أي تعارض/مشكلة في الـ CSS
   // classes (زي اللي كان بيحصل جوه مجموعات المجلدات القابلة للطي).
-  const renderChapterItem = (ch, index, compact = false) => (
+  // dragHandlers: { onDragStart, onDragEnter, onDragOver, onDragEnd } مربوطة مسبقًا
+  // حسب سياق العنصر (مستوى رئيسي أو داخل مجلد) من مكان الاستدعاء.
+  const renderChapterItem = (ch, dragHandlers, compact = false) => (
       <div
         key={ch.id}
         className={`list-item clickable draggable-item${compact ? ' chapter-item-compact' : ''}`}
         onClick={() => setSelectedChapter(ch)}
         draggable
-        onDragStart={(e) => onDragStart(e, index)}
-        onDragEnter={(e) => onDragEnter(e, index)}
-        onDragEnd={(e) => onDragEnd(e, 'chapters')}
+        onDragStart={dragHandlers.onDragStart}
+        onDragEnter={dragHandlers.onDragEnter}
+        onDragOver={dragHandlers.onDragOver}
+        onDragEnd={dragHandlers.onDragEnd}
         style={{
             background: 'var(--bg-base)',
             padding: compact ? '10px 12px' : '15px',
@@ -272,6 +281,7 @@ export default function ContentManager() {
               }}>
                   {ch.title}
               </div>
+
               <div className="chapter-counts" style={{color: 'var(--text-muted)', fontSize: '0.85em'}}>
                   {ch.videos?.length || 0} فيديو • {ch.pdfs?.length || 0} ملف
               </div>
@@ -296,45 +306,60 @@ export default function ContentManager() {
       </div>
   );
 
-  // --- Drag & Drop ---
+  // --- Drag & Drop (courses / subjects / exams / videos / pdfs) ---
+  // ملحوظة: onDragStart لازم يعمل e.dataTransfer.setData + effectAllowed —
+  // من غيرهم بعض المتصفحات (فايرفوكس تحديدًا) بترفض تبدأ عملية السحب أصلاً
+  // أو بتوقفها في نص الطريق، وده كان سبب "مش قادر أسحب" اللي بيحصل.
+  // وonDragOver لازم يعمل preventDefault على كل عنصر عشان يفضل يتحسب "drop target"
+  // صالح باستمرار أثناء تحريك الماوس فوقه.
   const onDragStart = (e, index) => {
       dragItem.current = index;
-      e.target.closest('.draggable-item').classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(index)); } catch (_) {}
+      e.currentTarget.classList.add('dragging');
   };
 
   const onDragEnter = (e, index) => {
+      e.preventDefault();
       dragOverItem.current = index;
   };
 
-  const onDragEnd = async (e, listType) => { 
-      e.target.closest('.draggable-item').classList.remove('dragging');
-      
+  const onDragOver = (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+  };
+
+  const onDragEnd = async (e, listType) => {
+      e.currentTarget.classList.remove('dragging');
+
+      const from = dragItem.current;
+      const to = dragOverItem.current;
+      dragItem.current = null;
+      dragOverItem.current = null;
+
+      if (from === undefined || to === undefined || from === to) return;
+
       let list = [];
       if (listType === 'courses') list = [...courses];
       else if (listType === 'subjects') list = [...selectedCourse.subjects];
-      else if (listType === 'chapters') list = [...selectedSubject.chapters];
       else if (listType === 'exams') list = [...selectedSubject.exams];
       else if (listType === 'videos') list = [...selectedChapter.videos];
       else if (listType === 'pdfs') list = [...selectedChapter.pdfs];
 
       if (!list.length) return;
 
-      const draggedItemContent = list[dragItem.current];
-      list.splice(dragItem.current, 1);
-      list.splice(dragOverItem.current, 0, draggedItemContent);
-
-      dragItem.current = null;
-      dragOverItem.current = null;
+      const draggedItemContent = list[from];
+      list.splice(from, 1);
+      list.splice(to, 0, draggedItemContent);
 
       if (listType === 'courses') setCourses(list);
       else if (listType === 'subjects') setSelectedCourse({ ...selectedCourse, subjects: list });
-      else if (listType === 'chapters') setSelectedSubject({ ...selectedSubject, chapters: list });
       else if (listType === 'exams') setSelectedSubject({ ...selectedSubject, exams: list });
       else if (listType === 'videos') setSelectedChapter({ ...selectedChapter, videos: list });
       else if (listType === 'pdfs') setSelectedChapter({ ...selectedChapter, pdfs: list });
 
       const updatedItems = list.map((item, index) => ({ id: item.id, sort_order: index }));
-      
+
       try {
           await fetch('/api/dashboard/teacher/reorder', {
               method: 'POST',
@@ -344,6 +369,91 @@ export default function ContentManager() {
       } catch (err) {
           showAlert('error', 'فشل حفظ الترتيب');
           refreshView();
+      }
+  };
+
+  // --- Drag & Drop (الفصول — مع دعم المجلدات) ---
+  // فكرة التنفيذ: بنشتغل على "الوحدات" الظاهرة على الشاشة (entries) اللي بيرجعها
+  // getChapterEntries()، مش على الـ index الخام جوه selectedSubject.chapters مباشرة،
+  // عشان السحب يبقى متوافق تمامًا مع الترتيب اللي الأستاذ شايفه فعليًا:
+  //   scope 'top'    → فصل منفرد أو مجلد كامل (بكل الفصول اللي جواه كوحدة واحدة)
+  //   scope 'folder' → فصل داخل مجلد مفتوح، بيتحرك بين فصول نفس المجلد بس
+  const onChapterDragStart = (e, scope, folderName, index) => {
+      chapterDragRef.current = { scope, folderName, index };
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(index)); } catch (_) {}
+      e.stopPropagation();
+      e.currentTarget.classList.add('dragging');
+  };
+
+  const onChapterDragEnter = (e, scope, folderName, index) => {
+      e.preventDefault();
+      e.stopPropagation();
+      chapterDragOverRef.current = { scope, folderName, index };
+  };
+
+  const onChapterDragOver = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+  };
+
+  // بيحول قائمة الوحدات (entries) بعد إعادة الترتيب إلى مصفوفة فصول مسطّحة
+  // ويحفظها في selectedSubject.chapters، وبعدين يبعت sort_order الجديد للسيرفر.
+  const commitChapterReorder = async (entries) => {
+      const flatChapters = [];
+      entries.forEach(en => {
+          if (en.isFolder) en.items.forEach(it => flatChapters.push(it.chapter));
+          else flatChapters.push(en.chapter);
+      });
+
+      setSelectedSubject(prev => ({ ...prev, chapters: flatChapters }));
+
+      const updatedItems = flatChapters.map((ch, index) => ({ id: ch.id, sort_order: index }));
+
+      try {
+          await fetch('/api/dashboard/teacher/reorder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'chapters', items: updatedItems })
+          });
+      } catch (err) {
+          showAlert('error', 'فشل حفظ الترتيب');
+          refreshView();
+      }
+  };
+
+  const onChapterDragEnd = (e) => {
+      e.currentTarget.classList.remove('dragging');
+
+      const from = chapterDragRef.current;
+      const to = chapterDragOverRef.current;
+      chapterDragRef.current = null;
+      chapterDragOverRef.current = null;
+
+      if (!from || !to) return;
+      if (from.scope !== to.scope) return; // مش بنسمح نسحب بين مستوى رئيسي ومجلد مباشرة
+      if (from.scope === 'folder' && from.folderName !== to.folderName) return; // بس داخل نفس المجلد
+      if (from.index === to.index) return;
+
+      const entries = getChapterEntries();
+
+      if (from.scope === 'top') {
+          if (from.index < 0 || from.index >= entries.length || to.index < 0 || to.index >= entries.length) return;
+          const moved = entries[from.index];
+          entries.splice(from.index, 1);
+          entries.splice(to.index, 0, moved);
+          commitChapterReorder(entries);
+      } else {
+          const folderEntry = entries.find(en => en.isFolder && en.folderName === from.folderName);
+          if (!folderEntry) return;
+          const items = [...folderEntry.items];
+          if (from.index < 0 || from.index >= items.length || to.index < 0 || to.index >= items.length) return;
+          const movedItem = items[from.index];
+          items.splice(from.index, 1);
+          items.splice(to.index, 0, movedItem);
+          folderEntry.items = items;
+          commitChapterReorder(entries);
       }
   };
 
@@ -729,7 +839,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
       {!selectedCourse && (
           <div className="grid-cards">
               {courses.map((c, index) => (
-                  <div key={c.id} className="card folder-card draggable-item" onClick={() => setSelectedCourse(c)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'courses')}>
+                  <div key={c.id} className="card folder-card draggable-item" onClick={() => setSelectedCourse(c)} draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragOver={onDragOver} onDragEnd={(e) => onDragEnd(e, 'courses')}>
                       <div className="card-actions-abs">
                           <button className="btn-icon danger" onClick={(e) => {e.stopPropagation(); handleDelete('courses', c.id)}}>{Icons.trash}</button>
                           <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
@@ -754,6 +864,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                     draggable 
                     onDragStart={(e) => onDragStart(e, index)} 
                     onDragEnter={(e) => onDragEnter(e, index)} 
+                    onDragOver={onDragOver}
                     onDragEnd={(e) => onDragEnd(e, 'subjects')}
                   >
                       <div className="card-actions-abs">
@@ -779,9 +890,17 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   </div>
                   <div className="list-group">
                       {selectedSubject.chapters?.length === 0 && <div className="empty">لا توجد فصول</div>}
-                      {getChapterEntries().map((entry) => (
+                      {getChapterEntries().map((entry, entryIndex) => (
                           entry.isFolder ? (
-                              <div key={`folder-${entry.folderName}`} className="chapter-folder-group">
+                              <div
+                                key={`folder-${entry.folderName}`}
+                                className="chapter-folder-group draggable-item"
+                                draggable
+                                onDragStart={(e) => onChapterDragStart(e, 'top', null, entryIndex)}
+                                onDragEnter={(e) => onChapterDragEnter(e, 'top', null, entryIndex)}
+                                onDragOver={onChapterDragOver}
+                                onDragEnd={onChapterDragEnd}
+                              >
                                   <div
                                     className="chapter-folder-header"
                                     onClick={() => toggleChapterFolder(entry.folderName)}
@@ -796,6 +915,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                         cursor: 'pointer'
                                     }}
                                   >
+                                      <span className="drag-handle" onClick={e => e.stopPropagation()} style={{display: 'flex', cursor: 'grab', color: 'var(--text-muted)'}}>{Icons.drag}</span>
                                       <span className="chapter-folder-icon" style={{display: 'flex', color: 'var(--gold)'}}>{Icons.folder}</span>
                                       <span className="chapter-folder-name" style={{flex: 1, fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '0.95em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{entry.folderName}</span>
                                       <span className="chapter-folder-count" style={{fontSize: '0.8em', fontWeight: 'bold', color: 'var(--text-muted)'}}>{entry.items.length}</span>
@@ -805,11 +925,21 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                                   </div>
                                   {openChapterFolders.has(entry.folderName) && (
                                       <div className="chapter-folder-items" style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', paddingInlineStart: '14px', borderInlineStart: '2px solid rgba(212, 175, 55, 0.2)'}}>
-                                          {entry.items.map(({ chapter, index }) => renderChapterItem(chapter, index, true))}
+                                          {entry.items.map(({ chapter }, itemIndex) => renderChapterItem(chapter, {
+                                              onDragStart: (e) => onChapterDragStart(e, 'folder', entry.folderName, itemIndex),
+                                              onDragEnter: (e) => onChapterDragEnter(e, 'folder', entry.folderName, itemIndex),
+                                              onDragOver: onChapterDragOver,
+                                              onDragEnd: onChapterDragEnd,
+                                          }, true))}
                                       </div>
                                   )}
                               </div>
-                          ) : renderChapterItem(entry.chapter, entry.index, false)
+                          ) : renderChapterItem(entry.chapter, {
+                              onDragStart: (e) => onChapterDragStart(e, 'top', null, entryIndex),
+                              onDragEnter: (e) => onChapterDragEnter(e, 'top', null, entryIndex),
+                              onDragOver: onChapterDragOver,
+                              onDragEnd: onChapterDragEnd,
+                          }, false)
                       ))}
                   </div>
               </div>
@@ -821,7 +951,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   </div>
                   <div className="exam-grid">
                       {selectedSubject.exams?.map((ex, index) => (
-                          <div key={ex.id} className="exam-card-item draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'exams')}>
+                          <div key={ex.id} className="exam-card-item draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragOver={onDragOver} onDragEnd={(e) => onDragEnd(e, 'exams')}>
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="exam-icon">{Icons.exam}</div>
                               <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة</span></div>
@@ -847,7 +977,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   </div>
                   <div className="media-grid">
                       {selectedChapter.videos?.map((v, index) => (
-                          <div key={v.id} className="media-card draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'videos')}>
+                          <div key={v.id} className="media-card draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragOver={onDragOver} onDragEnd={(e) => onDragEnd(e, 'videos')}>
                               <div className="drag-handle-abs" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="thumb video-thumb">{Icons.video}</div>
                               <div className="media-body">
@@ -912,7 +1042,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   </div>
                   <div className="list-group">
                       {selectedChapter.pdfs?.map((p, index) => (
-                          <div key={p.id} className="list-item draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragEnd={(e) => onDragEnd(e, 'pdfs')}>
+                          <div key={p.id} className="list-item draggable-item" draggable onDragStart={(e) => onDragStart(e, index)} onDragEnter={(e) => onDragEnter(e, index)} onDragOver={onDragOver} onDragEnd={(e) => onDragEnd(e, 'pdfs')}>
                               <div className="drag-handle" onClick={e => e.stopPropagation()}>{Icons.drag}</div>
                               <div className="info"><span className="icon-text pdf-icon">{Icons.pdf}</span><strong>{p.title}</strong></div>
                               <button className="btn-icon danger" onClick={() => handleDelete('pdfs', p.id)}>{Icons.trash}</button>
