@@ -1,4 +1,3 @@
-
 // hooks/useBunnyUploadQueue.js
 // ===================================================================
 // 🎯 Hook لإدارة قائمة انتظار رفع فيديوهات متعددة إلى Bunny Stream
@@ -125,6 +124,12 @@ function makeId() {
   return `up_${Date.now()}_${_idCounter}`;
 }
 
+// ✅ عدد محاولات إعادة الاتصال التلقائية بعد استنفاد retryDelays الداخلية لـ
+// tus لكل رفعة على حدة. أي تقدّم حقيقي (onProgress) يُصفّر عدّاد تلك الرفعة،
+// فاتصال متذبذب لكن متقدّم لن يستنفد المحاولات — فقط انقطاع تام مستمر يفعل.
+const MAX_AUTO_RETRIES = 6;
+const AUTO_RETRY_BASE_DELAY_MS = 5000;
+
 export function useBunnyUploadQueue() {
   // uploads: مصفوفة عناصر الرفع الظاهرة للمستخدم (أحدثها أولاً)
   // كل عنصر: { id, fileName, chapterId, chapterTitle, subjectTitle, courseTitle, title, status, progress, error, videoId, createdAt }
@@ -134,6 +139,8 @@ export function useBunnyUploadQueue() {
   const uploadRefs = useRef({});
   // lastOptions: id -> كل المعطيات اللازمة لإعادة بناء كائن TUS عند الاستئناف
   const lastOptions = useRef({});
+  // autoRetryCounts: id -> عدد محاولات إعادة الاتصال التلقائية المتتالية بدون تقدّم
+  const autoRetryCounts = useRef({});
 
   const patchUpload = useCallback((id, patch) => {
     setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
@@ -182,6 +189,7 @@ export function useBunnyUploadQueue() {
     }
 
     const id = makeId();
+    autoRetryCounts.current[id] = 0;
 
     setUploads((prev) => [
       {
@@ -244,9 +252,13 @@ export function useBunnyUploadQueue() {
         const upload = new tus.Upload(file, {
           endpoint: 'https://video.bunnycdn.com/tusupload',
 
-          retryDelays: [0, 3000, 6000, 12000, 24000],
+          // ⏱️ مُمدَّدة من ~45 ثانية إلى أكثر من 4 دقائق إجمالاً — راجع نفس
+          // الملاحظة في useBunnyDirectUpload.js
+          retryDelays: [0, 3000, 6000, 12000, 24000, 30000, 60000, 60000, 60000],
 
-          chunkSize: 50 * 1024 * 1024,
+          // 📦 20MB بدلاً من 50MB لتقليل مدة كل طلب PATCH — أهم عند رفع عدة
+          // فيديوهات في نفس الوقت وتنافسها على النطاق الترددي المتاح
+          chunkSize: 20 * 1024 * 1024,
           removeFingerprintOnSuccess: true,
 
           headers: {
@@ -265,6 +277,7 @@ export function useBunnyUploadQueue() {
           onError(err) { reject(err); },
 
           onProgress(bytesUploaded, bytesTotal) {
+            autoRetryCounts.current[id] = 0; // تقدّم فعلي = الاتصال يعمل
             patchUpload(id, { progress: Math.min(99, Math.round((bytesUploaded / bytesTotal) * 100)) });
           },
 
@@ -325,7 +338,24 @@ export function useBunnyUploadQueue() {
         }
       }
 
-      patchUpload(id, { status: 'error', error: 'انقطع الاتصال — اضغط "استكمال" للمتابعة من نقطة التوقف' });
+      // ✅ إعادة اتصال تلقائية عدة مرات قبل مطالبة المستخدم بالتدخل اليدوي
+      const currentAttempts = autoRetryCounts.current[id] || 0;
+      if (currentAttempts < MAX_AUTO_RETRIES) {
+        autoRetryCounts.current[id] = currentAttempts + 1;
+        const attempt = autoRetryCounts.current[id];
+        const delayMs = Math.min(AUTO_RETRY_BASE_DELAY_MS * attempt, 60000);
+
+        patchUpload(id, {
+          status: 'reconnecting',
+          error: `انقطع الاتصال — جاري إعادة المحاولة تلقائياً (${attempt}/${MAX_AUTO_RETRIES})...`,
+        });
+
+        await new Promise((r) => setTimeout(r, delayMs));
+        await _doTusUpload(id, { file, sessionData, localDuration, onComplete, onError });
+        return;
+      }
+
+      patchUpload(id, { status: 'error', error: 'انقطع الاتصال بعد عدة محاولات تلقائية — اضغط "استكمال" للمتابعة من نقطة التوقف' });
       onError?.(err);
     }
 
@@ -373,6 +403,7 @@ export function useBunnyUploadQueue() {
     if (!savedOptions) return;
 
     uploadRefs.current[id] = null;
+    autoRetryCounts.current[id] = 0; // استئناف يدوي — منح دورة محاولات تلقائية جديدة
     patchUpload(id, { status: 'uploading', error: null });
 
     _doTusUpload(id, { ...savedOptions });
@@ -387,10 +418,11 @@ export function useBunnyUploadQueue() {
     }
     delete uploadRefs.current[id];
     delete lastOptions.current[id];
+    delete autoRetryCounts.current[id];
     setUploads((prev) => prev.filter((u) => u.id !== id));
   }, []);
 
-  const activeCount = uploads.filter((u) => ['requesting', 'uploading', 'confirming'].includes(u.status)).length;
+  const activeCount = uploads.filter((u) => ['requesting', 'uploading', 'confirming', 'reconnecting'].includes(u.status)).length;
 
   return { uploads, activeCount, startUpload, cancelUpload, resumeUpload, dismissUpload };
 }
