@@ -98,7 +98,7 @@ export default function UploadQueueWidget({ uploads, onCancel, onResume, onDismi
               )}
 
               <div className="uqw-item-status">
-                {(u.status === 'error' || u.status === 'reconnecting') && u.error ? u.error : STATUS_LABELS[u.status]}
+                {(u.status === 'error' || u.status === 'reconnecting' || u.status === 'confirming') && u.error ? u.error : STATUS_LABELS[u.status]}
                 {u.status === 'uploading' && ` ${u.progress}%`}
               </div>
 
