@@ -274,9 +274,11 @@ export function useBunnyUploadQueue() {
             // الملاحظة في useBunnyDirectUpload.js
             retryDelays: [0, 3000, 6000, 12000, 24000, 30000, 60000, 60000, 60000],
 
-            // 📦 20MB بدلاً من 50MB لتقليل مدة كل طلب PATCH — أهم عند رفع عدة
-            // فيديوهات في نفس الوقت وتنافسها على النطاق الترددي المتاح
-            chunkSize: 20 * 1024 * 1024,
+            // 📦 10MB بدلاً من 20MB — يقلّل مدة كل طلب PATCH أكثر، فيقلّ احتمال
+            // أن يتجاوز أي طلب مهلة زمنية وسيطة، ويعطي تحديثات onProgress
+            // أكثر تكراراً (شريط تقدّم أدق) خصوصاً عند رفع عدة فيديوهات في
+            // نفس الوقت وتنافسها على نفس النطاق الترددي المتاح.
+            chunkSize: 10 * 1024 * 1024,
             removeFingerprintOnSuccess: true,
 
             headers: {
@@ -295,8 +297,16 @@ export function useBunnyUploadQueue() {
             onError(err) { reject(err); },
 
             onProgress(bytesUploaded, bytesTotal) {
-              autoRetryCounts.current[id] = 0; // تقدّم فعلي = الاتصال يعمل
-              patchUpload(id, { progress: Math.min(99, Math.round((bytesUploaded / bytesTotal) * 100)) });
+              // ✅ أي تقدّم فعلي = الاتصال رجع يعمل. نُصفّر عدّاد إعادة
+              // الاتصال ونُرجع الحالة إلى 'uploading' فوراً — بدون هذا كانت
+              // الحالة تفضل 'reconnecting' (وتُظهر رسالة "جاري إعادة
+              // المحاولة (٣/٦)") حتى لو الرفع استمر واستمر تقدّمه فعلياً.
+              autoRetryCounts.current[id] = 0;
+              patchUpload(id, {
+                status: 'uploading',
+                error: null,
+                progress: Math.min(99, Math.round((bytesUploaded / bytesTotal) * 100)),
+              });
             },
 
             onSuccess() {
