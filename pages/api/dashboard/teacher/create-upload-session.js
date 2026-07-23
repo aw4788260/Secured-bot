@@ -1,6 +1,3 @@
-bash
-
-cd /home/claude/medaad/Medaad-backend-main && cat > pages/api/dashboard/teacher/create-upload-session.js << 'ENDOFFILE'
 import crypto from 'crypto';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { supabase } from '../../../../lib/supabaseClient';
@@ -254,9 +251,4 @@ export default async function handler(req, res) {
   log.outgoing(200, responseBody);
   return res.status(200).json(responseBody);
 }
-ENDOFFILE
-echo "done"
-Output
 
-done
-Done
