@@ -105,7 +105,7 @@ export default function SuperStudentsPage() {
 
   useEffect(() => { 
       fetchData(); 
-  }, [currentPage, activeFilters]);
+  }, [currentPage, activeFilters, filterMode]);
 
   const handleSearchKey = (e) => {
       if (e.key === 'Enter') {
