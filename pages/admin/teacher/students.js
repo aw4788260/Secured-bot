@@ -104,7 +104,7 @@ export default function StudentsPage() {
       setCurrentUserId(localStorage.getItem('admin_user_id'));
       window.scrollTo(0, 0);
       fetchData(); 
-  }, [currentPage, activeFilters]);
+  }, [currentPage, activeFilters, filterMode]);
 
   const handleSearchKey = (e) => {
       if (e.key === 'Enter') {
