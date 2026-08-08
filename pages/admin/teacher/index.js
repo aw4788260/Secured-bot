@@ -2,7 +2,7 @@ import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // ─── الأيقونات الاحترافية للبطاقات ────────────────────────────────
 const Icons = {
@@ -86,12 +86,14 @@ export default function TeacherDashboard() {
   const courseDetails = data?.details?.courses || [];
   const subjectDetails = data?.details?.subjects || [];
 
-  // 3. بيانات المشاهدات
+  // 3. بيانات المشاهدات والنشاط
   const todayWatches = watchData?.today || 0;
+  const todayActiveUsers = watchData?.todayActiveUsers || 0;
   const watchChart = watchData?.chart || [];
 
   // ألوان الرسم البياني حسب الوضع الليلي/النهاري
   const goldColor  = isDark ? '#c9a84c' : '#b8903a';
+  const blueColor  = '#38bdf8';
   const chartGrid  = isDark ? '#2c2818' : '#ddd4a8';
   const chartAxis  = isDark ? '#a89f7a' : '#9e8850';
   const tooltipBg  = isDark ? '#1a1710' : '#ffffff';
@@ -178,12 +180,23 @@ export default function TeacherDashboard() {
                 <div className="stat-glow" />
               </div>
 
+              {/* بطاقة الطلاب النشطين اليوم */}
+              <div className="stat-card">
+                <div className="stat-icon active-icon">{Icons.students}</div>
+                <div className="stat-info">
+                  <div className="stat-label">نشطون اليوم</div>
+                  <div className="stat-value">{watchLoading ? '…' : todayActiveUsers.toLocaleString()}</div>
+                  <div className="stat-desc">طالب فتح التطبيق اليوم</div>
+                </div>
+                <div className="stat-glow" />
+              </div>
+
             </div>
 
-            {/* ── مخطط المشاهدات لآخر 7 أيام ── */}
+            {/* ── مخطط المشاهدات والمستخدمين النشطين لآخر 7 أيام ── */}
             <div className="panel chart-panel">
               <div className="panel-head">
-                <h3>👁️ مشاهدات آخر 7 أيام</h3>
+                <h3>👁️ المشاهدات والنشاط لآخر 7 أيام</h3>
               </div>
               <div className="chart-body">
                 {watchLoading ? (
@@ -192,7 +205,7 @@ export default function TeacherDashboard() {
                   <div className="chart-loading">لا توجد بيانات مشاهدات بعد</div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={watchChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <ComposedChart data={watchChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                       <defs>
                         <linearGradient id="watchGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={goldColor} stopOpacity={0.35} />
@@ -205,10 +218,18 @@ export default function TeacherDashboard() {
                       <Tooltip
                         contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBdr}`, borderRadius: '10px', color: isDark ? '#f5f0e0' : '#1a1508' }}
                         cursor={{ stroke: goldColor, strokeWidth: 1, strokeDasharray: '4 4' }}
-                        formatter={(value) => [`${value.toLocaleString()} مشاهدة`, 'المشاهدات']}
+                        formatter={(value, key) => [
+                          `${value.toLocaleString()} ${key === 'activeUsers' ? 'مستخدم' : 'مشاهدة'}`,
+                          key === 'activeUsers' ? 'المستخدمون النشطون' : 'المشاهدات'
+                        ]}
                       />
-                      <Area type="monotone" dataKey="count" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
-                    </AreaChart>
+                      <Legend
+                        formatter={(value) => (value === 'activeUsers' ? 'المستخدمون النشطون' : 'المشاهدات')}
+                        wrapperStyle={{ fontSize: '0.8rem' }}
+                      />
+                      <Area type="monotone" dataKey="watches" name="watches" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
+                      <Line type="monotone" dataKey="activeUsers" name="activeUsers" stroke={blueColor} strokeWidth={2.5} dot={{ r: 3, fill: blueColor }} />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 )}
               </div>
@@ -322,6 +343,7 @@ export default function TeacherDashboard() {
         .stat-icon.success-icon { color: #4ade80; border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.1); }
         .stat-icon.highlight-icon { color: #f472b6; border-color: rgba(244,114,182,0.4); background: rgba(244,114,182,0.1); }
         .stat-icon.watch-icon { color: #38bdf8; border-color: rgba(56,189,248,0.4); background: rgba(56,189,248,0.1); }
+        .stat-icon.active-icon { color: #4ade80; border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.1); }
 
         .stat-info { flex: 1; min-width: 0; }
         .stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 700; }
