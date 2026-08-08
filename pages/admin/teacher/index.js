@@ -1,8 +1,8 @@
 import TeacherLayout from '../../../components/TeacherLayout';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // ─── الأيقونات الاحترافية للبطاقات ────────────────────────────────
 const Icons = {
@@ -95,8 +95,29 @@ export default function TeacherDashboard() {
   const activeUsersToday = stats.activeUsersToday || 0;
   const activeUsersChart = data?.activeUsersChartData || [];
 
+  // 5. ✅ دمج مخطط المشاهدات ومخطط النشاط في مصفوفة واحدة (نفس الأيام السبعة
+  //    مبنية بنفس منطق توقيت القاهرة في الـ API، فبنربطهم بمفتاح date)
+  const combinedChart = useMemo(() => {
+    const map = new Map();
+    watchChart.forEach(item => {
+      map.set(item.date, { name: item.name, date: item.date, watches: item.watches || 0, users: 0 });
+    });
+    activeUsersChart.forEach(item => {
+      const existing = map.get(item.date);
+      if (existing) {
+        existing.users = item.users || 0;
+      } else {
+        map.set(item.date, { name: item.name, date: item.date, watches: 0, users: item.users || 0 });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [watchChart, activeUsersChart]);
+
+  const chartLoading = watchLoading || loading;
+
   // ألوان الرسم البياني حسب الوضع الليلي/النهاري
   const goldColor  = isDark ? '#c9a84c' : '#b8903a';
+  const usersColor = isDark ? '#a78bfa' : '#8b5cf6';
   const chartGrid  = isDark ? '#2c2818' : '#ddd4a8';
   const chartAxis  = isDark ? '#a89f7a' : '#9e8850';
   const tooltipBg  = isDark ? '#1a1710' : '#ffffff';
@@ -196,19 +217,19 @@ export default function TeacherDashboard() {
 
             </div>
 
-            {/* ── مخطط المشاهدات لآخر 7 أيام ── */}
+            {/* ── مخطط المشاهدات ونشاط الطلاب لآخر 7 أيام (مخطط واحد مدمج) ── */}
             <div className="panel chart-panel">
               <div className="panel-head">
-                <h3>👁️ المشاهدات لآخر 7 أيام</h3>
+                <h3>👁️ المشاهدات ونشاط الطلاب لآخر 7 أيام</h3>
               </div>
               <div className="chart-body">
-                {watchLoading ? (
-                  <div className="chart-loading">جاري تحميل بيانات المشاهدات...</div>
-                ) : watchChart.length === 0 ? (
-                  <div className="chart-loading">لا توجد بيانات مشاهدات بعد</div>
+                {chartLoading ? (
+                  <div className="chart-loading">جاري تحميل البيانات...</div>
+                ) : combinedChart.length === 0 ? (
+                  <div className="chart-loading">لا توجد بيانات كافية بعد</div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={watchChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <ComposedChart data={combinedChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                       <defs>
                         <linearGradient id="watchGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={goldColor} stopOpacity={0.35} />
@@ -217,47 +238,22 @@ export default function TeacherDashboard() {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
                       <XAxis dataKey="name" stroke={chartAxis} tick={{ fontSize: 11 }} />
-                      <YAxis stroke={chartAxis} tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis yAxisId="watches" stroke={goldColor} tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis yAxisId="users" orientation="right" stroke={usersColor} tick={{ fontSize: 11 }} allowDecimals={false} />
                       <Tooltip
                         contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBdr}`, borderRadius: '10px', color: isDark ? '#f5f0e0' : '#1a1508' }}
                         cursor={{ stroke: goldColor, strokeWidth: 1, strokeDasharray: '4 4' }}
-                        formatter={(value) => [`${value.toLocaleString()} مشاهدة`, 'المشاهدات']}
+                        formatter={(value, name) => [
+                          name === 'watches' ? `${value.toLocaleString()} مشاهدة` : `${value.toLocaleString()} طالب`,
+                          name === 'watches' ? 'المشاهدات' : 'الطلاب النشطون'
+                        ]}
                       />
-                      <Area type="monotone" dataKey="watches" name="watches" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </div>
-
-            {/* ── مخطط نشاط الطلاب لآخر 7 أيام ── */}
-            <div className="panel chart-panel">
-              <div className="panel-head">
-                <h3>🚀 نشاط طلابك لآخر 7 أيام</h3>
-              </div>
-              <div className="chart-body">
-                {loading ? (
-                  <div className="chart-loading">جاري تحميل بيانات النشاط...</div>
-                ) : activeUsersChart.length === 0 ? (
-                  <div className="chart-loading">لا توجد بيانات نشاط متاحة بعد</div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={activeUsersChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="activeUsersGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={goldColor} stopOpacity={0.35} />
-                          <stop offset="95%" stopColor={goldColor} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
-                      <XAxis dataKey="name" stroke={chartAxis} tick={{ fontSize: 11 }} />
-                      <YAxis stroke={chartAxis} tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBdr}`, borderRadius: '10px', color: isDark ? '#f5f0e0' : '#1a1508' }}
-                        cursor={{ stroke: goldColor, strokeWidth: 1, strokeDasharray: '4 4' }}
-                        formatter={(value) => [`${value.toLocaleString()} طالب`, 'نشطون']}
+                      <Legend
+                        formatter={(value) => value === 'watches' ? 'المشاهدات' : 'الطلاب النشطون'}
+                        wrapperStyle={{ fontSize: '12px', color: chartAxis }}
                       />
-                      <Area type="monotone" dataKey="users" name="users" stroke={goldColor} strokeWidth={2.5} fill="url(#activeUsersGradient)" />
+                      <Area yAxisId="watches" type="monotone" dataKey="watches" name="watches" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
+                      <Line yAxisId="users" type="monotone" dataKey="users" name="users" stroke={usersColor} strokeWidth={2.5} dot={{ r: 3, fill: usersColor }} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 )}
