@@ -2,7 +2,7 @@ import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { ComposedChart, Area, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // ─── الأيقونات الاحترافية للبطاقات ────────────────────────────────
 const Icons = {
@@ -206,10 +206,6 @@ export default function TeacherDashboard() {
                         contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBdr}`, borderRadius: '10px', color: isDark ? '#f5f0e0' : '#1a1508' }}
                         cursor={{ stroke: goldColor, strokeWidth: 1, strokeDasharray: '4 4' }}
                         formatter={(value) => [`${value.toLocaleString()} مشاهدة`, 'المشاهدات']}
-                      />
-                      <Legend
-                        formatter={() => 'المشاهدات'}
-                        wrapperStyle={{ fontSize: '0.8rem' }}
                       />
                       <Area type="monotone" dataKey="watches" name="watches" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
                     </ComposedChart>
