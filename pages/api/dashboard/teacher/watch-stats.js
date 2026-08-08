@@ -74,9 +74,12 @@ export default async function handler(req, res) {
     const rangeStart = new Date(`${localLimitDateStr}T00:00:00${rangeStartOffset}`);
 
     // بناء الاستعلام على مجموعة video_views الموجودة بالفعل في Firebase
+    // ✅ نفلتر دائماً حسب teacherId طالما الحساب مرتبط بملف مدرس — حتى لو كان
+    // نفس الحساب يحمل صلاحية super_admin (is_admin = true على حساب مدرس).
+    // فقط السوبر أدمن الذي لا يملك teacher_profile_id إطلاقاً يرى بيانات كل المدرسين.
     let watchQuery = db.collection('video_views').where('lastViewedAt', '>=', rangeStart);
 
-    if (user.role !== 'super_admin') {
+    if (teacherId) {
       watchQuery = watchQuery.where('teacherId', '==', teacherId);
     }
 
