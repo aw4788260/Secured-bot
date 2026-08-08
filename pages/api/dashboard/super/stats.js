@@ -89,8 +89,8 @@ export default async function handler(req, res) {
       // 3. الكورسات النشطة
       supabase.from('courses').select('*', { count: 'exact', head: true }),
 
-      // 4. إجمالي المبيعات الكلي (RPC)
-      supabase.rpc('get_total_revenue'),
+      // 4. إجمالي المبيعات الفعلية المُحصلة (RPC) — نفس دالة صفحة المالية بدلاً من السعر الافتراضي
+      supabase.rpc('get_total_actual_revenue'),
 
       // 5. أحدث المسجلين
       supabase
@@ -117,6 +117,8 @@ export default async function handler(req, res) {
     ]);
 
     // --- معالجة الأرباح الكلية ---
+    // ✅ نعتمد على المبلغ الفعلي المُحصل (actual_paid_price) وليس السعر الافتراضي فقط
+    //    بنفس منطق صفحة المالية (finance.js / get_total_actual_revenue)
     let totalRevenue = 0;
     if (!revenueRpcResult.error) {
       totalRevenue = revenueRpcResult.data || 0;
@@ -124,9 +126,14 @@ export default async function handler(req, res) {
       // حساب احتياطي في حال فشل الـ RPC
       const { data: manualData } = await supabase
         .from('subscription_requests')
-        .select('total_price')
+        .select('total_price, actual_paid_price')
         .eq('status', 'approved');
-      totalRevenue = manualData?.reduce((acc, curr) => acc + (curr.total_price || 0), 0) || 0;
+      totalRevenue = manualData?.reduce((acc, curr) => {
+        const priceToUse = (curr.actual_paid_price !== null && curr.actual_paid_price !== undefined)
+            ? curr.actual_paid_price
+            : curr.total_price;
+        return acc + (Number(priceToUse) || 0);
+      }, 0) || 0;
     }
 
     // --- معالجة بيانات الرسوم البيانية ---
