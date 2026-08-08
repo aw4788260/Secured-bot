@@ -100,9 +100,11 @@ export default async function handler(req, res) {
         .limit(5),
 
       // 6. بيانات الرسم البياني (أرباح الفترة المحددة)
+      // ✅ نجلب actual_paid_price أيضاً لاستخدام السعر الفعلي المُحصل (وليس السعر الافتراضي فقط)
+      //    بنفس منطق صفحة المالية (finance.js) بدلاً من total_price دائماً
       supabase
         .from('subscription_requests')
-        .select('created_at, total_price')
+        .select('created_at, total_price, actual_paid_price')
         .eq('status', 'approved')
         .gte('created_at', dateLimit),
 
@@ -143,10 +145,17 @@ export default async function handler(req, res) {
 
         // ========================================================
         // 💰 الجزء الخاص بالأرباح (تم تصحيحه ليعتمد على توقيت القاهرة بدلاً من UTC)
+        // ✅ نستخدم السعر الفعلي المُحصل (actual_paid_price) إن وُجد، وإلا نرجع
+        //    للسعر الافتراضي (total_price) — نفس منطق COALESCE المستخدم في صفحة المالية
         // ========================================================
         const dayTotal = rawChartData
             .filter(item => getCairoDateStr(new Date(item.created_at)) === targetDateStr)
-            .reduce((sum, item) => sum + (item.total_price || 0), 0);
+            .reduce((sum, item) => {
+                const priceToUse = (item.actual_paid_price !== null && item.actual_paid_price !== undefined)
+                    ? item.actual_paid_price
+                    : item.total_price;
+                return sum + (Number(priceToUse) || 0);
+            }, 0);
             
         chartDataFinal.push({ 
             name: i === 0 ? 'اليوم' : dayName,
