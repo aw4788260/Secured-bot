@@ -2,7 +2,7 @@ import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ComposedChart, Area, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // ─── الأيقونات الاحترافية للبطاقات ────────────────────────────────
 const Icons = {
@@ -117,7 +117,7 @@ export default function TeacherDashboard() {
 
   // ألوان الرسم البياني حسب الوضع الليلي/النهاري
   const goldColor  = isDark ? '#c9a84c' : '#b8903a';
-  const usersColor = isDark ? '#a78bfa' : '#8b5cf6';
+  const usersColor = isDark ? '#38bdf8' : '#0ea5e9';
   const chartGrid  = isDark ? '#2c2818' : '#ddd4a8';
   const chartAxis  = isDark ? '#a89f7a' : '#9e8850';
   const tooltipBg  = isDark ? '#1a1710' : '#ffffff';
@@ -235,11 +235,14 @@ export default function TeacherDashboard() {
                           <stop offset="5%" stopColor={goldColor} stopOpacity={0.35} />
                           <stop offset="95%" stopColor={goldColor} stopOpacity={0} />
                         </linearGradient>
+                        <linearGradient id="usersGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={usersColor} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={usersColor} stopOpacity={0} />
+                        </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
                       <XAxis dataKey="name" stroke={chartAxis} tick={{ fontSize: 11 }} />
-                      <YAxis yAxisId="watches" stroke={goldColor} tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <YAxis yAxisId="users" orientation="right" stroke={usersColor} tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis stroke={chartAxis} tick={{ fontSize: 11 }} allowDecimals={false} />
                       <Tooltip
                         contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBdr}`, borderRadius: '10px', color: isDark ? '#f5f0e0' : '#1a1508' }}
                         cursor={{ stroke: goldColor, strokeWidth: 1, strokeDasharray: '4 4' }}
@@ -252,8 +255,8 @@ export default function TeacherDashboard() {
                         formatter={(value) => value === 'watches' ? 'المشاهدات' : 'الطلاب النشطون'}
                         wrapperStyle={{ fontSize: '12px', color: chartAxis }}
                       />
-                      <Area yAxisId="watches" type="monotone" dataKey="watches" name="watches" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
-                      <Line yAxisId="users" type="monotone" dataKey="users" name="users" stroke={usersColor} strokeWidth={2.5} dot={{ r: 3, fill: usersColor }} />
+                      <Area type="monotone" dataKey="watches" name="watches" stroke={goldColor} strokeWidth={2.5} fill="url(#watchGradient)" />
+                      <Area type="monotone" dataKey="users" name="users" stroke={usersColor} strokeWidth={2.5} fill="url(#usersGradient)" />
                     </ComposedChart>
                   </ResponsiveContainer>
                 )}
