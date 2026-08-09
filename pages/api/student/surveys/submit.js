@@ -30,12 +30,15 @@ export default async function handler(req, res) {
     // تأكد أن الاستبيان لا يزال نشطاً ولم تنتهِ صلاحيته
     const { data: survey, error: surveyErr } = await supabase
       .from('surveys')
-      .select('id, is_active, expires_at')
+      .select('id, is_active, starts_at, expires_at')
       .eq('id', survey_id)
       .single();
 
     if (surveyErr || !survey) {
       return res.status(404).json({ success: false, message: 'الاستبيان غير موجود' });
+    }
+    if (survey.starts_at && new Date(survey.starts_at) > new Date()) {
+      return res.status(400).json({ success: false, message: 'لم يبدأ هذا الاستبيان بعد' });
     }
     if (!survey.is_active || (survey.expires_at && new Date(survey.expires_at) < new Date())) {
       return res.status(400).json({ success: false, message: 'انتهت صلاحية هذا الاستبيان' });

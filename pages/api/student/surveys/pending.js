@@ -5,6 +5,7 @@ import { checkUserAccess } from '../../../../lib/authHelper';
 // 🟢 GET /api/student/surveys/pending
 // يرجّع استبيان واحد فقط (الأقدم أولاً) يستوفي الشروط التالية:
 //   - is_active = true
+//   - بدأ وقته بالفعل (starts_at is null أو أقل من/يساوي الآن)
 //   - لم تنتهِ صلاحيته (expires_at is null أو أكبر من الآن)
 //   - المستخدم الحالي لم يجاوب عليه من قبل (لا يوجد صف في survey_responses)
 // لو مفيش أي استبيان مطابق -> survey: null
@@ -21,11 +22,12 @@ export default async function handler(req, res) {
   try {
     const nowIso = new Date().toISOString();
 
-    // كل الاستبيانات النشطة وغير منتهية الصلاحية
+    // كل الاستبيانات النشطة، اللي بدأ وقتها، وغير منتهية الصلاحية
     const { data: activeSurveys, error: surveysErr } = await supabase
       .from('surveys')
       .select('*')
       .eq('is_active', true)
+      .or(`starts_at.is.null,starts_at.lte.${nowIso}`)
       .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
       .order('created_at', { ascending: true });
 
@@ -64,6 +66,7 @@ export default async function handler(req, res) {
         title: nextSurvey.title,
         description: nextSurvey.description,
         is_obligatory: nextSurvey.is_obligatory,
+        starts_at: nextSurvey.starts_at,
         expires_at: nextSurvey.expires_at,
         questions: questions || [],
       },
