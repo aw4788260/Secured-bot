@@ -20,6 +20,25 @@ const QUESTION_TYPES = [
 
 const emptyQuestion = () => ({ question_text: '', question_type: 'mcq_single', options: ['', ''], max_rating: 5, is_required: true });
 
+const RESPONSES_PAGE_SIZE = 50;
+
+// ─── Toggle switch: مكوّن موحّد لكل مفاتيح التبديل في الشاشة ──────────────
+// مكتوب بحيث تكون قيمة "checked" مُتحكَّم فيها بالكامل من الأب (controlled)،
+// ولا يوجد أي مصدر مزدوج لتغيير الحالة، فلا يحدث أي "فتح وقفل" مرئي بعد
+// الضغط. لو فيه استدعاء غير متزامن (onChange async)، الأب مسؤول عن التحديث
+// المتفائل (optimistic) فوراً حتى لا ترجع القيمة قبل اكتمال الطلب.
+const ToggleSwitch = ({ checked, onChange, small = false, disabled = false }) => (
+  <label className={`switch ${small ? 'small' : ''}`}>
+    <input
+      type="checkbox"
+      checked={!!checked}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+    <span className="slider"></span>
+  </label>
+);
+
 export default function SurveysPage() {
   const [surveys, setSurveys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,11 +48,18 @@ export default function SurveysPage() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [lockQuestions, setLockQuestions] = useState(false); // true لو فيه ردود بالفعل
-  const [form, setForm] = useState({ title: '', description: '', is_obligatory: false, expires_at: '', questions: [emptyQuestion()] });
+  const [wantsResendNotification, setWantsResendNotification] = useState(false);
+  const [form, setForm] = useState({
+    title: '', description: '', is_obligatory: false,
+    starts_at: '', expires_at: '', notify_students: true,
+    questions: [emptyQuestion()],
+  });
 
   const [viewingSurvey, setViewingSurvey] = useState(null);
   const [viewData, setViewData] = useState(null);
   const [viewLoading, setViewLoading] = useState(false);
+  const [viewPage, setViewPage] = useState(1);
+  const [viewLoadingMore, setViewLoadingMore] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -56,9 +82,14 @@ export default function SurveysPage() {
   useEffect(() => { fetchSurveys(); }, []);
 
   const resetForm = () => {
-    setForm({ title: '', description: '', is_obligatory: false, expires_at: '', questions: [emptyQuestion()] });
+    setForm({
+      title: '', description: '', is_obligatory: false,
+      starts_at: '', expires_at: '', notify_students: true,
+      questions: [emptyQuestion()],
+    });
     setEditingId(null);
     setLockQuestions(false);
+    setWantsResendNotification(false);
   };
 
   const openCreate = () => { resetForm(); setShowBuilder(true); };
@@ -72,7 +103,9 @@ export default function SurveysPage() {
         title: data.survey.title || '',
         description: data.survey.description || '',
         is_obligatory: !!data.survey.is_obligatory,
+        starts_at: data.survey.starts_at ? data.survey.starts_at.slice(0, 16) : '',
         expires_at: data.survey.expires_at ? data.survey.expires_at.slice(0, 16) : '',
+        notify_students: data.survey.notify_students !== false,
         questions: (data.questions || []).map(q => ({
           question_text: q.question_text,
           question_type: q.question_type,
@@ -83,6 +116,7 @@ export default function SurveysPage() {
       });
       setEditingId(surveyId);
       setLockQuestions((data.responseCount || 0) > 0);
+      setWantsResendNotification(false);
       setShowBuilder(true);
     } catch (e) {
       showToast('خطأ في الاتصال', 'error');
@@ -99,17 +133,29 @@ export default function SurveysPage() {
     } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   };
 
+  // تحديث متفائل (optimistic): نغيّر الحالة في الواجهة فوراً عند الضغط، بدل
+  // انتظار رد السيرفر ثم عمل fetchSurveys() كامل من جديد. الطريقة القديمة
+  // كانت تُبقي القيمة القديمة معروضة أثناء انتظار الطلب فيبدو المفتاح وكأنه
+  // "يتفتح ويتقفل" لحظياً قبل ما يستقر على القيمة الصحيحة. لو فشل الطلب،
+  // نرجّع القيمة القديمة فقط.
   const toggleActive = async (survey) => {
+    const nextValue = !survey.is_active;
+    setSurveys(prev => prev.map(s => (s.id === survey.id ? { ...s, is_active: nextValue } : s)));
     try {
       const res = await fetch('/api/dashboard/super/surveys', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: survey.id, is_active: !survey.is_active }),
+        body: JSON.stringify({ id: survey.id, is_active: nextValue }),
       });
       const data = await res.json();
-      if (res.ok) { fetchSurveys(); }
-      else showToast(data.message || 'فشل التحديث', 'error');
-    } catch (e) { showToast('خطأ في الاتصال', 'error'); }
+      if (!res.ok) {
+        setSurveys(prev => prev.map(s => (s.id === survey.id ? { ...s, is_active: survey.is_active } : s)));
+        showToast(data.message || 'فشل التحديث', 'error');
+      }
+    } catch (e) {
+      setSurveys(prev => prev.map(s => (s.id === survey.id ? { ...s, is_active: survey.is_active } : s)));
+      showToast('خطأ في الاتصال', 'error');
+    }
   };
 
   // ── Question builder helpers ──
@@ -138,8 +184,11 @@ export default function SurveysPage() {
         title: form.title,
         description: form.description,
         is_obligatory: form.is_obligatory,
+        starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+        notify_students: form.notify_students,
       };
+      if (editingId && wantsResendNotification) payload.notify_now = true;
       if (!lockQuestions) payload.questions = form.questions;
 
       let res;
@@ -158,7 +207,13 @@ export default function SurveysPage() {
       }
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast(editingId ? 'تم حفظ التعديلات' : 'تم إنشاء الاستبيان بنجاح');
+        let msg = editingId ? 'تم حفظ التعديلات' : 'تم إنشاء الاستبيان بنجاح';
+        if (!editingId && form.notify_students) {
+          msg += data.notified ? ' وتم إرسال إشعار للطلاب 🔔' : ' (تعذر إرسال الإشعار)';
+        } else if (editingId && wantsResendNotification) {
+          msg += data.notified ? ' وتم إرسال الإشعار 🔔' : ' (تعذر إرسال الإشعار)';
+        }
+        showToast(msg);
         setShowBuilder(false);
         resetForm();
         fetchSurveys();
@@ -172,12 +227,16 @@ export default function SurveysPage() {
     }
   };
 
+  // النتائج المجمّعة (stats) بترجع كاملة دايماً من كل الردود، لكن قائمة
+  // "الردود الفردية" بتتحمّل صفحة صفحة (pagination) عشان تفضل الشاشة سريعة
+  // حتى لو الاستبيان عليه أكتر من 500 رد.
   const openResponses = async (survey) => {
     setViewingSurvey(survey);
     setViewLoading(true);
     setViewData(null);
+    setViewPage(1);
     try {
-      const res = await fetch(`/api/dashboard/super/survey-responses?survey_id=${survey.id}`);
+      const res = await fetch(`/api/dashboard/super/survey-responses?survey_id=${survey.id}&page=1&page_size=${RESPONSES_PAGE_SIZE}`);
       const data = await res.json();
       if (res.ok) setViewData(data);
       else showToast(data.message || 'فشل التحميل', 'error');
@@ -185,6 +244,26 @@ export default function SurveysPage() {
       showToast('خطأ في الاتصال', 'error');
     } finally {
       setViewLoading(false);
+    }
+  };
+
+  const loadMoreResponses = async () => {
+    if (!viewingSurvey || !viewData || viewLoadingMore) return;
+    const nextPage = viewPage + 1;
+    setViewLoadingMore(true);
+    try {
+      const res = await fetch(`/api/dashboard/super/survey-responses?survey_id=${viewingSurvey.id}&page=${nextPage}&page_size=${RESPONSES_PAGE_SIZE}`);
+      const data = await res.json();
+      if (res.ok) {
+        setViewData(prev => ({ ...data, responses: [...prev.responses, ...data.responses] }));
+        setViewPage(nextPage);
+      } else {
+        showToast(data.message || 'فشل تحميل المزيد', 'error');
+      }
+    } catch (e) {
+      showToast('خطأ في الاتصال', 'error');
+    } finally {
+      setViewLoadingMore(false);
     }
   };
 
@@ -219,24 +298,26 @@ export default function SurveysPage() {
                 <th>إلزامي؟</th>
                 <th>الأسئلة</th>
                 <th>الردود</th>
+                <th>يبدأ في</th>
                 <th>ينتهي في</th>
                 <th>إجراءات</th>
               </tr>
             </thead>
             <tbody>
-              {surveys.map(s => (
+              {surveys.map(s => {
+                const notYetStarted = s.starts_at && new Date(s.starts_at) > new Date();
+                return (
                 <tr key={s.id}>
                   <td className="title-cell">{s.title}</td>
                   <td>
-                    <label className="switch">
-                      <input type="checkbox" checked={s.is_active} onChange={() => toggleActive(s)} />
-                      <span className="slider"></span>
-                    </label>
+                    <ToggleSwitch checked={s.is_active} onChange={() => toggleActive(s)} />
                     <span className={`status-text ${s.is_active ? 'on' : 'off'}`}>{s.is_active ? 'مفعّل' : 'موقوف'}</span>
+                    {s.is_active && notYetStarted && <span className="status-text off"> (لم يبدأ بعد)</span>}
                   </td>
                   <td>{s.is_obligatory ? <span className="badge obligatory">إلزامي</span> : <span className="badge optional">اختياري</span>}</td>
                   <td>{s.question_count}</td>
                   <td>{s.response_count}</td>
+                  <td>{s.starts_at ? new Date(s.starts_at).toLocaleString('ar-EG') : 'فوراً'}</td>
                   <td>{s.expires_at ? new Date(s.expires_at).toLocaleString('ar-EG') : 'بدون انتهاء'}</td>
                   <td className="actions-cell">
                     <button className="icon-btn" title="عرض النتائج" onClick={() => openResponses(s)}><EyeIcon /></button>
@@ -244,7 +325,8 @@ export default function SurveysPage() {
                     <button className="icon-btn danger" title="حذف" onClick={() => handleDelete(s.id)}><TrashIcon /></button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -272,16 +354,40 @@ export default function SurveysPage() {
 
               <div className="form-row">
                 <div className="form-group">
+                  <label>تاريخ ووقت بدء الاستبيان (اختياري)</label>
+                  <input type="datetime-local" className="input-field" value={form.starts_at} onChange={e => setForm({ ...form, starts_at: e.target.value })} />
+                  <span className="hint">لو فارغ، الاستبيان يبدأ الظهور للطلاب فوراً بمجرد تفعيله.</span>
+                </div>
+                <div className="form-group">
                   <label>تاريخ انتهاء الصلاحية (اختياري)</label>
                   <input type="datetime-local" className="input-field" value={form.expires_at} onChange={e => setForm({ ...form, expires_at: e.target.value })} />
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div className="form-group toggle-group">
                   <label>استبيان إلزامي؟</label>
-                  <label className="switch">
-                    <input type="checkbox" checked={form.is_obligatory} onChange={e => setForm({ ...form, is_obligatory: e.target.checked })} />
-                    <span className="slider"></span>
-                  </label>
+                  <ToggleSwitch checked={form.is_obligatory} onChange={(val) => setForm({ ...form, is_obligatory: val })} />
                   <span className="hint">لو مفعّل، الطالب لن يستطيع تجاوز الاستبيان دون الإجابة عليه.</span>
+                </div>
+                <div className="form-group toggle-group">
+                  <label>إشعار الطلاب بالاستبيان؟</label>
+                  <ToggleSwitch checked={form.notify_students} onChange={(val) => setForm({ ...form, notify_students: val })} />
+                  <span className="hint">
+                    {editingId
+                      ? 'الإشعار الأساسي يُرسل مرة واحدة عند الإنشاء فقط.'
+                      : 'لو مفعّل، هيتم إرسال إشعار Push فوري لكل الطلاب عند إنشاء الاستبيان.'}
+                  </span>
+                  {editingId && (
+                    <label className="resend-check">
+                      <input
+                        type="checkbox"
+                        checked={wantsResendNotification}
+                        onChange={e => setWantsResendNotification(e.target.checked)}
+                      />
+                      <span> إرسال إشعار الآن مرة أخرى لكل الطلاب</span>
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -317,10 +423,7 @@ export default function SurveysPage() {
                     </div>
                     <div className="form-group toggle-group">
                       <label>مطلوب إجباري؟</label>
-                      <label className="switch small">
-                        <input type="checkbox" checked={q.is_required} onChange={e => updateQuestion(qIdx, { is_required: e.target.checked })} />
-                        <span className="slider"></span>
-                      </label>
+                      <ToggleSwitch small checked={q.is_required} onChange={(val) => updateQuestion(qIdx, { is_required: val })} />
                     </div>
                   </div>
 
@@ -425,6 +528,9 @@ export default function SurveysPage() {
                   ))}
 
                   <div className="section-divider"><span>الردود الفردية</span></div>
+                  <p className="hint">
+                    عرض {viewData.responses.length} من أصل {viewData.total_responses} رد
+                  </p>
                   {viewData.responses.length === 0 ? (
                     <p className="hint">لا يوجد طلاب أجابوا بعد</p>
                   ) : viewData.responses.map(r => (
@@ -444,6 +550,11 @@ export default function SurveysPage() {
                       })}
                     </div>
                   ))}
+                  {viewData.has_more && (
+                    <button type="button" className="secondary-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={loadMoreResponses} disabled={viewLoadingMore}>
+                      {viewLoadingMore ? 'جارِ التحميل...' : `تحميل المزيد (${viewData.total_responses - viewData.responses.length} متبقي)`}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -505,6 +616,7 @@ export default function SurveysPage() {
         .form-group label { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .toggle-group { display: flex; flex-direction: column; gap: 6px; }
+        .resend-check { display: flex; align-items: center; gap: 6px; color: var(--gold); font-size: 0.8rem; cursor: pointer; margin-top: 2px; }
         .input-field { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text-primary); font-size: 0.9rem; }
         .input-field:focus { outline: none; border-color: var(--gold); }
         .textarea { resize: vertical; }
