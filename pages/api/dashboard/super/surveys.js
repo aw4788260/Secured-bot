@@ -1,5 +1,48 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import admin from '../../../../lib/firebaseAdmin';
+
+// إرسال إشعار جماعي (Push) لكل الطلاب بإنشاء استبيان جديد.
+// لا يرمي أخطاء للخارج أبداً — فشل الإشعار لا يجب أن يفشل إنشاء الاستبيان.
+async function notifyStudentsAboutSurvey(survey) {
+  try {
+    const title = '📋 استبيان جديد';
+    const body = survey.title || 'يوجد استبيان جديد بانتظارك، شاركنا رأيك!';
+
+    await admin.messaging().send({
+      topic: 'all_users',
+      notification: { title, body },
+      android: {
+        priority: 'high',
+        notification: { sound: 'default', priority: 'max', channelId: 'fcm_channel', clickAction: 'FLUTTER_NOTIFICATION_CLICK' },
+      },
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default', badge: 1, contentAvailable: true } },
+      },
+      data: {
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        type: 'survey',
+        id: survey.id.toString(),
+      },
+    });
+
+    await supabase.from('notifications').insert({
+      title,
+      body,
+      target_type: 'survey',
+      target_id: survey.id.toString(),
+      sender_role: 'super_admin',
+    });
+
+    await supabase.from('surveys').update({ notified_at: new Date().toISOString() }).eq('id', survey.id);
+
+    return true;
+  } catch (err) {
+    console.error('⚠️ Survey Notify Error:', err.message);
+    return false;
+  }
+}
 
 const QUESTION_TYPES = ['mcq_single', 'mcq_multiple', 'written', 'rating'];
 
@@ -87,7 +130,7 @@ export default async function handler(req, res) {
   // ==========================================================
   if (req.method === 'POST') {
     try {
-      const { title, description, is_obligatory, expires_at, questions } = req.body;
+      const { title, description, is_obligatory, starts_at, expires_at, notify_students, questions } = req.body;
 
       if (!title || !title.trim()) {
         return res.status(400).json({ success: false, message: 'عنوان الاستبيان مطلوب' });
@@ -95,13 +138,17 @@ export default async function handler(req, res) {
       const qError = validateQuestions(questions);
       if (qError) return res.status(400).json({ success: false, message: qError });
 
+      const shouldNotify = notify_students !== false; // افتراضياً مفعّل لو مش متبعّت
+
       const { data: survey, error: surveyErr } = await supabase
         .from('surveys')
         .insert({
           title: title.trim(),
           description: description?.trim() || null,
           is_obligatory: !!is_obligatory,
+          starts_at: starts_at || null,
           expires_at: expires_at || null,
+          notify_students: shouldNotify,
           is_active: true,
           created_by: adminUser?.id || null,
         })
@@ -125,7 +172,12 @@ export default async function handler(req, res) {
       const { error: insertQErr } = await supabase.from('survey_questions').insert(rows);
       if (insertQErr) throw insertQErr;
 
-      return res.status(200).json({ success: true, message: 'تم إنشاء الاستبيان بنجاح', survey });
+      let notified = false;
+      if (shouldNotify) {
+        notified = await notifyStudentsAboutSurvey(survey);
+      }
+
+      return res.status(200).json({ success: true, message: 'تم إنشاء الاستبيان بنجاح', survey, notified });
     } catch (err) {
       console.error('Surveys POST Error:', err);
       return res.status(500).json({ success: false, message: 'فشل إنشاء الاستبيان' });
@@ -137,7 +189,7 @@ export default async function handler(req, res) {
   // ==========================================================
   if (req.method === 'PUT') {
     try {
-      const { id, title, description, is_obligatory, is_active, expires_at, questions } = req.body;
+      const { id, title, description, is_obligatory, is_active, starts_at, expires_at, notify_students, notify_now, questions } = req.body;
       if (!id) return res.status(400).json({ success: false, message: 'معرّف الاستبيان مطلوب' });
 
       const updatePayload = {};
@@ -145,11 +197,20 @@ export default async function handler(req, res) {
       if (description !== undefined) updatePayload.description = description?.trim() || null;
       if (is_obligatory !== undefined) updatePayload.is_obligatory = !!is_obligatory;
       if (is_active !== undefined) updatePayload.is_active = !!is_active;
+      if (starts_at !== undefined) updatePayload.starts_at = starts_at || null;
       if (expires_at !== undefined) updatePayload.expires_at = expires_at || null;
+      if (notify_students !== undefined) updatePayload.notify_students = !!notify_students;
 
       if (Object.keys(updatePayload).length > 0) {
         const { error: updErr } = await supabase.from('surveys').update(updatePayload).eq('id', id);
         if (updErr) throw updErr;
+      }
+
+      // إعادة إرسال الإشعار يدوياً بناءً على طلب صريح من الأدمن (زر "إرسال الآن")
+      let notified = false;
+      if (notify_now) {
+        const { data: freshSurvey } = await supabase.from('surveys').select('*').eq('id', id).single();
+        if (freshSurvey) notified = await notifyStudentsAboutSurvey(freshSurvey);
       }
 
       // تعديل الأسئلة مسموح فقط إذا لم يجب عليها أي طالب بعد (حفاظاً على سلامة الردود القديمة)
@@ -186,7 +247,7 @@ export default async function handler(req, res) {
         if (insertQErr) throw insertQErr;
       }
 
-      return res.status(200).json({ success: true, message: 'تم حفظ التعديلات بنجاح' });
+      return res.status(200).json({ success: true, message: 'تم حفظ التعديلات بنجاح', notified });
     } catch (err) {
       console.error('Surveys PUT Error:', err);
       return res.status(500).json({ success: false, message: 'فشل حفظ التعديلات' });
