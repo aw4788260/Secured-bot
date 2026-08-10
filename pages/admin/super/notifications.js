@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import SuperLayout from '../../../components/SuperLayout';
 
@@ -12,96 +12,123 @@ const BellIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="no
 const ChevronDownIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>);
 const CheckIcon = () => (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>);
 
-// ─── قائمة منسدلة مخصّصة (Custom Select) ──────────────────────────────
-// بديل احترافي لعنصر <select> الافتراضي في المتصفح (اللي شكله بيختلف
-// وغير متناسق مع باقي تصميم الداشبورد حسب نظام التشغيل/المتصفح). بتدعم
-// وضعين:
-//   - options: قائمة مسطّحة [{ value, label }]  → مستخدمة لقائمة الكورسات
-//   - groups: قوائم مقسّمة لمجموعات [{ label, options: [...] }] → مستخدمة
-//     لقائمة المواد (كل مادة تحت اسم الكورس التابعة له، بديل لـ <optgroup>)
-// بتتقفل تلقائياً عند الضغط بره منها أو بزرار Esc، وبتعلّم بعلامة صح على
-// الخيار المختار حالياً.
-const CustomSelect = ({ value, onChange, options, groups, placeholder = 'اختر...' }) => {
+const CloseIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
+const SearchIcon = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>);
+
+// ─── منتقي بنافذة منبثقة (Select Modal) ────────────────────────────────
+// بديل احترافي لعنصر <select> الافتراضي: بدل قائمة منسدلة ملزوقة بالحقل،
+// الضغط على الحقل بيفتح نافذة (Modal) منظمة في نص الشاشة فيها بحث سريع
+// وقائمة مرتّبة (مع تقسيم لمجموعات لو محتاجين، زي "كل مادة تحت كورسها").
+// مناسب أكتر من الدروب داون العادي لما يكون عدد العناصر كبير (كورسات/مواد
+// كتير) لأن فيه مساحة أوضح ومربع بحث.
+//   - options: قائمة مسطّحة [{ value, label }]
+//   - groups: قوائم مقسّمة لمجموعات [{ label, options: [...] }]
+const SelectModal = ({ value, onChange, options, groups, placeholder = 'اختر...', title = 'اختر عنصر' }) => {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!open) return;
-    const handleOutside = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
-    };
     const handleEscape = (e) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', handleOutside);
     document.addEventListener('keydown', handleEscape);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('mousedown', handleOutside);
       document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = prevOverflow;
     };
   }, [open]);
 
   const flatOptions = groups ? groups.flatMap(g => g.options || []) : (options || []);
   const selected = flatOptions.find(o => String(o.value) === String(value));
-  const isEmpty = !groups && (!options || options.length === 0);
+  const isEmpty = flatOptions.length === 0;
+
+  const q = search.trim().toLowerCase();
+  const matches = (opt) => !q || opt.label.toLowerCase().includes(q);
+  const filteredOptions = options ? options.filter(matches) : null;
+  const filteredGroups = groups
+    ? groups.map(g => ({ ...g, options: (g.options || []).filter(matches) }))
+    : null;
+  const hasResults = groups
+    ? filteredGroups.some(g => g.options.length > 0)
+    : (filteredOptions ? filteredOptions.length > 0 : false);
+
+  const handleSelect = (val) => { onChange(val); setOpen(false); };
 
   return (
-    <div className="custom-select" ref={rootRef}>
+    <>
       <button
         type="button"
-        className={`custom-select-trigger ${open ? 'open' : ''}`}
-        onClick={() => setOpen(o => !o)}
-        disabled={isEmpty && (!groups || groups.length === 0)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
+        className={`select-modal-trigger ${open ? 'open' : ''}`}
+        onClick={() => { setSearch(''); setOpen(true); }}
+        disabled={isEmpty}
       >
         <span className={selected ? '' : 'placeholder'}>{selected ? selected.label : placeholder}</span>
         <span className="chevron"><ChevronDownIcon /></span>
       </button>
+
       {open && (
-        <ul className="custom-select-menu" role="listbox">
-          {groups ? (
-            groups.map(g => (
-              <li key={g.label} className="custom-select-group">
-                <div className="custom-select-group-label">{g.label}</div>
-                {(g.options || []).map(opt => {
+        <div className="select-modal-overlay" onClick={() => setOpen(false)}>
+          <div className="select-modal-box" onClick={e => e.stopPropagation()}>
+            <div className="select-modal-header">
+              <h4>{title}</h4>
+              <button type="button" className="select-modal-close" onClick={() => setOpen(false)}><CloseIcon /></button>
+            </div>
+
+            <div className="select-modal-search">
+              <SearchIcon />
+              <input
+                type="text"
+                autoFocus
+                placeholder="بحث..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="select-modal-list">
+              {groups ? (
+                filteredGroups.map(g => g.options.length > 0 && (
+                  <div key={g.label} className="select-modal-group">
+                    <div className="select-modal-group-label">{g.label}</div>
+                    {g.options.map(opt => {
+                      const isSelected = String(opt.value) === String(value);
+                      return (
+                        <div
+                          key={opt.value}
+                          className={`select-modal-option ${isSelected ? 'selected' : ''}`}
+                          onClick={() => handleSelect(opt.value)}
+                        >
+                          <span>{opt.label}</span>
+                          {isSelected && <CheckIcon />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              ) : (
+                (filteredOptions || []).map(opt => {
                   const isSelected = String(opt.value) === String(value);
                   return (
                     <div
                       key={opt.value}
-                      role="option"
-                      aria-selected={isSelected}
-                      className={`custom-select-option ${isSelected ? 'selected' : ''}`}
-                      onClick={() => { onChange(opt.value); setOpen(false); }}
+                      className={`select-modal-option ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleSelect(opt.value)}
                     >
                       <span>{opt.label}</span>
                       {isSelected && <CheckIcon />}
                     </div>
                   );
-                })}
-              </li>
-            ))
-          ) : (
-            (options || []).map(opt => {
-              const isSelected = String(opt.value) === String(value);
-              return (
-                <li
-                  key={opt.value}
-                  role="option"
-                  aria-selected={isSelected}
-                  className={`custom-select-option ${isSelected ? 'selected' : ''}`}
-                  onClick={() => { onChange(opt.value); setOpen(false); }}
-                >
-                  <span>{opt.label}</span>
-                  {isSelected && <CheckIcon />}
-                </li>
-              );
-            })
-          )}
-          {((groups && groups.every(g => !g.options || g.options.length === 0)) || (!groups && (!options || options.length === 0))) && (
-            <li className="custom-select-empty">لا يوجد عناصر متاحة</li>
-          )}
-        </ul>
+                })
+              )}
+              {!hasResults && (
+                <div className="select-modal-empty">لا توجد نتائج مطابقة</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 };
 
@@ -253,11 +280,12 @@ export default function SuperNotifications() {
                 {formData.targetType === 'course' && (
                   <div className="form-group animate-slide">
                     <label>اختر الكورس المستهدف:</label>
-                    <CustomSelect
+                    <SelectModal
                       value={formData.targetId}
                       onChange={(val) => setFormData({ ...formData, targetId: val })}
                       options={courses.map(c => ({ value: c.id, label: c.title }))}
                       placeholder="-- يرجى اختيار الكورس --"
+                      title="اختر الكورس المستهدف"
                     />
                   </div>
                 )}
@@ -265,7 +293,7 @@ export default function SuperNotifications() {
                 {formData.targetType === 'subject' && (
                   <div className="form-group animate-slide">
                     <label>اختر المادة المستهدفة:</label>
-                    <CustomSelect
+                    <SelectModal
                       value={formData.targetId}
                       onChange={(val) => setFormData({ ...formData, targetId: val })}
                       groups={courses.map(c => ({
@@ -273,6 +301,7 @@ export default function SuperNotifications() {
                         options: (c.subjects || []).map(s => ({ value: s.id, label: s.title })),
                       }))}
                       placeholder="-- يرجى اختيار المادة --"
+                      title="اختر المادة المستهدفة"
                     />
                   </div>
                 )}
@@ -427,43 +456,72 @@ export default function SuperNotifications() {
           text-align: left;
         }
 
-        .custom-select { position: relative; width: 100%; }
-        .custom-select-trigger {
+        /* ── SelectModal بيتعرّض كـ component منفصل في نفس الملف، فـ
+           styled-jsx مبيحطّش الـ scope class بتاعه على عناصره تلقائياً.
+           لازم نلف القواعد دي بـ :global() عشان تتطبّق فعلياً. ── */
+        :global(.select-modal-trigger) {
           width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
           background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
           padding: 14px 16px; color: var(--text-primary); font-size: 0.95rem; font-family: inherit;
           cursor: pointer; transition: all 0.2s; text-align: right;
         }
-        .custom-select-trigger:hover:not(:disabled) { border-color: var(--border-accent); }
-        .custom-select-trigger.open { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
-        .custom-select-trigger:disabled { cursor: not-allowed; opacity: 0.6; }
-        .custom-select-trigger .placeholder { color: var(--text-muted); }
-        .custom-select-trigger .chevron { display: flex; color: var(--text-secondary); transition: transform 0.15s; flex-shrink: 0; }
-        .custom-select-trigger.open .chevron { transform: rotate(180deg); color: var(--gold); }
-        .custom-select-menu {
-          position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; left: 0;
-          background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px;
-          box-shadow: 0 12px 28px rgba(0,0,0,0.35); padding: 6px; margin: 0; list-style: none;
-          max-height: 260px; overflow-y: auto;
-          animation: selectDropIn 0.14s ease;
+        :global(.select-modal-trigger:hover:not(:disabled)) { border-color: var(--border-accent); }
+        :global(.select-modal-trigger.open) { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
+        :global(.select-modal-trigger:disabled) { cursor: not-allowed; opacity: 0.6; }
+        :global(.select-modal-trigger .placeholder) { color: var(--text-muted); }
+        :global(.select-modal-trigger .chevron) { display: flex; color: var(--text-secondary); transition: transform 0.15s; flex-shrink: 0; }
+        :global(.select-modal-trigger.open .chevron) { transform: rotate(180deg); color: var(--gold); }
+
+        :global(.select-modal-overlay) {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2500;
+          display: flex; align-items: center; justify-content: center; padding: 20px;
+          animation: selectModalFade 0.15s ease;
         }
-        @keyframes selectDropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        .custom-select-option {
+        @keyframes selectModalFade { from { opacity: 0; } to { opacity: 1; } }
+        :global(.select-modal-box) {
+          width: 100%; max-width: 440px; max-height: 78vh; display: flex; flex-direction: column;
+          background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden;
+          animation: selectModalPop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes selectModalPop { from { opacity: 0; transform: scale(0.96) translateY(6px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        :global(.select-modal-header) {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        :global(.select-modal-header h4) { margin: 0; color: var(--text-primary); font-size: 1rem; font-weight: 700; }
+        :global(.select-modal-close) {
+          background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary);
+          width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+          cursor: pointer; flex-shrink: 0; transition: 0.15s;
+        }
+        :global(.select-modal-close:hover) { border-color: var(--gold); color: var(--gold); }
+        :global(.select-modal-search) {
+          display: flex; align-items: center; gap: 8px; margin: 14px 18px 6px;
+          background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+          padding: 10px 12px; color: var(--text-muted); flex-shrink: 0;
+        }
+        :global(.select-modal-search input) {
+          flex: 1; background: transparent; border: none; outline: none; color: var(--text-primary);
+          font-size: 0.9rem; font-family: inherit;
+        }
+        :global(.select-modal-search input::placeholder) { color: var(--text-muted); }
+        :global(.select-modal-list) { overflow-y: auto; padding: 8px 10px 14px; }
+        :global(.select-modal-option) {
           display: flex; align-items: center; justify-content: space-between; gap: 8px;
-          padding: 10px 10px; border-radius: 8px; font-size: 0.9rem; color: var(--text-primary);
+          padding: 11px 12px; border-radius: 9px; font-size: 0.9rem; color: var(--text-primary);
           cursor: pointer; transition: 0.12s;
         }
-        .custom-select-option:hover { background: var(--bg-elevated); }
-        .custom-select-option.selected { background: var(--gold-dimmer); color: var(--gold); font-weight: 600; }
-        .custom-select-option.selected svg { color: var(--gold); flex-shrink: 0; }
-        .custom-select-group { list-style: none; }
-        .custom-select-group + .custom-select-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
-        .custom-select-group-label {
-          padding: 6px 10px 4px; font-size: 0.75rem; font-weight: 700; color: var(--gold);
+        :global(.select-modal-option:hover) { background: var(--bg-elevated); }
+        :global(.select-modal-option.selected) { background: var(--gold-dimmer); color: var(--gold); font-weight: 600; }
+        :global(.select-modal-option.selected svg) { color: var(--gold); flex-shrink: 0; }
+        :global(.select-modal-group) { margin-top: 4px; }
+        :global(.select-modal-group + .select-modal-group) { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+        :global(.select-modal-group-label) {
+          padding: 4px 12px 6px; font-size: 0.72rem; font-weight: 700; color: var(--gold);
           text-transform: uppercase; letter-spacing: 0.03em;
         }
-        .custom-select-group .custom-select-option { padding-right: 14px; }
-        .custom-select-empty { padding: 14px 10px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+        :global(.select-modal-empty) { padding: 26px 10px; text-align: center; color: var(--text-muted); font-size: 0.88rem; }
 
         .section-divider { 
           margin: 35px 0 20px 0; 
