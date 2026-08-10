@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import SuperLayout from '../../../components/SuperLayout';
 
@@ -10,6 +10,8 @@ const EditIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="no
 const EyeIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>);
 const StarIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>);
 const CloseIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>);
+const ChevronDownIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>);
+const CheckIcon = () => (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>);
 
 const QUESTION_TYPES = [
   { value: 'mcq_single', label: 'اختيار واحد (Radio)' },
@@ -38,6 +40,66 @@ const ToggleSwitch = ({ checked, onChange, small = false, disabled = false }) =>
     <span className="slider"></span>
   </label>
 );
+
+// ─── قائمة منسدلة مخصّصة (Custom Select) ──────────────────────────────
+// بديل احترافي لعنصر <select> الافتراضي في المتصفح (اللي بيطلع بشكل
+// مختلف وغير متناسق مع تصميم الداشبورد على كل نظام تشغيل/متصفح). القائمة
+// دي متسقة مع باقي عناصر الفورم (نفس الألوان والحواف)، بتتقفل تلقائياً
+// عند الضغط بره منها، وبتعلّم على الخيار المختار حالياً.
+const CustomSelect = ({ value, onChange, options, placeholder = '' }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const handleEscape = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
+
+  const selected = options.find(o => String(o.value) === String(value));
+
+  return (
+    <div className="custom-select" ref={rootRef}>
+      <button
+        type="button"
+        className={`custom-select-trigger ${open ? 'open' : ''}`}
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className={selected ? '' : 'placeholder'}>{selected ? selected.label : placeholder}</span>
+        <span className="chevron"><ChevronDownIcon /></span>
+      </button>
+      {open && (
+        <ul className="custom-select-menu" role="listbox">
+          {options.map(opt => {
+            const isSelected = String(opt.value) === String(value);
+            return (
+              <li
+                key={opt.value}
+                role="option"
+                aria-selected={isSelected}
+                className={`custom-select-option ${isSelected ? 'selected' : ''}`}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+              >
+                <span>{opt.label}</span>
+                {isSelected && <CheckIcon />}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 export default function SurveysPage() {
   const [surveys, setSurveys] = useState([]);
@@ -417,9 +479,11 @@ export default function SurveysPage() {
                   <div className="form-row">
                     <div className="form-group">
                       <label>نوع السؤال</label>
-                      <select className="input-field" value={q.question_type} onChange={e => updateQuestion(qIdx, { question_type: e.target.value, options: ['', ''] })}>
-                        {QUESTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                      </select>
+                      <CustomSelect
+                        value={q.question_type}
+                        onChange={(val) => updateQuestion(qIdx, { question_type: val, options: ['', ''] })}
+                        options={QUESTION_TYPES}
+                      />
                     </div>
                     <div className="form-group toggle-group">
                       <label>مطلوب إجباري؟</label>
@@ -445,9 +509,11 @@ export default function SurveysPage() {
                   {q.question_type === 'rating' && (
                     <div className="form-group">
                       <label>عدد النجوم</label>
-                      <select className="input-field" value={q.max_rating} onChange={e => updateQuestion(qIdx, { max_rating: parseInt(e.target.value) })}>
-                        {[3, 5, 10].map(n => <option key={n} value={n}>{n} نجوم</option>)}
-                      </select>
+                      <CustomSelect
+                        value={q.max_rating}
+                        onChange={(val) => updateQuestion(qIdx, { max_rating: parseInt(val) })}
+                        options={[3, 5, 10].map(n => ({ value: n, label: `${n} نجوم` }))}
+                      />
                     </div>
                   )}
                 </div>
@@ -595,15 +661,20 @@ export default function SurveysPage() {
         .icon-btn:hover { border-color: var(--gold); color: var(--gold); }
         .icon-btn.danger:hover { border-color: #f87171; color: #f87171; }
 
-        .switch { position: relative; display: inline-block; width: 42px; height: 22px; vertical-align: middle; }
-        .switch.small { width: 34px; height: 18px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 22px; transition: 0.2s; }
-        .slider:before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; }
-        .switch.small .slider:before { height: 12px; width: 12px; }
-        input:checked + .slider { background: var(--gold); }
-        input:checked + .slider:before { transform: translateX(-20px); }
-        .switch.small input:checked + .slider:before { transform: translateX(-16px); }
+        /* ── ToggleSwitch / CustomSelect بيتعرّضوا كـ components منفصلة
+           في نفس الملف، فـ styled-jsx مبيحطّش الـ scope class بتاعه على
+           عناصرهم تلقائياً (بيحطها بس على العناصر المكتوبة مباشرة جوه نفس
+           الدالة اللي فيها <style jsx>). لازم نلف القواعد دي بـ :global()
+           عشان تتطبّق فعلياً، وإلا هتفضل من غير أي تنسيق (شكل افتراضي). ── */
+        :global(.switch) { position: relative; display: inline-block; width: 42px; height: 22px; vertical-align: middle; }
+        :global(.switch.small) { width: 34px; height: 18px; }
+        :global(.switch input) { opacity: 0; width: 0; height: 0; }
+        :global(.slider) { position: absolute; cursor: pointer; inset: 0; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 22px; transition: 0.2s; }
+        :global(.slider:before) { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; }
+        :global(.switch.small .slider:before) { height: 12px; width: 12px; }
+        :global(input:checked + .slider) { background: var(--gold); }
+        :global(input:checked + .slider:before) { transform: translateX(-20px); }
+        :global(.switch.small input:checked + .slider:before) { transform: translateX(-16px); }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
         .modal-box { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column; }
@@ -619,6 +690,35 @@ export default function SurveysPage() {
         .resend-check { display: flex; align-items: center; gap: 6px; color: var(--gold); font-size: 0.8rem; cursor: pointer; margin-top: 2px; }
         .input-field { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text-primary); font-size: 0.9rem; }
         .input-field:focus { outline: none; border-color: var(--gold); }
+
+        :global(.custom-select) { position: relative; width: 100%; }
+        :global(.custom-select-trigger) {
+          width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+          padding: 10px 12px; color: var(--text-primary); font-size: 0.9rem; font-family: inherit;
+          cursor: pointer; transition: 0.15s; text-align: right;
+        }
+        :global(.custom-select-trigger:hover) { border-color: var(--border-accent); }
+        :global(.custom-select-trigger.open) { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dimmer); }
+        :global(.custom-select-trigger .placeholder) { color: var(--text-muted); }
+        :global(.custom-select-trigger .chevron) { display: flex; color: var(--text-secondary); transition: transform 0.15s; flex-shrink: 0; }
+        :global(.custom-select-trigger.open .chevron) { transform: rotate(180deg); color: var(--gold); }
+        :global(.custom-select-menu) {
+          position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; left: 0;
+          background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px;
+          box-shadow: 0 12px 28px rgba(0,0,0,0.35); padding: 6px; margin: 0; list-style: none;
+          max-height: 240px; overflow-y: auto;
+          animation: selectDropIn 0.14s ease;
+        }
+        @keyframes selectDropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        :global(.custom-select-option) {
+          display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          padding: 9px 10px; border-radius: 8px; font-size: 0.88rem; color: var(--text-primary);
+          cursor: pointer; transition: 0.12s;
+        }
+        :global(.custom-select-option:hover) { background: var(--bg-elevated); }
+        :global(.custom-select-option.selected) { background: var(--gold-dimmer); color: var(--gold); font-weight: 600; }
+        :global(.custom-select-option.selected svg) { color: var(--gold); flex-shrink: 0; }
         .textarea { resize: vertical; }
         .hint { color: var(--text-muted); font-size: 0.8rem; }
 
