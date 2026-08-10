@@ -673,8 +673,8 @@ export default function SurveysPage() {
         :global(.slider:before) { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; }
         :global(.switch.small .slider:before) { height: 12px; width: 12px; }
         :global(input:checked + .slider) { background: var(--gold); }
-        :global(input:checked + .slider:before) { transform: translateX(-20px); }
-        :global(.switch.small input:checked + .slider:before) { transform: translateX(-16px); }
+        :global(input:checked + .slider:before) { transform: translateX(20px); }
+        :global(.switch.small input:checked + .slider:before) { transform: translateX(16px); }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
         .modal-box { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column; }
