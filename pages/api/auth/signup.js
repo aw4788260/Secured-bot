@@ -10,24 +10,28 @@ export default async (req, res) => {
 
   const { firstName, username, password, phone, email, verifyToken } = req.body;
 
-  // ✅ تعديل 1: معالجة رقم الهاتف ليكون null حقيقي إذا لم يتم إدخاله
-  // نعالج الحالة إذا كان "null" كنص، أو نص فارغ، أو undefined
+  // معالجة رقم الهاتف ليكون null حقيقي إذا لم يتم إدخاله
   const phoneToSave = (phone && phone !== 'null' && phone.trim() !== '') ? phone : null;
 
-  // ✅ تعديل 2: إزالة phone من شرط التحقق من وجود البيانات
   if (!firstName || !username || !password) {
     return res.status(400).json({ success: false, message: 'الاسم واسم المستخدم وكلمة المرور حقول مطلوبة' });
   }
 
-  // 🆕 البريد الإلكتروني + رمز التحقق (OTP) أصبحا إلزاميين
-  if (!email || !EMAIL_REGEX.test(email)) {
-    return res.status(400).json({ success: false, message: 'يرجى إدخال بريد إلكتروني صحيح' });
-  }
-  if (!verifyToken) {
-    return res.status(400).json({ success: false, message: 'يجب التحقق من البريد الإلكتروني أولاً' });
-  }
+  // توافق الإصدارين: البريد إلزامي فقط إذا أرسله الكلاينت (نسخة iOS الجديدة).
+  // النسخ القديمة (Android قيد المراجعة) لا ترسل email/verifyToken إطلاقاً.
+  const isEmailFlow = email !== undefined && email !== null && email !== '';
 
-  const emailToSave = email.trim().toLowerCase();
+  let emailToSave = null;
+
+  if (isEmailFlow) {
+    if (!EMAIL_REGEX.test(email)) {
+      return res.status(400).json({ success: false, message: 'يرجى إدخال بريد إلكتروني صحيح' });
+    }
+    if (!verifyToken) {
+      return res.status(400).json({ success: false, message: 'يجب التحقق من البريد الإلكتروني أولاً' });
+    }
+    emailToSave = email.trim().toLowerCase();
+  }
 
   // 3. التحقق من الصيغ
   const usernameRegex = /^[a-zA-Z0-9]+$/;
@@ -40,72 +44,68 @@ export default async (req, res) => {
   }
 
   try {
-    // 🆕 0. التأكد من أن رمز التحقق (verifyToken) صالح فعلاً ومرتبط بهذا البريد
-    //    (أي أن /api/auth/verify-otp تم استدعاؤه بنجاح لهذا البريد قبل الوصول هنا)
-    const isEmailVerified = await consumeVerifyToken({
-      email: emailToSave,
-      purpose: 'signup',
-      verifyToken,
-    });
+    // ⚡ نشغّل كل الفحوصات المستقلة (verifyToken + تكرار username/email/phone)
+    // بالتوازي بدل ما ننتظر كل واحدة لوحدها.
+    const [
+      isEmailVerified,
+      { data: existingUser },
+      { data: existingEmail },
+      { data: existingPhone },
+      hashedPassword,
+    ] = await Promise.all([
+      isEmailFlow
+        ? consumeVerifyToken({ email: emailToSave, purpose: 'signup', verifyToken })
+        : Promise.resolve(true),
+      supabase.from('users').select('id').eq('username', username).maybeSingle(),
+      isEmailFlow
+        ? supabase.from('users').select('id').eq('email', emailToSave).maybeSingle()
+        : Promise.resolve({ data: null }),
+      phoneToSave
+        ? supabase.from('users').select('id').eq('phone', phoneToSave).maybeSingle()
+        : Promise.resolve({ data: null }),
+      bcrypt.hash(password, 10),
+    ]);
 
-    if (!isEmailVerified) {
+    if (isEmailFlow && !isEmailVerified) {
       return res.status(400).json({
         success: false,
         message: 'رمز التحقق غير صالح أو منتهي الصلاحية. يرجى إعادة التحقق من البريد الإلكتروني.',
       });
     }
-
-    // 4. التحقق من عدم تكرار اسم المستخدم
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('username', username)
-      .maybeSingle();
+    const emailVerified = isEmailFlow;
 
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'اسم المستخدم مسجل بالفعل، اختر اسماً آخر.' });
     }
 
-    // 🆕 التحقق من عدم تكرار البريد الإلكتروني (تحسباً لحالة السباق بين
-    //    استدعاء send-otp والوصول الفعلي هنا)
-    const { data: existingEmail } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', emailToSave)
-      .maybeSingle();
-
-    if (existingEmail) {
+    if (isEmailFlow && existingEmail) {
       return res.status(400).json({ success: false, message: 'البريد الإلكتروني مسجل بالفعل.' });
     }
 
-    // ✅ تعديل 3: التحقق من تكرار الهاتف فقط إذا كانت القيمة ليست null
-    if (phoneToSave) {
-      const { data: existingPhone } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', phoneToSave) // نستخدم القيمة المعالجة
-        .maybeSingle();
-
-      if (existingPhone) {
-        return res.status(400).json({ success: false, message: 'رقم الهاتف مسجل مسبقاً. حاول تسجيل الدخول.' });
-      }
+    if (phoneToSave && existingPhone) {
+      return res.status(400).json({ success: false, message: 'رقم الهاتف مسجل مسبقاً. حاول تسجيل الدخول.' });
     }
 
     // 6. تشفير كلمة المرور وإنشاء الحساب
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const insertPayload = {
+      first_name: firstName,
+      username: username,
+      password: hashedPassword,
+      phone: phoneToSave,
+      is_admin: false,
+      is_blocked: false
+    };
+
+    // نضيف حقول الإيميل فقط لو النسخة بترسلها، عشان مانكتبش email: null
+    // فوق مستخدمين قدامى/نسخ تانية ممكن يكون عندها constraint مختلف.
+    if (isEmailFlow) {
+      insertPayload.email = emailToSave;
+      insertPayload.email_verified = emailVerified;
+    }
 
     const { error: insertError } = await supabase
       .from('users')
-      .insert({
-        first_name: firstName,
-        username: username,
-        password: hashedPassword,
-        phone: phoneToSave, // ✅ تعديل 4: حفظ القيمة المعالجة (رقم أو null)
-        email: emailToSave,       // 🆕
-        email_verified: true,     // 🆕 لأنه تم التحقق عبر verifyToken أعلاه
-        is_admin: false,
-        is_blocked: false
-      });
+      .insert(insertPayload);
 
     if (insertError) throw insertError;
 
