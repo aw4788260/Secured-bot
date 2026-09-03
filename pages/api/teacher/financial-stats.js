@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { isAccessRowActive } from '../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   // 1. التحقق من أن المستخدم مدرس
@@ -44,16 +45,17 @@ export default async (req, res) => {
     // =========================================================
     
     // أ. الطلاب المشتركون في الكورسات (Full Course)
+    // ✅ نستثني الصلاحيات المنتهية حتى لا يُحتسب طالب انتهى اشتراكه ضمن الإحصائيات
     let courseAccess = [];
     if (courseIds.length > 0) {
       const { data: caData, error: caError } = await supabase
         .from('user_course_access')
-        .select('course_id, user_id, users!inner(role)') 
+        .select('course_id, user_id, expires_at, users!inner(role)') 
         .in('course_id', courseIds)
         .eq('users.role', 'student'); 
       
       if (caError) throw caError;
-      courseAccess = caData || [];
+      courseAccess = (caData || []).filter(isAccessRowActive);
     }
 
     // ب. الطلاب المشتركون في المواد (Single Subject)
@@ -61,12 +63,12 @@ export default async (req, res) => {
     if (subjectIds.length > 0) {
       const { data: saData, error: saError } = await supabase
         .from('user_subject_access')
-        .select('subject_id, user_id, users!inner(role)') 
+        .select('subject_id, user_id, expires_at, users!inner(role)') 
         .in('subject_id', subjectIds)
         .eq('users.role', 'student'); 
         
       if (saError) throw saError;
-      subjectAccess = saData || [];
+      subjectAccess = (saData || []).filter(isAccessRowActive);
     }
 
     // =========================================================

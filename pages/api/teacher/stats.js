@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { buildActiveAccessFilter } from '../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   const auth = await verifyTeacher(req);
@@ -18,10 +19,12 @@ export default async (req, res) => {
     
     // 2. حساب عدد الطلاب المشتركين (الفريدين)
     // نعد الصفوف في جدول الصلاحيات للكورسات التي يملكها المدرس
+    // ✅ نستثني الصلاحيات المنتهية حتى لا يُحتسب طالب انتهى اشتراكه كمشترك نشط
     const { count: studentsCount, error: countErr } = await supabase
       .from('user_course_access')
       .select('user_id', { count: 'exact', head: true })
-      .in('course_id', courseIds);
+      .in('course_id', courseIds)
+      .or(buildActiveAccessFilter());
 
     // 3. حساب الأرباح (تقريبي بناءً على الطلبات المقبولة)
     // نجمع أسعار الطلبات التي حالتها 'approved' وتخص كورسات المدرس
