@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
 import bcrypt from 'bcryptjs'; // ✅ استخدام bcryptjs بناءً على طلبك
 
 export default async function handler(req, res) {
@@ -280,11 +281,28 @@ export default async function handler(req, res) {
         case 'grant_access':
           const { courses: gCourses, subjects: gSubjects } = grantList || {};
 
+          // ⏳ نحسب تاريخ الانتهاء مرة واحدة لكل كورس/مادة (نفس المدة تُطبّق على كل الطلاب
+          // المستهدفين في هذه الدفعة)، ثم نعيد استخدامها بدل استدعاء الهيلبر لكل صف.
+          const courseGrantTimestamps = {};
+          if (gCourses && gCourses.length > 0) {
+            for (const cid of gCourses) {
+              courseGrantTimestamps[cid] = await buildGrantTimestamps(cid, null);
+            }
+          }
+
+          const subjectGrantTimestamps = {};
+          if (gSubjects && gSubjects.length > 0) {
+            for (const sid of gSubjects) {
+              subjectGrantTimestamps[sid] = await buildGrantTimestamps(null, sid);
+            }
+          }
+
           const courseInserts = [];
           if (gCourses && gCourses.length > 0) {
             targetIds.forEach(uid => {
                 gCourses.forEach(cid => {
-                    courseInserts.push({ user_id: uid, course_id: cid });
+                    const { granted_at, expires_at } = courseGrantTimestamps[cid] || {};
+                    courseInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at });
                 });
             });
           }
@@ -293,7 +311,8 @@ export default async function handler(req, res) {
           if (gSubjects && gSubjects.length > 0) {
             targetIds.forEach(uid => {
                 gSubjects.forEach(sid => {
-                    subjectInserts.push({ user_id: uid, subject_id: sid });
+                    const { granted_at, expires_at } = subjectGrantTimestamps[sid] || {};
+                    subjectInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at });
                 });
             });
           }

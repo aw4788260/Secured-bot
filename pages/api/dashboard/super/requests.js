@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
 
 export default async function handler(req, res) {
   // 1. التحقق من صلاحية السوبر أدمن
@@ -156,9 +157,13 @@ export default async function handler(req, res) {
 
         for (const item of items) {
             if (item.type === 'course') {
-                courseInserts.push({ user_id: targetUserId, course_id: item.id });
+                // ⏳ نحسب تاريخ انتهاء الصلاحية بناءً على مدة الكورس (إن وُجدت) عند لحظة المنح فقط
+                const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
+                courseInserts.push({ user_id: targetUserId, course_id: item.id, granted_at, expires_at });
             } else if (item.type === 'subject') {
-                subjectInserts.push({ user_id: targetUserId, subject_id: item.id });
+                // ⏳ نفس المنطق لصلاحية المادة (مع مراعاة override الخاص بالمادة إن وُجد)
+                const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
+                subjectInserts.push({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at });
             }
         }
 
