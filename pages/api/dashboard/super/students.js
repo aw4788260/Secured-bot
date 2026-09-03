@@ -26,12 +26,12 @@ export default async function handler(req, res) {
         // 2. جلب اشتراكات المستخدم الحالية
         const { data: userCourses } = await supabase
           .from('user_course_access')
-          .select('course_id, courses(id, title)')
+          .select('course_id, granted_at, expires_at, courses(id, title)')
           .eq('user_id', get_details_for_user);
 
         const { data: userSubjects } = await supabase
           .from('user_subject_access')
-          .select('subject_id, subjects(id, title, course_id)')
+          .select('subject_id, granted_at, expires_at, subjects(id, title, course_id)')
           .eq('user_id', get_details_for_user);
 
         // استخراج IDs التي يملكها المستخدم حالياً
