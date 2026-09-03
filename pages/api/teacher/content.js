@@ -2,6 +2,14 @@ import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد أداة فايربيز لإرسال الإشعارات
 import { deleteVideoViewLogs } from '../../../lib/videoViewLogsHelper'; // ✅ حذف سجلات مشاهدة الفيديو عند حذف المحتوى
+// ✅ منطق حذف الكورس بالكامل (والدوال المساعدة لتنظيف Bunny) بات مشتركاً في lib/courseDeletionHelper.js
+// بدلاً من تكراره هنا — يستخدمه أيضاً pages/api/dashboard/teacher/content.js وcron المستقبلي للحذف المجدول.
+import {
+  deepDeleteCourse,
+  getVideoRowsUnder,
+  getBunnyIdsSafeToDelete,
+  deleteVideoFromBunny,
+} from '../../../lib/courseDeletionHelper';
 
 // ============================================================
 // 🛠️ دوال مساعدة لمعالجة فيديوهات يوتيوب
@@ -18,117 +26,6 @@ const extractYouTubeID = (url) => {
   
   return match ? match[1] : url;
 };
-
-// 🛠️ دالة مساعدة لحذف الفيديو فعلياً من خوادم Bunny Stream
-// (نفس المنطق المستخدم في لوحة تحكم الويب — يضمن عدم بقاء فيديوهات يتيمة
-//  على Bunny عند حذف فيديو مرفوع من التطبيق)
-async function deleteVideoFromBunny(bunnyVideoId) {
-  if (!bunnyVideoId) return;
-
-  const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
-  const apiKey = process.env.BUNNY_STREAM_API_KEY;
-
-  if (!libraryId || !apiKey) {
-    console.error('⚠️ [Bunny] Missing credentials for deletion');
-    return;
-  }
-
-  try {
-    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${bunnyVideoId}`, {
-      method: 'DELETE',
-      headers: { AccessKey: apiKey, accept: 'application/json' },
-    });
-
-    if (!res.ok) {
-      console.error(`⚠️ [Bunny] Failed to delete video ${bunnyVideoId}, status: ${res.status}`);
-    } else {
-      console.log(`✅ [Bunny] Video ${bunnyVideoId} deleted successfully from Bunny Stream.`);
-    }
-  } catch (err) {
-    console.error('⚠️ [Bunny] Error deleting video:', err.message);
-  }
-}
-
-// ============================================================
-// 🎥 دالة مساعدة: جمع كل صفوف الفيديوهات (id + bunny_video_id) المرتبطة
-// بفصل/مادة/كورس قبل حذفه نهائياً — تُستخدم لتجنب بقاء فيديوهات يتيمة
-// على Bunny (عبر bunny_video_id) وأيضاً لتنظيف سجلات المشاهدة اليتيمة
-// في Firestore (عبر id) عند حذف عنصر أعلى في التسلسل الهرمي (وليس فقط
-// عند حذف الفيديو مباشرة).
-// ============================================================
-async function getVideoRowsUnder(type, id) {
-  try {
-    let chapterIds = [];
-
-    if (type === 'chapters') {
-      chapterIds = [id];
-    } else if (type === 'subjects') {
-      const { data: chapters } = await supabase.from('chapters').select('id').eq('subject_id', id);
-      chapterIds = (chapters || []).map(c => c.id);
-    } else if (type === 'courses') {
-      const { data: subjects } = await supabase.from('subjects').select('id').eq('course_id', id);
-      const subjectIds = (subjects || []).map(s => s.id);
-      if (subjectIds.length) {
-        const { data: chapters } = await supabase.from('chapters').select('id').in('subject_id', subjectIds);
-        chapterIds = (chapters || []).map(c => c.id);
-      }
-    }
-
-    if (!chapterIds.length) return [];
-
-    const { data: videos } = await supabase.from('videos').select('id, bunny_video_id').in('chapter_id', chapterIds);
-    return videos || [];
-  } catch (e) {
-    console.error('⚠️ [Bunny] فشل تجميع معرفات الفيديوهات الفرعية للتنظيف:', e.message);
-    return [];
-  }
-}
-
-// ============================================================
-// 🛡️ دالة مساعدة: تُرجع فقط معرفات Bunny الآمن حذفها فعلياً من على
-// خوادم Bunny — أي التي لم يعد أي صف آخر في جدول videos يشير إليها.
-// ============================================================
-// لماذا هذا ضروري؟ bunny_video_id ليس مضموناً أن يكون فريداً في DB:
-// ميزة "النسخ المتقدم" (advanced-copy.js) تنسخ صف الفيديو إلى فصل/كورس
-// آخر بنفس bunny_video_id تماماً دون إنشاء ملف جديد فعلي على Bunny —
-// أي أن صفين (أو أكثر) قد يتشاركان نفس الفيديو الحقيقي على Bunny.
-// لو حذفنا الفيديو من Bunny فعلياً بمجرد حذف أحد هذين الصفين (أو حذف
-// كورس/مادة/فصل يحوي أحدهما)، سينكسر تشغيل الفيديو في كل مكان آخر لا
-// يزال يشير لنفس bunny_video_id، رغم أن صفه في DB لم يُحذف.
-//
-// ⚠️ يجب استدعاء هذه الدالة بعد تنفيذ حذف صفوف DB (وليس قبله)، حتى تعكس
-// نتيجة الاستعلام الحالة الحقيقية بعد الحذف (Cascade) — أي صف لا يزال
-// موجوداً في هذه اللحظة هو بالتأكيد صف خارج ما حذفناه للتو.
-// ============================================================
-async function getBunnyIdsSafeToDelete(bunnyVideoIds) {
-  const uniqueIds = [...new Set((bunnyVideoIds || []).filter(Boolean))];
-  if (uniqueIds.length === 0) return [];
-
-  try {
-    const { data: stillReferenced, error } = await supabase
-      .from('videos')
-      .select('bunny_video_id')
-      .in('bunny_video_id', uniqueIds);
-
-    if (error) {
-      // في حالة فشل التحقق: لا نحذف أي شيء من Bunny احتياطاً — تجنّب حذف
-      // فيديو قد لا يزال مستخدَماً في مكان آخر أهم من تسريب فيديو يتيم.
-      console.error('⚠️ [Bunny] فشل التحقق من الفيديوهات المشتركة قبل الحذف — سيتم تخطي حذف كل الفيديوهات من Bunny احتياطاً:', error.message);
-      return [];
-    }
-
-    const stillReferencedIds = new Set((stillReferenced || []).map((v) => v.bunny_video_id));
-    const idsToSkip = uniqueIds.filter((vid) => stillReferencedIds.has(vid));
-    if (idsToSkip.length > 0) {
-      console.log(`ℹ️ [Bunny] تخطي حذف ${idsToSkip.length} فيديو من Bunny لأنها لا تزال مستخدَمة في صف آخر (غالباً منسوخة عبر "النسخ المتقدم"):`, idsToSkip);
-    }
-
-    return uniqueIds.filter((vid) => !stillReferencedIds.has(vid));
-  } catch (e) {
-    console.error('⚠️ [Bunny] خطأ غير متوقع أثناء التحقق من الفيديوهات المشتركة قبل الحذف:', e.message);
-    return [];
-  }
-}
 
 // ============================================================
 // 🔢 دالة مساعدة: جلب قيمة sort_order التالية لعنصر جديد
@@ -429,8 +326,18 @@ export default async (req, res) => {
            return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا المحتوى.' });
        }
 
+       // ✅ حذف كورس بالكامل يستخدم الآن الدالة المشتركة deepDeleteCourse
+       // (نفس المنطق المستخدم في pages/api/dashboard/teacher/content.js وcron الحذف المجدول)
+       if (type === 'courses') {
+           const result = await deepDeleteCourse(id);
+           if (!result.success) {
+               return res.status(404).json({ error: result.error || 'تعذر حذف الكورس.' });
+           }
+           return res.status(200).json({ success: true });
+       }
+
        // ✅ تنظيف Bunny Stream: نجمع كل معرفات الفيديوهات المرتبطة بالعنصر المحذوف
-       // (فيديو مباشرة، أو كل فيديوهات فصل/مادة/كورس سيُحذف عبر Cascade)
+       // (فيديو مباشرة، أو كل فيديوهات فصل/مادة سيُحذف عبر Cascade)
        let bunnyVideoIdsToDelete = [];
        let videoIdsToDelete = []; // 👈 كل معرفات صفوف الفيديو (videos.id) لتنظيف سجلات المشاهدة في Firestore
        if (type === 'videos') {
@@ -439,7 +346,7 @@ export default async (req, res) => {
                bunnyVideoIdsToDelete = [videoRecord.bunny_video_id];
            }
            videoIdsToDelete = [id];
-       } else if (type === 'chapters' || type === 'subjects' || type === 'courses') {
+       } else if (type === 'chapters' || type === 'subjects') {
            const videoRows = await getVideoRowsUnder(type, id);
            bunnyVideoIdsToDelete = videoRows.map(v => v.bunny_video_id).filter(Boolean);
            videoIdsToDelete = videoRows.map(v => v.id);
