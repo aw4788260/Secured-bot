@@ -131,12 +131,14 @@ export default async (req, res) => {
           let notificationTopics = ['all_users']; // ✅ القناة الأساسية لكل المستخدمين المسجلين
 
           // أ) جلب الكورسات الكاملة (✅ تم إضافة description و price)
-          // ⏳ نجلب expires_at ونستبعد الصفوف منتهية الصلاحية فوراً — طالب انتهى
-          // اشتراكه يُعامل تماماً كمن لم يشترك أبداً في كل هذا الملف.
+          // ⏳ نجلب granted_at/expires_at ونستبعد الصفوف منتهية الصلاحية فوراً —
+          // طالب انتهى اشتراكه يُعامل تماماً كمن لم يشترك أبداً في كل هذا
+          // الملف. نُرفق التاريخين أيضاً مع عنصر المكتبة نفسه (أسفل) حتى يقدر
+          // التطبيق يعرض عدّاد "ينتهي خلال N يوم" دون طلب إضافي منفصل.
           const { data: fullCoursesRaw } = await supabase
             .from('user_course_access')
             .select(`
-              course_id, expires_at,
+              course_id, granted_at, expires_at,
               courses ( 
                 id, title, code, teacher_id, description, price,
                 teachers ( name )
@@ -179,10 +181,11 @@ export default async (req, res) => {
 
           // ج) جلب المواد المنفصلة (✅ تم إضافة price للمادة و description للكورس)
           // ⏳ نفس منطق الاستبعاد أعلاه: مادة منفصلة انتهت صلاحيتها = غير مملوكة.
+          // نجلب granted_at أيضاً لنفس سبب الكورسات أعلاه (عدّاد الانتهاء في التطبيق).
           const { data: singleSubjectsRaw } = await supabase
             .from('user_subject_access')
             .select(`
-              subject_id, expires_at,
+              subject_id, granted_at, expires_at,
               subjects (
                 id, title, price,
                 courses ( 
@@ -218,7 +221,12 @@ export default async (req, res) => {
                 code: item.courses.code,
                 instructor: item.courses.teachers?.name || 'Instructor',
                 teacherId: item.courses.teacher_id, 
-                owned_subjects: subjectsList
+                owned_subjects: subjectsList,
+                // ⏳ [Feature B] تاريخ الاشتراك وانتهاؤه لهذا الكورس (null =
+                // وصول مدى الحياة). راجع app_state.dart في التطبيق لمعرفة كيف
+                // يُستهلك هذا الحقل لعرض عدّاد الانتهاء.
+                granted_at: item.granted_at,
+                expires_at: item.expires_at
               });
             }
           });
@@ -239,7 +247,13 @@ export default async (req, res) => {
               const subjectData = { 
                   id: subject.id, 
                   title: subject.title, 
-                  price: subject.price // ✅
+                  price: subject.price, // ✅
+                  // ⏳ [Feature B] هذه المادة اشتُريت منفردة (وليست جزءاً من
+                  // اشتراك كورس كامل)، فتاريخ انتهائها الخاص بها مهم هنا —
+                  // بعكس owned_subjects داخل كورس كامل، حيث لا معنى لتاريخ
+                  // انتهاء لكل مادة على حدة (كلها تتبع تاريخ الكورس).
+                  granted_at: item.granted_at,
+                  expires_at: item.expires_at
               };
 
               if (libraryMap.has(parentCourse.id)) {
