@@ -29,6 +29,22 @@ const formatDateForInput = (isoString) => {
   return localDate.toISOString().slice(0, 16);
 };
 
+// 🗓️ شارات للقراءة فقط (Step 9): تُعرض للمدرس ليعرف سياسة الحذف/الوصول
+// التي حددها المدير العام، دون إمكانية تعديلها من هنا.
+const formatScheduledDeletionBadge = (isoString) => {
+  if (!isoString) return null;
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return null;
+  return `🗓 مجدول للحذف بتاريخ ${date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+};
+
+const formatAccessDurationBadge = (days) => {
+  if (days === null || days === undefined) return null;
+  const n = Number(days);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `⏳ مدة الوصول: ${n} يوم`;
+};
+
 export default function ContentManager() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -848,6 +864,12 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <h3>{c.title}</h3>
                       <p>{c.price > 0 ? `${c.price} جنية` : 'مجاني'}</p>
                       <small className="muted-text">{c.subjects?.length || 0} مواد</small>
+                      {formatScheduledDeletionBadge(c.scheduled_deletion_at) && (
+                          <small className="policy-badge danger-badge">{formatScheduledDeletionBadge(c.scheduled_deletion_at)}</small>
+                      )}
+                      {formatAccessDurationBadge(c.access_duration_days) && (
+                          <small className="policy-badge">{formatAccessDurationBadge(c.access_duration_days)}</small>
+                      )}
                   </div>
               ))}
           </div>
@@ -875,6 +897,9 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <h3>{s.title}</h3>
                       <p>{s.price > 0 ? `${s.price} جنية` : 'مجاني'}</p>
                       <small className="muted-text">{s.chapters?.length || 0} فصول</small>
+                      {formatAccessDurationBadge(s.access_duration_days) && (
+                          <small className="policy-badge">{formatAccessDurationBadge(s.access_duration_days)} (مادة)</small>
+                      )}
                   </div>
               ))}
           </div>
@@ -1675,6 +1700,23 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .folder-card h3 { margin: 10px 0 5px; font-size: 1.1rem; color: var(--text-primary); }
         .folder-card p { color: var(--gold); font-weight: bold; margin: 0 0 5px 0; }
         .folder-card .muted-text { color: var(--text-muted); }
+        .policy-badge {
+          display: block;
+          margin-top: 6px;
+          padding: 3px 8px;
+          border-radius: 6px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          background: var(--gold-dimmer, rgba(212,175,55,0.1));
+          color: var(--gold, #d4af37);
+          border: 1px solid rgba(212, 175, 55, 0.3);
+          width: fit-content;
+        }
+        .policy-badge.danger-badge {
+          background: rgba(220, 53, 69, 0.12);
+          color: #dc3545;
+          border-color: rgba(220, 53, 69, 0.35);
+        }
 
         .card-actions-abs { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 20; }
         .drag-handle-abs { cursor: grab; color: var(--text-muted); padding: 5px; }
