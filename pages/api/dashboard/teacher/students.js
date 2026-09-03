@@ -71,13 +71,13 @@ export default async (req, res) => {
 
             const { data: userCourses } = await supabase
                 .from('user_course_access')
-                .select('course_id, courses(title)')
+                .select('course_id, granted_at, expires_at, courses(title)')
                 .eq('user_id', get_details_for_user)
                 .in('course_id', myCourseIds); // 🔒 حماية: جلب كورسات هذا المدرس فقط
             
             const { data: userSubjects } = await supabase
                 .from('user_subject_access')
-                .select('subject_id, subjects(title, course_id)')
+                .select('subject_id, granted_at, expires_at, subjects(title, course_id)')
                 .eq('user_id', get_details_for_user)
                 .in('subject_id', mySubjectIds); // 🔒 حماية: جلب مواد هذا المدرس فقط
 
