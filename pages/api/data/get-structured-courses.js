@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper'; // [✅] استدعاء الحارس الأمني
+import { isAccessRowActive } from '../../../lib/accessExpiryHelper'; // ⏳ فحص انتهاء صلاحية الوصول (Feature B)
 
 const subjectQuery = `
   id, title, sort_order,
@@ -37,10 +38,11 @@ export default async (req, res) => {
     let allowedSubjectIds = new Set();
     let finalSubjectsData = [];
 
-    // أ) الكورسات الكاملة
+    // أ) الكورسات الكاملة (⏳ نستبعد الصفوف منتهية الصلاحية)
     console.log(`${apiName} 🔍 Checking Full Course Access...`);
-    const { data: courseAccess } = await supabase.from('user_course_access').select('course_id').eq('user_id', userId);
-    
+    const { data: courseAccessRaw } = await supabase.from('user_course_access').select('course_id, expires_at').eq('user_id', userId);
+    const courseAccess = (courseAccessRaw || []).filter(isAccessRowActive);
+
     if (courseAccess?.length > 0) {
       const courseIds = courseAccess.map(c => c.course_id);
       
@@ -58,10 +60,11 @@ export default async (req, res) => {
       });
     }
 
-    // ب) المواد المحددة
+    // ب) المواد المحددة (⏳ نستبعد الصفوف منتهية الصلاحية)
     console.log(`${apiName} 🔍 Checking Specific Subject Access...`);
-    const { data: subjectAccess } = await supabase.from('user_subject_access').select('subject_id').eq('user_id', userId);
-    
+    const { data: subjectAccessRaw } = await supabase.from('user_subject_access').select('subject_id, expires_at').eq('user_id', userId);
+    const subjectAccess = (subjectAccessRaw || []).filter(isAccessRowActive);
+
     if (subjectAccess?.length > 0) {
       const specificSubjectIds = subjectAccess.map(s => s.subject_id).filter(id => !allowedSubjectIds.has(id)); 
       
