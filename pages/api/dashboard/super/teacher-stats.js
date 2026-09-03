@@ -1,6 +1,7 @@
 // pages/api/dashboard/super/teacher-stats.js
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { isAccessRowActive } from '../../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   const adminUser = await requireSuperAdmin(req, res);
@@ -48,22 +49,23 @@ export default async (req, res) => {
 
     // 4. حساب الطلاب الفريدين (Active Students)
     // نستثني المشرفين والمدرسين عبر التحقق من role = student
+    // ✅ نستثني أيضاً الصلاحيات المنتهية (expires_at) حتى لا يُحتسب طالب انتهى اشتراكه كنشط
     const [courseAccess, subjectAccess] = await Promise.all([
       courseIds.length > 0 ? supabase
         .from('user_course_access')
-        .select('user_id, users!inner(role)')
+        .select('user_id, expires_at, users!inner(role)')
         .in('course_id', courseIds)
         .eq('users.role', 'student') : { data: [] },
       subjectIds.length > 0 ? supabase
         .from('user_subject_access')
-        .select('user_id, users!inner(role)')
+        .select('user_id, expires_at, users!inner(role)')
         .in('subject_id', subjectIds)
         .eq('users.role', 'student') : { data: [] }
     ]);
 
     const uniqueStudents = new Set([
-      ...(courseAccess.data || []).map(a => a.user_id),
-      ...(subjectAccess.data || []).map(a => a.user_id)
+      ...(courseAccess.data || []).filter(isAccessRowActive).map(a => a.user_id),
+      ...(subjectAccess.data || []).filter(isAccessRowActive).map(a => a.user_id)
     ]);
 
     // 5. الطلبات المعلقة
