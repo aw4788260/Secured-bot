@@ -69,6 +69,13 @@ export default function SuperStudentsPage() {
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
+  // 🗓️ Step 9: شارة "ينتهي في / منتهي" لكل صف وصول طالب (course/subject access row)
+  const formatAccessExpiryBadge = (expiresAt) => {
+      if (!expiresAt) return { text: 'مدى الحياة', expired: false, lifetime: true };
+      const expired = new Date(expiresAt).getTime() <= Date.now();
+      return { text: expired ? 'منتهي' : `ينتهي: ${formatDate(expiresAt)}`, expired, lifetime: false };
+  };
+
   // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
@@ -549,21 +556,27 @@ export default function SuperStudentsPage() {
                               <div className="subs-grid">
                                   <div className="sub-column">
                                       <h5>📦 الكورسات الكاملة</h5>
-                                      {userSubs.courses.length > 0 ? userSubs.courses.map(c => (
+                                      {userSubs.courses.length > 0 ? userSubs.courses.map(c => {
+                                          const badge = formatAccessExpiryBadge(c.expires_at);
+                                          return (
                                           <div key={c.course_id} className="sub-chip">
                                               <span>{c.courses?.title}</span>
+                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
                                               <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>✕</button>
                                           </div>
-                                      )) : <p className="empty-text">لا يوجد</p>}
+                                      ); }) : <p className="empty-text">لا يوجد</p>}
                                   </div>
                                   <div className="sub-column">
                                       <h5>📄 المواد الفردية</h5>
-                                      {userSubs.subjects.length > 0 ? userSubs.subjects.map(s => (
+                                      {userSubs.subjects.length > 0 ? userSubs.subjects.map(s => {
+                                          const badge = formatAccessExpiryBadge(s.expires_at);
+                                          return (
                                           <div key={s.subject_id} className="sub-chip">
                                               <span>{s.subjects?.title}</span>
+                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
                                               <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>✕</button>
                                           </div>
-                                      )) : <p className="empty-text">لا يوجد</p>}
+                                      ); }) : <p className="empty-text">لا يوجد</p>}
                                   </div>
                               </div>
                           )}
@@ -780,6 +793,9 @@ export default function SuperStudentsPage() {
         .sub-chip:hover { border-color: var(--border-accent); }
         .sub-chip button { background: rgba(239, 68, 68, 0.1); border: 1px solid transparent; color: #ef4444; font-weight: bold; cursor: pointer; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
         .sub-chip button:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
+        .expiry-badge { font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin: 0 8px; white-space: nowrap; background: var(--gold-dimmer, rgba(212,175,55,0.1)); color: var(--gold, #bda878); border: 1px solid var(--border-accent, rgba(212,175,55,0.3)); }
+        .expiry-badge.lifetime { background: rgba(34, 197, 94, 0.1); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
+        .expiry-badge.expired { background: rgba(239, 68, 68, 0.12); color: #ef4444; border-color: rgba(239, 68, 68, 0.35); }
         .empty-text { color: var(--text-muted); font-size: 0.9em; text-align: center; font-style: italic; background: var(--bg-hover); padding: 15px; border-radius: 10px; border: 1px dashed var(--border); }
         
         /* General Buttons */
