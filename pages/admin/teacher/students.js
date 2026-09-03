@@ -66,6 +66,13 @@ export default function StudentsPage() {
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
+  // 🗓️ Step 9: شارة "ينتهي في / منتهي" لكل صف وصول طالب (course/subject access row)
+  const formatAccessExpiryBadge = (expiresAt) => {
+      if (!expiresAt) return { text: 'مدى الحياة', expired: false, lifetime: true };
+      const expired = new Date(expiresAt).getTime() <= Date.now();
+      return { text: expired ? 'منتهي' : `ينتهي: ${formatDate(expiresAt)}`, expired, lifetime: false };
+  };
+
   // --- 1. جلب البيانات ---
   const fetchData = async () => {
     setLoading(true);
@@ -457,22 +464,28 @@ export default function StudentsPage() {
                                   <div className="sub-column">
                                       <h5><span className="icon-wrap">{Icons.course}</span> الكورسات الكاملة</h5>
                                       {userSubs.courses.length === 0 && <div className="empty-sub">لا توجد اشتراكات</div>}
-                                      {userSubs.courses.map(c => (
+                                      {userSubs.courses.map(c => {
+                                          const badge = formatAccessExpiryBadge(c.expires_at);
+                                          return (
                                           <div key={c.course_id} className="sub-chip">
                                               <span>{c.courses?.title}</span>
+                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
                                               <button className="remove-btn" title="سحب الصلاحية" onClick={() => showConfirm('هل أنت متأكد من سحب هذا الكورس؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>×</button>
                                           </div>
-                                      ))}
+                                      ); })}
                                   </div>
                                   <div className="sub-column">
                                       <h5><span className="icon-wrap">{Icons.subject}</span> المواد الفردية</h5>
                                       {userSubs.subjects.length === 0 && <div className="empty-sub">لا توجد اشتراكات</div>}
-                                      {userSubs.subjects.map(s => (
+                                      {userSubs.subjects.map(s => {
+                                          const badge = formatAccessExpiryBadge(s.expires_at);
+                                          return (
                                           <div key={s.subject_id} className="sub-chip">
                                               <span>{s.subjects?.title}</span>
+                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
                                               <button className="remove-btn" title="سحب الصلاحية" onClick={() => showConfirm('هل أنت متأكد من سحب هذه المادة؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>×</button>
                                           </div>
-                                      ))}
+                                      ); })}
                                   </div>
                               </div>
                           )}
@@ -721,6 +734,9 @@ export default function StudentsPage() {
         .sub-chip:hover { border-color: var(--border-accent); }
         .remove-btn { background: rgba(239, 68, 68, 0.1); border: none; color: #ef4444; width: 24px; height: 24px; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; transition: 0.2s; }
         .remove-btn:hover { background: #ef4444; color: white; }
+        .expiry-badge { font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin: 0 8px; white-space: nowrap; background: var(--gold-dimmer, rgba(212,175,55,0.1)); color: var(--gold, #bda878); border: 1px solid var(--border-accent, rgba(212,175,55,0.3)); }
+        .expiry-badge.lifetime { background: rgba(34, 197, 94, 0.1); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
+        .expiry-badge.expired { background: rgba(239, 68, 68, 0.12); color: #ef4444; border-color: rgba(239, 68, 68, 0.35); }
         .empty-sub { color: var(--text-muted); font-size: 0.85rem; padding: 10px; background: var(--bg-base); border-radius: 8px; text-align: center; border: 1px dashed var(--border); }
         .empty-sub.inline { border: none; background: transparent; padding: 0; text-align: right; margin-right: 24px; }
 
