@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper';
 import { parsePlayerSettings, defaultPlayerSettings } from '../../../lib/playerSettingsHelper';
+import { isAccessRowActive } from '../../../lib/accessExpiryHelper'; // ⏳ فحص انتهاء صلاحية الوصول (Feature B)
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -22,32 +23,52 @@ export default async (req, res) => {
   }
 
   try {
-    // 3. التحقق من الاشتراك (Subscription Check)
+    // 3. التحقق من الاشتراك (Subscription Check) — ⏳ مع مراعاة انتهاء الصلاحية
     const { data: subAccess } = await supabase
       .from('user_subject_access')
-      .select('id')
+      .select('id, expires_at')
       .eq('user_id', userId)
       .eq('subject_id', subjectId)
       .maybeSingle();
 
-    let hasAccess = !!subAccess;
+    let hasAccess = false;
+    let sawExpiredRow = false; // ⏳ لتمييز "منتهي" عن "لم يشترك أبداً" في رسالة الخطأ
+
+    if (subAccess) {
+      if (isAccessRowActive(subAccess)) {
+        hasAccess = true;
+      } else {
+        sawExpiredRow = true;
+      }
+    }
 
     if (!hasAccess) {
       const { data: subjectInfo } = await supabase.from('subjects').select('course_id').eq('id', subjectId).single();
       if (subjectInfo && subjectInfo.course_id) {
         const { data: courseAccess } = await supabase
           .from('user_course_access')
-          .select('id')
+          .select('id, expires_at')
           .eq('user_id', userId)
           .eq('course_id', subjectInfo.course_id)
           .maybeSingle();
-        
-        if (courseAccess) hasAccess = true;
+
+        if (courseAccess) {
+          if (isAccessRowActive(courseAccess)) {
+            hasAccess = true;
+          } else {
+            sawExpiredRow = true;
+          }
+        }
       }
     }
 
     if (!hasAccess) {
-      return res.status(403).json({ error: 'You do not own this content' });
+      // ⏳ نميّز بين "لم يشترك أبداً" و"انتهت صلاحية اشتراكه" حتى يستطيع التطبيق
+      // توجيه الطالب لتجديد الاشتراك بدل رسالة رفض عامة.
+      return res.status(403).json({
+        error: sawExpiredRow ? 'Your access to this content has expired' : 'You do not own this content',
+        reason: sawExpiredRow ? 'expired' : 'not_owned'
+      });
     }
 
     // 4. جلب البيانات (✅ تم إضافة encoding_status و bunny_video_id للتحقق من جاهزية الفيديو)
