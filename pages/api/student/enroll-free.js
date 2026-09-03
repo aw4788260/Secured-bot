@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper';
+import { buildGrantTimestamps } from '../../../lib/accessExpiryHelper';
 
 // 🔒 كلمة السر الخاصة بالتفعيل المجاني
 // ⚠️ ملاحظة: يجب أن تكون هذه الكلمة مطابقة تماماً لما سترسله من تطبيق Flutter
@@ -49,9 +50,13 @@ export default async (req, res) => {
           .single();
 
         if (!exist) {
+          // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس عند لحظة المنح
+          const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
           await supabase.from('user_course_access').insert({
             user_id: userId,
-            course_id: item.id
+            course_id: item.id,
+            granted_at,
+            expires_at
           });
         }
       } else if (item.type === 'subject') {
@@ -63,9 +68,12 @@ export default async (req, res) => {
           .single();
 
         if (!exist) {
+          const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
           await supabase.from('user_subject_access').insert({
             user_id: userId,
-            subject_id: item.id
+            subject_id: item.id,
+            granted_at,
+            expires_at
           });
         }
       }
