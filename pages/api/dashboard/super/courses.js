@@ -43,8 +43,8 @@ async function handleGet(req, res) {
   try {
     const { data: courses, error: coursesError } = await supabase
       .from('courses')
-      .select('id, title, teacher_id, scheduled_deletion_at, access_duration_days, created_at')
-      .order('created_at', { ascending: false });
+      .select('id, title, teacher_id, scheduled_deletion_at, access_duration_days')
+      .order('id', { ascending: false });
     if (coursesError) throw coursesError;
 
     const courseIds = (courses || []).map(c => c.id);
@@ -98,7 +98,6 @@ async function handleGet(req, res) {
         title: course.title,
         teacher_id: course.teacher_id,
         teacher_name: teacherNameById.get(course.teacher_id) || '—',
-        created_at: course.created_at,
         scheduled_deletion_at: course.scheduled_deletion_at,
         access_duration_days: course.access_duration_days,
         active_students: activeCountByCourse.get(course.id) || 0,
