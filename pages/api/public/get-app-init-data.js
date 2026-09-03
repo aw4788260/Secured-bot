@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف الإعدادات الموحد
 import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
+import { isAccessRowActive } from '../../../lib/accessExpiryHelper'; // ⏳ فحص انتهاء صلاحية الوصول (Feature B)
 
 export default async (req, res) => {
   
@@ -130,16 +131,20 @@ export default async (req, res) => {
           let notificationTopics = ['all_users']; // ✅ القناة الأساسية لكل المستخدمين المسجلين
 
           // أ) جلب الكورسات الكاملة (✅ تم إضافة description و price)
-          const { data: fullCourses } = await supabase
+          // ⏳ نجلب expires_at ونستبعد الصفوف منتهية الصلاحية فوراً — طالب انتهى
+          // اشتراكه يُعامل تماماً كمن لم يشترك أبداً في كل هذا الملف.
+          const { data: fullCoursesRaw } = await supabase
             .from('user_course_access')
             .select(`
-              course_id,
+              course_id, expires_at,
               courses ( 
                 id, title, code, teacher_id, description, price,
                 teachers ( name )
               )
             `)
             .eq('user_id', userId);
+
+          const fullCourses = (fullCoursesRaw || []).filter(isAccessRowActive);
 
           // ب) جلب مواد هذه الكورسات (✅ تم إضافة price)
           let courseSubjectsMap = {};
@@ -173,10 +178,11 @@ export default async (req, res) => {
           }
 
           // ج) جلب المواد المنفصلة (✅ تم إضافة price للمادة و description للكورس)
-          const { data: singleSubjects } = await supabase
+          // ⏳ نفس منطق الاستبعاد أعلاه: مادة منفصلة انتهت صلاحيتها = غير مملوكة.
+          const { data: singleSubjectsRaw } = await supabase
             .from('user_subject_access')
             .select(`
-              subject_id,
+              subject_id, expires_at,
               subjects (
                 id, title, price,
                 courses ( 
@@ -186,6 +192,8 @@ export default async (req, res) => {
               )
             `)
             .eq('user_id', userId);
+
+          const singleSubjects = (singleSubjectsRaw || []).filter(isAccessRowActive);
 
           // هيكلة الصلاحيات (مع قنوات الإشعارات الجديدة)
           userAccess = {

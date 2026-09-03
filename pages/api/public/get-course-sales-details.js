@@ -2,6 +2,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import jwt from 'jsonwebtoken';
 import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
+import { isAccessRowActive } from '../../../lib/accessExpiryHelper'; // ⏳ فحص انتهاء صلاحية الوصول (Feature B)
 
 export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method Not Allowed' });
@@ -103,24 +104,24 @@ export default async (req, res) => {
     let ownedSubjects = new Set();
 
     if (userId) {
-      // أ) هل اشترى الكورس بالكامل؟
+      // أ) هل اشترى الكورس بالكامل؟ (⏳ اشتراك منتهي = غير مملوك، يسمح له بإعادة الشراء/التجديد)
       const { data: cAccess } = await supabase
         .from('user_course_access')
-        .select('id')
+        .select('id, expires_at')
         .eq('user_id', userId)
         .eq('course_id', course.id)
         .maybeSingle();
-      
-      if (cAccess) ownedCourse = true;
 
-      // ب) هل اشترى مواد منفصلة؟
+      if (cAccess && isAccessRowActive(cAccess)) ownedCourse = true;
+
+      // ب) هل اشترى مواد منفصلة؟ (⏳ نفس المنطق لكل مادة على حدة)
       const { data: sAccess } = await supabase
         .from('user_subject_access')
-        .select('subject_id')
+        .select('subject_id, expires_at')
         .eq('user_id', userId)
         .in('subject_id', course.subjects.map(s => s.id));
-      
-      sAccess?.forEach(a => ownedSubjects.add(a.subject_id));
+
+      sAccess?.filter(isAccessRowActive).forEach(a => ownedSubjects.add(a.subject_id));
     }
 
     // 5. إرجاع البيانات
