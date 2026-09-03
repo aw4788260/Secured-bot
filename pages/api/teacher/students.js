@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 import { notifyStudentSubscriptionDecision } from '../../../lib/notifyHelper';
+import { buildGrantTimestamps } from '../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   // 1. التحقق من صلاحية المعلم
@@ -222,9 +223,12 @@ export default async (req, res) => {
 
              for (const item of items) {
                  if (item.type === 'course') {
-                     await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id }, { onConflict: 'user_id, course_id' });
+                     // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس عند لحظة المنح
+                     const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
+                     await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, course_id' });
                  } else if (item.type === 'subject') {
-                     await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id }, { onConflict: 'user_id, subject_id' });
+                     const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
+                     await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, subject_id' });
                  }
              }
 
@@ -313,8 +317,13 @@ export default async (req, res) => {
             }
 
             // ✅ خطوة 3: منح الصلاحية فعلياً
+            // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس/المادة عند لحظة المنح
+            const { granted_at, expires_at } = type === 'course'
+                ? await buildGrantTimestamps(itemId, null)
+                : await buildGrantTimestamps(null, itemId);
+
             await supabase.from(type === 'course' ? 'user_course_access' : 'user_subject_access')
-               .upsert({ user_id: studentId, [`${type}_id`]: itemId }, { onConflict: `user_id, ${type}_id` });
+               .upsert({ user_id: studentId, [`${type}_id`]: itemId, granted_at, expires_at }, { onConflict: `user_id, ${type}_id` });
 
          } else {
             // حالة الحذف (إلغاء الصلاحية)
