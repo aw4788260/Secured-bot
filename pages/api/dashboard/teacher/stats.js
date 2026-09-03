@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { isAccessRowActive } from '../../../../lib/accessExpiryHelper';
 
 // ============================================================
 // ✅ أدوات التوقيت الخاصة بمصر (نفس المنطق المستخدم في super/stats.js)
@@ -181,7 +182,7 @@ export default async (req, res) => {
             ? fetchAllRows(() =>
                 supabase
                   .from('user_course_access')
-                  .select('course_id, user_id, users!inner(role)')
+                  .select('course_id, user_id, expires_at, users!inner(role)')
                   .in('course_id', courseIds)
                   .eq('users.role', 'student')
                   .order('user_id', { ascending: true })
@@ -193,13 +194,17 @@ export default async (req, res) => {
             ? fetchAllRows(() =>
                 supabase
                   .from('user_subject_access')
-                  .select('subject_id, user_id, users!inner(role)')
+                  .select('subject_id, user_id, expires_at, users!inner(role)')
                   .in('subject_id', subjectIds)
                   .eq('users.role', 'student')
                   .order('user_id', { ascending: true })
               )
             : Promise.resolve([])
     ]);
+
+    // ✅ نستثني الصلاحيات المنتهية حتى لا تُحتسب ضمن الطلاب/الإحصائيات النشطة
+    const activeCourseAccess = courseAccess.filter(isAccessRowActive);
+    const activeSubjectAccess = subjectAccess.filter(isAccessRowActive);
 
     // =========================================================
     // 5. الحسابات النهائية وتجهيز الرد
@@ -209,20 +214,20 @@ export default async (req, res) => {
     const coursesStats = courses.map(course => ({
        id: course.id,
        title: course.title,
-       count: courseAccess.filter(a => a.course_id === course.id).length
+       count: activeCourseAccess.filter(a => a.course_id === course.id).length
     }));
 
     // تفاصيل للمواد
     const subjectsStats = subjects.map(subject => ({
        id: subject.id,
        title: subject.title,
-       count: subjectAccess.filter(a => a.subject_id === subject.id).length
+       count: activeSubjectAccess.filter(a => a.subject_id === subject.id).length
     }));
 
     // إجمالي الطلاب الفريدين
     const allStudentIds = new Set([
-      ...courseAccess.map(a => a.user_id),
-      ...subjectAccess.map(a => a.user_id)
+      ...activeCourseAccess.map(a => a.user_id),
+      ...activeSubjectAccess.map(a => a.user_id)
     ]);
 
     // =========================================================
