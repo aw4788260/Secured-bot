@@ -2,6 +2,7 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { notifyStudentSubscriptionDecision } from '../../../../lib/notifyHelper';
+import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -116,9 +117,12 @@ export default async (req, res) => {
          const items = request.requested_data || [];
          for (const item of items) {
              if (item.type === 'course') {
-                 await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id }, { onConflict: 'user_id, course_id' });
+                 // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس عند لحظة المنح
+                 const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
+                 await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, course_id' });
              } else if (item.type === 'subject') {
-                 await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id }, { onConflict: 'user_id, subject_id' });
+                 const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
+                 await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, subject_id' });
              }
          }
 

@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   // 1. التحقق من الصلاحية وجلب بيانات المدرس
@@ -280,6 +281,16 @@ export default async (req, res) => {
 
               const { data: usersData } = await supabase.from('users').select('id, username, first_name, phone').in('id', targetIds);
 
+              // ⏳ نحسب تاريخ الانتهاء مرة واحدة لكل كورس/مادة (نفس المدة لكل الطلاب المستهدفين)
+              const courseGrantTimestamps = {};
+              for (const cid of safeCourses) {
+                  courseGrantTimestamps[cid] = await buildGrantTimestamps(cid, null);
+              }
+              const subjectGrantTimestamps = {};
+              for (const sid of safeSubjects) {
+                  subjectGrantTimestamps[sid] = await buildGrantTimestamps(null, sid);
+              }
+
               const reqInserts = []; 
               const cInserts = [];   
               const sInserts = [];   
@@ -310,7 +321,8 @@ export default async (req, res) => {
                               user_note: 'تم التفعيل يدوياً من قائمة الطلاب'
                           });
                       }
-                      cInserts.push({ user_id: uid, course_id: cid });
+                      const { granted_at, expires_at } = courseGrantTimestamps[cid] || {};
+                      cInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at });
                   });
 
                   // معالجة المواد
@@ -336,7 +348,8 @@ export default async (req, res) => {
                               user_note: 'تم التفعيل يدوياً من قائمة الطلاب'
                           });
                       }
-                      sInserts.push({ user_id: uid, subject_id: sid });
+                      const { granted_at, expires_at } = subjectGrantTimestamps[sid] || {};
+                      sInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at });
                   });
               });
 
