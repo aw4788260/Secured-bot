@@ -1,6 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
-import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
+import { buildGrantTimestamps, isExemptFromExpiry } from '../../../../lib/accessExpiryHelper';
 import bcrypt from 'bcryptjs'; // ✅ استخدام bcryptjs بناءً على طلبك
 
 export default async function handler(req, res) {
@@ -281,6 +281,14 @@ export default async function handler(req, res) {
         case 'grant_access':
           const { courses: gCourses, subjects: gSubjects } = grantList || {};
 
+          // 🎓 نجلب أدوار الطلاب المستهدفين مسبقاً حتى لا نطبّق تاريخ انتهاء
+          // على حسابات المدرسين/المشرفين (لهم دائماً وصول مدى الحياة).
+          const { data: targetUsersRoles } = await supabase
+            .from('users')
+            .select('id, role')
+            .in('id', targetIds);
+          const roleMap = new Map((targetUsersRoles || []).map(u => [String(u.id), u.role]));
+
           // ⏳ نحسب تاريخ الانتهاء مرة واحدة لكل كورس/مادة (نفس المدة تُطبّق على كل الطلاب
           // المستهدفين في هذه الدفعة)، ثم نعيد استخدامها بدل استدعاء الهيلبر لكل صف.
           const courseGrantTimestamps = {};
@@ -300,9 +308,10 @@ export default async function handler(req, res) {
           const courseInserts = [];
           if (gCourses && gCourses.length > 0) {
             targetIds.forEach(uid => {
+                const exempt = isExemptFromExpiry(roleMap.get(String(uid)));
                 gCourses.forEach(cid => {
                     const { granted_at, expires_at } = courseGrantTimestamps[cid] || {};
-                    courseInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at });
+                    courseInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at: exempt ? null : expires_at });
                 });
             });
           }
@@ -310,9 +319,10 @@ export default async function handler(req, res) {
           const subjectInserts = [];
           if (gSubjects && gSubjects.length > 0) {
             targetIds.forEach(uid => {
+                const exempt = isExemptFromExpiry(roleMap.get(String(uid)));
                 gSubjects.forEach(sid => {
                     const { granted_at, expires_at } = subjectGrantTimestamps[sid] || {};
-                    subjectInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at });
+                    subjectInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at: exempt ? null : expires_at });
                 });
             });
           }

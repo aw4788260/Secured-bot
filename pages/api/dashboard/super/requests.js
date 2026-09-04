@@ -1,6 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
-import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
+import { buildGrantTimestamps, isExemptFromExpiry } from '../../../../lib/accessExpiryHelper';
 
 export default async function handler(req, res) {
   // 1. التحقق من صلاحية السوبر أدمن
@@ -151,6 +151,11 @@ export default async function handler(req, res) {
         }
 
         // ب) منح الصلاحيات (Loop through requested items)
+        // 🎓 المدرسون/المشرفون يحصلون دائماً على وصول مدى الحياة، حتى لو
+        // كان الحساب المستهدف قد رُقّي لهذا الدور بعد إنشاء الطلب.
+        const { data: targetUserRoleRow } = await supabase.from('users').select('role').eq('id', targetUserId).maybeSingle();
+        const exemptFromExpiry = isExemptFromExpiry(targetUserRoleRow?.role);
+
         const items = request.requested_data || []; 
         const courseInserts = [];
         const subjectInserts = [];
@@ -159,11 +164,11 @@ export default async function handler(req, res) {
             if (item.type === 'course') {
                 // ⏳ نحسب تاريخ انتهاء الصلاحية بناءً على مدة الكورس (إن وُجدت) عند لحظة المنح فقط
                 const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
-                courseInserts.push({ user_id: targetUserId, course_id: item.id, granted_at, expires_at });
+                courseInserts.push({ user_id: targetUserId, course_id: item.id, granted_at, expires_at: exemptFromExpiry ? null : expires_at });
             } else if (item.type === 'subject') {
                 // ⏳ نفس المنطق لصلاحية المادة (مع مراعاة override الخاص بالمادة إن وُجد)
                 const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
-                subjectInserts.push({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at });
+                subjectInserts.push({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at: exemptFromExpiry ? null : expires_at });
             }
         }
 
