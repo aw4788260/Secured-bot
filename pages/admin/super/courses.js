@@ -9,6 +9,22 @@ const CoursesIcon = () => (
   </svg>
 );
 
+const TeacherIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+    <circle cx="9" cy="7" r="4"></circle>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+  </svg>
+);
+
+const BackIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="19" y1="12" x2="5" y2="12"></line>
+    <polyline points="12 19 5 12 12 5"></polyline>
+  </svg>
+);
+
 const ChevronIcon = ({ open }) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }}>
     <polyline points="6 9 12 15 18 9"></polyline>
@@ -28,6 +44,11 @@ export default function SuperCoursesPage() {
   const [expanded, setExpanded] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
 
+  // --- Teacher-first navigation ---
+  // null => showing the teachers grid. Otherwise the id of the teacher
+  // whose courses are currently being managed.
+  const [selectedTeacherId, setSelectedTeacherId] = useState(null);
+
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [confirmData, setConfirmData] = useState({ show: false, message: '', onConfirm: null });
 
@@ -40,6 +61,7 @@ export default function SuperCoursesPage() {
   const [durationCustomInput, setDurationCustomInput] = useState('');
   const [durationMode, setDurationMode] = useState('lifetime'); // 'lifetime' | 'preset' | 'custom'
   const [durationPreset, setDurationPreset] = useState(30);
+  const [durationScope, setDurationScope] = useState('new'); // 'new' | 'all' — who the change applies to
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -72,15 +94,63 @@ export default function SuperCoursesPage() {
     return new Date(v).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const filteredCourses = useMemo(() => {
-    if (!searchTerm.trim()) return courses;
+  // ============================================================
+  // Teachers grid (Step 1)
+  // ============================================================
+  const teacherGroups = useMemo(() => {
+    const map = new Map();
+    for (const c of courses) {
+      const key = c.teacher_id || 'none';
+      if (!map.has(key)) {
+        map.set(key, {
+          teacher_id: c.teacher_id,
+          teacher_name: c.teacher_name || '—',
+          courses: [],
+          activeStudents: 0,
+          scheduledDeletions: 0,
+        });
+      }
+      const g = map.get(key);
+      g.courses.push(c);
+      g.activeStudents += c.active_students || 0;
+      if (c.scheduled_deletion_at) g.scheduledDeletions += 1;
+    }
+    return [...map.values()].sort((a, b) => b.courses.length - a.courses.length);
+  }, [courses]);
+
+  const filteredTeacherGroups = useMemo(() => {
+    if (!searchTerm.trim()) return teacherGroups;
     const q = searchTerm.trim().toLowerCase();
-    return courses.filter(c =>
-      c.title?.toLowerCase().includes(q) ||
-      c.teacher_name?.toLowerCase().includes(q) ||
-      String(c.id).includes(q)
-    );
-  }, [courses, searchTerm]);
+    return teacherGroups.filter(g => g.teacher_name?.toLowerCase().includes(q));
+  }, [teacherGroups, searchTerm]);
+
+  const selectedTeacher = useMemo(
+    () => teacherGroups.find(g => g.teacher_id === selectedTeacherId) || null,
+    [teacherGroups, selectedTeacherId]
+  );
+
+  // ============================================================
+  // Courses of the selected teacher (Step 2)
+  // ============================================================
+  const filteredCourses = useMemo(() => {
+    if (!selectedTeacher) return [];
+    let list = selectedTeacher.courses;
+    if (searchTerm.trim()) {
+      const q = searchTerm.trim().toLowerCase();
+      list = list.filter(c => c.title?.toLowerCase().includes(q) || String(c.id).includes(q));
+    }
+    return list;
+  }, [selectedTeacher, searchTerm]);
+
+  const openTeacher = (teacherId) => {
+    setSelectedTeacherId(teacherId);
+    setSearchTerm('');
+    setExpanded({});
+  };
+  const backToTeachers = () => {
+    setSelectedTeacherId(null);
+    setSearchTerm('');
+  };
 
   const toggleExpand = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
 
@@ -128,6 +198,7 @@ export default function SuperCoursesPage() {
       setDurationCustomInput('');
     }
     setDurationPreset(30);
+    setDurationScope('new');
   };
 
   const submitAccessDuration = async () => {
@@ -140,13 +211,26 @@ export default function SuperCoursesPage() {
       durationDays = Math.round(n);
     }
 
-    await callCoursesApi({
-      action: 'set_access_duration',
-      courseId: durationTarget.courseId,
-      subjectId: durationTarget.type === 'subject' ? durationTarget.id : null,
-      durationDays,
-    }, `تم تحديث مدة الوصول لـ "${durationTarget.title}"`);
-    setDurationTarget(null);
+    const runSave = async () => {
+      await callCoursesApi({
+        action: 'set_access_duration',
+        courseId: durationTarget.courseId,
+        subjectId: durationTarget.type === 'subject' ? durationTarget.id : null,
+        durationDays,
+        applyToExisting: durationScope === 'all',
+      }, `تم تحديث مدة الوصول لـ "${durationTarget.title}"`);
+      setDurationTarget(null);
+    };
+
+    if (durationScope === 'all') {
+      const periodLabel = durationDays ? `${durationDays} يوم` : 'مدى الحياة';
+      showConfirm(
+        `سيتم تطبيق المدة الجديدة (${periodLabel}) على كل الطلاب الحاليين في "${durationTarget.title}" وإعادة حساب تاريخ انتهاء وصول كل واحد منهم بناءً على تاريخ اشتراكه. هل أنت متأكد؟`,
+        runSave
+      );
+    } else {
+      await runSave();
+    }
   };
 
   // ============================================================
@@ -183,20 +267,34 @@ export default function SuperCoursesPage() {
 
       <div className="page-header">
         <div className="page-title">
-          <div className="title-icon"><CoursesIcon /></div>
+          <div className="title-icon">{selectedTeacher ? <TeacherIcon /> : <CoursesIcon />}</div>
           <div>
-            <h1>إدارة الكورسات</h1>
-            <p>جدولة حذف الكورسات، وضبط سياسة مدة الوصول (لكل كورس أو مادة) للاشتراكات الجديدة.</p>
+            {selectedTeacher ? (
+              <>
+                <h1>{selectedTeacher.teacher_name}</h1>
+                <p>{selectedTeacher.courses.length} كورس · {selectedTeacher.activeStudents} طالب نشط</p>
+              </>
+            ) : (
+              <>
+                <h1>إدارة الكورسات</h1>
+                <p>اختر مدرساً لعرض كورساته والتحكم في مواده وفترات الوصول وجدولة الحذف.</p>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       <div className="controls-container">
+        {selectedTeacher && (
+          <button onClick={backToTeachers} className="btn-back">
+            <BackIcon /> كل المدرسين
+          </button>
+        )}
         <div className="search-wrapper">
           <span className="search-icon">🔍</span>
           <input
             className="search-input"
-            placeholder="بحث بعنوان الكورس، اسم المدرس، أو الـ ID..."
+            placeholder={selectedTeacher ? 'بحث بعنوان الكورس أو الـ ID...' : 'بحث باسم المدرس...'}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -204,15 +302,41 @@ export default function SuperCoursesPage() {
         <button onClick={fetchData} className="btn-refresh" title="تحديث البيانات">🔄</button>
       </div>
 
-      <div className="table-box">
-        {loading ? <div className="loading-state">جاري التحميل...</div> : (
+      {loading ? (
+        <div className="table-box"><div className="loading-state">جاري التحميل...</div></div>
+      ) : !selectedTeacher ? (
+        // ============================================================
+        // STEP 1 — Teachers grid
+        // ============================================================
+        <div className="teachers-grid">
+          {filteredTeacherGroups.map(g => (
+            <div key={g.teacher_id || 'none'} className="teacher-card" onClick={() => openTeacher(g.teacher_id)}>
+              <div className="teacher-avatar">{(g.teacher_name || '—')[0]}</div>
+              <div className="teacher-name">{g.teacher_name}</div>
+              <div className="teacher-stats">
+                <span className="t-stat"><CoursesIcon />{g.courses.length} كورس</span>
+                <span className="t-stat gold">👤 {g.activeStudents} طالب</span>
+              </div>
+              {g.scheduledDeletions > 0 && (
+                <span className="del-badge teacher-del-badge">🗓️ {g.scheduledDeletions} حذف مجدول</span>
+              )}
+            </div>
+          ))}
+          {filteredTeacherGroups.length === 0 && (
+            <div className="empty-text full-span">لا يوجد نتائج</div>
+          )}
+        </div>
+      ) : (
+        // ============================================================
+        // STEP 2 — Selected teacher's courses
+        // ============================================================
+        <div className="table-box">
           <table className="std-table">
             <thead>
               <tr>
                 <th style={{ width: '40px' }}></th>
                 <th style={{ width: '60px' }}>ID</th>
                 <th style={{ textAlign: 'right' }}>الكورس</th>
-                <th style={{ textAlign: 'center' }}>المدرس</th>
                 <th style={{ textAlign: 'center' }}>الطلاب النشطون</th>
                 <th style={{ textAlign: 'center' }}>مدة الوصول</th>
                 <th style={{ textAlign: 'center' }}>الحذف المجدول</th>
@@ -226,7 +350,6 @@ export default function SuperCoursesPage() {
                     <td style={{ textAlign: 'center' }}><ChevronIcon open={!!expanded[course.id]} /></td>
                     <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{course.id}</td>
                     <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{course.title}</td>
-                    <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{course.teacher_name}</td>
                     <td style={{ textAlign: 'center', color: 'var(--gold)', fontWeight: 700 }}>{course.active_students}</td>
                     <td style={{ textAlign: 'center' }}>{durationBadge(course.access_duration_days)}</td>
                     <td style={{ textAlign: 'center' }}>
@@ -247,7 +370,7 @@ export default function SuperCoursesPage() {
                   {expanded[course.id] && (
                     <tr className="expand-row">
                       <td></td>
-                      <td colSpan="7">
+                      <td colSpan="6">
                         {course.subjects.length === 0 ? (
                           <p className="empty-text">لا توجد مواد في هذا الكورس</p>
                         ) : (
@@ -273,12 +396,12 @@ export default function SuperCoursesPage() {
                 </Fragment>
               ))}
               {filteredCourses.length === 0 && (
-                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>لا يوجد نتائج</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>لا يوجد نتائج</td></tr>
               )}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* --- Scheduled Deletion Modal --- */}
       {deletionTarget && (
@@ -324,7 +447,7 @@ export default function SuperCoursesPage() {
             </div>
             <div className="modal-content">
               <p className="hint-text">
-                هذا الإعداد يُطبَّق فقط على الاشتراكات الجديدة من الآن فصاعداً — لن يتأثر الطلاب الحاليون بأثر رجعي.
+                حدد المدة الجديدة، ثم اختر إن كانت تسري على المشتركين الجدد فقط أو على كل الطلاب الحاليين أيضاً.
                 {durationTarget.type === 'subject' && ' هذا الضبط يخص هذه المادة فقط، وله أولوية على إعداد الكورس العام.'}
               </p>
 
@@ -368,6 +491,25 @@ export default function SuperCoursesPage() {
                   />
                 )}
               </div>
+
+              <div className="scope-section">
+                <label className="field-label">نطاق التطبيق</label>
+                <div className="duration-options">
+                  <label className="radio-row">
+                    <input type="radio" checked={durationScope === 'new'} onChange={() => setDurationScope('new')} />
+                    <span>الطلاب الجدد فقط (الوضع الحالي) — لن يتأثر الطلاب الحاليون</span>
+                  </label>
+                  <label className="radio-row">
+                    <input type="radio" checked={durationScope === 'all'} onChange={() => setDurationScope('all')} />
+                    <span>كل الطلاب — بما فيهم الحاليون (إعادة حساب تاريخ الانتهاء لكل طالب بناءً على تاريخ اشتراكه)</span>
+                  </label>
+                </div>
+                {durationScope === 'all' && (
+                  <p className="hint-text warn-hint">
+                    ⚠️ سيتم تعديل تاريخ انتهاء الوصول لكل طالب لديه وصول حالياً لهذا العنصر. كل طالب سيُحتسب من تاريخ اشتراكه الأصلي + المدة الجديدة، وليس من الآن.
+                  </p>
+                )}
+              </div>
             </div>
             <div className="modal-footer">
               <button className="cancel-btn" onClick={() => setDurationTarget(null)}>إلغاء</button>
@@ -404,6 +546,8 @@ export default function SuperCoursesPage() {
         .page-title p { margin: 0; color: var(--text-muted); font-size: 0.95rem; }
 
         .controls-container { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .btn-back { display: flex; align-items: center; gap: 8px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); padding: 12px 16px; border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 0.9rem; transition: 0.2s; white-space: nowrap; }
+        .btn-back:hover { border-color: var(--gold); color: var(--gold); }
         .search-wrapper { position: relative; flex: 2; min-width: 250px; }
         .search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; opacity: 0.7; }
         .search-input { width: 100%; padding: 12px 12px 12px 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 0.95rem; transition: 0.2s; outline: none; }
@@ -411,6 +555,19 @@ export default function SuperCoursesPage() {
 
         .btn-refresh { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--border-accent); padding: 12px; border-radius: 12px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
         .btn-refresh:hover { background: var(--gold-dimmer); transform: rotate(15deg); }
+
+        /* --- Teachers grid --- */
+        .teachers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+        .teacher-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 18px; box-shadow: var(--shadow); cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; position: relative; }
+        .teacher-card:hover { transform: translateY(-4px); border-color: var(--gold); box-shadow: 0 10px 25px var(--gold-dim); }
+        .teacher-avatar { width: 60px; height: 60px; border-radius: 50%; background: var(--gold-dim); color: var(--gold); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.6rem; border: 2px solid var(--border-accent); }
+        .teacher-name { font-weight: 800; color: var(--text-primary); font-size: 1.05rem; }
+        .teacher-stats { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .t-stat { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 0.82rem; font-weight: 600; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; }
+        .t-stat svg { width: 14px; height: 14px; }
+        .t-stat.gold { color: var(--gold); }
+        .teacher-del-badge { position: static; margin-top: 4px; }
+        .empty-text.full-span { grid-column: 1 / -1; }
 
         .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow-x: auto; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
         .std-table { width: 100%; border-collapse: collapse; min-width: 900px; }
@@ -456,6 +613,7 @@ export default function SuperCoursesPage() {
 
         .modal-content { padding: 25px; overflow-y: auto; }
         .hint-text { color: var(--text-muted); font-size: 0.88em; line-height: 1.6; background: var(--bg-elevated); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 15px; margin: 0 0 20px 0; }
+        .hint-text.warn-hint { color: #ef4444; border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); margin: 12px 0 0 0; }
         .field-label { display: block; color: var(--text-secondary); font-weight: 600; font-size: 0.9em; margin-bottom: 8px; }
 
         .input-field { width: 100%; padding: 12px 15px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); border-radius: 10px; outline: none; font-size: 0.95rem; transition: 0.2s; }
@@ -464,10 +622,12 @@ export default function SuperCoursesPage() {
 
         .duration-options { display: flex; flex-direction: column; gap: 12px; }
         .radio-row { display: flex; align-items: center; gap: 10px; color: var(--text-primary); font-size: 0.95em; cursor: pointer; }
-        .radio-row input[type="radio"] { accent-color: var(--gold); width: 18px; height: 18px; cursor: pointer; }
+        .radio-row input[type="radio"] { accent-color: var(--gold); width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; margin-top: 2px; }
         .preset-chips { display: flex; gap: 8px; flex-wrap: wrap; padding-right: 28px; }
         .chip { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: 600; font-size: 0.85em; transition: 0.2s; }
         .chip.active, .chip:hover { background: var(--gold); color: #111009; border-color: var(--gold-light); }
+
+        .scope-section { margin-top: 22px; padding-top: 18px; border-top: 1px dashed var(--border); }
 
         .modal-footer { padding: 18px 25px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); background: var(--bg-elevated); }
 
@@ -487,6 +647,7 @@ export default function SuperCoursesPage() {
           .controls-container { flex-direction: column; align-items: stretch; gap: 12px; }
           .search-wrapper { width: 100%; min-width: auto; }
           .btn-refresh { width: 100%; justify-content: center; }
+          .btn-back { width: 100%; justify-content: center; }
           .std-table th, .std-table td { padding: 12px 10px; font-size: 0.85rem; }
           .modal-box { width: 95%; max-height: 90dvh; margin: 15px auto; }
           .modal-footer { flex-direction: column-reverse; }
