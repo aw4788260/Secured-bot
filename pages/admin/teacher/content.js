@@ -35,9 +35,7 @@ const formatScheduledDeletionBadge = (isoString) => {
   if (!isoString) return null;
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return null;
-  const diffDays = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  if (diffDays <= 0) return `🗑 سيُحذف اليوم`;
-  return `🗑 سيُحذف خلال ${diffDays} يوم`;
+  return `🗓 مجدول للحذف بتاريخ ${date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' })}`;
 };
 
 const formatAccessDurationBadge = (days) => {
@@ -900,7 +898,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <p>{s.price > 0 ? `${s.price} جنية` : 'مجاني'}</p>
                       <small className="muted-text">
                           {s.chapters?.length || 0} فصول
-                          {formatAccessDurationBadge(s.access_duration_days) && ` • ${formatAccessDurationBadge(s.access_duration_days)}`}
+                          {formatAccessDurationBadge(s.access_duration_days ?? selectedCourse.access_duration_days) && ` • ${formatAccessDurationBadge(s.access_duration_days ?? selectedCourse.access_duration_days)}`}
                       </small>
                   </div>
               ))}
