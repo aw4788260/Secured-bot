@@ -1,6 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { checkUserAccess } from '../../../lib/authHelper';
-import { buildGrantTimestamps } from '../../../lib/accessExpiryHelper';
+import { buildGrantTimestamps, isExemptFromExpiry } from '../../../lib/accessExpiryHelper';
 
 // 🔒 كلمة السر الخاصة بالتفعيل المجاني
 // ⚠️ ملاحظة: يجب أن تكون هذه الكلمة مطابقة تماماً لما سترسله من تطبيق Flutter
@@ -38,6 +38,15 @@ export default async (req, res) => {
       return res.status(403).json({ error: 'Free mode is not active' });
     }
 
+    // 🎓 المدرسون/المشرفون يحصلون دائماً على وصول مدى الحياة، بغض النظر عن
+    // مدة الوصول المحددة على الكورس/المادة.
+    const { data: actingUser } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+    const exemptFromExpiry = isExemptFromExpiry(actingUser?.role);
+
     // 3. التفعيل المباشر
     for (const item of items) {
       if (item.type === 'course') {
@@ -56,7 +65,7 @@ export default async (req, res) => {
             user_id: userId,
             course_id: item.id,
             granted_at,
-            expires_at
+            expires_at: exemptFromExpiry ? null : expires_at
           });
         }
       } else if (item.type === 'subject') {
@@ -73,7 +82,7 @@ export default async (req, res) => {
             user_id: userId,
             subject_id: item.id,
             granted_at,
-            expires_at
+            expires_at: exemptFromExpiry ? null : expires_at
           });
         }
       }
