@@ -281,13 +281,33 @@ export default async function handler(req, res) {
         case 'grant_access':
           const { courses: gCourses, subjects: gSubjects } = grantList || {};
 
-          // 🎓 نجلب أدوار الطلاب المستهدفين مسبقاً حتى لا نطبّق تاريخ انتهاء
-          // على حسابات المدرسين/المشرفين (لهم دائماً وصول مدى الحياة).
+          // 🎓 لا نُعفي من انتهاء الصلاحية إلا مدرساً/مشرفاً يُمنح وصولاً
+          // لكورس/مادة يملكها هو تحديداً (كورساته الخاصة)، وليس أي كورس آخر.
           const { data: targetUsersRoles } = await supabase
             .from('users')
-            .select('id, role')
+            .select('id, role, teacher_profile_id')
             .in('id', targetIds);
-          const roleMap = new Map((targetUsersRoles || []).map(u => [String(u.id), u.role]));
+          const roleMap = new Map((targetUsersRoles || []).map(u => [String(u.id), { role: u.role, teacherProfileId: u.teacher_profile_id }]));
+
+          // خرائط "مالك الكورس" لكل كورس/مادة مستهدفة، لمقارنتها بـ teacher_profile_id
+          // الخاص بكل مستخدم مستهدف.
+          const courseOwnerMap = new Map();
+          if (gCourses && gCourses.length > 0) {
+            const { data: courseOwners } = await supabase.from('courses').select('id, teacher_id').in('id', gCourses);
+            (courseOwners || []).forEach(c => courseOwnerMap.set(String(c.id), c.teacher_id));
+          }
+
+          const subjectOwnerMap = new Map();
+          if (gSubjects && gSubjects.length > 0) {
+            const { data: subjectOwners } = await supabase.from('subjects').select('id, courses(teacher_id)').in('id', gSubjects);
+            (subjectOwners || []).forEach(s => subjectOwnerMap.set(String(s.id), s.courses?.teacher_id));
+          }
+
+          const isExemptForItem = (uid, ownerTeacherId) => {
+            const target = roleMap.get(String(uid));
+            if (!target || !isExemptFromExpiry(target.role)) return false;
+            return target.teacherProfileId != null && ownerTeacherId != null && String(target.teacherProfileId) === String(ownerTeacherId);
+          };
 
           // ⏳ نحسب تاريخ الانتهاء مرة واحدة لكل كورس/مادة (نفس المدة تُطبّق على كل الطلاب
           // المستهدفين في هذه الدفعة)، ثم نعيد استخدامها بدل استدعاء الهيلبر لكل صف.
@@ -308,9 +328,9 @@ export default async function handler(req, res) {
           const courseInserts = [];
           if (gCourses && gCourses.length > 0) {
             targetIds.forEach(uid => {
-                const exempt = isExemptFromExpiry(roleMap.get(String(uid)));
                 gCourses.forEach(cid => {
                     const { granted_at, expires_at } = courseGrantTimestamps[cid] || {};
+                    const exempt = isExemptForItem(uid, courseOwnerMap.get(String(cid)));
                     courseInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at: exempt ? null : expires_at });
                 });
             });
@@ -319,9 +339,9 @@ export default async function handler(req, res) {
           const subjectInserts = [];
           if (gSubjects && gSubjects.length > 0) {
             targetIds.forEach(uid => {
-                const exempt = isExemptFromExpiry(roleMap.get(String(uid)));
                 gSubjects.forEach(sid => {
                     const { granted_at, expires_at } = subjectGrantTimestamps[sid] || {};
+                    const exempt = isExemptForItem(uid, subjectOwnerMap.get(String(sid)));
                     subjectInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at: exempt ? null : expires_at });
                 });
             });
