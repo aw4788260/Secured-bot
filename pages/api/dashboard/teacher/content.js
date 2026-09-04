@@ -149,7 +149,7 @@ export default async (req, res) => {
             .from('courses')
             .select(`
                 *,
-                subjects ( id, title, sort_order, price, access_duration_days ) 
+                subjects ( id, title, sort_order, price, access_duration_days, chapters ( id ) ) 
             `)
             .eq('teacher_id', auth.teacherId)
             .order('sort_order', { ascending: true });
