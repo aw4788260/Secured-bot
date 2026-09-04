@@ -1,6 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
-import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
+import { buildGrantTimestamps, isExemptFromExpiry } from '../../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   // 1. التحقق من الصلاحية وجلب بيانات المدرس
@@ -279,7 +279,7 @@ export default async (req, res) => {
                   subjectInfos = data || [];
               }
 
-              const { data: usersData } = await supabase.from('users').select('id, username, first_name, phone').in('id', targetIds);
+              const { data: usersData } = await supabase.from('users').select('id, username, first_name, phone, role').in('id', targetIds);
 
               // ⏳ نحسب تاريخ الانتهاء مرة واحدة لكل كورس/مادة (نفس المدة لكل الطلاب المستهدفين)
               const courseGrantTimestamps = {};
@@ -322,7 +322,7 @@ export default async (req, res) => {
                           });
                       }
                       const { granted_at, expires_at } = courseGrantTimestamps[cid] || {};
-                      cInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at });
+                      cInserts.push({ user_id: uid, course_id: cid, granted_at, expires_at: isExemptFromExpiry(user.role) ? null : expires_at });
                   });
 
                   // معالجة المواد
@@ -349,7 +349,7 @@ export default async (req, res) => {
                           });
                       }
                       const { granted_at, expires_at } = subjectGrantTimestamps[sid] || {};
-                      sInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at });
+                      sInserts.push({ user_id: uid, subject_id: sid, granted_at, expires_at: isExemptFromExpiry(user.role) ? null : expires_at });
                   });
               });
 

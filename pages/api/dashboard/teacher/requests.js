@@ -2,7 +2,7 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { notifyStudentSubscriptionDecision } from '../../../../lib/notifyHelper';
-import { buildGrantTimestamps } from '../../../../lib/accessExpiryHelper';
+import { buildGrantTimestamps, isExemptFromExpiry } from '../../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -114,15 +114,20 @@ export default async (req, res) => {
          }
 
          // منح الصلاحيات
+         // 🎓 المدرسون/المشرفون يحصلون دائماً على وصول مدى الحياة، حتى لو
+         // كان الحساب المستهدف (المسجل مسبقاً) قد رُقّي لاحقاً لهذا الدور.
+         const { data: targetUserRoleRow } = await supabase.from('users').select('role').eq('id', targetUserId).maybeSingle();
+         const exemptFromExpiry = isExemptFromExpiry(targetUserRoleRow?.role);
+
          const items = request.requested_data || [];
          for (const item of items) {
              if (item.type === 'course') {
                  // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس عند لحظة المنح
                  const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
-                 await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, course_id' });
+                 await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id, granted_at, expires_at: exemptFromExpiry ? null : expires_at }, { onConflict: 'user_id, course_id' });
              } else if (item.type === 'subject') {
                  const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
-                 await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, subject_id' });
+                 await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at: exemptFromExpiry ? null : expires_at }, { onConflict: 'user_id, subject_id' });
              }
          }
 
