@@ -14,17 +14,21 @@
 //     Does NOT delete anything itself — pages/api/cron/scheduled-course-deletion.js
 //     picks it up and calls deepDeleteCourse() once the date arrives.
 //
-//   { action: 'set_access_duration', courseId, subjectId, durationDays }
+//   { action: 'set_access_duration', courseId, subjectId, durationDays, applyToExisting }
 //     subjectId null/undefined -> sets the course-level default.
 //     subjectId present -> sets that subject's override only.
 //     durationDays: positive integer (days), or null for "lifetime".
-//     IMPORTANT: this only affects *future* grants — lib/accessExpiryHelper.js
-//     resolves it at grant time. Existing students' expires_at is untouched.
+//     By default this only affects *future* grants — lib/accessExpiryHelper.js
+//     resolves it at grant time and existing students' expires_at is untouched.
+//     applyToExisting: true -> opt-in — also recalculates expires_at for every
+//     student who already has access to this course/subject, based on each
+//     student's own granted_at + the new durationDays (see
+//     lib/accessExpiryHelper.js -> recalculateExistingAccess).
 // ============================================================
 
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
-import { isAccessRowActive } from '../../../../lib/accessExpiryHelper';
+import { isAccessRowActive, recalculateExistingAccess } from '../../../../lib/accessExpiryHelper';
 
 export default async function handler(req, res) {
   const authResult = await requireSuperAdmin(req, res);
@@ -166,7 +170,7 @@ async function setScheduledDeletion(req, res) {
 }
 
 async function setAccessDuration(req, res) {
-  const { courseId, subjectId, durationDays } = req.body || {};
+  const { courseId, subjectId, durationDays, applyToExisting } = req.body || {};
   if (!courseId) return res.status(400).json({ error: 'courseId مطلوب' });
 
   let value = null;
@@ -203,11 +207,28 @@ async function setAccessDuration(req, res) {
   if (error) throw error;
   if (!data) return res.status(404).json({ error: 'غير موجود' });
 
+  // By default this only changes the policy used for FUTURE grants.
+  // If the superadmin explicitly opted in, also recalculate expires_at
+  // for every student who already has access to this course/subject.
+  let recalcResult = null;
+  if (applyToExisting) {
+    recalcResult = await recalculateExistingAccess({
+      courseId,
+      subjectId: subjectId || null,
+      durationDays: value,
+    });
+  }
+
+  const scopeMsg = applyToExisting
+    ? ` — وتمت إعادة حساب الفترة لِـ ${recalcResult.updated} طالب حالي`
+    : ' (يسري على المنح الجديدة فقط)';
+
   return res.status(200).json({
     success: true,
-    message: value
-      ? `تم ضبط مدة الوصول لـ "${data.title}" إلى ${value} يوم (يسري على المنح الجديدة فقط)`
-      : `تم ضبط "${data.title}" على وصول مدى الحياة (يسري على المنح الجديدة فقط)`,
+    message: (value
+      ? `تم ضبط مدة الوصول لـ "${data.title}" إلى ${value} يوم`
+      : `تم ضبط "${data.title}" على وصول مدى الحياة`) + scopeMsg,
     item: data,
+    recalculated: recalcResult ? recalcResult.updated : 0,
   });
 }
