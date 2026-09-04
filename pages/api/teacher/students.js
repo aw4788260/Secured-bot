@@ -1,7 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
 import { notifyStudentSubscriptionDecision } from '../../../lib/notifyHelper';
-import { buildGrantTimestamps } from '../../../lib/accessExpiryHelper';
+import { buildGrantTimestamps, isExemptFromExpiry } from '../../../lib/accessExpiryHelper';
 
 export default async (req, res) => {
   // 1. التحقق من صلاحية المعلم
@@ -221,14 +221,18 @@ export default async (req, res) => {
                  }
              }
 
+             // 🎓 المدرسون/المشرفون يحصلون دائماً على وصول مدى الحياة
+             const { data: targetUserRoleRow } = await supabase.from('users').select('role').eq('id', targetUserId).maybeSingle();
+             const exemptFromExpiry = isExemptFromExpiry(targetUserRoleRow?.role);
+
              for (const item of items) {
                  if (item.type === 'course') {
                      // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس عند لحظة المنح
                      const { granted_at, expires_at } = await buildGrantTimestamps(item.id, null);
-                     await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, course_id' });
+                     await supabase.from('user_course_access').upsert({ user_id: targetUserId, course_id: item.id, granted_at, expires_at: exemptFromExpiry ? null : expires_at }, { onConflict: 'user_id, course_id' });
                  } else if (item.type === 'subject') {
                      const { granted_at, expires_at } = await buildGrantTimestamps(null, item.id);
-                     await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at }, { onConflict: 'user_id, subject_id' });
+                     await supabase.from('user_subject_access').upsert({ user_id: targetUserId, subject_id: item.id, granted_at, expires_at: exemptFromExpiry ? null : expires_at }, { onConflict: 'user_id, subject_id' });
                  }
              }
 
@@ -290,7 +294,7 @@ export default async (req, res) => {
             // ✅ خطوة 1: جلب بيانات الطالب لإنشاء السجل
             const { data: studentUser } = await supabase
                 .from('users')
-                .select('username, first_name, phone')
+                .select('username, first_name, phone, role')
                 .eq('id', studentId)
                 .single();
 
@@ -318,12 +322,14 @@ export default async (req, res) => {
 
             // ✅ خطوة 3: منح الصلاحية فعلياً
             // ⏳ حساب تاريخ انتهاء الصلاحية بناءً على مدة الكورس/المادة عند لحظة المنح
+            // 🎓 المدرسون/المشرفون يحصلون دائماً على وصول مدى الحياة
             const { granted_at, expires_at } = type === 'course'
                 ? await buildGrantTimestamps(itemId, null)
                 : await buildGrantTimestamps(null, itemId);
+            const exemptFromExpiry = isExemptFromExpiry(studentUser?.role);
 
             await supabase.from(type === 'course' ? 'user_course_access' : 'user_subject_access')
-               .upsert({ user_id: studentId, [`${type}_id`]: itemId, granted_at, expires_at }, { onConflict: `user_id, ${type}_id` });
+               .upsert({ user_id: studentId, [`${type}_id`]: itemId, granted_at, expires_at: exemptFromExpiry ? null : expires_at }, { onConflict: `user_id, ${type}_id` });
 
          } else {
             // حالة الحذف (إلغاء الصلاحية)
