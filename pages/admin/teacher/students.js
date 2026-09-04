@@ -469,7 +469,9 @@ export default function StudentsPage() {
                                           return (
                                           <div key={c.course_id} className="sub-chip">
                                               <span>{c.courses?.title}</span>
-                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
+                                              {!badge.lifetime && (
+                                                  <span className={`expiry-badge ${badge.expired ? 'expired' : ''}`}>{badge.text}</span>
+                                              )}
                                               <button className="remove-btn" title="سحب الصلاحية" onClick={() => showConfirm('هل أنت متأكد من سحب هذا الكورس؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>×</button>
                                           </div>
                                       ); })}
@@ -482,7 +484,9 @@ export default function StudentsPage() {
                                           return (
                                           <div key={s.subject_id} className="sub-chip">
                                               <span>{s.subjects?.title}</span>
-                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
+                                              {!badge.lifetime && (
+                                                  <span className={`expiry-badge ${badge.expired ? 'expired' : ''}`}>{badge.text}</span>
+                                              )}
                                               <button className="remove-btn" title="سحب الصلاحية" onClick={() => showConfirm('هل أنت متأكد من سحب هذه المادة؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>×</button>
                                           </div>
                                       ); })}
