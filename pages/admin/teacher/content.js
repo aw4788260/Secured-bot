@@ -35,7 +35,9 @@ const formatScheduledDeletionBadge = (isoString) => {
   if (!isoString) return null;
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return null;
-  return `🗓 مجدول للحذف بتاريخ ${date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+  const diffDays = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return `🗑 سيُحذف اليوم`;
+  return `🗑 سيُحذف خلال ${diffDays} يوم`;
 };
 
 const formatAccessDurationBadge = (days) => {
@@ -863,12 +865,12 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <div className="icon accent-icon">{Icons.folder}</div>
                       <h3>{c.title}</h3>
                       <p>{c.price > 0 ? `${c.price} جنية` : 'مجاني'}</p>
-                      <small className="muted-text">{c.subjects?.length || 0} مواد</small>
+                      <small className="muted-text">
+                          {c.subjects?.length || 0} مواد
+                          {formatAccessDurationBadge(c.access_duration_days) && ` • ${formatAccessDurationBadge(c.access_duration_days)}`}
+                      </small>
                       {formatScheduledDeletionBadge(c.scheduled_deletion_at) && (
                           <small className="policy-badge danger-badge">{formatScheduledDeletionBadge(c.scheduled_deletion_at)}</small>
-                      )}
-                      {formatAccessDurationBadge(c.access_duration_days) && (
-                          <small className="policy-badge">{formatAccessDurationBadge(c.access_duration_days)}</small>
                       )}
                   </div>
               ))}
@@ -896,10 +898,10 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                       <div className="icon accent-icon">{Icons.folder}</div>
                       <h3>{s.title}</h3>
                       <p>{s.price > 0 ? `${s.price} جنية` : 'مجاني'}</p>
-                      <small className="muted-text">{s.chapters?.length || 0} فصول</small>
-                      {formatAccessDurationBadge(s.access_duration_days) && (
-                          <small className="policy-badge">{formatAccessDurationBadge(s.access_duration_days)} (مادة)</small>
-                      )}
+                      <small className="muted-text">
+                          {s.chapters?.length || 0} فصول
+                          {formatAccessDurationBadge(s.access_duration_days) && ` • ${formatAccessDurationBadge(s.access_duration_days)}`}
+                      </small>
                   </div>
               ))}
           </div>
