@@ -48,6 +48,20 @@ const Toast = ({ message, type, onClose }) => {
   );
 };
 
+// --- شارة صغيرة تلخص طريقة حساب أرباح المدرس وقيمتها الحالية ---
+const formatBillingMethod = (t) => {
+  if (t.billing_method === 'new_student') {
+    return `👤 ${Number(t.new_student_price) || 0} ج / طالب جديد`;
+  }
+  if (t.billing_method === 'course_price') {
+    return '📦 سعر لكل كورس/مادة';
+  }
+  // percentage (default)
+  return t.custom_percentage !== null && t.custom_percentage !== undefined
+    ? `٪ ${t.custom_percentage}% (خاصة)`
+    : '٪ النسبة العامة';
+};
+
 export default function SuperTeachers() {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +89,8 @@ export default function SuperTeachers() {
     name: '', phone: '', specialty: '', bio: '', whatsapp_number: '',
     cash_numbers: '', instapay_numbers: '', instapay_links: '',
     dashboard_username: '', dashboard_password: '', 
-    app_username: '', app_password: ''
+    app_username: '', app_password: '',
+    billing_method: 'percentage', custom_percentage: '', new_student_price: ''
   });
   // حالة مودال تسجيل الدخول
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -239,7 +254,10 @@ export default function SuperTeachers() {
         dashboard_username: teacher.dashboard_username || '', 
         dashboard_password: '', 
         app_username: teacher.app_username || '', 
-        app_password: ''
+        app_password: '',
+        billing_method: teacher.billing_method || 'percentage',
+        custom_percentage: teacher.custom_percentage ?? '',
+        new_student_price: teacher.new_student_price ?? ''
       });
     } else {
       setEditingId(null);
@@ -247,7 +265,8 @@ export default function SuperTeachers() {
         name: '', phone: '', specialty: '', bio: '', whatsapp_number: '',
         cash_numbers: '', instapay_numbers: '', instapay_links: '',
         dashboard_username: '', dashboard_password: '',
-        app_username: '', app_password: ''
+        app_username: '', app_password: '',
+        billing_method: 'percentage', custom_percentage: '', new_student_price: ''
       });
     }
     setFormModalOpen(true);
@@ -407,6 +426,7 @@ export default function SuperTeachers() {
                   <th>بيانات الدخول</th>
                   <th>التخصص</th>
                   <th>الهاتف</th>
+                  <th>طريقة الأرباح</th>
                   <th style={{textAlign:'center'}}>إجراءات</th>
                 </tr>
               </thead>
@@ -433,6 +453,7 @@ export default function SuperTeachers() {
                     </td>
                     <td><span className="badge">{t.specialty}</span></td>
                     <td dir="ltr" className="phone-col">{t.phone}</td>
+                    <td><span className="badge billing-badge">{formatBillingMethod(t)}</span></td>
                     <td>
                       <div className="actions-wrapper">
                         <div className="main-actions">
@@ -450,7 +471,7 @@ export default function SuperTeachers() {
                   </tr>
                 ))}
                 {filteredTeachers.length === 0 && (
-                  <tr><td colSpan="5" className="empty-row">لا يوجد نتائج.</td></tr>
+                  <tr><td colSpan="6" className="empty-row">لا يوجد نتائج.</td></tr>
                 )}
               </tbody>
             </table>
@@ -551,6 +572,52 @@ export default function SuperTeachers() {
                         <input type="password" dir="ltr" className="input-app" value={formData.app_password} onChange={e => setFormData({...formData, app_password: e.target.value})} placeholder={editingId ? "اتركها فارغة لعدم التغيير" : "******"}/>
                     </div>
                 </div>
+              </div>
+
+              {/* 5. طريقة حساب الأرباح (Billing Method) */}
+              <div className="form-section">
+                <h4>5. طريقة حساب الأرباح</h4>
+                <div className="form-group">
+                    <label>طريقة حساب أرباح المنصة من هذا المدرس</label>
+                    <select
+                        value={formData.billing_method}
+                        onChange={e => setFormData({...formData, billing_method: e.target.value})}
+                    >
+                        <option value="percentage">نسبة مئوية من المبيعات</option>
+                        <option value="new_student">سعر ثابت لكل طالب جديد</option>
+                        <option value="course_price">سعر ثابت لكل كورس/مادة</option>
+                    </select>
+                </div>
+
+                {formData.billing_method === 'percentage' && (
+                    <div className="form-group">
+                        <label>نسبة خاصة % (اختياري)</label>
+                        <input
+                            type="number" min="0" max="100" step="0.1" dir="ltr"
+                            value={formData.custom_percentage}
+                            onChange={e => setFormData({...formData, custom_percentage: e.target.value})}
+                            placeholder="اتركها فارغة لاستخدام النسبة العامة (10%)"
+                        />
+                    </div>
+                )}
+
+                {formData.billing_method === 'new_student' && (
+                    <div className="form-group">
+                        <label>سعر الطالب الجديد (جنيه)</label>
+                        <input
+                            type="number" min="0" step="1" dir="ltr" required
+                            value={formData.new_student_price}
+                            onChange={e => setFormData({...formData, new_student_price: e.target.value})}
+                            placeholder="مثال: 100"
+                        />
+                    </div>
+                )}
+
+                {formData.billing_method === 'course_price' && (
+                    <p className="hint-text">
+                        يتم ضبط سعر كل كورس/مادة من صفحة "إدارة الكورسات".
+                    </p>
+                )}
               </div>
 
               <div className="modal-actions">
@@ -875,8 +942,8 @@ export default function SuperTeachers() {
         .form-row { display: flex; gap: 15px; }
         .form-row .form-group { flex: 1; }
         label { display: block; color: var(--text-secondary); margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; }
-        input { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text-primary); outline: none; transition: 0.2s; }
-        input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
+        input, select { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text-primary); outline: none; transition: 0.2s; font-family: inherit; }
+        input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
         .input-dash:focus { border-color: var(--gold-light); }
         .input-app:focus { border-color: var(--gold-light); }
 
