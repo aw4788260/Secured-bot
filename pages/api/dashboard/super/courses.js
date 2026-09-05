@@ -39,6 +39,16 @@
 //     override of their own (they inherit the course policy) — their
 //     existing students are recalculated too. Subjects with their own
 //     explicit duration are left untouched; they're managed independently.
+//
+//   { action: 'set_report_price', courseId, subjectId, price }
+//     subjectId null/undefined -> sets the course-level report_price.
+//     subjectId present -> sets that subject's override only.
+//     price: a number >= 0, or null to clear (falls back to inherited value —
+//     subject falls back to its course, course falls back to "unpriced").
+//     Used only by teachers whose billing_method = 'course_price' (see
+//     lib/teacherBillingHelper.js) — it never touches access/expiry, so
+//     unlike set_access_duration there's no "apply to existing" concept:
+//     it simply changes what future report calculations use.
 // ============================================================
 
 import { supabase } from '../../../../lib/supabaseClient';
@@ -67,7 +77,7 @@ async function handleGet(req, res) {
   try {
     const { data: courses, error: coursesError } = await supabase
       .from('courses')
-      .select('id, title, teacher_id, scheduled_deletion_at, access_duration_days')
+      .select('id, title, teacher_id, scheduled_deletion_at, access_duration_days, report_price')
       .order('id', { ascending: false });
     if (coursesError) throw coursesError;
 
@@ -75,7 +85,7 @@ async function handleGet(req, res) {
 
     const { data: subjects, error: subjectsError } = await supabase
       .from('subjects')
-      .select('id, title, course_id, access_duration_days')
+      .select('id, title, course_id, access_duration_days, report_price')
       .in('course_id', courseIds.length ? courseIds : [-1]);
     if (subjectsError) throw subjectsError;
 
@@ -92,6 +102,7 @@ async function handleGet(req, res) {
           id: s.id,
           title: s.title,
           access_duration_days: s.access_duration_days,
+          report_price: s.report_price,
         }));
 
       return {
@@ -101,6 +112,7 @@ async function handleGet(req, res) {
         teacher_name: teacherNameById.get(course.teacher_id) || '—',
         scheduled_deletion_at: course.scheduled_deletion_at,
         access_duration_days: course.access_duration_days,
+        report_price: course.report_price,
         subjects: courseSubjects,
       };
     });
@@ -153,6 +165,9 @@ async function handlePost(req, res) {
     }
     if (action === 'set_access_duration') {
       return await setAccessDuration(req, res);
+    }
+    if (action === 'set_report_price') {
+      return await setReportPrice(req, res);
     }
     return res.status(400).json({ error: 'إجراء غير معروف (action)' });
   } catch (error) {
@@ -280,5 +295,60 @@ async function setAccessDuration(req, res) {
       : `تم ضبط "${data.title}" على وصول مدى الحياة`) + scopeMsg,
     item: data,
     recalculated: recalcResult ? recalcResult.updated : 0,
+  });
+}
+
+// ============================================================
+// POST — set the fixed report/commission price used by
+// billing_method='course_price' (see lib/teacherBillingHelper.js).
+// Same inheritance pattern as access_duration_days: a subject with no
+// override of its own falls back to its parent course's price at
+// calculation time — this endpoint just writes whichever level was asked
+// for, no cascading writes needed.
+// ============================================================
+async function setReportPrice(req, res) {
+  const { courseId, subjectId, price } = req.body || {};
+  if (!courseId) return res.status(400).json({ error: 'courseId مطلوب' });
+
+  let value = null;
+  if (price !== null && price !== undefined && price !== '') {
+    const amount = Number(price);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ error: 'السعر يجب أن يكون رقماً موجباً' });
+    }
+    value = amount;
+  }
+
+  const table = subjectId ? 'subjects' : 'courses';
+  const targetId = subjectId || courseId;
+
+  // Sanity check: a subject override must actually belong to the given course.
+  if (subjectId) {
+    const { data: subjectRow } = await supabase
+      .from('subjects')
+      .select('id, course_id')
+      .eq('id', subjectId)
+      .maybeSingle();
+    if (!subjectRow || subjectRow.course_id !== Number(courseId)) {
+      return res.status(400).json({ error: 'المادة لا تنتمي لهذا الكورس' });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .update({ report_price: value })
+    .eq('id', targetId)
+    .select('id, title, report_price')
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return res.status(404).json({ error: 'غير موجود' });
+
+  return res.status(200).json({
+    success: true,
+    message: value !== null
+      ? `تم ضبط سعر التقرير لـ "${data.title}" إلى ${value}`
+      : `تم إلغاء سعر التقرير الخاص بـ "${data.title}" (سيرث سعر الكورس الأب إن وُجد)`,
+    item: data,
   });
 }
