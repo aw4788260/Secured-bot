@@ -4,8 +4,8 @@ import { VALID_BILLING_METHODS } from '../../../../lib/teacherBillingHelper';
 import bcrypt from 'bcryptjs';
 
 // --- دالة مساعدة للتحقق من حقول طريقة حساب الأرباح (Billing Method) ---
-// ترجع { error } لو في مشكلة، أو { billing_method, custom_percentage, new_student_price }
-// بعد التطبيع (Normalization) لو البيانات سليمة.
+// ترجع { error } لو في مشكلة، أو { billing_method, custom_percentage, new_student_price,
+// new_student_lookback_mode, new_student_lookback_since } بعد التطبيع (Normalization) لو البيانات سليمة.
 function validateBillingFields(body) {
   const method = body.billing_method || 'percentage';
 
@@ -31,7 +31,32 @@ function validateBillingFields(body) {
     newStudentPrice = val;
   }
 
-  return { billing_method: method, custom_percentage: customPercentage, new_student_price: newStudentPrice };
+  // --- نطاق فحص "الطالب الجديد" (new_student_lookback) ---
+  // forever (افتراضي) = يفحص كل تاريخ الطالب مع هذا المدرس.
+  // since_date = يتجاهل أي اشتراك سابق لتاريخ محدد، فيُعتبر الطالب "جديد" مرة أخرى.
+  const lookbackMode = body.new_student_lookback_mode === 'since_date' ? 'since_date' : 'forever';
+
+  let lookbackSince = null;
+  if (lookbackMode === 'since_date') {
+    const raw = body.new_student_lookback_since;
+    if (!raw) {
+      return { error: 'من فضلك حدد التاريخ الذي يبدأ منه فحص الاشتراكات القديمة' };
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime())) {
+      return { error: 'تاريخ فحص الاشتراكات القديمة غير صالح' };
+    }
+    // نخزن جزء التاريخ فقط (عمود من نوع date في قاعدة البيانات)
+    lookbackSince = raw.slice(0, 10);
+  }
+
+  return {
+    billing_method: method,
+    custom_percentage: customPercentage,
+    new_student_price: newStudentPrice,
+    new_student_lookback_mode: lookbackMode,
+    new_student_lookback_since: lookbackSince,
+  };
 }
 
 // --- دالة مساعدة للتحقق من التكرار (Validation) ---
@@ -164,7 +189,9 @@ export default async (req, res) => {
             payment_details: payment_details || { "cash_numbers": [], "instapay_links": [], "instapay_numbers": [] },
             billing_method: billing.billing_method,
             custom_percentage: billing.custom_percentage,
-            new_student_price: billing.new_student_price
+            new_student_price: billing.new_student_price,
+            new_student_lookback_mode: billing.new_student_lookback_mode,
+            new_student_lookback_since: billing.new_student_lookback_since
         })
         .select('id')
         .single();
@@ -258,7 +285,9 @@ export default async (req, res) => {
             payment_details,
             billing_method: billing.billing_method,
             custom_percentage: billing.custom_percentage,
-            new_student_price: billing.new_student_price
+            new_student_price: billing.new_student_price,
+            new_student_lookback_mode: billing.new_student_lookback_mode,
+            new_student_lookback_since: billing.new_student_lookback_since
         })
         .eq('id', id);
 
