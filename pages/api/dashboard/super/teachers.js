@@ -1,6 +1,38 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { VALID_BILLING_METHODS } from '../../../../lib/teacherBillingHelper';
 import bcrypt from 'bcryptjs';
+
+// --- دالة مساعدة للتحقق من حقول طريقة حساب الأرباح (Billing Method) ---
+// ترجع { error } لو في مشكلة، أو { billing_method, custom_percentage, new_student_price }
+// بعد التطبيع (Normalization) لو البيانات سليمة.
+function validateBillingFields(body) {
+  const method = body.billing_method || 'percentage';
+
+  if (!VALID_BILLING_METHODS.includes(method)) {
+    return { error: 'طريقة حساب أرباح غير معروفة' };
+  }
+
+  let customPercentage = null;
+  if (body.custom_percentage !== undefined && body.custom_percentage !== null && body.custom_percentage !== '') {
+    const val = Number(body.custom_percentage);
+    if (!Number.isFinite(val) || val < 0 || val > 100) {
+      return { error: 'النسبة الخاصة يجب أن تكون رقماً بين 0 و 100' };
+    }
+    customPercentage = val;
+  }
+
+  let newStudentPrice = 0;
+  if (body.new_student_price !== undefined && body.new_student_price !== null && body.new_student_price !== '') {
+    const val = Number(body.new_student_price);
+    if (!Number.isFinite(val) || val < 0) {
+      return { error: 'سعر الطالب الجديد يجب أن يكون رقماً موجباً' };
+    }
+    newStudentPrice = val;
+  }
+
+  return { billing_method: method, custom_percentage: customPercentage, new_student_price: newStudentPrice };
+}
 
 // --- دالة مساعدة للتحقق من التكرار (Validation) ---
 async function checkUniqueness(phone, dashboard_username, app_username, excludeUserId = null) {
@@ -107,6 +139,12 @@ export default async (req, res) => {
         return res.status(400).json({ error: 'الرجاء تعبئة كافة الحقول المطلوبة (الاسم، الهاتف، وبيانات الدخول)' });
     }
 
+    // 1ب. التحقق من حقول طريقة حساب الأرباح (اختيارية عند الإنشاء — تأخذ الافتراضي "نسبة")
+    const billing = validateBillingFields(req.body);
+    if (billing.error) {
+        return res.status(400).json({ error: billing.error });
+    }
+
     // 2. فحص التكرار (Uniqueness)
     const uniqueErrors = await checkUniqueness(phone, dashboard_username, app_username);
     if (uniqueErrors.length > 0) {
@@ -123,7 +161,10 @@ export default async (req, res) => {
             bio, 
             whatsapp_number,
             // القيمة الافتراضية للدفع إذا لم تُرسل
-            payment_details: payment_details || { "cash_numbers": [], "instapay_links": [], "instapay_numbers": [] }
+            payment_details: payment_details || { "cash_numbers": [], "instapay_links": [], "instapay_numbers": [] },
+            billing_method: billing.billing_method,
+            custom_percentage: billing.custom_percentage,
+            new_student_price: billing.new_student_price
         })
         .select('id')
         .single();
@@ -199,6 +240,12 @@ export default async (req, res) => {
         return res.status(400).json({ error: uniqueErrors.join(' - ') });
     }
 
+    // 1ب. التحقق من حقول طريقة حساب الأرباح
+    const billing = validateBillingFields(req.body);
+    if (billing.error) {
+        return res.status(400).json({ error: billing.error });
+    }
+
     try {
       // 2. تحديث جدول teachers (جميع الحقول ما عدا الصورة)
       const { error: tError } = await supabase
@@ -208,7 +255,10 @@ export default async (req, res) => {
             specialty, 
             bio, 
             whatsapp_number, 
-            payment_details 
+            payment_details,
+            billing_method: billing.billing_method,
+            custom_percentage: billing.custom_percentage,
+            new_student_price: billing.new_student_price
         })
         .eq('id', id);
 
