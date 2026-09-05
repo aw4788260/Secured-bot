@@ -135,7 +135,7 @@ export default function SuperFinance() {
             <div class="stat">المبيعات الافتراضية<div class="stat-val muted">${financials.total_original_revenue.toLocaleString()} ج.م</div></div>
             <div class="stat">المبيعات الفعلية (المُحصلة)<div class="stat-val actual">${financials.total_actual_revenue.toLocaleString()} ج.م</div></div>
             <div class="stat">ربح المنصة<div class="stat-val">${financials.platform_profit.toLocaleString()} ج.م</div></div>
-            <div class="stat">مستحقات المدرسين<div class="stat-val" style="color: #dc2626">${financials.teachers_due.toLocaleString()} ج.م</div></div>
+            <div class="stat">صافي أرباح المدرسين<div class="stat-val" style="color: #b8903a">${financials.teachers_due.toLocaleString()} ج.م</div></div>
           </div>
 
           <table>
@@ -400,7 +400,7 @@ export default function SuperFinance() {
                 <div class="cards">
                   <div class="card">
                     <div class="icn">👛</div>
-                    <div class="label">صافي المستحق للمدرس</div>
+                    <div class="label">صافي ربح المدرس</div>
                     <div class="value gold">${fmt(netProfit)} ج.م</div>
                   </div>
                   <div class="card">
@@ -583,7 +583,7 @@ export default function SuperFinance() {
             <div className="header-icon"><WalletIcon /></div>
             <div>
               <h1>التقارير المالية والأرباح</h1>
-              <p>متابعة الإيرادات، نسب المنصة، ومستحقات المدرسين</p>
+              <p>متابعة الإيرادات، نسب المنصة، وأرباح المدرسين</p>
             </div>
           </div>
           
@@ -638,16 +638,15 @@ export default function SuperFinance() {
               <div className="content">
                  <h3>صافي ربح المنصة</h3>
                  <p className="val-gold">{loading ? '...' : financials.platform_profit.toLocaleString()} <span style={{fontSize:'1rem'}}>ج.م</span></p>
-                 <span className="badge">محسوب من التحصيل الفعلي</span>
               </div>
            </div>
 
            <div className="stat-card due">
               <div className="icon red-icon"><TeacherIcon /></div>
               <div className="content">
-                 <h3>مستحقات المدرسين</h3>
+                 <h3>صافي أرباح المدرسين</h3>
                  <p className="val-danger">{loading ? '...' : financials.teachers_due.toLocaleString()} <span style={{fontSize:'1rem'}}>ج.م</span></p>
-                 <span className="badge warning">التزام مالي للمدرسين</span>
+                 <span className="badge warning">أموال محصّلة بالفعل لدى المدرسين</span>
               </div>
            </div>
         </div>
