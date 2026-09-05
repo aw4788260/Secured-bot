@@ -2,11 +2,21 @@
 // ============================================================
 // 🗂️ Superadmin: Courses management (Step 8)
 // ============================================================
-// GET  -> lists every course (all teachers) with its subjects, the
-//         teacher's name, active-student counts, and the two policy
-//         fields set by the superadmin:
+// GET (no query)            -> lists every course (all teachers) with its
+//         subjects, the teacher's name, and the two policy fields set by
+//         the superadmin:
 //           - scheduled_deletion_at (Feature A)
 //           - access_duration_days (course + per-subject override, Feature B)
+//         NOTE: this list intentionally does NOT include active-student
+//         counts anymore — computing that for every course/subject on
+//         every page load doesn't scale once there are many teachers and
+//         courses. Student counts are fetched on demand instead (see below).
+//
+// GET ?countType=course|subject&countId=<id>
+//         -> lightweight, single-target lookup: returns just
+//         { active_students } for that one course or subject. The
+//         dashboard calls this only when the superadmin opens the
+//         "⏳ المدة" (access duration) modal for that specific item.
 //
 // POST -> two actions:
 //   { action: 'set_scheduled_deletion', courseId, scheduledDeletionAt }
@@ -24,6 +34,11 @@
 //     student who already has access to this course/subject, based on each
 //     student's own granted_at + the new durationDays (see
 //     lib/accessExpiryHelper.js -> recalculateExistingAccess).
+//     When this is a COURSE-level change (subjectId omitted), it also
+//     cascades to that course's subjects that have NO access_duration_days
+//     override of their own (they inherit the course policy) — their
+//     existing students are recalculated too. Subjects with their own
+//     explicit duration are left untouched; they're managed independently.
 // ============================================================
 
 import { supabase } from '../../../../lib/supabaseClient';
@@ -34,14 +49,19 @@ export default async function handler(req, res) {
   const authResult = await requireSuperAdmin(req, res);
   if (authResult.error) return;
 
-  if (req.method === 'GET') return handleGet(req, res);
+  if (req.method === 'GET') {
+    if (req.query.countType && req.query.countId) {
+      return handleGetActiveCount(req, res);
+    }
+    return handleGet(req, res);
+  }
   if (req.method === 'POST') return handlePost(req, res);
 
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
 // ============================================================
-// GET
+// GET — full listing (cheap: no per-item student counts)
 // ============================================================
 async function handleGet(req, res) {
   try {
@@ -65,28 +85,6 @@ async function handleGet(req, res) {
       : { data: [] };
     const teacherNameById = new Map((teachers || []).map(t => [t.id, t.name]));
 
-    // Active-student counts per course/subject (expiry-aware, same rule as
-    // everywhere else — see lib/accessExpiryHelper.js).
-    const [courseAccessRows, subjectAccessRows] = await Promise.all([
-      courseIds.length
-        ? supabase.from('user_course_access').select('course_id, expires_at').in('course_id', courseIds)
-        : { data: [] },
-      subjects.length
-        ? supabase.from('user_subject_access').select('subject_id, expires_at').in('subject_id', subjects.map(s => s.id))
-        : { data: [] },
-    ]);
-
-    const activeCountByCourse = new Map();
-    for (const row of courseAccessRows.data || []) {
-      if (!isAccessRowActive(row)) continue;
-      activeCountByCourse.set(row.course_id, (activeCountByCourse.get(row.course_id) || 0) + 1);
-    }
-    const activeCountBySubject = new Map();
-    for (const row of subjectAccessRows.data || []) {
-      if (!isAccessRowActive(row)) continue;
-      activeCountBySubject.set(row.subject_id, (activeCountBySubject.get(row.subject_id) || 0) + 1);
-    }
-
     const structured = (courses || []).map(course => {
       const courseSubjects = (subjects || [])
         .filter(s => s.course_id === course.id)
@@ -94,7 +92,6 @@ async function handleGet(req, res) {
           id: s.id,
           title: s.title,
           access_duration_days: s.access_duration_days,
-          active_students: activeCountBySubject.get(s.id) || 0,
         }));
 
       return {
@@ -104,7 +101,6 @@ async function handleGet(req, res) {
         teacher_name: teacherNameById.get(course.teacher_id) || '—',
         scheduled_deletion_at: course.scheduled_deletion_at,
         access_duration_days: course.access_duration_days,
-        active_students: activeCountByCourse.get(course.id) || 0,
         subjects: courseSubjects,
       };
     });
@@ -112,6 +108,35 @@ async function handleGet(req, res) {
     return res.status(200).json({ courses: structured });
   } catch (error) {
     console.error('❌ [dashboard/super/courses][GET]', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+// ============================================================
+// GET — on-demand active-student count for ONE course or subject.
+// Called only when the superadmin opens the duration modal for that
+// specific item, instead of computing it for everything up front.
+// ============================================================
+async function handleGetActiveCount(req, res) {
+  try {
+    const { countType, countId } = req.query;
+    if (!['course', 'subject'].includes(countType) || !countId) {
+      return res.status(400).json({ error: 'معطيات غير صالحة' });
+    }
+
+    const table = countType === 'subject' ? 'user_subject_access' : 'user_course_access';
+    const column = countType === 'subject' ? 'subject_id' : 'course_id';
+
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('expires_at')
+      .eq(column, countId);
+    if (error) throw error;
+
+    const active_students = (rows || []).filter(isAccessRowActive).length;
+    return res.status(200).json({ active_students });
+  } catch (error) {
+    console.error('❌ [dashboard/super/courses][GET count]', error.message);
     return res.status(500).json({ error: error.message });
   }
 }
@@ -211,16 +236,41 @@ async function setAccessDuration(req, res) {
   // If the superadmin explicitly opted in, also recalculate expires_at
   // for every student who already has access to this course/subject.
   let recalcResult = null;
+  let cascadedSubjectsCount = 0;
   if (applyToExisting) {
     recalcResult = await recalculateExistingAccess({
       courseId,
       subjectId: subjectId || null,
       durationDays: value,
     });
+
+    // A course-level change also flows down to that course's subjects —
+    // but ONLY the ones with no access_duration_days override of their
+    // own (they inherit the course policy). A subject with its own
+    // explicit period is left alone; it's managed independently.
+    if (!subjectId) {
+      const { data: inheritingSubjects, error: subjError } = await supabase
+        .from('subjects')
+        .select('id')
+        .eq('course_id', courseId)
+        .is('access_duration_days', null);
+      if (subjError) throw subjError;
+
+      let subjectsUpdatedStudents = 0;
+      for (const subj of inheritingSubjects || []) {
+        const subjResult = await recalculateExistingAccess({
+          subjectId: subj.id,
+          durationDays: value,
+        });
+        subjectsUpdatedStudents += subjResult.updated;
+      }
+      cascadedSubjectsCount = (inheritingSubjects || []).length;
+      recalcResult.updated += subjectsUpdatedStudents;
+    }
   }
 
   const scopeMsg = applyToExisting
-    ? ` — وتمت إعادة حساب الفترة لِـ ${recalcResult.updated} طالب حالي`
+    ? ` — وتمت إعادة حساب الفترة لِـ ${recalcResult.updated} طالب حالي${cascadedSubjectsCount ? ` (شاملة ${cascadedSubjectsCount} مادة تابعة بلا مدة خاصة بها)` : ''}`
     : ' (يسري على المنح الجديدة فقط)';
 
   return res.status(200).json({
