@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { computeTeacherBilling } from '../../../../lib/teacherBillingHelper';
 
 // ✅ دالة ذكية لحساب فرق التوقيت لمصر بناءً على التاريخ (تدعم الصيفي والشتوي)
 const getEgyptOffset = (dateString) => {
@@ -81,97 +82,62 @@ export default async function handler(req, res) {
             teacherName: teacher.first_name || teacher.admin_username,
             requests: [],
             summary: { total_original_amount: 0, total_actual_amount: 0, total_approved_count: 0, total_rejected_count: 0 },
-            platformPercentage: 0
+            platformPercentage: 0,
+            billingMethod: 'percentage',
+            meta: { approved_count: 0, rejected_count: 0 }
         });
     }
 
     // ============================================================
-    // 2. جلب نسبة المنصة من الإعدادات
-    // ============================================================
-    let platformPercentage = 0.10; 
-    const { data: settingsData } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'platform_percentage')
-      .maybeSingle();
-
-    if (settingsData && settingsData.value) {
-      const val = parseFloat(settingsData.value);
-      if (!isNaN(val)) {
-        platformPercentage = val > 1 ? val / 100 : val;
-      }
-    }
-
-    // ============================================================
-    // 3. تنسيق التواريخ للدالة والاستعلام مع فرق التوقيت الديناميكي
+    // 2. تنسيق التواريخ للاستعلام مع فرق التوقيت الديناميكي
     // ============================================================
     // الاعتماد على التوقيت العالمي الصريح
     const formattedStartDate = getUtcBoundary(startDate, false);
     const formattedEndDate = getUtcBoundary(endDate, true);
 
     // ============================================================
-    // ✅ 4. جلب الأرباح الفعلية مباشرة من دالة قاعدة البيانات (RPC)
+    // ✅ 3. حساب أرباح المدرس عبر الدالة المشتركة — تختار تلقائياً طريقة
+    // الحساب الخاصة بهذا المدرس (نسبة / طالب جديد / سعر كورس ثابت) بدلاً من
+    // افتراض النسبة المئوية دائماً كما في السابق.
     // ============================================================
-    log('FETCH_RPC', 'Calling get_teacher_actual_revenue RPC...');
-    
-    const { data: actualRevenueRPC, error: rpcError } = await supabase.rpc('get_teacher_actual_revenue', {
-        teacher_id_arg: teacher.teacher_profile_id,
-        start_date: formattedStartDate,
-        end_date: formattedEndDate
-    });
+    log('BILLING', 'Computing teacher billing via computeTeacherBilling()...');
 
-    if (rpcError) {
-        errLog('RPC_ERROR', 'Failed to calculate actual revenue via DB function', rpcError);
-    }
-    
-    const totalActualAmount = actualRevenueRPC || 0;
-    log('RPC_RESULT', `Actual Revenue from RPC: ${totalActualAmount}`);
+    const billing = await computeTeacherBilling(teacher.teacher_profile_id, formattedStartDate, formattedEndDate);
 
-    // ============================================================
-    // 5. إعداد استعلام العمليات (للعرض في الجدول)
-    // ============================================================
-    let query = supabase
-      .from('subscription_requests')
-      .select('*')
-      .eq('teacher_id', teacher.teacher_profile_id)
-      .in('status', ['approved', 'rejected'])
-      .order('created_at', { ascending: false });
+    // نسبة المنصة المستخدمة فعلياً لهذا المدرس (فقط ذات معنى لو
+    // billing_method='percentage' — تبقى القيمة الافتراضية 0 لغير ذلك
+    // حتى لا يُفهم خطأً أن هناك نسبة مطبقة).
+    const platformPercentage = billing.meta.effective_percentage !== undefined
+        ? billing.meta.effective_percentage
+        : 0;
 
-    // تطبيق فلترة التاريخ للجدول أيضاً
-    if (formattedStartDate) query = query.gte('created_at', formattedStartDate);
-    if (formattedEndDate) query = query.lte('created_at', formattedEndDate);
-
-    const { data: requests, error: rError } = await query;
-
-    if (rError) throw rError;
+    log('BILLING_RESULT', `Method: ${billing.billing_method} | Original: ${billing.original_amount} | Actual: ${billing.actual_amount} | Fee: ${billing.platform_fee}`);
 
     // ============================================================
-    // 6. حساب باقي التجميعات البسيطة
+    // 4. تجميع الملخص (Summary) — نفس الشكل المستخدم سابقاً في الفرونت إند
     // ============================================================
     const summary = {
-        total_original_amount: 0, 
-        total_actual_amount: totalActualAmount, // 👈 تم الاعتماد على الدالة (RPC) هنا!
-        total_approved_count: 0,
-        total_rejected_count: 0
+        total_original_amount: billing.original_amount,
+        total_actual_amount: billing.actual_amount,
+        total_approved_count: billing.meta.approved_count || 0,
+        total_rejected_count: billing.meta.rejected_count || 0,
+        // 👇 جديد: صافي المستحق وعمولة المنصة، محسوبين بحسب طريقة المدرس
+        platform_fee: billing.platform_fee,
+        net_profit: billing.net_profit
     };
 
-    // حلقة التكرار الآن تُستخدم فقط لحساب أعداد الطلبات والسعر الافتراضي الأصلي
-    requests.forEach(req => {
-        if (req.status === 'approved') {
-            summary.total_original_amount += (req.total_price || 0);
-            summary.total_approved_count += 1;
-        } else if (req.status === 'rejected') {
-            summary.total_rejected_count += 1;
-        }
-    });
-
-    log('SUCCESS', `Report Ready. Actual Amount: ${summary.total_actual_amount}`);
+    log('SUCCESS', `Report Ready. Actual Amount: ${summary.total_actual_amount} | Fee: ${summary.platform_fee}`);
 
     return res.status(200).json({
         teacherName: teacher.first_name || teacher.admin_username,
-        requests,
+        requests: billing.requests,
         summary,
-        platformPercentage 
+        platformPercentage,
+        // 👇 جديد: طريقة الحساب + تفاصيل إضافية لكل طلب/عنصر — تستخدمها
+        // شاشة التقرير المفصّل لعرض "طالب جديد؟" (طريقة 2) أو السعر
+        // المطبّق لكل عنصر (طريقة 3).
+        billingMethod: billing.billing_method,
+        meta: billing.meta
     });
 
   } catch (err) {
