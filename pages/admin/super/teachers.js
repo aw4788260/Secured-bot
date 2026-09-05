@@ -51,7 +51,10 @@ const Toast = ({ message, type, onClose }) => {
 // --- شارة صغيرة تلخص طريقة حساب أرباح المدرس وقيمتها الحالية ---
 const formatBillingMethod = (t) => {
   if (t.billing_method === 'new_student') {
-    return `👤 ${Number(t.new_student_price) || 0} ج / طالب جديد`;
+    const lookback = t.new_student_lookback_mode === 'since_date' && t.new_student_lookback_since
+      ? ` (منذ ${t.new_student_lookback_since})`
+      : '';
+    return `👤 ${Number(t.new_student_price) || 0} ج / طالب جديد${lookback}`;
   }
   if (t.billing_method === 'course_price') {
     return '📦 سعر لكل كورس/مادة';
@@ -90,7 +93,8 @@ export default function SuperTeachers() {
     cash_numbers: '', instapay_numbers: '', instapay_links: '',
     dashboard_username: '', dashboard_password: '', 
     app_username: '', app_password: '',
-    billing_method: 'percentage', custom_percentage: '', new_student_price: ''
+    billing_method: 'percentage', custom_percentage: '', new_student_price: '',
+    new_student_lookback_mode: 'forever', new_student_lookback_since: ''
   });
   // حالة مودال تسجيل الدخول
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -257,7 +261,9 @@ export default function SuperTeachers() {
         app_password: '',
         billing_method: teacher.billing_method || 'percentage',
         custom_percentage: teacher.custom_percentage ?? '',
-        new_student_price: teacher.new_student_price ?? ''
+        new_student_price: teacher.new_student_price ?? '',
+        new_student_lookback_mode: teacher.new_student_lookback_mode || 'forever',
+        new_student_lookback_since: teacher.new_student_lookback_since || ''
       });
     } else {
       setEditingId(null);
@@ -266,7 +272,8 @@ export default function SuperTeachers() {
         cash_numbers: '', instapay_numbers: '', instapay_links: '',
         dashboard_username: '', dashboard_password: '',
         app_username: '', app_password: '',
-        billing_method: 'percentage', custom_percentage: '', new_student_price: ''
+        billing_method: 'percentage', custom_percentage: '', new_student_price: '',
+        new_student_lookback_mode: 'forever', new_student_lookback_since: ''
       });
     }
     setFormModalOpen(true);
@@ -602,6 +609,7 @@ export default function SuperTeachers() {
                 )}
 
                 {formData.billing_method === 'new_student' && (
+                    <>
                     <div className="form-group">
                         <label>سعر الطالب الجديد (جنيه)</label>
                         <input
@@ -611,6 +619,34 @@ export default function SuperTeachers() {
                             placeholder="مثال: 100"
                         />
                     </div>
+
+                    <div className="form-group">
+                        <label>نطاق فحص الاشتراكات القديمة (لتحديد هل الطالب "جديد")</label>
+                        <select
+                            value={formData.new_student_lookback_mode}
+                            onChange={e => setFormData({...formData, new_student_lookback_mode: e.target.value})}
+                        >
+                            <option value="forever">فحص كل تاريخ الطالب مع هذا المدرس (بلا حدود)</option>
+                            <option value="since_date">فحص الاشتراكات بدءاً من تاريخ محدد فقط</option>
+                        </select>
+                        <p className="hint-text">
+                            {formData.new_student_lookback_mode === 'forever'
+                                ? 'أي اشتراك سابق (معتمد) لهذا الطالب مع هذا المدرس، مهما كان قديماً، يجعله "غير جديد".'
+                                : 'الاشتراكات المعتمدة قبل التاريخ المحدد سيتم تجاهلها، فيُحتسب الطالب "جديد" من جديد لو كان آخر اشتراك له قبل هذا التاريخ.'}
+                        </p>
+                    </div>
+
+                    {formData.new_student_lookback_mode === 'since_date' && (
+                        <div className="form-group">
+                            <label>تجاهل الاشتراكات قبل تاريخ</label>
+                            <input
+                                type="date" dir="ltr" required
+                                value={formData.new_student_lookback_since}
+                                onChange={e => setFormData({...formData, new_student_lookback_since: e.target.value})}
+                            />
+                        </div>
+                    )}
+                    </>
                 )}
 
                 {formData.billing_method === 'course_price' && (
