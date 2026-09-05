@@ -62,6 +62,8 @@ export default function SuperCoursesPage() {
   const [durationMode, setDurationMode] = useState('lifetime'); // 'lifetime' | 'preset' | 'custom'
   const [durationPreset, setDurationPreset] = useState(30);
   const [durationScope, setDurationScope] = useState('new'); // 'new' | 'all' — who the change applies to
+  const [durationStudentCount, setDurationStudentCount] = useState(null); // fetched on demand, only for this one item
+  const [durationCountLoading, setDurationCountLoading] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -106,13 +108,11 @@ export default function SuperCoursesPage() {
           teacher_id: c.teacher_id,
           teacher_name: c.teacher_name || '—',
           courses: [],
-          activeStudents: 0,
           scheduledDeletions: 0,
         });
       }
       const g = map.get(key);
       g.courses.push(c);
-      g.activeStudents += c.active_students || 0;
       if (c.scheduled_deletion_at) g.scheduledDeletions += 1;
     }
     return [...map.values()].sort((a, b) => b.courses.length - a.courses.length);
@@ -199,6 +199,20 @@ export default function SuperCoursesPage() {
     }
     setDurationPreset(30);
     setDurationScope('new');
+
+    // Fetch the student count for THIS item only, on demand — avoids
+    // computing it for every course/subject up front on page load.
+    setDurationStudentCount(null);
+    setDurationCountLoading(true);
+    const countType = target.type === 'subject' ? 'subject' : 'course';
+    fetch(`/api/dashboard/super/courses?countType=${countType}&countId=${target.id}`)
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok) setDurationStudentCount(data.active_students ?? 0);
+        else setDurationStudentCount(null);
+      })
+      .catch(() => setDurationStudentCount(null))
+      .finally(() => setDurationCountLoading(false));
   };
 
   const submitAccessDuration = async () => {
@@ -224,8 +238,12 @@ export default function SuperCoursesPage() {
 
     if (durationScope === 'all') {
       const periodLabel = durationDays ? `${durationDays} يوم` : 'مدى الحياة';
+      const cascadeNote = durationTarget.type === 'course'
+        ? ' وسيشمل ذلك أيضاً مواد هذا الكورس التي لا تملك مدة خاصة بها (الموروثة من إعداد الكورس).'
+        : '';
+      const countNote = durationStudentCount !== null ? ` (${durationStudentCount} طالب حالياً على هذا العنصر)` : '';
       showConfirm(
-        `سيتم تطبيق المدة الجديدة (${periodLabel}) على كل الطلاب الحاليين في "${durationTarget.title}" وإعادة حساب تاريخ انتهاء وصول كل واحد منهم بناءً على تاريخ اشتراكه. هل أنت متأكد؟`,
+        `سيتم تطبيق المدة الجديدة (${periodLabel}) على كل الطلاب الحاليين في "${durationTarget.title}"${countNote} وإعادة حساب تاريخ انتهاء وصول كل واحد منهم بناءً على تاريخ اشتراكه.${cascadeNote} هل أنت متأكد؟`,
         runSave
       );
     } else {
@@ -272,7 +290,7 @@ export default function SuperCoursesPage() {
             {selectedTeacher ? (
               <>
                 <h1>{selectedTeacher.teacher_name}</h1>
-                <p>{selectedTeacher.courses.length} كورس · {selectedTeacher.activeStudents} طالب نشط</p>
+                <p>{selectedTeacher.courses.length} كورس</p>
               </>
             ) : (
               <>
@@ -315,7 +333,6 @@ export default function SuperCoursesPage() {
               <div className="teacher-name">{g.teacher_name}</div>
               <div className="teacher-stats">
                 <span className="t-stat"><CoursesIcon />{g.courses.length} كورس</span>
-                <span className="t-stat gold">👤 {g.activeStudents} طالب</span>
               </div>
               {g.scheduledDeletions > 0 && (
                 <span className="del-badge teacher-del-badge">🗓️ {g.scheduledDeletions} حذف مجدول</span>
@@ -337,7 +354,6 @@ export default function SuperCoursesPage() {
                 <th style={{ width: '40px' }}></th>
                 <th style={{ width: '60px' }}>ID</th>
                 <th style={{ textAlign: 'right' }}>الكورس</th>
-                <th style={{ textAlign: 'center' }}>الطلاب النشطون</th>
                 <th style={{ textAlign: 'center' }}>مدة الوصول</th>
                 <th style={{ textAlign: 'center' }}>الحذف المجدول</th>
                 <th style={{ textAlign: 'center', width: '220px' }}>إجراءات</th>
@@ -350,7 +366,6 @@ export default function SuperCoursesPage() {
                     <td style={{ textAlign: 'center' }}><ChevronIcon open={!!expanded[course.id]} /></td>
                     <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{course.id}</td>
                     <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{course.title}</td>
-                    <td style={{ textAlign: 'center', color: 'var(--gold)', fontWeight: 700 }}>{course.active_students}</td>
                     <td style={{ textAlign: 'center' }}>{durationBadge(course.access_duration_days)}</td>
                     <td style={{ textAlign: 'center' }}>
                       {course.scheduled_deletion_at
@@ -370,7 +385,7 @@ export default function SuperCoursesPage() {
                   {expanded[course.id] && (
                     <tr className="expand-row">
                       <td></td>
-                      <td colSpan="6">
+                      <td colSpan="5">
                         {course.subjects.length === 0 ? (
                           <p className="empty-text">لا توجد مواد في هذا الكورس</p>
                         ) : (
@@ -378,7 +393,6 @@ export default function SuperCoursesPage() {
                             {course.subjects.map(subject => (
                               <div key={subject.id} className="subject-row">
                                 <span className="subject-title">📄 {subject.title}</span>
-                                <span className="subject-students">{subject.active_students} طالب نشط</span>
                                 {durationBadge(subject.access_duration_days)}
                                 <button
                                   className="mini-btn"
@@ -396,7 +410,7 @@ export default function SuperCoursesPage() {
                 </Fragment>
               ))}
               {filteredCourses.length === 0 && (
-                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>لا يوجد نتائج</td></tr>
+                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>لا يوجد نتائج</td></tr>
               )}
             </tbody>
           </table>
@@ -446,6 +460,15 @@ export default function SuperCoursesPage() {
               <button className="close-icon" onClick={() => setDurationTarget(null)}>✕</button>
             </div>
             <div className="modal-content">
+              <div className="student-count-badge">
+                👤 الطلاب الحاليون على هذا العنصر:{' '}
+                {durationCountLoading ? (
+                  <span className="count-loading">جاري الحساب...</span>
+                ) : (
+                  <strong>{durationStudentCount ?? '—'}</strong>
+                )}
+              </div>
+
               <p className="hint-text">
                 حدد المدة الجديدة، ثم اختر إن كانت تسري على المشتركين الجدد فقط أو على كل الطلاب الحاليين أيضاً.
                 {durationTarget.type === 'subject' && ' هذا الضبط يخص هذه المادة فقط، وله أولوية على إعداد الكورس العام.'}
@@ -507,6 +530,7 @@ export default function SuperCoursesPage() {
                 {durationScope === 'all' && (
                   <p className="hint-text warn-hint">
                     ⚠️ سيتم تعديل تاريخ انتهاء الوصول لكل طالب لديه وصول حالياً لهذا العنصر. كل طالب سيُحتسب من تاريخ اشتراكه الأصلي + المدة الجديدة، وليس من الآن.
+                    {durationTarget.type === 'course' && ' سيشمل هذا أيضاً مواد هذا الكورس التي لم تُضبط لها مدة خاصة (تعتمد على إعداد الكورس).'}
                   </p>
                 )}
               </div>
@@ -580,7 +604,6 @@ export default function SuperCoursesPage() {
         .subjects-list { display: flex; flex-direction: column; gap: 10px; }
         .subject-row { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
         .subject-title { font-weight: 600; color: var(--text-primary); flex: 1; min-width: 160px; }
-        .subject-students { color: var(--text-muted); font-size: 0.85em; }
         .empty-text { color: var(--text-muted); font-size: 0.9em; text-align: center; font-style: italic; background: var(--bg-hover); padding: 15px; border-radius: 10px; border: 1px dashed var(--border); margin: 0; }
         .empty-inline { color: var(--text-muted); }
 
@@ -613,6 +636,9 @@ export default function SuperCoursesPage() {
 
         .modal-content { padding: 25px; overflow-y: auto; }
         .hint-text { color: var(--text-muted); font-size: 0.88em; line-height: 1.6; background: var(--bg-elevated); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 15px; margin: 0 0 20px 0; }
+        .student-count-badge { display: flex; align-items: center; gap: 6px; color: var(--text-primary); font-size: 0.95em; background: var(--gold-dimmer); border: 1px solid var(--border-accent); border-radius: 10px; padding: 10px 15px; margin: 0 0 16px 0; }
+        .student-count-badge strong { color: var(--gold); font-size: 1.05em; }
+        .count-loading { color: var(--text-muted); font-style: italic; }
         .hint-text.warn-hint { color: #ef4444; border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); margin: 12px 0 0 0; }
         .field-label { display: block; color: var(--text-secondary); font-weight: 600; font-size: 0.9em; margin-bottom: 8px; }
 
