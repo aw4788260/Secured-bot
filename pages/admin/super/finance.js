@@ -11,6 +11,46 @@ const ChartIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="n
 const TeacherIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
 const FileTextIcon = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
 
+// ─── Billing-method labels/badges ──────────────────────────
+// Single place that turns a teacher's billing_method (+ its computed
+// fields) into a human-readable badge, used by the overview table, the
+// global PDF export, and the detailed per-teacher report — so all three
+// surfaces describe a teacher's method the same way.
+const round0 = (n) => Math.round(Number(n) || 0);
+
+// React-friendly version: { text, className } for the overview table.
+const getMethodBadge = (teacher) => {
+  const method = teacher?.billing_method || 'percentage';
+  if (method === 'new_student') {
+    const count = teacher.new_student_count ?? 0;
+    const price = round0(teacher.new_student_price);
+    return { text: `👨‍🎓 ${count} جديد × ${price.toLocaleString()}`, className: 'method-badge method-new-student' };
+  }
+  if (method === 'course_price') {
+    const unpriced = teacher.unpriced_items_count || 0;
+    return unpriced > 0
+      ? { text: `📚 سعر كورس (${unpriced} بدون سعر)`, className: 'method-badge method-course-price warning' }
+      : { text: '📚 سعر ثابت للكورس', className: 'method-badge method-course-price' };
+  }
+  const pct = round0(teacher.custom_percentage);
+  return { text: `٪ عمولة ${pct}%`, className: 'method-badge method-percentage' };
+};
+
+// Plain-text version for print/PDF output (no JSX classes, just a short label).
+const methodBadgeText = (teacher) => {
+  const method = teacher?.billing_method || 'percentage';
+  if (method === 'new_student') {
+    const count = teacher.new_student_count ?? 0;
+    const price = round0(teacher.new_student_price);
+    return `طالب جديد (${count} × ${price.toLocaleString()} ج.م)`;
+  }
+  if (method === 'course_price') {
+    const unpriced = teacher.unpriced_items_count || 0;
+    return unpriced > 0 ? `سعر كورس (${unpriced} عنصر بدون سعر)` : 'سعر ثابت للكورس';
+  }
+  return `نسبة ${round0(teacher.custom_percentage)}%`;
+};
+
 export default function SuperFinance() {
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(null);
@@ -102,6 +142,7 @@ export default function SuperFinance() {
             <thead>
               <tr>
                 <th>المدرس</th>
+                <th>طريقة الاحتساب</th>
                 <th>عدد العمليات</th>
                 <th>المبيعات الافتراضية</th>
                 <th>المبيعات الفعلية</th>
@@ -112,9 +153,11 @@ export default function SuperFinance() {
             <tbody>
               ${financials.teachers_list.map(t => {
                 const hasCustom = t.original_sales !== t.actual_sales;
+                const methodChipColor = t.billing_method === 'new_student' ? '#2563eb' : t.billing_method === 'course_price' ? '#7c3aed' : '#b8903a';
                 return `
                 <tr>
                   <td><strong>${t.name}</strong></td>
+                  <td><span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold; color:#fff; background:${methodChipColor}; -webkit-print-color-adjust:exact;">${methodBadgeText(t)}</span></td>
                   <td>${t.transaction_count}</td>
                   <td style="color:#888; ${hasCustom ? 'text-decoration:line-through;' : ''}">${t.original_sales.toLocaleString()}</td>
                   <td style="color:#16a34a; font-weight:bold;">${t.actual_sales.toLocaleString()}</td>
@@ -152,14 +195,38 @@ export default function SuperFinance() {
         if (!res.ok) throw new Error('Failed to fetch report');
         
         const data = await res.json();
-        
+
+        const billingMethod = data.billingMethod || 'percentage';
+        const meta = data.meta || {};
+
         const percentage = data.platformPercentage !== undefined ? data.platformPercentage : 0.10;
         const percentageDisplay = (percentage * 100).toFixed(0).replace(/\.0+$/, '');
 
         const totalOriginal = data.summary.total_original_amount || 0;
         const totalActual = data.summary.total_actual_amount || 0;
-        const platformShare = Math.round(totalActual * percentage);
-        const netProfit = totalActual - platformShare;
+        // ✅ نأخذ العمولة/الصافي جاهزين من الـ API (محسوبين بحسب طريقة هذا
+        // المدرس تحديداً) بدلاً من إعادة حسابهما هنا كنسبة مئوية ثابتة —
+        // كان هذا صحيحاً فقط طالما كل المدرسين على billing_method='percentage'.
+        const platformShare = Math.round(data.summary.platform_fee ?? (totalActual * percentage));
+        const netProfit = Math.round(data.summary.net_profit ?? (totalActual - platformShare));
+
+        // ── تسمية بطاقة "عمولة المنصة" تتغيّر حسب طريقة احتساب هذا المدرس ──
+        let commissionLabel = `عمولة منصة مداد (${percentageDisplay}%)`;
+        if (billingMethod === 'new_student') {
+          const nsCount = meta.new_student_count ?? 0;
+          const nsPrice = round0(meta.new_student_price);
+          commissionLabel = `عمولة منصة مداد (${nsCount} طالب جديد × ${nsPrice.toLocaleString()} ج.م)`;
+        } else if (billingMethod === 'course_price') {
+          const unpriced = meta.unpriced_items_count || 0;
+          commissionLabel = unpriced > 0
+            ? `عمولة منصة مداد (سعر ثابت — ${unpriced} عنصر بدون سعر)`
+            : 'عمولة منصة مداد (سعر ثابت للكورس)';
+        }
+
+        // ── تجهيز تفاصيل كل طلب حسب الطريقة (لعمود "تفاصيل العمولة") ──
+        // method 2: هل كان الطالب جديداً وقت هذا الطلب بالذات؟
+        // method 3: ما السعر المطبَّق على كل عنصر داخل هذا الطلب؟
+        const perRequestMeta = new Map((meta.per_request || []).map(pr => [pr.request_id, pr]));
 
         const approvedCount = data.summary.total_approved_count || 0;
         const rejectedCount = data.summary.total_rejected_count || 0;
@@ -338,7 +405,7 @@ export default function SuperFinance() {
                   </div>
                   <div class="card">
                     <div class="icn">%</div>
-                    <div class="label">عمولة منصة مداد (${percentageDisplay}%)</div>
+                    <div class="label">${commissionLabel}</div>
                     <div class="value red">${fmt(platformShare)} ج.م</div>
                   </div>
                   <div class="card">
@@ -400,6 +467,7 @@ export default function SuperFinance() {
                       <th>السعر الأصلي</th>
                       <th>المدفوع فعلياً</th>
                       <th>الحالة</th>
+                      ${billingMethod !== 'percentage' ? '<th>تفاصيل العمولة</th>' : ''}
                       <th>ملاحظات</th>
                     </tr>
                   </tbody>
@@ -413,6 +481,29 @@ export default function SuperFinance() {
                        const lineIcons = ['📘','🏅','🌿'];
                        const courseLines = (req.course_title || '').split('\n').filter(Boolean)
                          .map((line, i) => `<span class="course-line"><span class="dot-ic">${lineIcons[i % lineIcons.length]}</span>${line.replace(/^[^\u0600-\u0669a-zA-Z]*/, '')}</span>`).join('');
+
+                       // ── عمود "تفاصيل العمولة" — يظهر فقط للطرق غير النسبة،
+                       // ولا معنى له للطلبات المرفوضة (لا عمولة عليها أصلاً) ──
+                       let commissionDetailCell = '';
+                       if (billingMethod !== 'percentage') {
+                         if (isRejected) {
+                           commissionDetailCell = '<td class="note-rejected">—</td>';
+                         } else if (billingMethod === 'new_student') {
+                           const rowMeta = perRequestMeta.get(req.id);
+                           const isNew = rowMeta ? rowMeta.is_new_student : false;
+                           commissionDetailCell = isNew
+                             ? `<td><span class="status-pill approved">🆕 طالب جديد</span></td>`
+                             : `<td><span class="status-pill rejected" style="background:#f0ece0; color:#7a7368;">👤 طالب قديم</span></td>`;
+                         } else if (billingMethod === 'course_price') {
+                           const rowMeta = perRequestMeta.get(req.id);
+                           const items = rowMeta?.items || [];
+                           const itemLines = items.map(it => {
+                             const priced = it.applied_report_price !== null && it.applied_report_price !== undefined;
+                             return `<span class="course-line"><span class="dot-ic">🏷️</span>${it.title || (it.type === 'course' ? 'كورس' : 'مادة')}: ${priced ? `${fmt(it.applied_report_price)} ج.م` : 'بدون سعر'}</span>`;
+                           }).join('') || '—';
+                           commissionDetailCell = `<td>${itemLines}</td>`;
+                         }
+                       }
 
                        return `
                       <tr>
@@ -430,6 +521,7 @@ export default function SuperFinance() {
                         <td class="${hasCustomPrice ? 'price-old' : ''}">${fmt(orig)} ج.م</td>
                         <td class="price-paid ${req.status}">${fmt(act)} ج.م</td>
                         <td><span class="status-pill ${req.status}">${req.status === 'approved' ? '✅ مقبول' : '❌ مرفوض'}</span></td>
+                        ${commissionDetailCell}
                         <td class="${isRejected ? 'note-rejected' : ''}">${req.user_note || '—'}</td>
                       </tr>
                       `;
@@ -577,19 +669,25 @@ export default function SuperFinance() {
                   <thead>
                     <tr>
                       <th>اسم المدرس</th>
+                      <th>طريقة الاحتساب</th>
                       <th style={{textAlign:'center'}}>العمليات</th>
                       <th title="المبلغ الأصلي للكورسات">المبيعات الافتراضية</th>
                       <th title="ما تم دفعه بالفعل وتم حسابه بالتقارير">التحصيل الفعلي</th>
-                      <th>نسبة المنصة</th>
+                      <th title="المبلغ المحسوب بحسب طريقة هذا المدرس (نسبة / طالب جديد / سعر كورس)">حصة المنصة</th>
                       <th>صافي ربح المدرس</th>
                       <th>الإجراءات</th>
                     </tr>
                   </thead>
                   <tbody>
                     {financials.teachers_list.length > 0 ? (
-                      financials.teachers_list.map((teacher) => (
+                      financials.teachers_list.map((teacher) => {
+                        const methodBadge = getMethodBadge(teacher);
+                        return (
                         <tr key={teacher.id}>
                           <td style={{fontWeight:'700', color:'var(--text-primary)'}}>{teacher.name}</td>
+                          <td>
+                            <span className={methodBadge.className}>{methodBadge.text}</span>
+                          </td>
                           <td style={{textAlign:'center', color: 'var(--text-secondary)'}}>
                             <span className="count-badge">{teacher.transaction_count}</span>
                           </td>
@@ -612,9 +710,10 @@ export default function SuperFinance() {
                              </button>
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     ) : (
-                      <tr><td colSpan="7" className="empty-state">لا توجد بيانات مالية مسجلة في هذه الفترة المحددة</td></tr>
+                      <tr><td colSpan="8" className="empty-state">لا توجد بيانات مالية مسجلة في هذه الفترة المحددة</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -721,6 +820,17 @@ export default function SuperFinance() {
         }
         .badge.warning { background: rgba(248, 113, 113, 0.1); color: #f87171; border-color: rgba(248, 113, 113, 0.2); }
         .badge.success { background: rgba(74, 222, 128, 0.1); color: #4ade80; border-color: rgba(74, 222, 128, 0.2); }
+
+        /* ── BILLING METHOD BADGES (per-teacher, in the overview table) ── */
+        .method-badge {
+          display: inline-flex; align-items: center; gap: 4px;
+          font-size: 0.78rem; font-weight: 700; padding: 5px 12px;
+          border-radius: 20px; white-space: nowrap; border: 1px solid;
+        }
+        .method-percentage { background: var(--gold-dim); color: var(--gold); border-color: var(--border-accent); }
+        .method-new-student { background: rgba(96, 165, 250, 0.1); color: #60a5fa; border-color: rgba(96, 165, 250, 0.25); }
+        .method-course-price { background: rgba(167, 139, 250, 0.1); color: #a78bfa; border-color: rgba(167, 139, 250, 0.25); }
+        .method-course-price.warning { background: rgba(248, 113, 113, 0.1); color: #f87171; border-color: rgba(248, 113, 113, 0.25); }
 
         /* ── TABLE CONTAINER ── */
         .table-container { 
