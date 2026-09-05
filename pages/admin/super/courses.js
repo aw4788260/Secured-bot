@@ -65,6 +65,13 @@ export default function SuperCoursesPage() {
   const [durationStudentCount, setDurationStudentCount] = useState(null); // fetched on demand, only for this one item
   const [durationCountLoading, setDurationCountLoading] = useState(false);
 
+  // --- Report price modal (course-level OR subject-level) ---
+  // Used only for teachers on billing_method='course_price' — see
+  // lib/teacherBillingHelper.js. Doesn't touch access/expiry at all, so
+  // unlike the duration modal there's no "apply to existing" scope.
+  const [priceTarget, setPriceTarget] = useState(null); // { type, id, courseId, title, current }
+  const [priceInput, setPriceInput] = useState('');
+
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
     setTimeout(() => setToast({ show: false, message: '', type: '' }), 3500);
@@ -252,6 +259,32 @@ export default function SuperCoursesPage() {
   };
 
   // ============================================================
+  // Report price (billing_method = 'course_price')
+  // ============================================================
+  const openPriceModal = (target) => {
+    setPriceTarget(target);
+    setPriceInput(target.current !== null && target.current !== undefined ? String(target.current) : '');
+  };
+
+  const submitReportPrice = async () => {
+    if (!priceTarget) return;
+    let price = null;
+    if (priceInput.trim() !== '') {
+      const n = Number(priceInput);
+      if (!Number.isFinite(n) || n < 0) return showToast('أدخل سعراً صحيحاً (رقم موجب)', 'error');
+      price = n;
+    }
+
+    await callCoursesApi({
+      action: 'set_report_price',
+      courseId: priceTarget.courseId,
+      subjectId: priceTarget.type === 'subject' ? priceTarget.id : null,
+      price,
+    }, `تم تحديث سعر التقرير لـ "${priceTarget.title}"`);
+    setPriceTarget(null);
+  };
+
+  // ============================================================
   // Shared API call
   // ============================================================
   const callCoursesApi = async (payload, successMsg) => {
@@ -277,6 +310,11 @@ export default function SuperCoursesPage() {
   const durationBadge = (days) => {
     if (!days) return <span className="dur-badge lifetime">مدى الحياة</span>;
     return <span className="dur-badge timed">{days} يوم</span>;
+  };
+
+  const priceBadge = (price) => {
+    if (price === null || price === undefined) return <span className="price-badge unset">غير محدد</span>;
+    return <span className="price-badge set">{price} ج</span>;
   };
 
   return (
@@ -355,8 +393,9 @@ export default function SuperCoursesPage() {
                 <th style={{ width: '60px' }}>ID</th>
                 <th style={{ textAlign: 'right' }}>الكورس</th>
                 <th style={{ textAlign: 'center' }}>مدة الوصول</th>
+                <th style={{ textAlign: 'center' }}>سعر التقرير</th>
                 <th style={{ textAlign: 'center' }}>الحذف المجدول</th>
-                <th style={{ textAlign: 'center', width: '220px' }}>إجراءات</th>
+                <th style={{ textAlign: 'center', width: '260px' }}>إجراءات</th>
               </tr>
             </thead>
             <tbody>
@@ -367,6 +406,7 @@ export default function SuperCoursesPage() {
                     <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{course.id}</td>
                     <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{course.title}</td>
                     <td style={{ textAlign: 'center' }}>{durationBadge(course.access_duration_days)}</td>
+                    <td style={{ textAlign: 'center' }}>{priceBadge(course.report_price)}</td>
                     <td style={{ textAlign: 'center' }}>
                       {course.scheduled_deletion_at
                         ? <span className="del-badge">🗓️ {formatDateTime(course.scheduled_deletion_at)}</span>
@@ -375,6 +415,7 @@ export default function SuperCoursesPage() {
                     <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
                       <div className="row-actions">
                         <button className="mini-btn" onClick={() => openDurationModal({ type: 'course', id: course.id, courseId: course.id, title: course.title, current: course.access_duration_days })}>⏳ المدة</button>
+                        <button className="mini-btn" onClick={() => openPriceModal({ type: 'course', id: course.id, courseId: course.id, title: course.title, current: course.report_price })}>💰 سعر التقرير</button>
                         <button className="mini-btn" onClick={() => openDeletionModal(course)}>🗑️ جدولة</button>
                         {course.scheduled_deletion_at && (
                           <button className="mini-btn danger" onClick={() => cancelScheduledDeletion(course)}>إلغاء</button>
@@ -385,7 +426,7 @@ export default function SuperCoursesPage() {
                   {expanded[course.id] && (
                     <tr className="expand-row">
                       <td></td>
-                      <td colSpan="5">
+                      <td colSpan="6">
                         {course.subjects.length === 0 ? (
                           <p className="empty-text">لا توجد مواد في هذا الكورس</p>
                         ) : (
@@ -394,11 +435,18 @@ export default function SuperCoursesPage() {
                               <div key={subject.id} className="subject-row">
                                 <span className="subject-title">📄 {subject.title}</span>
                                 {durationBadge(subject.access_duration_days)}
+                                {priceBadge(subject.report_price)}
                                 <button
                                   className="mini-btn"
                                   onClick={() => openDurationModal({ type: 'subject', id: subject.id, courseId: course.id, title: `${course.title} / ${subject.title}`, current: subject.access_duration_days })}
                                 >
                                   ⏳ المدة
+                                </button>
+                                <button
+                                  className="mini-btn"
+                                  onClick={() => openPriceModal({ type: 'subject', id: subject.id, courseId: course.id, title: `${course.title} / ${subject.title}`, current: subject.report_price })}
+                                >
+                                  💰 سعر التقرير
                                 </button>
                               </div>
                             ))}
@@ -410,7 +458,7 @@ export default function SuperCoursesPage() {
                 </Fragment>
               ))}
               {filteredCourses.length === 0 && (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>لا يوجد نتائج</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>لا يوجد نتائج</td></tr>
               )}
             </tbody>
           </table>
@@ -543,6 +591,38 @@ export default function SuperCoursesPage() {
         </div>
       )}
 
+      {/* --- Report Price Modal (billing_method = 'course_price') --- */}
+      {priceTarget && (
+        <div className="modal-overlay" onClick={() => setPriceTarget(null)}>
+          <div className="modal-box duration-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>💰 سعر التقرير لـ "{priceTarget.title}"</h3>
+              <button className="close-icon" onClick={() => setPriceTarget(null)}>✕</button>
+            </div>
+            <div className="modal-content">
+              <p className="hint-text">
+                هذا السعر يُستخدم فقط لحساب عمولة المنصة من المدرسين الذين تم ضبط "طريقة حساب الأرباح" الخاصة بهم على "سعر ثابت لكل كورس/مادة" (من صفحة إدارة المدرسين). لا علاقة له بسعر بيع الكورس للطلاب.
+                {priceTarget.type === 'subject' && ' اتركه فارغاً لوراثة سعر الكورس الأب.'}
+              </p>
+              <label className="field-label">السعر (جنيه)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                className="input-field ltr"
+                placeholder={priceTarget.type === 'subject' ? 'اتركه فارغاً للوراثة من الكورس' : 'اتركه فارغاً لعدم التسعير'}
+                value={priceInput}
+                onChange={e => setPriceInput(e.target.value)}
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="cancel-btn" onClick={() => setPriceTarget(null)}>إلغاء</button>
+              <button className="confirm-btn" onClick={submitReportPrice}>حفظ ✅</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- Confirm Alert --- */}
       {confirmData.show && (
         <div className="modal-overlay alert-overlay">
@@ -610,6 +690,10 @@ export default function SuperCoursesPage() {
         .dur-badge { padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; display: inline-block; white-space: nowrap; }
         .dur-badge.lifetime { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2); }
         .dur-badge.timed { background: var(--gold-dimmer); color: var(--gold); border: 1px solid var(--border-accent); }
+
+        .price-badge { padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; display: inline-block; white-space: nowrap; }
+        .price-badge.set { background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2); }
+        .price-badge.unset { background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border); }
 
         .del-badge { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; white-space: nowrap; }
 
