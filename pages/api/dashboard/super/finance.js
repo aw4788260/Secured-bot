@@ -85,6 +85,47 @@ export default async function handler(req, res) {
 
     if (teacherError) throw teacherError;
 
+    // ✅ تحسين الأداء: بدلاً من استعلام منفصل لكل مدرس (بروفايل + طلبات)،
+    // نجلب كل بيانات كل المدرسين دفعة واحدة، ثم نمرر نصيب كل مدرس منها إلى
+    // computeTeacherBilling() عبر preloadedTeacher/preloadedRequests — يقلل
+    // عدد الاستعلامات من ~2-4 لكل مدرس إلى استعلامين ثابتين بغض النظر عن
+    // عدد المدرسين.
+    const teacherProfileIds = teachersList
+      .map(t => t.teacher_profile_id)
+      .filter(id => id !== null && id !== undefined);
+
+    const [{ data: teacherConfigs, error: configsError }, { data: allRequests, error: allRequestsError }] = await Promise.all([
+      teacherProfileIds.length
+        ? supabase
+            .from('teachers')
+            .select('id, billing_method, custom_percentage, new_student_price, new_student_lookback_mode, new_student_lookback_since')
+            .in('id', teacherProfileIds)
+        : Promise.resolve({ data: [] }),
+      teacherProfileIds.length
+        ? (() => {
+            let q = supabase
+              .from('subscription_requests')
+              .select('*')
+              .in('teacher_id', teacherProfileIds)
+              .in('status', ['approved', 'rejected'])
+              .order('created_at', { ascending: false });
+            if (formattedStartDate) q = q.gte('created_at', formattedStartDate);
+            if (formattedEndDate) q = q.lte('created_at', formattedEndDate);
+            return q;
+          })()
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    if (configsError) throw configsError;
+    if (allRequestsError) throw allRequestsError;
+
+    const teacherConfigById = new Map((teacherConfigs || []).map(t => [t.id, t]));
+    const requestsByTeacherId = new Map();
+    for (const r of (allRequests || [])) {
+      if (!requestsByTeacherId.has(r.teacher_id)) requestsByTeacherId.set(r.teacher_id, []);
+      requestsByTeacherId.get(r.teacher_id).push(r);
+    }
+
     // استخدام Promise.all لتنفيذ الحسابات بشكل متوازي — كل مدرس عبر
     // computeTeacherBilling() الذي يختار طريقة الحساب المناسبة له تلقائياً.
     const teachersDataPromises = teachersList.map(async (teacher) => {
@@ -107,7 +148,11 @@ export default async function handler(req, res) {
 
       let billing;
       try {
-        billing = await computeTeacherBilling(teacher.teacher_profile_id, formattedStartDate, formattedEndDate);
+        billing = await computeTeacherBilling(teacher.teacher_profile_id, formattedStartDate, formattedEndDate, {
+          preloadedTeacher: teacherConfigById.get(teacher.teacher_profile_id) || null,
+          preloadedRequests: requestsByTeacherId.get(teacher.teacher_profile_id) || [],
+          globalPercentage: GLOBAL_PLATFORM_PERCENTAGE,
+        });
       } catch (billingError) {
         errLog('BILLING_ERROR', `Failed to compute billing for teacher ${teacher.first_name}`, billingError);
         billing = {
