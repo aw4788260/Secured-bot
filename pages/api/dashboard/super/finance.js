@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireSuperAdmin } from '../../../../lib/dashboardHelper';
+import { getGlobalPlatformPercentage, computeTeacherBilling } from '../../../../lib/teacherBillingHelper';
 
 // ✅ دالة ذكية لحساب فرق التوقيت لمصر بناءً على التاريخ (تدعم الصيفي والشتوي)
 const getEgyptOffset = (dateString) => {
@@ -64,53 +65,17 @@ export default async function handler(req, res) {
 
   try {
     // ============================================================
-    // 1. جلب نسبة المنصة من جدول الإعدادات
+    // 1. جلب نسبة المنصة العامة (الافتراضية) من جدول الإعدادات
     // ============================================================
-    let PLATFORM_PERCENTAGE = 0.10; // القيمة الافتراضية (10%)
-
-    const { data: settingsData } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'platform_percentage')
-      .maybeSingle();
-
-    if (settingsData && settingsData.value) {
-      const val = parseFloat(settingsData.value);
-      if (!isNaN(val)) {
-        // تحويل الرقم: إذا كان > 1 (مثل 15) نقسمه على 100، وإلا نستخدمه كما هو
-        PLATFORM_PERCENTAGE = val > 1 ? val / 100 : val;
-      }
-    }
-
-    log('CONFIG', `Platform Percentage: ${PLATFORM_PERCENTAGE * 100}%`);
+    // ⚠️ ملاحظة: هذه النسبة تُستخدم فقط كـ "افتراضي" للمدرسين على
+    // billing_method='percentage' الذين ليس لديهم custom_percentage خاص.
+    // كل مدرس الآن قد تكون له طريقة حساب مختلفة تماماً (نسبة / طالب جديد /
+    // سعر ثابت للكورس) — راجع lib/teacherBillingHelper.js.
+    const GLOBAL_PLATFORM_PERCENTAGE = await getGlobalPlatformPercentage();
+    log('CONFIG', `Global Default Platform Percentage: ${GLOBAL_PLATFORM_PERCENTAGE * 100}%`);
 
     // ============================================================
-    // 2. حساب الإجمالي الكلي باستخدام RPC (السعرين)
-    // ============================================================
-    
-    // أ) الإجمالي الأصلي/الافتراضي (الدالة القديمة)
-    const { data: totalOriginalRPC, error: rpcErrorOriginal } = await supabase
-      .rpc('get_total_revenue', { 
-        start_date: formattedStartDate, 
-        end_date: formattedEndDate 
-      });
-    if (rpcErrorOriginal) throw rpcErrorOriginal;
-
-    // ب) الإجمالي الفعلي المُحصل (الدالة الجديدة)
-    const { data: totalActualRPC, error: rpcErrorActual } = await supabase
-      .rpc('get_total_actual_revenue', { 
-        start_date: formattedStartDate, 
-        end_date: formattedEndDate 
-      });
-    if (rpcErrorActual) throw rpcErrorActual;
-
-    const totalOriginalRevenue = totalOriginalRPC || 0;
-    const totalActualRevenue = totalActualRPC || 0;
-    
-    log('TOTAL', `Original Revenue: ${totalOriginalRevenue} | Actual Revenue: ${totalActualRevenue}`);
-
-    // ============================================================
-    // 3. جلب قائمة المدرسين وحساب أرباح كل مدرس عبر RPC
+    // 2. جلب قائمة المدرسين وحساب أرباح كل واحد منهم بحسب طريقته الخاصة
     // ============================================================
     // ⚠️ هام: نجلب teacher_profile_id لأن الأموال مربوطة به في جدول العمليات
     const { data: teachersList, error: teacherError } = await supabase
@@ -120,9 +85,10 @@ export default async function handler(req, res) {
 
     if (teacherError) throw teacherError;
 
-    // استخدام Promise.all لتنفيذ الحسابات بشكل متوازي
+    // استخدام Promise.all لتنفيذ الحسابات بشكل متوازي — كل مدرس عبر
+    // computeTeacherBilling() الذي يختار طريقة الحساب المناسبة له تلقائياً.
     const teachersDataPromises = teachersList.map(async (teacher) => {
-      
+
       // إذا لم يكن للمستخدم بروفايل مدرس، لا يمكننا حساب أرباحه (تخطي)
       if (!teacher.teacher_profile_id) {
          return {
@@ -132,75 +98,66 @@ export default async function handler(req, res) {
             actual_sales: 0,
             transaction_count: 0,
             platform_fee: 0,
-            net_profit: 0
+            net_profit: 0,
+            billing_method: 'percentage',
+            custom_percentage: null,
+            new_student_price: null
          };
       }
 
-      // أ) المبيعات الأصلية للمدرس
-      const { data: originalSalesRPC, error: rpcError1 } = await supabase
-        .rpc('get_teacher_revenue', { 
-            teacher_id_arg: teacher.teacher_profile_id, 
-            start_date: formattedStartDate, 
-            end_date: formattedEndDate
-        });
-      
-      // ب) المبيعات الفعلية للمدرس
-      const { data: actualSalesRPC, error: rpcError2 } = await supabase
-        .rpc('get_teacher_actual_revenue', { 
-            teacher_id_arg: teacher.teacher_profile_id, 
-            start_date: formattedStartDate, 
-            end_date: formattedEndDate
-        });
+      let billing;
+      try {
+        billing = await computeTeacherBilling(teacher.teacher_profile_id, formattedStartDate, formattedEndDate);
+      } catch (billingError) {
+        errLog('BILLING_ERROR', `Failed to compute billing for teacher ${teacher.first_name}`, billingError);
+        billing = {
+          original_amount: 0, actual_amount: 0, platform_fee: 0, net_profit: 0,
+          billing_method: 'percentage', meta: { approved_count: 0 }
+        };
+      }
 
-      if (rpcError1) errLog('RPC_ERROR_1', `Failed original for teacher ${teacher.first_name}`, rpcError1);
-      if (rpcError2) errLog('RPC_ERROR_2', `Failed actual for teacher ${teacher.first_name}`, rpcError2);
-
-      const originalSales = originalSalesRPC || 0;
-      const actualSales = actualSalesRPC || 0;
-      
-      // ✅ حساب النسب والمستحقات يكون بناءً على "المبيعات الفعلية"
-      const platformFee = actualSales * PLATFORM_PERCENTAGE;
-      const netProfit = actualSales - platformFee;
-
-      // حساب عدد العمليات (فقط إذا كان هناك مبيعات لتوفير الموارد)
-      let transactionCount = 0;
-      if (actualSales > 0 || originalSales > 0) {
-         const { count } = await supabase
-           .from('subscription_requests')
-           .select('id', { count: 'exact', head: true })
-           .eq('teacher_id', teacher.teacher_profile_id) // ✅ استخدام المعرف الصحيح
-           .eq('status', 'approved')
-           .gte('created_at', formattedStartDate || '1970-01-01T00:00:00.000Z') // حماية التوقيت هنا أيضاً
-           .lte('created_at', formattedEndDate || new Date().toISOString());
-         transactionCount = count || 0;
-         
-         log('RESULT', `Teacher: ${teacher.first_name} | Original: ${originalSales} | Actual: ${actualSales}`);
+      if (billing.actual_amount > 0 || billing.original_amount > 0) {
+        log('RESULT', `Teacher: ${teacher.first_name} | Method: ${billing.billing_method} | Original: ${billing.original_amount} | Actual: ${billing.actual_amount} | Fee: ${billing.platform_fee}`);
       }
 
       return {
         id: teacher.id, // نُعيد ID المستخدم للفرونت إند لغرض العرض والروابط
         name: teacher.first_name || teacher.admin_username || 'مدرس غير معروف',
-        original_sales: originalSales,
-        actual_sales: actualSales,
-        transaction_count: transactionCount,
-        platform_fee: platformFee,
-        net_profit: netProfit
+        original_sales: billing.original_amount,
+        actual_sales: billing.actual_amount,
+        transaction_count: billing.meta.approved_count || 0,
+        platform_fee: billing.platform_fee,
+        net_profit: billing.net_profit,
+        // 👇 تفاصيل طريقة الحساب — يستخدمها الفرونت إند لعرض شارة/تسمية مناسبة لكل مدرس
+        billing_method: billing.billing_method,
+        custom_percentage: billing.meta.effective_percentage !== undefined ? billing.meta.effective_percentage * 100 : null,
+        new_student_price: billing.meta.new_student_price ?? null,
+        new_student_count: billing.meta.new_student_count ?? null,
+        unpriced_items_count: billing.meta.unpriced_items_count ?? null
       };
     });
 
     // انتظار اكتمال جميع الحسابات
     const processedTeachersList = await Promise.all(teachersDataPromises);
-    
+
     // ترتيب القائمة حسب الأكثر مبيعاً فعلياً (تنازلياً)
     const finalTeachersList = processedTeachersList.sort((a, b) => b.actual_sales - a.actual_sales);
 
-    // 4. تجميع الإحصائيات العامة للمنصة (بناءً على المبالغ الفعلية)
-    const platformProfitTotal = totalActualRevenue * PLATFORM_PERCENTAGE;
-    const teachersDueTotal = totalActualRevenue - platformProfitTotal;
+    // ============================================================
+    // 3. تجميع الإحصائيات العامة للمنصة
+    // ============================================================
+    // ✅ الإجماليات الآن هي مجموع كل مدرس على حدة (وليست RPC واحدة على
+    // الجميع) — ضروري لأن كل مدرس ممكن يكون على طريقة حساب مختلفة تماماً.
+    const totalOriginalRevenue = finalTeachersList.reduce((sum, t) => sum + t.original_sales, 0);
+    const totalActualRevenue = finalTeachersList.reduce((sum, t) => sum + t.actual_sales, 0);
+    const platformProfitTotal = finalTeachersList.reduce((sum, t) => sum + t.platform_fee, 0);
+    const teachersDueTotal = finalTeachersList.reduce((sum, t) => sum + t.net_profit, 0);
+
+    log('TOTAL', `Original Revenue: ${totalOriginalRevenue} | Actual Revenue: ${totalActualRevenue} | Platform Fee: ${platformProfitTotal}`);
 
     // إرسال الرد النهائي المتوافق مع التعديلات
     return res.status(200).json({
-      percentage_used: (PLATFORM_PERCENTAGE * 100) + '%',
+      percentage_used: (GLOBAL_PLATFORM_PERCENTAGE * 100) + '%', // النسبة العامة الافتراضية فقط (ليست بالضرورة نسبة كل المدرسين)
       total_original_revenue: totalOriginalRevenue,
       total_actual_revenue: totalActualRevenue,
       platform_profit: platformProfitTotal,
