@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import { supabase } from '../../../../lib/supabaseClient';
 import { createUploadLogger } from '../../../../lib/uploadLogger';
 
@@ -69,6 +70,18 @@ export default async function handler(req, res) {
   log.success('auth', 'Auth OK', {
     userId: user?.id, role: user?.role, teacherId: user?.teacherId, name: user?.name,
   });
+
+  // 🛡️ التحقق من صلاحية "رفع الفيديوهات" (يتحكم بها السوبر أدمن يتخطى هذا التحقق دائماً)
+  if (user.role !== 'super_admin') {
+    const perm = await checkTeacherPermission(user.teacherId, 'can_upload_video');
+    if (!perm.allowed) {
+      log.error('permission-check', 'Teacher blocked from uploading video by super admin permission', { teacherId: user.teacherId });
+      log.outgoing(403, { error: perm.error });
+      return res.status(403).json({ error: perm.error });
+    }
+  } else {
+    log.step('permission-check', 'Skipped — user is super_admin', { userId: user.id });
+  }
 
   // ⏱️ expirationHours مرفوع افتراضياً إلى 24 ساعة (كان 6) لتقليل احتمال
   // انتهاء صلاحية التوقيع أثناء رفع فيديو كبير على اتصال بطيء.

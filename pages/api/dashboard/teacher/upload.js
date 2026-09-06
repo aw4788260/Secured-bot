@@ -1,4 +1,5 @@
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import { supabase } from '../../../../lib/supabaseClient';
 import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 import multer from 'multer';
@@ -106,6 +107,27 @@ export default async (req, res) => {
     console.log(`   -> Original Name: ${req.file.originalname}`);
     console.log(`   -> Saved Name:    ${req.file.filename}`);
     console.log(`   -> Size:          ${(req.file.size / 1024 / 1024).toFixed(2)} MB`);
+
+    // ============================================================
+    // 🛡️ [صلاحيات المعلم] التحقق بناءً على نوع الملف المرفوع
+    // ملفات PDF ⇐ صلاحية "رفع PDF" — صور أسئلة الامتحان ⇐ صلاحية "إنشاء امتحانات"
+    // (السوبر أدمن يتخطى هذا التحقق دائماً)
+    // ============================================================
+    if (user.role !== 'super_admin') {
+        const uploadedExt = path.extname(req.file.originalname).toLowerCase();
+        let requiredPermission = null;
+        if (uploadedExt === '.pdf') requiredPermission = 'can_upload_pdf';
+        else if (['.png', '.jpg', '.jpeg'].includes(uploadedExt)) requiredPermission = 'can_create_exam';
+
+        if (requiredPermission) {
+            const perm = await checkTeacherPermission(user.teacherId, requiredPermission);
+            if (!perm.allowed) {
+                console.warn(`[Permission Denied] Teacher ${user.teacherId} blocked from uploading (${requiredPermission})`);
+                try { fs.unlinkSync(req.file.path); } catch (e) {}
+                return res.status(403).json({ error: perm.error });
+            }
+        }
+    }
 
     // ---------------------------------------------------------
     // 4. (هام جداً) حفظ البيانات في قاعدة البيانات

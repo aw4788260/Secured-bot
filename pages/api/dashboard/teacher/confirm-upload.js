@@ -1,4 +1,5 @@
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import { supabase } from '../../../../lib/supabaseClient';
 import { createUploadLogger } from '../../../../lib/uploadLogger';
 
@@ -128,6 +129,17 @@ export default async function handler(req, res) {
     return;
   }
   log.success('auth', 'Auth OK', { userId: user?.id, role: user?.role, teacherId: user?.teacherId, name: user?.name });
+
+  // 🛡️ التحقق من صلاحية "رفع الفيديوهات" — تحقق دفاعي إضافي في حال أُلغيت
+  // الصلاحية أثناء رفع فيديو كان قد بدأ قبل الإلغاء. (السوبر أدمن يتخطى هذا التحقق)
+  if (user.role !== 'super_admin') {
+    const uploadPerm = await checkTeacherPermission(user.teacherId, 'can_upload_video');
+    if (!uploadPerm.allowed) {
+      log.error('permission-check', 'Teacher blocked from confirming video upload by super admin permission', { teacherId: user.teacherId });
+      log.outgoing(403, { error: uploadPerm.error });
+      return res.status(403).json({ error: uploadPerm.error });
+    }
+  }
 
   const {
     bunnyVideoId,

@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 
 export default async (req, res) => {
@@ -80,6 +81,13 @@ export default async (req, res) => {
 
       try {
         let targetExamId = examId;
+
+        // 🛡️ التحقق من صلاحية "إنشاء/تعديل الامتحانات" (السوبر أدمن يتخطى هذا التحقق دائماً)
+        // لا يشمل الحذف حتى يستطيع المعلم دائماً تنظيف امتحاناته القديمة.
+        if ((action === 'create' || action === 'update') && user.role !== 'super_admin') {
+          const perm = await checkTeacherPermission(auth.teacherId, 'can_create_exam');
+          if (!perm.allowed) return res.status(403).json({ error: perm.error });
+        }
 
         if (action === 'delete') {
             if (!examId) return res.status(400).json({ error: 'Exam ID required for delete' });
