@@ -466,7 +466,7 @@ export default function SuperLayout({ children, title }) {
 
         /* ── MAIN ── */
         .body-wrapper { display: flex; padding-top: 64px; min-height: 100vh; width: 100%; overflow-x: hidden; }
-        .main-content { flex: 1; padding: 30px; transition: margin-right 0.3s ease; width: 100%; }
+        .main-content { flex: 1; padding: 30px; transition: margin-right 0.3s ease; width: 100%; min-width: 0; }
 
         @media (min-width: 769px) {
           .main-content.shifted { margin-right: 264px; }
