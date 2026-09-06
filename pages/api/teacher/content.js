@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { checkTeacherPermission } from '../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم (يتحكم بها السوبر أدمن)
 import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد أداة فايربيز لإرسال الإشعارات
 import { deleteVideoViewLogs } from '../../../lib/videoViewLogsHelper'; // ✅ حذف سجلات مشاهدة الفيديو عند حذف المحتوى
 // ✅ منطق حذف الكورس بالكامل (والدوال المساعدة لتنظيف Bunny) بات مشتركاً في lib/courseDeletionHelper.js
@@ -132,6 +133,13 @@ export default async (req, res) => {
   try {
     // --- إضافة عنصر جديد (Create) ---
     if (action === 'create') {
+      // 🛡️ التحقق من صلاحيات المعلم (يتحكم بها السوبر أدمن من لوحة التحكم)
+      if (type === 'pdfs' || type === 'videos') {
+        const permissionKey = type === 'pdfs' ? 'can_upload_pdf' : 'can_upload_video';
+        const perm = await checkTeacherPermission(auth.teacherId, permissionKey);
+        if (!perm.allowed) return res.status(403).json({ error: perm.error });
+      }
+
       let insertData = { ...data };
       let isBunnyVideo = false; // 👈 يُحدَّد أدناه — يُستخدم لاحقاً لتأجيل الإشعار حتى اكتمال التشفير
 

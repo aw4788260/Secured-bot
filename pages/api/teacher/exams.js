@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { checkTeacherPermission } from '../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import admin from '../../../lib/firebaseAdmin'; // ✅ تم استيراد فايربيز لإرسال الإشعارات
 
 export default async (req, res) => {
@@ -84,6 +85,13 @@ export default async (req, res) => {
 
       try {
         let targetExamId = examId;
+
+        // 🛡️ التحقق من صلاحية "إنشاء/تعديل الامتحانات" (يتحكم بها السوبر أدمن)
+        // لا يشمل الحذف حتى يستطيع المعلم دائماً تنظيف امتحاناته القديمة.
+        if (action === 'create' || action === 'update') {
+          const perm = await checkTeacherPermission(auth.teacherId, 'can_create_exam');
+          if (!perm.allowed) return res.status(403).json({ error: perm.error });
+        }
 
         // =================================================
         // الحالة 3: حذف امتحان (Delete)

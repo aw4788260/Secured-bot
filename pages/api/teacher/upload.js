@@ -1,4 +1,5 @@
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { checkTeacherPermission } from '../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import { supabase } from '../../../lib/supabaseClient'; // ✅ استيراد قاعدة البيانات
 import admin from '../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز للإشعارات
 import multer from 'multer';
@@ -100,6 +101,24 @@ export default async (req, res) => {
     if (!req.file) {
         console.error("[Error] Middleware finished but No file found in req.file");
         return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // ============================================================
+    // 🛡️ [صلاحيات المعلم] التحقق بناءً على نوع الملف المرفوع
+    // ملفات PDF ⇐ صلاحية "رفع PDF" — صور أسئلة الامتحان ⇐ صلاحية "إنشاء امتحانات"
+    // ============================================================
+    const uploadedExt = path.extname(req.file.originalname).toLowerCase();
+    let requiredPermission = null;
+    if (uploadedExt === '.pdf') requiredPermission = 'can_upload_pdf';
+    else if (['.png', '.jpg', '.jpeg'].includes(uploadedExt)) requiredPermission = 'can_create_exam';
+
+    if (requiredPermission) {
+        const perm = await checkTeacherPermission(auth.teacherId, requiredPermission);
+        if (!perm.allowed) {
+            console.warn(`[Permission Denied] Teacher ${auth.teacherId} blocked from uploading (${requiredPermission})`);
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(403).json({ error: perm.error });
+        }
     }
 
     console.log(`[Upload Step 6] File Saved Successfully on Disk!`);

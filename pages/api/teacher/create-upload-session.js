@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { checkTeacherPermission } from '../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import { supabase } from '../../../lib/supabaseClient';
 
 // ===================================================================
@@ -51,6 +52,12 @@ export default async function handler(req, res) {
   const auth = await verifyTeacher(req);
   if (auth.error) {
     return res.status(auth.status).json({ error: auth.error });
+  }
+
+  // 🛡️ التحقق من صلاحية "رفع الفيديوهات" (يتحكم بها السوبر أدمن)
+  const perm = await checkTeacherPermission(auth.teacherId, 'can_upload_video');
+  if (!perm.allowed) {
+    return res.status(403).json({ error: perm.error });
   }
 
   const { chapterId, title, fileSize, expirationHours = 6 } = req.body || {};

@@ -1,4 +1,5 @@
 import { verifyTeacher } from '../../../lib/teacherAuth';
+import { checkTeacherPermission } from '../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
 import { supabase } from '../../../lib/supabaseClient';
 // ملاحظة: لم نعد نحتاج firebaseAdmin هنا — الإشعار يُرسل من webhooks/bunny-encoding.js بعد اكتمال التشفير
 
@@ -119,6 +120,13 @@ export default async function handler(req, res) {
   const auth = await verifyTeacher(req);
   if (auth.error) {
     return res.status(auth.status).json({ error: auth.error });
+  }
+
+  // 🛡️ التحقق من صلاحية "رفع الفيديوهات" (يتحكم بها السوبر أدمن) — تحقق دفاعي إضافي
+  // في حال أُلغيت الصلاحية أثناء رفع فيديو كان قد بدأ قبل الإلغاء.
+  const uploadPerm = await checkTeacherPermission(auth.teacherId, 'can_upload_video');
+  if (!uploadPerm.allowed) {
+    return res.status(403).json({ error: uploadPerm.error });
   }
 
   const {
