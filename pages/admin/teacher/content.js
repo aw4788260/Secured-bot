@@ -996,8 +996,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   <div className="panel-head">
                       <h3>📝 الامتحانات</h3>
                       <button
-                          className="btn-small"
-                          disabled={!isPermAllowed('can_create_exam')}
+                          className={`btn-small${!isPermAllowed('can_create_exam') ? ' is-locked' : ''}`}
                           title={!isPermAllowed('can_create_exam') ? PERMISSION_DENIED_MSG.can_create_exam : ''}
                           onClick={() => {
                               if (!isPermAllowed('can_create_exam')) return showAlert('error', PERMISSION_DENIED_MSG.can_create_exam);
@@ -1036,8 +1035,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   <div className="panel-head">
                       <h3>🎬 الفيديوهات</h3>
                       <button
-                          className="btn-small"
-                          disabled={!isPermAllowed('can_upload_video')}
+                          className={`btn-small${!isPermAllowed('can_upload_video') ? ' is-locked' : ''}`}
                           title={!isPermAllowed('can_upload_video') ? PERMISSION_DENIED_MSG.can_upload_video : ''}
                           onClick={() => {
                               if (!isPermAllowed('can_upload_video')) return showAlert('error', PERMISSION_DENIED_MSG.can_upload_video);
@@ -1109,8 +1107,7 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                   <div className="panel-head">
                       <h3>📄 الملفات</h3>
                       <button
-                          className="btn-small"
-                          disabled={!isPermAllowed('can_upload_pdf')}
+                          className={`btn-small${!isPermAllowed('can_upload_pdf') ? ' is-locked' : ''}`}
                           title={!isPermAllowed('can_upload_pdf') ? PERMISSION_DENIED_MSG.can_upload_pdf : ''}
                           onClick={() => {
                               if (!isPermAllowed('can_upload_pdf')) return showAlert('error', PERMISSION_DENIED_MSG.can_upload_pdf);
@@ -1785,6 +1782,10 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .btn-small:hover { opacity: 0.9; transform: translateY(-1px); }
         .btn-small:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; opacity: 0.6; }
         .btn-small:disabled:hover { transform: none; }
+        /* ✅ [صلاحيات المعلم] نفس مظهر disabled لكن بدون تعطيل الزر فعلياً حتى يبقى onClick يعمل
+           ويظهر تنبيه "تم الإيقاف من قبل الإدارة" عند الضغط بدلاً من تجاهل الضغط بصمت */
+        .btn-small.is-locked { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; opacity: 0.6; }
+        .btn-small.is-locked:hover { transform: none; }
 
         /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; padding: 15px; }
