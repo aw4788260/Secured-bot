@@ -271,15 +271,15 @@ export default function TeacherLayout({ children, title }) {
           --bg-surface:     #ffffff;
           --bg-elevated:    #f1f5f9;
           --bg-hover:       #e2e8f0;
-          --border:         #e2e8f0;
-          --border-accent:  #bda878;
+          --border:         #7c8ba1;  /* تباين أعلى للحدود والفواصل والجداول */
+          --border-accent:  #9c8253;  /* لمسة ذهبية أغمق لتباين أوضح */
           --gold:           #a6905d;  /* 🌟 ذهبي داكن قليلاً ليناسب الخلفية البيضاء */
           --gold-light:     #bda878;
           --gold-dim:       rgba(166,144,93,0.12);
           --gold-dimmer:    rgba(166,144,93,0.06);
           --text-primary:   #0f172a;  /* رمادي داكن للنصوص */
           --text-secondary: #475569;
-          --text-muted:     #94a3b8;
+          --text-muted:     #64748b;  /* أغمق لتحسين وضوح النص الثانوي */
           --shadow:         0 4px 24px rgba(0,0,0,0.06);
           --header-bg:      #ffffff;
         }
