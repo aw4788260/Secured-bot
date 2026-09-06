@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم (يتحكم بها السوبر أدمن)
 import admin from '../../../../lib/firebaseAdmin'; // ✅ استيراد فايربيز لإرسال الإشعارات
 import { deleteVideoViewLogs } from '../../../../lib/videoViewLogsHelper'; // ✅ حذف سجلات مشاهدة الفيديو عند حذف المحتوى
 // ✅ منطق حذف الكورس بالكامل (والدوال المساعدة لتنظيف Bunny) بات مشتركاً في lib/courseDeletionHelper.js
@@ -244,6 +245,13 @@ export default async (req, res) => {
 
     try {
       if (action === 'create') {
+        // 🛡️ التحقق من صلاحيات المعلم (السوبر أدمن يتخطى هذا التحقق دائماً)
+        if (user.role !== 'super_admin' && (type === 'pdfs' || type === 'videos')) {
+          const permissionKey = type === 'pdfs' ? 'can_upload_pdf' : 'can_upload_video';
+          const perm = await checkTeacherPermission(auth.teacherId, permissionKey);
+          if (!perm.allowed) return res.status(403).json({ error: perm.error });
+        }
+
         let insertData = { ...data };
         
         // استخراج حالة خيار الإشعار كـ Boolean وحذفه من الإدخال الأصلي
