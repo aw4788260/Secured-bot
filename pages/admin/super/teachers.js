@@ -16,8 +16,16 @@ const Icons = {
   user: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
   teachers: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
   upgrade: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 8l-4-4-4 4"></path><path d="M18 4v11"></path></svg>,
-  back: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+  back: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>,
+  shield: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
 };
+
+// --- تعريف عناصر لوحة الصلاحيات (تُستخدم في مودال الصلاحيات) ---
+const PERMISSION_ITEMS = [
+  { key: 'can_upload_pdf', label: 'رفع ملفات PDF', icon: '📄' },
+  { key: 'can_upload_video', label: 'رفع الفيديوهات', icon: '🎬' },
+  { key: 'can_create_exam', label: 'إنشاء/تعديل الامتحانات', icon: '📝' },
+];
 
 // --- مكون Toast للإشعارات ---
 const Toast = ({ message, type, onClose }) => {
@@ -99,6 +107,13 @@ export default function SuperTeachers() {
   // حالة مودال تسجيل الدخول
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [teacherToLogin, setTeacherToLogin] = useState(null);
+
+  // --- حالة مودال صلاحيات المعلم (رفع PDF / فيديو / امتحانات) ---
+  const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
+  const [permTeacher, setPermTeacher] = useState(null); // { id, name }
+  const [permsData, setPermsData] = useState(null); // { can_upload_pdf, can_upload_video, can_create_exam }
+  const [permsLoading, setPermsLoading] = useState(false);
+  const [permsSaving, setPermsSaving] = useState(false);
 
   // --- حالة مودال ترقية طالب إلى مدرس ---
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
@@ -233,6 +248,56 @@ export default function SuperTeachers() {
       }
     } catch (err) { console.error(err); } 
     finally { setLoadingStats(false); }
+  };
+
+  // --- دوال مودال صلاحيات المعلم ---
+  const openPermissionsModal = async (teacher) => {
+    setPermTeacher(teacher);
+    setPermissionsModalOpen(true);
+    setPermsLoading(true);
+    setPermsData(null);
+    try {
+      const res = await fetch(`/api/dashboard/super/teacher-permissions?teacherId=${teacher.id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setPermsData(data.permissions);
+      } else {
+        showToast(data.error || 'فشل جلب الصلاحيات', 'error');
+        setPermissionsModalOpen(false);
+      }
+    } catch (err) {
+      showToast('خطأ في الاتصال بالسيرفر', 'error');
+      setPermissionsModalOpen(false);
+    } finally {
+      setPermsLoading(false);
+    }
+  };
+
+  const togglePermission = (key) => {
+    setPermsData(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const savePermissions = async () => {
+    if (!permTeacher || !permsData) return;
+    setPermsSaving(true);
+    try {
+      const res = await fetch('/api/dashboard/super/teacher-permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherId: permTeacher.id, permissions: permsData })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`تم تحديث صلاحيات ${permTeacher.name}`, 'success');
+        setPermissionsModalOpen(false);
+      } else {
+        showToast(data.error || 'فشل حفظ الصلاحيات', 'error');
+      }
+    } catch (err) {
+      showToast('خطأ في الاتصال بالسيرفر', 'error');
+    } finally {
+      setPermsSaving(false);
+    }
   };
 
   // --- دوال النموذج (إضافة/تعديل) ---
@@ -467,6 +532,7 @@ export default function SuperTeachers() {
                           <button className="btn-icon view" onClick={() => handleViewStats(t)} title="التفاصيل والمشرفين">{Icons.eye}</button>
                           <button className="btn-icon edit" onClick={() => handleOpenForm(t)} title="تعديل">{Icons.edit}</button>
                           <button className="btn-icon login" onClick={() => confirmLogin(t)} title="دخول للوحة" disabled={!t.dashboard_username}>{Icons.key}</button>
+                          <button className="btn-icon perms" onClick={() => openPermissionsModal(t)} title="صلاحيات الميزات">{Icons.shield}</button>
                         </div>
                         
                         {/* خط فاصل لفصل زر الحذف وتجنب الخطأ */}
@@ -748,6 +814,50 @@ export default function SuperTeachers() {
         </div>
       )}
 
+      {/* --- نافذة صلاحيات المعلم (رفع PDF / فيديو / امتحانات) --- */}
+      {permissionsModalOpen && permTeacher && (
+        <div className="modal-overlay">
+          <div className="modal perms-modal">
+            <div className="modal-header">
+              <h3>{Icons.shield} صلاحيات: {permTeacher.name}</h3>
+              <button onClick={() => setPermissionsModalOpen(false)}>{Icons.close}</button>
+            </div>
+
+            {permsLoading || !permsData ? (
+              <div className="loading">جاري التحميل...</div>
+            ) : (
+              <>
+                <p className="hint-text">حدد الميزات المسموح للمعلم استخدامها. الميزة المُعطّلة تُخفي/تمنع الإجراء المرتبط بها في لوحة تحكم المعلم وتطبيقه.</p>
+                <div className="perms-list">
+                  {PERMISSION_ITEMS.map(item => (
+                    <div key={item.key} className="perm-row">
+                      <div className="perm-info">
+                        <span className="perm-icon">{item.icon}</span>
+                        <span className="perm-label">{item.label}</span>
+                      </div>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={!!permsData[item.key]}
+                          onChange={() => togglePermission(item.key)}
+                        />
+                        <span className="slider"></span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={() => setPermissionsModalOpen(false)}>إلغاء</button>
+                  <button className="btn-confirm" onClick={savePermissions} disabled={permsSaving}>
+                    {permsSaving ? 'جاري الحفظ...' : 'حفظ الصلاحيات'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* --- نافذة ترقية طالب إلى مدرس --- */}
       {upgradeModalOpen && (
         <div className="modal-overlay">
@@ -952,6 +1062,7 @@ export default function SuperTeachers() {
         .view { color: var(--gold); } .view:hover { background: var(--gold-dim); border-color: var(--gold); }
         .edit { color: #facc15; } .edit:hover { background: rgba(250, 204, 21, 0.1); border-color: #facc15; }
         .login { color: #a855f7; } .login:hover { background: rgba(168, 85, 247, 0.1); border-color: #a855f7; }
+        .perms { color: #38bdf8; } .perms:hover { background: rgba(56, 189, 248, 0.1); border-color: #38bdf8; }
         
         /* Delete Button */
         .delete { color: #ef4444; } 
@@ -964,6 +1075,21 @@ export default function SuperTeachers() {
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(5px); }
         .modal { background: var(--bg-surface); border: 1px solid var(--border-accent); width: 90%; border-radius: 16px; padding: 25px; box-shadow: 0 30px 60px rgba(0,0,0,0.5); animation: popIn 0.2s ease-out; }
         .form-modal { max-width: 650px; max-height: 90vh; overflow-y: auto; }
+        .perms-modal { max-width: 480px; }
+
+        /* Permissions list + toggle switches */
+        .perms-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+        .perm-row { display: flex; align-items: center; justify-content: space-between; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 12px 15px; }
+        .perm-info { display: flex; align-items: center; gap: 10px; }
+        .perm-icon { font-size: 1.1rem; }
+        .perm-label { color: var(--text-primary); font-weight: 600; font-size: 0.9rem; }
+
+        .switch { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--border-accent); transition: 0.25s; border-radius: 999px; }
+        .switch .slider::before { position: absolute; content: ""; height: 20px; width: 20px; right: 3px; bottom: 3px; background-color: #fff; transition: 0.25s; border-radius: 50%; }
+        .switch input:checked + .slider { background-color: #22c55e; }
+        .switch input:checked + .slider::before { transform: translateX(-20px); }
         
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
         .modal-header h3 { margin: 0; color: var(--gold); font-size: 1.35rem; }
