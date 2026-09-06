@@ -1,5 +1,6 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
+import { checkTeacherPermission } from '../../../../lib/teacherPermissions';
 import admin from '../../../../lib/firebaseAdmin';
 
 // ===================================================================
@@ -99,6 +100,30 @@ export default async function handler(req, res) {
 
     if (!sourceCourseId || !targetCourseId || !selected) {
       return res.status(400).json({ error: 'بيانات غير مكتملة' });
+    }
+
+    // 🛡️ التحقق من صلاحيات المعلم قبل تنفيذ النسخ (السوبر أدمن يتخطى هذا التحقق دائماً)
+    // النسخ يُنتج نفس أنواع المحتوى التي تحكمها الصلاحيات (فيديو/PDF/امتحان)،
+    // لذا يجب أن يخضع لنفس القيود المفروضة على الرفع/الإنشاء المباشر.
+    if (user.role !== 'super_admin') {
+      const hasVideos = (selected.videos && selected.videos.length > 0) ||
+        (selected.chapters && selected.chapters.length > 0);
+      const hasPdfs = (selected.pdfs && selected.pdfs.length > 0) ||
+        (selected.chapters && selected.chapters.length > 0);
+      const hasExams = selected.exams && selected.exams.length > 0;
+
+      if (hasVideos) {
+        const perm = await checkTeacherPermission(teacherId, 'can_upload_video');
+        if (!perm.allowed) return res.status(403).json({ error: perm.error });
+      }
+      if (hasPdfs) {
+        const perm = await checkTeacherPermission(teacherId, 'can_upload_pdf');
+        if (!perm.allowed) return res.status(403).json({ error: perm.error });
+      }
+      if (hasExams) {
+        const perm = await checkTeacherPermission(teacherId, 'can_create_exam');
+        if (!perm.allowed) return res.status(403).json({ error: perm.error });
+      }
     }
 
     try {
