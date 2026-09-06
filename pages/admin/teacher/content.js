@@ -126,6 +126,28 @@ export default function ContentManager() {
   // المعلم يضغط refresh → refreshView() → Supabase يُعيد القيمة المحدّثة
   const [refreshingVideoId, setRefreshingVideoId] = useState(null);
 
+  // ✅ [صلاحيات المعلم] رفع PDF / رفع فيديو / إنشاء امتحانات — يتحكم بها السوبر أدمن
+  // القيمة الافتراضية null تعني "لم تُحمَّل بعد"؛ نتعامل معها كمسموحة مؤقتاً حتى لا
+  // تُعطَّل الأزرار للحظة قبل وصول رد الـ API (نفس فلسفة "الافتراضي = مسموح" في الباك إند).
+  const [permissions, setPermissions] = useState(null);
+  const isPermAllowed = (key) => !permissions || permissions[key] !== false;
+  const PERMISSION_DENIED_MSG = {
+    can_upload_pdf: 'تم إيقاف صلاحية رفع ملفات PDF لحسابك من قبل الإدارة.',
+    can_upload_video: 'تم إيقاف صلاحية رفع الفيديوهات لحسابك من قبل الإدارة.',
+    can_create_exam: 'تم إيقاف صلاحية إنشاء/تعديل الامتحانات لحسابك من قبل الإدارة.',
+  };
+
+  const fetchPermissions = async () => {
+      try {
+          const res = await fetch('/api/dashboard/teacher/permissions');
+          const data = await res.json();
+          if (res.ok && data.success) setPermissions(data.permissions);
+      } catch (err) {
+          console.error('Failed to fetch teacher permissions:', err);
+      }
+  };
+
+
   const refreshView = async () => {
       try {
           const res = await fetch('/api/dashboard/teacher/content');
@@ -166,6 +188,7 @@ export default function ContentManager() {
   useEffect(() => { 
       window.scrollTo(0, 0);
       refreshView(); 
+      fetchPermissions();
   }, []);
 
 
@@ -972,7 +995,15 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               <div className="panel">
                   <div className="panel-head">
                       <h3>📝 الامتحانات</h3>
-                      <button className="btn-small" onClick={() => openModal('exam_editor')}> {Icons.add} إنشاء</button>
+                      <button
+                          className="btn-small"
+                          disabled={!isPermAllowed('can_create_exam')}
+                          title={!isPermAllowed('can_create_exam') ? PERMISSION_DENIED_MSG.can_create_exam : ''}
+                          onClick={() => {
+                              if (!isPermAllowed('can_create_exam')) return showAlert('error', PERMISSION_DENIED_MSG.can_create_exam);
+                              openModal('exam_editor');
+                          }}
+                      > {Icons.add} إنشاء</button>
                   </div>
                   <div className="exam-grid">
                       {selectedSubject.exams?.map((ex, index) => (
@@ -982,7 +1013,13 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
                               <div className="exam-info"><h4>{ex.title}</h4><span>{ex.duration_minutes} دقيقة</span></div>
                               <div className="exam-actions">
                                   <button title="إحصائيات" onClick={() => router.push(`/admin/teacher/exam-stats/${ex.id}`)}>📊</button>
-                                  <button title="تعديل" onClick={() => openModal('exam_editor', ex)}>{Icons.edit}</button>
+                                  <button
+                                      title={!isPermAllowed('can_create_exam') ? PERMISSION_DENIED_MSG.can_create_exam : 'تعديل'}
+                                      onClick={() => {
+                                          if (!isPermAllowed('can_create_exam')) return showAlert('error', PERMISSION_DENIED_MSG.can_create_exam);
+                                          openModal('exam_editor', ex);
+                                      }}
+                                  >{Icons.edit}</button>
                                   <button title="حذف" className="danger" onClick={() => handleDelete('exams', ex.id)}>{Icons.trash}</button>
                               </div>
                           </div>
@@ -998,7 +1035,15 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               <div className="panel">
                   <div className="panel-head">
                       <h3>🎬 الفيديوهات</h3>
-                      <button className="btn-small" onClick={() => openModal('add_video')}> {Icons.add} إضافة</button>
+                      <button
+                          className="btn-small"
+                          disabled={!isPermAllowed('can_upload_video')}
+                          title={!isPermAllowed('can_upload_video') ? PERMISSION_DENIED_MSG.can_upload_video : ''}
+                          onClick={() => {
+                              if (!isPermAllowed('can_upload_video')) return showAlert('error', PERMISSION_DENIED_MSG.can_upload_video);
+                              openModal('add_video');
+                          }}
+                      > {Icons.add} إضافة</button>
                   </div>
                   <div className="media-grid">
                       {selectedChapter.videos?.map((v, index) => (
@@ -1063,7 +1108,15 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
               <div className="panel">
                   <div className="panel-head">
                       <h3>📄 الملفات</h3>
-                      <button className="btn-small" onClick={() => openModal('add_pdf')}> {Icons.add} رفع</button>
+                      <button
+                          className="btn-small"
+                          disabled={!isPermAllowed('can_upload_pdf')}
+                          title={!isPermAllowed('can_upload_pdf') ? PERMISSION_DENIED_MSG.can_upload_pdf : ''}
+                          onClick={() => {
+                              if (!isPermAllowed('can_upload_pdf')) return showAlert('error', PERMISSION_DENIED_MSG.can_upload_pdf);
+                              openModal('add_pdf');
+                          }}
+                      > {Icons.add} رفع</button>
                   </div>
                   <div className="list-group">
                       {selectedChapter.pdfs?.map((p, index) => (
@@ -1730,6 +1783,8 @@ const fetchMediaViews = async (mediaId, mediaTitle, pageNum = 1) => {
         .panel-head h3 { margin: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: bold; }
         .btn-small { background: var(--gold); color: #111009; padding: 6px 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; display: flex; gap: 5px; align-items: center; transition: all 0.2s; }
         .btn-small:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-small:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; opacity: 0.6; }
+        .btn-small:disabled:hover { transform: none; }
 
         /* Lists */
         .list-group { display: flex; flex-direction: column; gap: 10px; padding: 15px; }
