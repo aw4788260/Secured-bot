@@ -1030,8 +1030,8 @@ export default function SuperTeachers() {
         .search-input { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 15px; display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
         .search-input input { background: transparent; border: none; color: var(--text-primary); font-size: 1rem; width: 100%; outline: none; }
 
-        .table-wrapper { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow, 0 4px 24px rgba(0,0,0,0.1)); }
-        table { width: 100%; border-collapse: collapse; }
+        .table-wrapper { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow-x: auto; -webkit-overflow-scrolling: touch; box-shadow: var(--shadow, 0 4px 24px rgba(0,0,0,0.1)); }
+        table { width: 100%; min-width: 800px; border-collapse: collapse; }
         thead { background: var(--bg-elevated); }
         th { text-align: right; padding: 15px 20px; color: var(--text-muted); font-size: 0.9rem; font-weight: 700; border-bottom: 1px solid var(--border); text-transform: uppercase; }
         td { padding: 15px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
