@@ -135,7 +135,7 @@ export default function SuperRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             requestId, 
-            action, 
+            action: action === 'delete' ? 'delete_request' : action, 
             rejectionReason: action === 'reject' ? rejectionReason : null 
         })
       });
@@ -309,12 +309,22 @@ export default function SuperRequestsPage() {
                                 <span className="req-id">#{req.id}</span>
                                 <span className="req-date">{new Date(req.created_at).toLocaleDateString('ar-EG')}</span>
                             </div>
-                            {req.teachers && (
-                                <span className="teacher-badge flex-center gap-1">
-                                    <IconTeacher size={14} /> 
-                                    {req.teachers.name}
-                                </span>
-                            )}
+                            <div className="header-right-actions flex-center gap-2">
+                                {req.teachers && (
+                                    <span className="teacher-badge flex-center gap-1">
+                                        <IconTeacher size={14} /> 
+                                        {req.teachers.name}
+                                    </span>
+                                )}
+                                <button
+                                    className="btn-delete-request flex-center justify-center"
+                                    onClick={() => initiateAction(req.id, 'delete')}
+                                    disabled={processingId === req.id}
+                                    title="حذف سجل الطلب نهائياً (لا يؤثر على اشتراك الطالب)"
+                                >
+                                    <IconX size={14} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="card-body">
@@ -464,6 +474,8 @@ export default function SuperRequestsPage() {
                   <p>
                       {confirmModal.action === 'approve' 
                         ? 'هل أنت متأكد من تفعيل هذا الاشتراك؟ سيتمكن الطالب من الوصول للمحتوى فوراً.' 
+                        : confirmModal.action === 'delete'
+                        ? 'هل أنت متأكد من حذف سجل هذا الطلب نهائياً؟ لن يظهر بعد الآن في السجلات، لكن اشتراك الطالب (إن كان مفعّلاً) لن يتأثر ولن يُحذف.'
                         : 'هل أنت متأكد من رفض هذا الطلب؟'}
                   </p>
 
@@ -480,10 +492,10 @@ export default function SuperRequestsPage() {
                   <div className="alert-actions">
                       <button className="cancel-btn" onClick={() => setConfirmModal({ show: false })}>تراجع</button>
                       <button 
-                        className={`confirm-btn ${confirmModal.action === 'reject' ? 'red' : 'green'}`} 
+                        className={`confirm-btn ${(confirmModal.action === 'reject' || confirmModal.action === 'delete') ? 'red' : 'green'}`} 
                         onClick={executeAction}
                       >
-                          نعم، نفذ
+                          {confirmModal.action === 'delete' ? 'نعم، احذف' : 'نعم، نفذ'}
                       </button>
                   </div>
               </div>
@@ -585,7 +597,12 @@ export default function SuperRequestsPage() {
         .card-header { background: var(--bg-elevated); padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
         .req-meta { display: flex; gap: 8px; align-items: center; font-size: 0.8em; color: var(--text-secondary); }
         .req-id { font-family: monospace; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; color: var(--text-primary); }
+        .header-right-actions { flex-shrink: 0; }
         .teacher-badge { background: var(--gold-dim); color: var(--gold); padding: 3px 8px; border-radius: 15px; font-size: 0.75em; font-weight: bold; border: 1px solid var(--border-accent); }
+
+        .btn-delete-request { width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-muted); cursor: pointer; transition: all 0.2s; padding: 0; }
+        .btn-delete-request:hover:not(:disabled) { background: #ef4444; border-color: #ef4444; color: #fff; transform: scale(1.1); }
+        .btn-delete-request:disabled { opacity: 0.4; cursor: not-allowed; }
 
         .card-body { padding: 15px; flex: 1; }
         .info-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
