@@ -82,6 +82,28 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, message: 'تم تحديث المبلغ الفعلي بنجاح', newPrice });
       }
 
+      // --- حالة حذف سجل الطلب (Delete Request Record) ---
+      // ⚠️ يحذف سجل الطلب فقط من جدول subscription_requests
+      // ولا يمس اشتراك الطالب الفعلي (user_course_access / user_subject_access)
+      if (action === 'delete_request') {
+        if (!requestId) {
+          return res.status(400).json({ error: 'معرف الطلب مطلوب' });
+        }
+
+        const { error: deleteError, count: deletedCount } = await supabase
+          .from('subscription_requests')
+          .delete({ count: 'exact' })
+          .eq('id', requestId);
+
+        if (deleteError) throw deleteError;
+
+        if (!deletedCount) {
+          return res.status(404).json({ error: 'الطلب غير موجود بالفعل' });
+        }
+
+        return res.status(200).json({ success: true, message: 'تم حذف سجل الطلب بنجاح' });
+      }
+
       // 1. جلب تفاصيل الطلب أولاً لمعرفة البيانات المطلوبة لباقي الإجراءات (ومعرفة الكود المرتبط)
       const { data: request, error: fetchError } = await supabase
         .from('subscription_requests')
