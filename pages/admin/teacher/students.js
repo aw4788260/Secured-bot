@@ -1,32 +1,29 @@
 import TeacherLayout from '../../../components/TeacherLayout';
 import { useState, useEffect } from 'react';
 
-// --- أيقونات SVG الاحترافية ---
-const Icons = {
-    search: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
-    filter: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>,
-    refresh: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>,
-    close: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
-    add: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
-    device: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>,
-    course: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
-    subject: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>,
-    students: <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-};
+// أيقونة الطلاب للعنوان (نفس أيقونة لوحة الإدارة العليا)
+const StudentsIcon = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+    <circle cx="9" cy="7" r="4"></circle>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+  </svg>
+);
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([]);
-  const [allCourses, setAllCourses] = useState([]); 
+  const [allCourses, setAllCourses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [totalStudents, setTotalStudents] = useState(0); 
-  const [currentUserId, setCurrentUserId] = useState(null); 
-  
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
   // حالة لمعرفة هل المستخدم الحالي هو الأدمن الرئيسي
   const [isMainAdmin, setIsMainAdmin] = useState(false);
 
   // البحث والفلترة
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // --- نظام الفلترة (Modal) ---
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeFilters, setActiveFilters] = useState({ courses: [], subjects: [] });
@@ -45,8 +42,8 @@ export default function StudentsPage() {
   const [userSubs, setUserSubs] = useState({ courses: [], subjects: [] });
   const [loadingSubs, setLoadingSubs] = useState(false);
 
-  // متغير لتخزين الكورسات والمواد المتاحة للمنح
-  const [grantOptions, setGrantOptions] = useState({ courses: [], subjects: [] }); 
+  // متغير لتخزين الكورسات والمواد المتاحة للمنح (خاصة بهذا المدرس فقط)
+  const [grantOptions, setGrantOptions] = useState({ courses: [], subjects: [] });
 
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [grantTarget, setGrantTarget] = useState(null);
@@ -61,13 +58,13 @@ export default function StudentsPage() {
       setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
   };
   const showConfirm = (msg, callback) => setConfirmData({ show: true, message: msg, onConfirm: callback });
-  
+
   const formatDate = (dateString) => {
       if (!dateString) return '-';
       return new Date(dateString).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  // 🗓️ Step 9: شارة "ينتهي في / منتهي" لكل صف وصول طالب (course/subject access row)
+  // 🗓️ شارة "ينتهي في / منتهي" لكل صف وصول طالب (course/subject access row)
   const formatAccessExpiryBadge = (expiresAt) => {
       if (!expiresAt) return { text: 'مدى الحياة', expired: false, lifetime: true };
       const expired = new Date(expiresAt).getTime() <= Date.now();
@@ -81,37 +78,35 @@ export default function StudentsPage() {
         if (allCourses.length === 0) {
             const resCourses = await fetch('/api/dashboard/teacher/content');
             const coursesData = await resCourses.json();
-            const coursesList = coursesData.courses || [];
-            setAllCourses(coursesList);
+            setAllCourses(coursesData.courses || []);
         }
 
         let url = `/api/dashboard/teacher/students?page=${currentPage}&limit=${itemsPerPage}`;
-        
+
         const params = new URLSearchParams();
         if (searchTerm) params.append('search', searchTerm);
         if (activeFilters.courses.length > 0) params.append('courses_filter', activeFilters.courses.join(','));
         if (activeFilters.subjects.length > 0) params.append('subjects_filter', activeFilters.subjects.join(','));
         if (activeFilters.courses.length + activeFilters.subjects.length > 1) params.append('filter_mode', filterMode);
-        
+
         if (params.toString()) url += `&${params.toString()}`;
-        
+
         const res = await fetch(url);
         const data = await res.json();
-        
+
         if (res.ok) {
             setStudents(data.students || []);
             setTotalStudents(data.total || 0);
             setIsMainAdmin(data.isMainAdmin || false);
-            setSelectedUsers([]); 
+            setSelectedUsers([]);
         }
-    } catch (err) { console.error(err); } 
+    } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { 
+  useEffect(() => {
       setCurrentUserId(localStorage.getItem('admin_user_id'));
-      window.scrollTo(0, 0);
-      fetchData(); 
+      fetchData();
   }, [currentPage, activeFilters, filterMode]);
 
   const handleSearchKey = (e) => {
@@ -119,28 +114,6 @@ export default function StudentsPage() {
           setCurrentPage(1);
           fetchData();
       }
-  };
-
-  // --- منطق الفلتر ---
-  const openFilterModal = () => { setTempFilters(activeFilters); setTempFilterMode(filterMode); setShowFilterModal(true); };
-  const toggleTempFilter = (type, id) => {
-      const current = tempFilters[type];
-      const updated = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
-      setTempFilters({ ...tempFilters, [type]: updated });
-  };
-  const applyFilters = () => {
-      setActiveFilters(tempFilters);
-      setFilterMode(tempFilterMode);
-      setCurrentPage(1); 
-      setShowFilterModal(false);
-  };
-  const clearFilters = () => {
-      setTempFilters({ courses: [], subjects: [] });
-      setActiveFilters({ courses: [], subjects: [] });
-      setTempFilterMode('or');
-      setFilterMode('or');
-      setCurrentPage(1);
-      setShowFilterModal(false);
   };
 
   // --- 2. ملف الطالب ---
@@ -152,17 +125,16 @@ export default function StudentsPage() {
           const res = await fetch(`/api/dashboard/teacher/students?get_details_for_user=${user.id}`);
           const data = await res.json();
           setUserSubs(data);
-          
+
           setGrantOptions({
               courses: data.available_courses || [],
               subjects: data.available_subjects || []
           });
-
       } catch (e) {}
       setLoadingSubs(false);
   };
 
-  // --- 3. تنفيذ الإجراءات ---
+  // --- 3. تنفيذ الإجراءات العامة (API) ---
   const runApiCall = async (action, payload, autoCloseProfile = false) => {
       try {
           const res = await fetch('/api/dashboard/teacher/students', {
@@ -173,19 +145,21 @@ export default function StudentsPage() {
           const resData = await res.json();
           if (res.ok) {
               showToast(resData.message, 'success');
-              if (autoCloseProfile) setViewUser(null);
-              // إعادة تحميل البيانات لتحديث الصلاحيات
-              if (viewUser && ['grant_access','revoke_access'].includes(action)) {
-                  openUserProfile(viewUser);
+
+              if (autoCloseProfile) {
+                  setViewUser(null);
                   fetchData();
               } else {
+                  if (viewUser && ['grant_access', 'revoke_access'].includes(action)) {
+                      openUserProfile(viewUser);
+                  }
                   fetchData();
               }
           } else { showToast(resData.error, 'error'); }
       } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   };
 
-  // مودال المنح
+  // --- منطق المنح (Grant) ---
   const openGrantModal = (target) => {
       setGrantTarget(target);
       setSelectedGrantItems({ courses: [], subjects: [] });
@@ -203,18 +177,29 @@ export default function StudentsPage() {
       setShowGrantModal(false);
   };
 
+  // --- منطق الفلترة ---
+  const toggleTempFilter = (type, id) => {
+      const current = tempFilters[type];
+      const updated = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
+      setTempFilters({ ...tempFilters, [type]: updated });
+  };
+  const applyFilters = () => {
+      setActiveFilters(tempFilters);
+      setFilterMode(tempFilterMode);
+      setCurrentPage(1);
+      setShowFilterModal(false);
+  };
+
   // العمليات الجماعية
   const toggleSelectAll = (e) => setSelectedUsers(e.target.checked ? students.map(u => u.id) : []);
   const toggleSelectUser = (id) => setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  
+
   const handleBulkAction = (actionType) => {
       if (!selectedUsers.length) return;
-      
       if (actionType === 'grant') {
-        setGrantOptions({ courses: allCourses, subjects: [] }); 
-        openGrantModal('bulk');
+          setGrantOptions({ courses: allCourses, subjects: [] });
+          openGrantModal('bulk');
       }
-      
       else if (actionType === 'revoke_filtered') {
           if (!activeFilters.courses.length && !activeFilters.subjects.length) return showToast('يجب تفعيل فلتر أولاً لمعرفة ما سيتم سحبه', 'error');
           showConfirm('سحب الكورسات/المواد المفلترة من هؤلاء الطلاب؟', () => {
@@ -223,11 +208,11 @@ export default function StudentsPage() {
           });
       }
   };
-  
+
   const totalPages = Math.ceil(totalStudents / itemsPerPage);
   const hasActiveFilters = activeFilters.courses.length > 0 || activeFilters.subjects.length > 0;
 
-  // --- دالة مساعدة لتجهيز قائمة المنح ---
+  // --- دالة مساعدة لتجهيز قائمة المنح (مقيّدة بمحتوى هذا المدرس فقط) ---
   const getRenderableGrantGroups = () => {
     return allCourses.filter(course => {
         if (grantTarget === 'bulk') return true;
@@ -240,52 +225,45 @@ export default function StudentsPage() {
 
   return (
     <TeacherLayout title="إدارة الطلاب">
-      <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
-        {toast.message}
-      </div>
+      <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>{toast.message}</div>
 
-      {/* ── PAGE HEADER ── */}
       <div className="page-header">
+        <div className="page-title">
+          <div className="title-icon"><StudentsIcon /></div>
           <div>
-            <h1 className="page-title flex-center gap-2">{Icons.students} إدارة الطلاب</h1>
-            <p className="page-sub">تصفح طلابك، تحكم في الصلاحيات، وتابع الحالات.</p>
+            <h1>إدارة الطلاب</h1>
+            <p>تصفح طلابك، تحكم في الصلاحيات، وتابع الحالات.</p>
           </div>
+        </div>
       </div>
 
       <div className="controls-container">
           <div className="search-wrapper">
-              <span className="search-icon">{Icons.search}</span>
-              <input 
-                className="search-input" 
-                placeholder="بحث (اسم، هاتف، بريد إلكتروني، ID) + Enter..." 
-                value={searchTerm} 
-                onChange={e=>setSearchTerm(e.target.value)} 
+             <span className="search-icon">🔍</span>
+             <input
+                className="search-input"
+                placeholder="بحث بالاسم، رقم الهاتف، البريد الإلكتروني، أو الـ ID ثم اضغط Enter..."
+                value={searchTerm}
+                onChange={e=>setSearchTerm(e.target.value)}
                 onKeyDown={handleSearchKey}
-              />
+             />
           </div>
-          
-          <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={openFilterModal}>
-              <span className="icon-wrap">{Icons.filter}</span> فلترة {hasActiveFilters && `(${activeFilters.courses.length + activeFilters.subjects.length})`}
+
+          <button className={`filter-btn ${hasActiveFilters ? 'active' : ''}`} onClick={() => { setTempFilters(activeFilters); setTempFilterMode(filterMode); setShowFilterModal(true); }}>
+              🌪️ فلترة {hasActiveFilters && `(${activeFilters.courses.length + activeFilters.subjects.length})`}
           </button>
 
-          <button onClick={() => { setCurrentPage(1); fetchData(); }} className="btn-refresh" title="تحديث">
-              {Icons.refresh}
-          </button>
+          <button onClick={() => { setCurrentPage(1); fetchData(); }} className="btn-refresh" title="تحديث البيانات">🔄</button>
       </div>
 
       {selectedUsers.length > 0 && (
           <div className="bulk-glass-bar">
-              <div className="bulk-info">
-                  <span className="count-badge">{selectedUsers.length}</span> 
-                  <span>طالب محدد</span>
-              </div>
+              <div className="bulk-info"><span className="count-badge">{selectedUsers.length}</span> <span>محدد</span></div>
               <div className="bulk-actions">
-                  <button onClick={() => handleBulkAction('grant')} className="glass-btn primary-glass">
-                      <span className="icon-wrap">{Icons.add}</span> منح صلاحية
-                  </button>
+                  <button onClick={() => handleBulkAction('grant')} className="glass-btn">➕ منح صلاحية</button>
                   {hasActiveFilters && (
-                      <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn danger-glass">
-                          سحب المفلتر
+                      <button onClick={() => handleBulkAction('revoke_filtered')} className="glass-btn danger">
+                          🚫 سحب المفلتر
                       </button>
                   )}
               </div>
@@ -293,71 +271,54 @@ export default function StudentsPage() {
       )}
 
       <div className="table-box">
-          {loading ? (
-              <div className="loading-state">
-                  <div className="spinner"></div>
-                  <span>جاري تحميل بيانات الطلاب...</span>
-              </div>
-          ) : (
-            <div className="table-responsive">
-                <table className="std-table">
-                    <thead>
-                        <tr>
-                            <th style={{width:'50px', textAlign: 'center'}}>
-                                <input type="checkbox" className="custom-checkbox" onChange={toggleSelectAll} checked={students.length > 0 && selectedUsers.length === students.length} />
-                            </th>
-                            <th style={{width:'80px'}}>ID</th>
-                            <th style={{textAlign:'right'}}>الاسم</th>
-                            <th style={{textAlign:'center'}}>المستخدم</th>
-                            <th style={{textAlign:'center'}}>الهاتف</th>
-                            <th style={{textAlign:'center'}}>البريد الإلكتروني</th>
-                            <th style={{textAlign:'center'}}>تاريخ الانضمام</th>
-                            <th style={{textAlign:'center', width:'100px'}}>الحالة</th>
+          {loading ? <div className="loading-state">جاري التحميل...</div> : (
+            <table className="std-table">
+                <thead>
+                    <tr>
+                        <th style={{width:'40px'}}><input type="checkbox" onChange={toggleSelectAll} checked={students.length > 0 && selectedUsers.length === students.length} /></th>
+                        <th style={{width:'60px'}}>ID</th>
+                        <th style={{textAlign:'right'}}>الاسم</th>
+                        <th style={{textAlign:'center'}}>المستخدم</th>
+                        <th style={{textAlign:'center'}}>الهاتف</th>
+                        <th style={{textAlign:'center'}}>البريد الإلكتروني</th>
+                        <th style={{textAlign:'center'}}>الجهاز</th>
+                        <th style={{textAlign:'center', width:'100px'}}>الحالة</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {students.map(std => (
+                        <tr key={std.id} onClick={() => openUserProfile(std)} className="clickable">
+                            <td onClick={e => e.stopPropagation()} style={{textAlign:'center'}}><input type="checkbox" checked={selectedUsers.includes(std.id)} onChange={() => toggleSelectUser(std.id)} /></td>
+                            <td style={{fontFamily:'monospace', color:'var(--text-muted)'}}>{std.id}</td>
+                            <td style={{fontWeight:'700', color:'var(--text-primary)'}}>
+                                {std.first_name}
+                                {std.is_admin && <span className="admin-tag">مشرف</span>}
+                            </td>
+                            <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'var(--gold)'}}>@{std.username}</td>
+                            <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'var(--text-secondary)'}}>{std.phone}</td>
+                            <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', fontSize:'0.85em', color:'var(--text-secondary)'}}>{std.email || '-'}</td>
+                            <td style={{textAlign:'center'}}>
+                                {std.device_linked ? <span className="device-badge used">📱 مرتبط</span> : <span className="device-badge free">⚪ فارغ</span>}
+                            </td>
+                            <td style={{textAlign:'center'}}>
+                                {std.is_blocked ?
+                                    <span className="status-badge blocked">محظور</span> :
+                                    <span className="status-badge active">نشط</span>
+                                }
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {students.map(std => (
-                            <tr key={std.id} onClick={() => openUserProfile(std)} className="clickable hover-row">
-                                <td onClick={e => e.stopPropagation()} style={{textAlign:'center'}}>
-                                    <input type="checkbox" className="custom-checkbox" checked={selectedUsers.includes(std.id)} onChange={() => toggleSelectUser(std.id)} />
-                                </td>
-                                <td className="mono-text">{std.id}</td>
-                                <td className="name-cell">
-                                    <div className="name-wrap">
-                                        <span className="avatar-mini">{std.first_name?.[0]}</span>
-                                        <span className="full-name">{std.first_name}</span>
-                                        {std.is_admin && <span className="admin-tag">مشرف</span>}
-                                    </div>
-                                </td>
-                                <td className="mono-text center-text highlight-text">{std.username}</td>
-                                <td className="mono-text center-text">{std.phone}</td>
-                                <td className="mono-text center-text" style={{fontSize:'0.85em'}}>{std.email || '-'}</td>
-                                <td className="date-cell">{formatDate(std.created_at)}</td>
-                                <td>
-                                    <div className="status-cell">
-                                        {std.is_blocked ? <span className="status-dot red" title="محظور"></span> : <span className="status-dot green" title="نشط"></span>}
-                                        {std.device_linked && <span className="device-icon" title="جهاز مرتبط">{Icons.device}</span>}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                        {students.length === 0 && (
-                            <tr><td colSpan="8" className="empty-state">لا يوجد نتائج تطابق بحثك</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    ))}
+                    {students.length === 0 && <tr><td colSpan="8" style={{textAlign:'center', padding:'40px', color:'var(--text-muted)'}}>لا يوجد نتائج</td></tr>}
+                </tbody>
+            </table>
           )}
       </div>
 
       {totalPages > 1 && (
           <div className="pagination">
-              <button className="page-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>السابق</button>
-              <div className="page-info">
-                  <span>الصفحة <strong className="highlight-text">{currentPage}</strong> من {totalPages}</span>
-                  <span className="total-info">(الإجمالي: {totalStudents})</span>
-              </div>
-              <button className="page-btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => prev + 1)}>التالي</button>
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>السابق</button>
+              <span>{currentPage} / {totalPages} (الإجمالي: {totalStudents})</span>
+              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => prev + 1)}>التالي</button>
           </div>
       )}
 
@@ -366,10 +327,10 @@ export default function StudentsPage() {
           <div className="modal-overlay" onClick={() => setShowFilterModal(false)}>
               <div className="modal-box filter-modal" onClick={e => e.stopPropagation()}>
                   <div className="modal-head">
-                      <h3>تصفية الطلاب</h3>
-                      <button className="close-icon" onClick={() => setShowFilterModal(false)}>{Icons.close}</button>
+                      <h3>🌪️ تصفية الطلاب</h3>
+                      <button className="close-icon" onClick={() => setShowFilterModal(false)}>✕</button>
                   </div>
-                  <div className="modal-content scrollable">
+                  <div className="modal-content scrollable custom-scrollbar">
                       {/* And / Or Mode Toggle */}
                       <div className="filter-mode-section">
                           <span className="filter-mode-label">نوع الفلترة عند اختيار أكثر من عنصر:</span>
@@ -397,24 +358,24 @@ export default function StudentsPage() {
                       {allCourses.map(course => (
                           <div key={course.id} className="filter-group">
                               <label className="checkbox-row main">
-                                  <input type="checkbox" className="custom-checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
-                                  <span className="filter-label"><span className="icon-wrap">{Icons.course}</span> {course.title}</span>
+                                  <input type="checkbox" checked={tempFilters.courses.includes(String(course.id))} onChange={() => toggleTempFilter('courses', String(course.id))} />
+                                  <span>📦 {course.title}</span>
                               </label>
                               <div className="filter-subs">
                                   {course.subjects?.map(subject => (
                                       <label key={subject.id} className="checkbox-row sub">
-                                          <input type="checkbox" className="custom-checkbox" checked={tempFilters.subjects.includes(String(subject.id))} onChange={() => toggleTempFilter('subjects', String(subject.id))} />
-                                          <span className="filter-label">{subject.title}</span>
+                                          <input type="checkbox" checked={tempFilters.subjects.includes(String(subject.id))} onChange={() => toggleTempFilter('subjects', String(subject.id))} />
+                                          <span>{subject.title}</span>
                                       </label>
                                   ))}
                               </div>
                           </div>
                       ))}
-                      {allCourses.length === 0 && <div className="empty-state">لا توجد كورسات متاحة للفلترة</div>}
+                      {allCourses.length === 0 && <p className="empty-text">لا توجد كورسات متاحة للفلترة</p>}
                   </div>
-                  <div className="modal-footer split-footer">
-                      <button className="cancel-btn danger-text" onClick={clearFilters}>مسح الفلاتر</button>
-                      <button className="confirm-btn" onClick={applyFilters}>تطبيق الفرز ({tempFilters.courses.length + tempFilters.subjects.length})</button>
+                  <div className="modal-footer" style={{justifyContent: 'space-between'}}>
+                      <button className="cancel-btn danger-text" onClick={() => { setTempFilters({courses:[], subjects:[]}); setActiveFilters({courses:[], subjects:[]}); setTempFilterMode('or'); setFilterMode('or'); setCurrentPage(1); setShowFilterModal(false); }}>مسح الفلاتر</button>
+                      <button className="confirm-btn" onClick={applyFilters}>عرض ({tempFilters.courses.length + tempFilters.subjects.length}) ✅</button>
                   </div>
               </div>
           </div>
@@ -428,69 +389,81 @@ export default function StudentsPage() {
                       <div className="user-avatar-placeholder">{viewUser.first_name?.[0]}</div>
                       <div className="head-info">
                           <h3>
-                              {viewUser.first_name} 
+                              {viewUser.first_name}
                               {viewUser.is_admin && <span className="admin-tag-large">مشرف</span>}
                           </h3>
-                          <span className="sub-text">ID: <span className="highlight-text">{viewUser.id}</span> &nbsp;•&nbsp; انضم: {formatDate(viewUser.created_at)}</span>
+                          <span className="sub-text">ID: {viewUser.id} &nbsp;•&nbsp; انضم: {formatDate(viewUser.created_at)}</span>
                       </div>
-                      <button className="close-icon" onClick={() => setViewUser(null)}>{Icons.close}</button>
+                      <div className="head-actions">
+                          <button className="close-icon" onClick={() => setViewUser(null)}>✕</button>
+                      </div>
                   </div>
-                  <div className="modal-content profile-content">
-                      <div className="data-row">
-                          <div className="data-item">
-                              <label>اسم المستخدم</label>
-                              <div className="val-box highlight-text">{viewUser.username}</div>
+
+                  <div className="modal-content custom-scrollbar">
+                      {/* بيانات المستخدم (عرض فقط — لا يملك المدرس صلاحية التعديل) */}
+                      <div className="data-form">
+                          <div className="data-row">
+                              <div className="data-item">
+                                  <label>الاسم الكامل</label>
+                                  <div className="val-box">{viewUser.first_name}</div>
+                              </div>
+                              <div className="data-item">
+                                  <label>اسم المستخدم (Login)</label>
+                                  <div className="val-box ltr highlight-box">@{viewUser.username}</div>
+                              </div>
                           </div>
-                          <div className="data-item">
-                              <label>رقم الهاتف</label>
-                              <div className="val-box ltr">{viewUser.phone}</div>
+
+                          <div className="data-row">
+                              <div className="data-item">
+                                  <label>رقم الهاتف</label>
+                                  <div className="val-box ltr">{viewUser.phone || '-'}</div>
+                              </div>
+                              <div className="data-item">
+                                  <label>حالة الجهاز</label>
+                                  <div className="val-box">
+                                      {viewUser.device_linked ? <span style={{color:'#facc15', fontWeight:'bold'}}>📱 مرتبط بجهاز</span> : <span style={{color:'#4ade80', fontWeight:'bold'}}>⚪ غير مرتبط</span>}
+                                  </div>
+                              </div>
                           </div>
-                          <div className="data-item">
-                              <label>البريد الإلكتروني</label>
-                              <div className="val-box ltr">{viewUser.email || '-'}</div>
+
+                          <div className="data-row">
+                              <div className="data-item">
+                                  <label>البريد الإلكتروني</label>
+                                  <div className="val-box ltr">{viewUser.email || '-'}</div>
+                              </div>
                           </div>
                       </div>
 
+                      <hr className="divider" />
+
+                      {/* الاشتراكات */}
                       <div className="subs-wrapper">
-                          <div className="subs-header">
-                              <h4>الاشتراكات والصلاحيات</h4>
-                              <button className="btn-primary small" onClick={() => openGrantModal(viewUser)}>
-                                  <span className="icon-wrap">{Icons.add}</span> إضافة
-                              </button>
-                          </div>
-                          {loadingSubs ? (
-                              <div className="loading-state mini"><div className="spinner"></div></div>
-                          ) : (
+                          <div className="subs-header"><h4>الاشتراكات الحالية</h4><button className="add-sub-btn" onClick={() => openGrantModal(viewUser)}>➕ منح صلاحية</button></div>
+                          {loadingSubs ? <div className="loader-line"></div> : (
                               <div className="subs-grid">
                                   <div className="sub-column">
-                                      <h5><span className="icon-wrap">{Icons.course}</span> الكورسات الكاملة</h5>
-                                      {userSubs.courses.length === 0 && <div className="empty-sub">لا توجد اشتراكات</div>}
-                                      {userSubs.courses.map(c => {
+                                      <h5>📦 الكورسات الكاملة</h5>
+                                      {userSubs.courses.length > 0 ? userSubs.courses.map(c => {
                                           const badge = formatAccessExpiryBadge(c.expires_at);
                                           return (
                                           <div key={c.course_id} className="sub-chip">
                                               <span>{c.courses?.title}</span>
-                                              {!badge.lifetime && (
-                                                  <span className={`expiry-badge ${badge.expired ? 'expired' : ''}`}>{badge.text}</span>
-                                              )}
-                                              <button className="remove-btn" title="سحب الصلاحية" onClick={() => showConfirm('هل أنت متأكد من سحب هذا الكورس؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>×</button>
+                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
+                                              <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>✕</button>
                                           </div>
-                                      ); })}
+                                      ); }) : <p className="empty-text">لا يوجد</p>}
                                   </div>
                                   <div className="sub-column">
-                                      <h5><span className="icon-wrap">{Icons.subject}</span> المواد الفردية</h5>
-                                      {userSubs.subjects.length === 0 && <div className="empty-sub">لا توجد اشتراكات</div>}
-                                      {userSubs.subjects.map(s => {
+                                      <h5>📄 المواد الفردية</h5>
+                                      {userSubs.subjects.length > 0 ? userSubs.subjects.map(s => {
                                           const badge = formatAccessExpiryBadge(s.expires_at);
                                           return (
                                           <div key={s.subject_id} className="sub-chip">
                                               <span>{s.subjects?.title}</span>
-                                              {!badge.lifetime && (
-                                                  <span className={`expiry-badge ${badge.expired ? 'expired' : ''}`}>{badge.text}</span>
-                                              )}
-                                              <button className="remove-btn" title="سحب الصلاحية" onClick={() => showConfirm('هل أنت متأكد من سحب هذه المادة؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>×</button>
+                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
+                                              <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>✕</button>
                                           </div>
-                                      ); })}
+                                      ); }) : <p className="empty-text">لا يوجد</p>}
                                   </div>
                               </div>
                           )}
@@ -504,15 +477,11 @@ export default function StudentsPage() {
       {showGrantModal && (
           <div className="modal-overlay" onClick={() => setShowGrantModal(false)}>
               <div className="modal-box grant-modal" onClick={e => e.stopPropagation()}>
-                  <div className="modal-head">
-                      <h3>إضافة صلاحيات</h3>
-                      <button className="close-icon" onClick={() => setShowGrantModal(false)}>{Icons.close}</button>
-                  </div>
-                  <div className="modal-content scrollable">
+                  <div className="modal-head"><h3>➕ إضافة صلاحيات {grantTarget === 'bulk' ? 'جماعية' : ''}</h3><button className="close-icon" onClick={() => setShowGrantModal(false)}>✕</button></div>
+                  <div className="modal-content scrollable custom-scrollbar">
                       {renderableGrantGroups.length > 0 ? renderableGrantGroups.map(course => {
                           const isCourseGrantable = grantTarget === 'bulk' || grantOptions.courses.some(c => c.id === course.id);
-                          
-                          const visibleSubjects = course.subjects?.filter(s => 
+                          const visibleSubjects = course.subjects?.filter(s =>
                               grantTarget === 'bulk' || grantOptions.subjects.some(gs => gs.id === s.id)
                           ) || [];
 
@@ -520,246 +489,247 @@ export default function StudentsPage() {
                               <div key={course.id} className="course-group">
                                   {isCourseGrantable ? (
                                       <label className="checkbox-row main">
-                                          <input 
-                                              type="checkbox" 
-                                              className="custom-checkbox"
-                                              checked={selectedGrantItems.courses.includes(course.id)} 
-                                              onChange={() => toggleGrantItem('courses', course.id)} 
-                                          />
-                                          <span className="filter-label"><span className="icon-wrap">{Icons.course}</span> {course.title} <span className="badge-full">(كامل)</span></span>
+                                          <input type="checkbox" checked={selectedGrantItems.courses.includes(course.id)} onChange={() => toggleGrantItem('courses', course.id)} />
+                                          <span>📦 {course.title} (كامل)</span>
                                       </label>
                                   ) : (
                                       <div className="checkbox-row main disabled-row">
-                                          <span className="filter-label"><span className="icon-wrap">{Icons.course}</span> {course.title} <span className="badge-owned">(مملوك مسبقاً)</span></span>
+                                          <span>📦 {course.title} <span className="badge-owned">(مملوك مسبقاً)</span></span>
                                       </div>
                                   )}
-
                                   <div className="filter-subs">
                                       {visibleSubjects.map(subject => (
                                           <label key={subject.id} className="checkbox-row sub">
-                                              <input 
-                                                  type="checkbox" 
-                                                  className="custom-checkbox"
-                                                  checked={selectedGrantItems.subjects.includes(subject.id)} 
-                                                  onChange={() => toggleGrantItem('subjects', subject.id)}
-                                                  disabled={selectedGrantItems.courses.includes(course.id)}
-                                              />
-                                              <span className="filter-label">{subject.title}</span>
+                                              <input type="checkbox" checked={selectedGrantItems.subjects.includes(subject.id)} onChange={() => toggleGrantItem('subjects', subject.id)} disabled={selectedGrantItems.courses.includes(course.id)} />
+                                              <span>{subject.title}</span>
                                           </label>
                                       ))}
-                                      {visibleSubjects.length === 0 && !isCourseGrantable && <span className="empty-sub inline">جميع المواد مملوكة</span>}
+                                      {visibleSubjects.length === 0 && !isCourseGrantable && <span className="empty-text inline">جميع المواد مملوكة</span>}
                                   </div>
                               </div>
                           );
                       }) : (
-                          <div className="empty-state">
-                              لا توجد صلاحيات جديدة يمكن إضافتها.
-                          </div>
+                          <p className="empty-text">لا توجد صلاحيات جديدة يمكن إضافتها.</p>
                       )}
                   </div>
-                  <div className="modal-footer">
-                      <button className="cancel-btn" onClick={() => setShowGrantModal(false)}>إلغاء</button>
-                      <button className="confirm-btn" onClick={submitGrant}>تأكيد المنح</button>
-                  </div>
+                  <div className="modal-footer"><button className="cancel-btn" onClick={() => setShowGrantModal(false)}>إلغاء</button><button className="confirm-btn" onClick={submitGrant}>تأكيد ✅</button></div>
               </div>
           </div>
       )}
 
       {/* --- Alerts --- */}
       {confirmData.show && (
-          <div className="modal-overlay alert-overlay">
-              <div className="modal-box alert-box">
-                  <div className="modal-head alert-head">
-                      <h3>تأكيد الإجراء</h3>
-                  </div>
-                  <div className="modal-content">
-                      <p>{confirmData.message}</p>
-                  </div>
-                  <div className="modal-footer alert-footer">
-                      <button className="cancel-btn" onClick={() => setConfirmData({...confirmData, show:false})}>تراجع</button>
-                      <button className="confirm-btn danger-bg" onClick={() => {confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، متأكد</button>
-                  </div>
-              </div>
+        <div className="modal-overlay alert-overlay">
+          <div className="modal-box alert-box">
+            <h3>⚠️ تأكيد الإجراء</h3>
+            <p>{confirmData.message}</p>
+            <div className="alert-actions">
+              <button className="cancel-btn" onClick={()=>setConfirmData({...confirmData, show:false})}>إلغاء</button>
+              <button className="confirm-btn red" onClick={()=>{confirmData.onConfirm(); setConfirmData({...confirmData,show:false})}}>نعم، تأكيد</button>
+            </div>
           </div>
+        </div>
       )}
 
       <style jsx>{`
-        /* ── THEME VARS ── */
-        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--bg-elevated); color: var(--text-primary); padding: 12px 25px; border-radius: 50px; font-weight: bold; box-shadow: var(--shadow); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; border: 1px solid var(--border); }
-        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
-        .toast.success { background: #22c55e; color: #fff; border-color: #22c55e; }
-        .toast.error { background: #ef4444; color: white; border-color: #ef4444; }
+        /* ================= Theme-Aware & Responsive Styling ================= */
+        .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; font-weight: bold; transform: translateX(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 99999999; box-shadow: var(--shadow); background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); }
+        .toast.show { transform: translateX(0); }
+        .toast.success { border-right: 4px solid #22c55e; }
+        .toast.error { border-right: 4px solid #ef4444; }
 
-        .flex-center { display: flex; align-items: center; }
-        .gap-2 { gap: 8px; }
+        /* Page Header */
+        .page-header { margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .page-title { display: flex; align-items: center; gap: 15px; }
+        .title-icon { color: var(--gold); display: flex; align-items: center; justify-content: center; background: var(--gold-dimmer); padding: 10px; border-radius: 12px; border: 1px solid var(--border-accent); }
+        .page-title h1 { margin: 0 0 5px 0; color: var(--text-primary); font-size: 1.8rem; font-weight: 800; }
+        .page-title p { margin: 0; color: var(--text-muted); font-size: 0.95rem; }
 
-        .page-header { margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
-        .page-title { margin: 0 0 6px 0; color: var(--text-primary); font-size: 1.6rem; font-weight: 800; }
-        .page-title svg { color: var(--gold); }
-        .page-sub { margin: 0; color: var(--text-secondary); font-size: 0.95rem; }
+        /* Controls */
+        .controls-container { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .search-wrapper { position: relative; flex: 2; min-width: 250px; }
+        .search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; opacity: 0.7; }
+        .search-input { width: 100%; padding: 12px 12px 12px 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 0.95rem; transition: 0.2s; outline: none; }
+        .search-input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
 
-        .controls-container { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; align-items: stretch; }
-        .search-wrapper { flex: 2; min-width: 250px; position: relative; display: flex; align-items: center; }
-        .search-icon { position: absolute; right: 14px; color: var(--text-muted); display: flex; }
-        .search-input { width: 100%; padding: 12px 40px 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-family: inherit; transition: 0.2s; font-size: 0.95rem; }
-        .search-input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 2px var(--gold-dim); }
-        
-        .filter-btn { background: var(--bg-surface); color: var(--text-secondary); border: 1px solid var(--border); padding: 0 24px; border-radius: 10px; cursor: pointer; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-        .filter-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .filter-btn.active { background: var(--gold-dim); color: var(--gold); border-color: var(--border-accent); }
+        .btn-refresh { background: var(--bg-elevated); color: var(--gold); border: 1px solid var(--border-accent); padding: 12px; border-radius: 12px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+        .btn-refresh:hover { background: var(--gold-dimmer); transform: rotate(15deg); }
 
-        .btn-refresh { background: var(--bg-surface); color: var(--text-secondary); border: 1px solid var(--border); width: 44px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-        .btn-refresh:hover { background: var(--bg-hover); color: var(--gold); border-color: var(--border-accent); }
+        .filter-btn { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); padding: 12px 25px; border-radius: 12px; cursor: pointer; font-weight: 600; transition: 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+        .filter-btn:hover, .filter-btn.active { background: var(--gold); color: #111009; border-color: var(--gold-light); }
 
-        .btn-primary { background: var(--gold); color: #111009; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px var(--gold-dim); }
-        .btn-primary.small { padding: 8px 14px; font-size: 0.85rem; }
-
-        .bulk-glass-bar { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 800px; background: rgba(22, 19, 12, 0.85); backdrop-filter: blur(16px); border: 1px solid var(--border-accent); padding: 14px 24px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 15px 40px rgba(0,0,0,0.6); z-index: 100; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        .bulk-info { display: flex; align-items: center; gap: 10px; color: var(--text-primary); font-weight: 600; }
-        .count-badge { background: var(--gold); color: #111009; padding: 2px 12px; border-radius: 20px; font-weight: 800; font-size: 0.9rem; }
+        /* Bulk Actions Bar */
+        .bulk-glass-bar { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 850px; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid var(--gold); padding: 12px 25px; border-radius: 50px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); z-index: 50; animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .bulk-info { display: flex; align-items: center; color: white; font-weight: 600; }
+        .count-badge { background: var(--gold); color: #111009; padding: 2px 10px; border-radius: 20px; font-weight: 800; margin-left: 8px; font-size: 1.1rem; }
         .bulk-actions { display: flex; gap: 10px; }
-        .glass-btn { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 18px; border-radius: 20px; cursor: pointer; font-size: 0.85rem; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
-        .glass-btn:hover { background: var(--bg-hover); }
-        .primary-glass { background: var(--gold-dim); color: var(--gold); border-color: var(--border-accent); }
-        .primary-glass:hover { background: var(--gold); color: #111009; }
-        .danger-glass { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3); }
-        .danger-glass:hover { background: #ef4444; color: white; }
+        .glass-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 18px; border-radius: 20px; cursor: pointer; font-size: 0.9em; font-weight: bold; transition: 0.2s; }
+        .glass-btn:hover { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+        .glass-btn.danger { border-color: #ef4444; color: #fca5a5; }
+        .glass-btn.danger:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fecaca; }
 
-        /* ── TABLE STYLES ── */
-        .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-        .table-responsive { overflow-x: auto; }
-        .std-table { width: 100%; border-collapse: collapse; min-width: 850px; text-align: right; }
-        .std-table th { background: var(--bg-elevated); padding: 16px; color: var(--text-secondary); border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
-        .std-table td { padding: 16px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: middle; font-size: 0.95rem; }
-        .std-table tbody tr:last-child td { border-bottom: none; }
-        .hover-row { transition: background 0.2s; cursor: pointer; }
-        .hover-row:hover { background: var(--bg-hover); }
-        
-        .name-cell { font-weight: 600; }
-        .name-wrap { display: flex; align-items: center; gap: 10px; }
-        .avatar-mini { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--gold), var(--gold-light)); color: #111009; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; flex-shrink: 0; }
-        .admin-tag { background: var(--gold-dim); color: var(--gold); border: 1px solid var(--border-accent); padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; margin-right: auto; }
-        
-        .mono-text { font-family: 'Courier New', Courier, monospace; color: var(--text-secondary); }
-        .center-text { text-align: center; }
-        .highlight-text { color: var(--gold) !important; font-weight: bold; }
-        .date-cell { text-align: center; font-size: 0.85rem; color: var(--text-muted); }
-        
-        .status-cell { display: flex; justify-content: center; align-items: center; gap: 8px; }
-        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; }
-        .status-dot.green { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.4); } 
-        .status-dot.red { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
-        .device-icon { color: var(--text-muted); display: flex; }
+        /* Main Table - Scrollable gracefully on mobile */
+        .table-box { background: var(--bg-surface); border-radius: 16px; border: 1px solid var(--border); overflow-x: auto; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
+        .std-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        .std-table th { background: var(--bg-elevated); padding: 16px 20px; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 0.9em; text-transform: uppercase; font-weight: 700; }
+        .std-table td { padding: 16px 20px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
+        .std-table tr:last-child td { border-bottom: none; }
+        .clickable:hover td { background: var(--bg-hover); cursor: pointer; }
 
-        .custom-checkbox { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+        .admin-tag { background: var(--gold-dimmer); color: var(--gold); border: 1px solid var(--border-accent); padding: 2px 8px; border-radius: 6px; font-size: 0.75em; margin-right: 10px; font-weight: bold; }
 
-        .loading-state { padding: 60px 20px; text-align: center; color: var(--gold); font-weight: bold; display: flex; flex-direction: column; align-items: center; gap: 15px; }
-        .loading-state.mini { padding: 30px; }
-        .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        .empty-state { text-align: center; padding: 40px; color: var(--text-muted); font-size: 0.95rem; }
+        .status-badge { padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; display: inline-block; }
+        .status-badge.active { background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2); }
+        .status-badge.blocked { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
 
-        .pagination { display: flex; justify-content: center; gap: 15px; margin-top: 25px; color: var(--text-secondary); padding-bottom: 80px; align-items: center; }
-        .page-btn { padding: 8px 18px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .page-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--gold); color: var(--gold); }
-        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .page-info { display: flex; flex-direction: column; align-items: center; font-size: 0.9rem; }
-        .total-info { font-size: 0.8rem; color: var(--text-muted); }
+        .device-badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; display: inline-block; border: 1px solid transparent; }
+        .device-badge.used { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border-color: rgba(56, 189, 248, 0.2); }
+        .device-badge.free { color: var(--text-muted); background: var(--bg-elevated); border-color: var(--border); }
 
-        /* ── MODALS ── */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); padding: 20px; }
-        .modal-box { background: var(--bg-surface); width: 100%; border-radius: 20px; border: 1px solid var(--border); display: flex; flex-direction: column; box-shadow: 0 25px 50px rgba(0,0,0,0.5); animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); overflow: hidden; }
-        
-        .profile-modal { max-width: 600px; max-height: 90vh; }
-        .grant-modal { max-width: 550px; max-height: 85vh; }
-        .filter-modal { max-width: 480px; max-height: 85vh; }
-        .alert-box { max-width: 400px; } 
+        input[type="checkbox"] { accent-color: var(--gold); width: 18px; height: 18px; cursor: pointer; }
 
-        .modal-head { background: var(--bg-elevated); padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
-        .modal-head h3 { margin: 0; color: var(--text-primary); font-size: 1.2rem; font-weight: bold; }
-        .close-icon { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
-        .close-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
-        
-        .modal-content { padding: 24px; overflow-y: auto; flex: 1; }
-        .modal-footer { padding: 18px 24px; background: var(--bg-elevated); display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); }
-        .split-footer { justify-content: space-between; }
+        .pagination { display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; margin-top: 25px; color: var(--text-muted); padding-bottom: 50px; align-items: center; font-weight: 500; }
+        .pagination button { padding: 8px 18px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .pagination button:hover:not(:disabled) { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        .cancel-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .confirm-btn { background: var(--gold); color: #111009; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 12px var(--gold-dimmer); }
-        .confirm-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px var(--gold-dim); }
-        .danger-text { color: #ef4444 !important; border-color: rgba(239, 68, 68, 0.3) !important; }
-        .danger-text:hover { background: rgba(239, 68, 68, 0.1) !important; }
-        .danger-bg { background: #ef4444 !important; color: white !important; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important; }
+        .loading-state { padding: 50px; text-align: center; color: var(--gold); font-weight: bold; font-size: 1.1rem; }
 
-        /* Filter & Grant Lists */
-        .filter-group, .course-group { margin-bottom: 16px; background: var(--bg-base); padding: 16px; border-radius: 12px; border: 1px solid var(--border); }
-        .checkbox-row { display: flex; align-items: center; gap: 12px; padding: 4px 0; cursor: pointer; }
-        .checkbox-row.main { font-weight: bold; color: var(--text-primary); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; }
-        .checkbox-row.sub { margin-right: 24px; font-size: 0.95em; color: var(--text-secondary); }
+        /* General Modals */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 200; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-box { background: var(--bg-surface); width: 90%; border-radius: 16px; border: 1px solid var(--border-accent); overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0,0,0,0.6); animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .profile-modal { max-width: 650px; max-height: 90vh; }
+        .grant-modal, .filter-modal { max-width: 650px; max-height: 85vh; }
+        .alert-box { max-width: 420px; padding: 30px; text-align: center; }
+        .alert-box h3 { margin: 0 0 15px 0; color: var(--gold); font-size: 1.4rem; }
+        .alert-box p { color: var(--text-secondary); margin-bottom: 25px; font-size: 1rem; line-height: 1.5; }
+        .alert-actions { display: flex; justify-content: center; gap: 12px; }
+
+        .modal-head { background: var(--bg-elevated); padding: 20px 25px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+        .modal-head h3 { margin: 0; color: var(--gold); font-size: 1.25rem; }
+
+        .profile-head { justify-content: flex-start; gap: 15px; }
+        .head-info { flex: 1; }
+        .head-info h3 { margin: 0; color: var(--text-primary); font-size: 1.3rem; display: flex; align-items: center; gap: 10px; }
+        .admin-tag-large { background: var(--gold-dim); color: var(--gold); padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; border: 1px solid var(--border-accent); }
+        .sub-text { font-size: 0.85em; color: var(--text-muted); font-weight: 500; display: block; margin-top: 4px; }
+        .head-actions { display: flex; align-items: center; gap: 12px; }
+
+        .close-icon { background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; padding: 6px; border-radius: 50%; transition: 0.2s; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; }
+        .close-icon:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+        .modal-content { padding: 25px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 18px 25px; background: var(--bg-elevated); display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); }
+
+        /* Grid Layout for Courses/Subjects */
+        .filter-group, .course-group { margin-bottom: 18px; background: var(--bg-elevated); padding: 18px; border-radius: 12px; border: 1px solid var(--border); transition: 0.2s; }
+        .filter-group:hover, .course-group:hover { border-color: var(--border-accent); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+
+        .checkbox-row { display: flex; align-items: center; gap: 12px; padding: 5px; cursor: pointer; }
+        .checkbox-row.main { font-weight: 700; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px dashed var(--border); padding-bottom: 12px; margin-bottom: 15px; }
         .checkbox-row.disabled-row { cursor: not-allowed; opacity: 0.6; }
-        .filter-label { display: flex; align-items: center; gap: 8px; flex: 1; }
-        .icon-wrap { display: flex; align-items: center; justify-content: center; opacity: 0.8; }
-        .filter-subs { display: flex; flex-direction: column; gap: 8px; }
+        .checkbox-row.sub { margin-right: 0; font-size: 0.95em; font-weight: 500; color: var(--text-secondary); background: var(--bg-surface); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); transition: 0.2s; }
+        .checkbox-row.sub:hover { border-color: var(--gold); color: var(--text-primary); }
+
+        .filter-subs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+
+        .badge-owned { font-size: 0.75rem; background: var(--bg-surface); color: var(--text-muted); padding: 2px 8px; border-radius: 12px; margin-right: 6px; border: 1px solid var(--border); font-weight: 600; }
 
         /* Filter Mode Toggle (AND / OR) */
         .filter-mode-section { margin-bottom: 20px; padding: 16px; background: var(--bg-elevated); border-radius: 12px; border: 1px solid var(--border); }
-        .filter-mode-label { display: block; color: var(--text-secondary); font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; }
+        .filter-mode-label { display: block; color: var(--text-muted); font-size: 0.85em; font-weight: 600; margin-bottom: 12px; }
         .filter-mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .mode-btn { background: var(--bg-base); border: 2px solid var(--border); color: var(--text-secondary); padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: inherit; }
+        .mode-btn { background: var(--bg-surface); border: 2px solid var(--border); color: var(--text-secondary); padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 2px; }
         .mode-btn:hover { border-color: var(--gold); color: var(--text-primary); background: var(--bg-hover); }
         .mode-icon { font-size: 1.3em; line-height: 1; }
-        .mode-text { font-size: 0.95em; font-weight: 800; letter-spacing: 1px; }
+        .mode-text { font-size: 0.95em; font-weight: 800; }
         .mode-hint { font-size: 0.72em; font-weight: 500; color: var(--text-muted); text-align: center; }
         .mode-btn.active.or-active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
         .mode-btn.active.or-active .mode-hint { color: #93c5fd; }
         .mode-btn.active.and-active { border-color: #a855f7; background: rgba(168, 85, 247, 0.12); color: #c084fc; }
         .mode-btn.active.and-active .mode-hint { color: #d8b4fe; }
-        
-        .badge-full { font-size: 0.75rem; background: var(--gold-dim); color: var(--gold); padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-right: auto; border: 1px solid var(--border-accent); }
-        .badge-owned { font-size: 0.75rem; background: var(--bg-elevated); color: var(--text-muted); padding: 2px 8px; border-radius: 12px; margin-right: auto; border: 1px solid var(--border); }
 
-        /* Profile Modal Specifics */
-        .profile-head { display: flex; align-items: center; gap: 16px; padding: 24px; }
-        .user-avatar-placeholder { width: 64px; height: 64px; background: linear-gradient(135deg, var(--gold), var(--gold-light)); color: #111009; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 2rem; font-weight: 800; box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3); }
-        .head-info { flex: 1; }
-        .head-info h3 { font-size: 1.4rem; display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-        .admin-tag-large { background: var(--gold-dim); color: var(--gold); padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; border: 1px solid var(--border-accent); }
-        
-        .data-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 30px; }
-        .data-item label { display: block; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 8px; font-weight: bold; }
-        .val-box { background: var(--bg-base); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-primary); font-size: 1rem; }
-        .val-box.ltr { direction: ltr; font-family: monospace; text-align: left; }
-        
-        .subs-wrapper { border-top: 1px dashed var(--border); padding-top: 24px; }
-        .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        input:disabled + span { color: var(--text-muted); text-decoration: line-through; }
+
+        /* Profile Data (read-only) */
+        .user-avatar-placeholder { width: 56px; height: 56px; background: var(--gold-dim); color: var(--gold); border: 2px solid var(--border-accent); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.6em; font-weight: bold; }
+        .data-form { margin-bottom: 25px; }
+        .data-row { display: flex; gap: 20px; margin-bottom: 18px; }
+        .data-item { flex: 1; }
+        .data-item label { display: block; color: var(--text-muted); font-size: 0.85em; font-weight: 600; margin-bottom: 8px; }
+
+        .val-box { background: var(--bg-elevated); padding: 12px 15px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-primary); min-height: 46px; display: flex; align-items: center; font-weight: 500; font-size: 0.95rem; }
+        .val-box.ltr { direction: ltr; font-family: monospace; }
+        .highlight-box { color: var(--gold); border-color: var(--border-accent); background: var(--gold-dimmer); font-weight: bold; }
+
+        .divider { border: 0; border-top: 1px dashed var(--border); margin: 25px 0; }
+
+        /* Subscriptions Grid */
+        .subs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .subs-header h4 { margin: 0; color: var(--text-primary); font-size: 1.1rem; }
-        
+        .add-sub-btn { background: var(--gold); color: #111009; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9em; transition: 0.2s; }
+        .add-sub-btn:hover { background: var(--gold-light); transform: translateY(-1px); box-shadow: 0 4px 10px var(--gold-dim); }
+
         .subs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .sub-column h5 { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); margin: 0 0 12px 0; font-size: 0.95rem; }
-        .sub-chip { background: var(--bg-base); border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; color: var(--text-primary); transition: 0.2s; }
+        .sub-column h5 { color: var(--text-muted); margin: 0 0 12px 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .sub-chip { background: var(--bg-elevated); border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 0.95em; color: var(--text-primary); font-weight: 500; transition: 0.2s; }
         .sub-chip:hover { border-color: var(--border-accent); }
-        .remove-btn { background: rgba(239, 68, 68, 0.1); border: none; color: #ef4444; width: 24px; height: 24px; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; transition: 0.2s; }
-        .remove-btn:hover { background: #ef4444; color: white; }
+        .sub-chip button { background: rgba(239, 68, 68, 0.1); border: 1px solid transparent; color: #ef4444; font-weight: bold; cursor: pointer; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .sub-chip button:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
         .expiry-badge { font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin: 0 8px; white-space: nowrap; background: var(--gold-dimmer, rgba(212,175,55,0.1)); color: var(--gold, #bda878); border: 1px solid var(--border-accent, rgba(212,175,55,0.3)); }
         .expiry-badge.lifetime { background: rgba(34, 197, 94, 0.1); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
         .expiry-badge.expired { background: rgba(239, 68, 68, 0.12); color: #ef4444; border-color: rgba(239, 68, 68, 0.35); }
-        .empty-sub { color: var(--text-muted); font-size: 0.85rem; padding: 10px; background: var(--bg-base); border-radius: 8px; text-align: center; border: 1px dashed var(--border); }
-        .empty-sub.inline { border: none; background: transparent; padding: 0; text-align: right; margin-right: 24px; }
+        .empty-text { color: var(--text-muted); font-size: 0.9em; text-align: center; font-style: italic; background: var(--bg-hover); padding: 15px; border-radius: 10px; border: 1px dashed var(--border); }
+        .empty-text.inline { border: none; background: transparent; padding: 0; text-align: right; font-style: normal; }
 
-        @keyframes popIn { from { transform: scale(0.95) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
-        @keyframes slideUp { from { transform: translate(-50%, 40px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+        /* General Buttons */
+        .confirm-btn { background: var(--gold); color: #111009; border: none; padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.95rem; transition: 0.2s; min-height: 46px; display: flex; align-items: center; justify-content: center;}
+        .confirm-btn:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 5px 15px var(--gold-dim); }
+        .confirm-btn.red { background: #ef4444; color: white; }
+        .confirm-btn.red:hover { background: #dc2626; box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3); }
+        .cancel-btn { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.95rem; transition: 0.2s; min-height: 46px; display: flex; align-items: center; justify-content: center;}
+        .cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
+        .danger-text { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
+        .danger-text:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #fca5a5; }
 
+        @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+        /* ================= Mobile Layout & Dimensions Fixes ================= */
         @media (max-width: 768px) {
-            .controls-container { flex-direction: column; }
-            .search-wrapper { width: 100%; }
+            .page-title { flex-direction: column; text-align: center; }
+            .page-title h1 { font-size: 1.5rem; }
+
+            .controls-container { flex-direction: column; align-items: stretch; gap: 12px; }
+            .search-wrapper { width: 100%; min-width: auto; }
             .filter-btn, .btn-refresh { width: 100%; justify-content: center; }
-            .data-row { grid-template-columns: 1fr; }
-            .subs-grid { grid-template-columns: 1fr; }
-            .bulk-glass-bar { width: 90%; flex-direction: column; gap: 12px; border-radius: 20px; padding: 16px; }
-            .bulk-actions { width: 100%; justify-content: space-between; }
+
+            .bulk-glass-bar { flex-direction: column; gap: 12px; border-radius: 20px; padding: 15px; bottom: 20px; width: 92%; }
+            .bulk-actions { flex-wrap: wrap; justify-content: center; width: 100%; }
+            .glass-btn { flex: 1; text-align: center; min-width: 130px; }
+
+            .std-table th, .std-table td { padding: 12px 10px; font-size: 0.85rem; }
+
+            .modal-box { width: 95%; max-height: 90dvh; margin: 15px auto; }
+            .modal-head.profile-head { flex-direction: column; text-align: center; padding: 20px 15px; }
+            .head-actions { width: 100%; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
+
+            .modal-content { padding: 15px; }
+            .data-row { flex-direction: column; gap: 15px; margin-bottom: 15px; }
+
+            .subs-grid { grid-template-columns: 1fr; gap: 20px; }
+            .subs-header { flex-direction: column; align-items: stretch; gap: 15px; }
+            .add-sub-btn { width: 100%; text-align: center; padding: 12px; }
+
+            /* Responsive Grid inside Modals */
+            .filter-subs { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+
+            .modal-footer { padding: 15px; flex-wrap: wrap; justify-content: stretch !important; flex-direction: column-reverse; gap: 10px; }
+            .modal-footer button { width: 100%; flex: none; margin: 0; }
+
+            /* Fix Toast Position */
+            .toast { top: 15px; left: 15px; right: 15px; text-align: center; transform: translateY(-150%); }
+            .toast.show { transform: translateY(0); }
         }
       `}</style>
     </TeacherLayout>
