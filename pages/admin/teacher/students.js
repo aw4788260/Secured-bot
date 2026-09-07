@@ -281,7 +281,6 @@ export default function StudentsPage() {
                         <th style={{textAlign:'center'}}>المستخدم</th>
                         <th style={{textAlign:'center'}}>الهاتف</th>
                         <th style={{textAlign:'center'}}>البريد الإلكتروني</th>
-                        <th style={{textAlign:'center'}}>الجهاز</th>
                         <th style={{textAlign:'center', width:'100px'}}>الحالة</th>
                     </tr>
                 </thead>
@@ -291,15 +290,14 @@ export default function StudentsPage() {
                             <td onClick={e => e.stopPropagation()} style={{textAlign:'center'}}><input type="checkbox" checked={selectedUsers.includes(std.id)} onChange={() => toggleSelectUser(std.id)} /></td>
                             <td style={{fontFamily:'monospace', color:'var(--text-muted)'}}>{std.id}</td>
                             <td style={{fontWeight:'700', color:'var(--text-primary)'}}>
-                                {std.first_name}
-                                {std.is_admin && <span className="admin-tag">مشرف</span>}
+                                <span className="name-with-tag">
+                                    <span>{std.first_name}</span>
+                                    {(std.is_admin === true || std.role === 'super_admin') && <span className="admin-tag">مشرف</span>}
+                                </span>
                             </td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'var(--gold)'}}>@{std.username}</td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', color:'var(--text-secondary)'}}>{std.phone}</td>
                             <td style={{textAlign:'center', direction:'ltr', fontFamily:'monospace', fontSize:'0.85em', color:'var(--text-secondary)'}}>{std.email || '-'}</td>
-                            <td style={{textAlign:'center'}}>
-                                {std.device_linked ? <span className="device-badge used">📱 مرتبط</span> : <span className="device-badge free">⚪ فارغ</span>}
-                            </td>
                             <td style={{textAlign:'center'}}>
                                 {std.is_blocked ?
                                     <span className="status-badge blocked">محظور</span> :
@@ -308,7 +306,7 @@ export default function StudentsPage() {
                             </td>
                         </tr>
                     ))}
-                    {students.length === 0 && <tr><td colSpan="8" style={{textAlign:'center', padding:'40px', color:'var(--text-muted)'}}>لا يوجد نتائج</td></tr>}
+                    {students.length === 0 && <tr><td colSpan="7" style={{textAlign:'center', padding:'40px', color:'var(--text-muted)'}}>لا يوجد نتائج</td></tr>}
                 </tbody>
             </table>
           )}
@@ -390,7 +388,7 @@ export default function StudentsPage() {
                       <div className="head-info">
                           <h3>
                               {viewUser.first_name}
-                              {viewUser.is_admin && <span className="admin-tag-large">مشرف</span>}
+                              {(viewUser.is_admin === true || viewUser.role === 'super_admin') && <span className="admin-tag-large">مشرف</span>}
                           </h3>
                           <span className="sub-text">ID: {viewUser.id} &nbsp;•&nbsp; انضم: {formatDate(viewUser.created_at)}</span>
                       </div>
@@ -419,15 +417,6 @@ export default function StudentsPage() {
                                   <div className="val-box ltr">{viewUser.phone || '-'}</div>
                               </div>
                               <div className="data-item">
-                                  <label>حالة الجهاز</label>
-                                  <div className="val-box">
-                                      {viewUser.device_linked ? <span style={{color:'#facc15', fontWeight:'bold'}}>📱 مرتبط بجهاز</span> : <span style={{color:'#4ade80', fontWeight:'bold'}}>⚪ غير مرتبط</span>}
-                                  </div>
-                              </div>
-                          </div>
-
-                          <div className="data-row">
-                              <div className="data-item">
                                   <label>البريد الإلكتروني</label>
                                   <div className="val-box ltr">{viewUser.email || '-'}</div>
                               </div>
@@ -448,7 +437,9 @@ export default function StudentsPage() {
                                           return (
                                           <div key={c.course_id} className="sub-chip">
                                               <span>{c.courses?.title}</span>
-                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
+                                              {!badge.lifetime && (
+                                                  <span className={`expiry-badge ${badge.expired ? 'expired' : ''}`}>{badge.text}</span>
+                                              )}
                                               <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, courseId: c.course_id }))}>✕</button>
                                           </div>
                                       ); }) : <p className="empty-text">لا يوجد</p>}
@@ -460,7 +451,9 @@ export default function StudentsPage() {
                                           return (
                                           <div key={s.subject_id} className="sub-chip">
                                               <span>{s.subjects?.title}</span>
-                                              <span className={`expiry-badge ${badge.expired ? 'expired' : badge.lifetime ? 'lifetime' : ''}`}>{badge.text}</span>
+                                              {!badge.lifetime && (
+                                                  <span className={`expiry-badge ${badge.expired ? 'expired' : ''}`}>{badge.text}</span>
+                                              )}
                                               <button onClick={() => showConfirm('سحب الصلاحية؟', () => runApiCall('revoke_access', { userId: viewUser.id, subjectId: s.subject_id }))}>✕</button>
                                           </div>
                                       ); }) : <p className="empty-text">لا يوجد</p>}
@@ -576,15 +569,12 @@ export default function StudentsPage() {
         .std-table tr:last-child td { border-bottom: none; }
         .clickable:hover td { background: var(--bg-hover); cursor: pointer; }
 
-        .admin-tag { background: var(--gold-dimmer); color: var(--gold); border: 1px solid var(--border-accent); padding: 2px 8px; border-radius: 6px; font-size: 0.75em; margin-right: 10px; font-weight: bold; }
+        .name-with-tag { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .admin-tag { background: var(--gold-dimmer); color: var(--gold); border: 1px solid var(--border-accent); padding: 2px 8px; border-radius: 6px; font-size: 0.75em; font-weight: bold; white-space: nowrap; line-height: 1.6; }
 
         .status-badge { padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; display: inline-block; }
         .status-badge.active { background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2); }
         .status-badge.blocked { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
-
-        .device-badge { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; display: inline-block; border: 1px solid transparent; }
-        .device-badge.used { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border-color: rgba(56, 189, 248, 0.2); }
-        .device-badge.free { color: var(--text-muted); background: var(--bg-elevated); border-color: var(--border); }
 
         input[type="checkbox"] { accent-color: var(--gold); width: 18px; height: 18px; cursor: pointer; }
 
