@@ -1,0 +1,15 @@
+# Environment
+.env
+
+# Server data
+storage/
+
+# Next.js
+.next/
+
+# Dependencies
+node_modules/
+
+# Server-specific files
+package-lock.json
+start.sh
