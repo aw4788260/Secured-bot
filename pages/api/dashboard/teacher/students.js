@@ -1,7 +1,7 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { buildGrantTimestamps, isExemptFromExpiry } from '../../../../lib/accessExpiryHelper';
-import { getTeacherTeamContext, resolveBillingTeacherId, getTeamPackages } from '../../../../lib/teamHelper';
+import { getTeacherTeamContext, getTeamPackages } from '../../../../lib/teamHelper';
 import { grantPackagesToUsers } from '../../../../lib/grantHelper';
 
 // 🔒 سعر التقرير (report_price) بيانات مالية داخلية — لا تُرسل لمتصفح المدرس/القائد.
@@ -29,31 +29,42 @@ export default async (req, res) => {
   // (حتى لو كانت كورسه الخاص) تُسجَّل تحت رصيد القائد في التقرير المالي.
   // مدرس بلا فريق، أو عضو عادي (غير قائد) -> يحصل بالضبط على نفس السلوك القديم.
   const teamCtx = await getTeacherTeamContext(teacherId);
-  const billingTeacherId = await resolveBillingTeacherId(teacherId);
+
+  // ⚡ تحسين أداء: بدل استدعاء resolveBillingTeacherId() (استعلامين إضافيين
+  // يعيدان جلب نفس صف teachers/teacher_teams اللذين جلبهما getTeacherTeamContext
+  // للتو) نشتق نفس النتيجة من teamCtx مباشرة — بدون أي استعلام إضافي.
+  // (نفس القاعدة القديمة تماماً: عضو غير قائد -> معرف القائد، غير ذلك -> معرفه هو)
+  const billingTeacherId = (teamCtx.inTeam && !teamCtx.isLeader && teamCtx.team?.leader_teacher_id)
+    ? teamCtx.team.leader_teacher_id
+    : teacherId;
 
   // -- خطوة أ: جلب معرفات المحتوى الخاص بالمدرس (للتأكد من الملكية وللقوائم) --
-  // 1. جلب كورسات المدرس
-  let { data: myCourses } = await supabase
-    .from('courses')
-    .select('id, title, teacher_id')
-    .eq('teacher_id', teacherId);
-    
-  let myCourseIds = myCourses?.map(c => c.id) || [];
+  // 👑 قائد الفريق: "كورساتي/موادي" تشمل كورسات ومواد كل مدرسي الفريق (جاهزة
+  // بالفعل داخل teamCtx). ⚡ تحسين أداء: لا نجلب كورسات/مواد المدرس الخاصة به
+  // منفصلة في هذه الحالة (كانت تُجلب دائماً ثم تُهدر فوراً لصالح teamCtx).
+  let myCourses, myCourseIds, mySubjects, mySubjectIds;
 
-  // 2. جلب المواد التابعة لكورسات المدرس
-  let { data: mySubjects } = await supabase
-    .from('subjects')
-    .select('id, title, course_id')
-    .in('course_id', myCourseIds);
-    
-  let mySubjectIds = mySubjects?.map(s => s.id) || [];
-
-  // 👑 قائد الفريق: نوسّع "كورساتي/موادي" لتشمل كورسات ومواد كل مدرسي الفريق.
   if (teamCtx.isLeader) {
     myCourses = teamCtx.courses.map(c => ({ id: c.id, title: c.title, teacher_id: c.teacher_id }));
     myCourseIds = teamCtx.courseIds;
     mySubjects = teamCtx.subjects;
     mySubjectIds = teamCtx.subjectIds;
+  } else {
+    const { data: ownCourses } = await supabase
+      .from('courses')
+      .select('id, title, teacher_id')
+      .eq('teacher_id', teacherId);
+
+    myCourses = ownCourses || [];
+    myCourseIds = myCourses.map(c => c.id);
+
+    const { data: ownSubjects } = await supabase
+      .from('subjects')
+      .select('id, title, course_id')
+      .in('course_id', myCourseIds);
+
+    mySubjects = ownSubjects || [];
+    mySubjectIds = mySubjects.map(s => s.id);
   }
 
   // اختياري: فلترة إضافية على مدرس واحد داخل الفريق (لقائمة الطلاب الافتراضية)
@@ -64,25 +75,20 @@ export default async (req, res) => {
   }
 
   // دالة مساعدة: جلب معرفات الطلاب المشتركين عند هذا المدرس فقط
+  // ⚡ تحسين أداء: الاستعلامان (كورسات/مواد) مستقلان تماماً، فننفذهما بالتوازي
+  // بدل التتابع (Promise.all) — نفس عدد الاستعلامات، لكن بنصف زمن الانتظار تقريباً.
   const getMyStudentIds = async () => {
-      // المشتركين في الكورسات
-      const { data: cUsers } = await supabase
-          .from('user_course_access')
-          .select('user_id')
-          .in('course_id', myCourseIds);
-          
-      // المشتركين في المواد
-      const { data: sUsers } = await supabase
-          .from('user_subject_access')
-          .select('user_id')
-          .in('subject_id', mySubjectIds);
+      const [{ data: cUsers }, { data: sUsers }] = await Promise.all([
+          supabase.from('user_course_access').select('user_id').in('course_id', myCourseIds),
+          supabase.from('user_subject_access').select('user_id').in('subject_id', mySubjectIds)
+      ]);
 
       // دمج المعرفات وحذف التكرار
       const ids = new Set([
           ...(cUsers?.map(x => x.user_id) || []),
           ...(sUsers?.map(x => x.user_id) || [])
       ]);
-      
+
       return Array.from(ids);
   };
 
@@ -179,33 +185,51 @@ export default async (req, res) => {
 
             if (hasCourseFilter || hasSubjectFilter) {
                 const isAnd = filter_mode === 'and';
+                const filterCourseIds = hasCourseFilter ? courses_filter.split(',') : [];
+                const filterSubjectIds = hasSubjectFilter ? subjects_filter.split(',') : [];
+
+                // ⚡ تحسين أداء: كان وضع "AND" ينفذ استعلاماً منفصلاً لكل معرف كورس/مادة
+                // (N استعلام)؛ الآن استعلام واحد فقط لكل نوع (يجلب user_id + course_id/
+                // subject_id معاً) ثم يُجمَّع محلياً حسب المعرف، مع تنفيذ استعلامي
+                // الكورسات والمواد بالتوازي بدل التتابع.
+                const [courseRowsRes, subjectRowsRes] = await Promise.all([
+                    hasCourseFilter
+                        ? supabase.from('user_course_access').select('user_id, course_id').in('course_id', filterCourseIds)
+                        : Promise.resolve({ data: [] }),
+                    hasSubjectFilter
+                        ? supabase.from('user_subject_access').select('user_id, subject_id').in('subject_id', filterSubjectIds)
+                        : Promise.resolve({ data: [] })
+                ]);
 
                 // جمع مجموعات المستخدمين لكل فلتر
                 let courseUserSets = [];
                 if (hasCourseFilter) {
-                    const filterCourseIds = courses_filter.split(',');
+                    const courseRows = courseRowsRes.data || [];
                     if (isAnd) {
-                        for (const cid of filterCourseIds) {
-                            const { data } = await supabase.from('user_course_access').select('user_id').eq('course_id', cid);
-                            courseUserSets.push(data?.map(x => x.user_id) || []);
+                        // مجموعة مستقلة لكل كورس مطلوب (سيتم تقاطعها لاحقاً)
+                        const byCourse = new Map(filterCourseIds.map(cid => [String(cid), []]));
+                        for (const row of courseRows) {
+                            const key = String(row.course_id);
+                            if (byCourse.has(key)) byCourse.get(key).push(row.user_id);
                         }
+                        courseUserSets = Array.from(byCourse.values());
                     } else {
-                        const { data } = await supabase.from('user_course_access').select('user_id').in('course_id', filterCourseIds);
-                        courseUserSets.push(data?.map(x => x.user_id) || []);
+                        courseUserSets = [courseRows.map(r => r.user_id)];
                     }
                 }
 
                 let subjectUserSets = [];
                 if (hasSubjectFilter) {
-                    const filterSubjectIds = subjects_filter.split(',');
+                    const subjectRows = subjectRowsRes.data || [];
                     if (isAnd) {
-                        for (const sid of filterSubjectIds) {
-                            const { data } = await supabase.from('user_subject_access').select('user_id').eq('subject_id', sid);
-                            subjectUserSets.push(data?.map(x => x.user_id) || []);
+                        const bySubject = new Map(filterSubjectIds.map(sid => [String(sid), []]));
+                        for (const row of subjectRows) {
+                            const key = String(row.subject_id);
+                            if (bySubject.has(key)) bySubject.get(key).push(row.user_id);
                         }
+                        subjectUserSets = Array.from(bySubject.values());
                     } else {
-                        const { data } = await supabase.from('user_subject_access').select('user_id').in('subject_id', filterSubjectIds);
-                        subjectUserSets.push(data?.map(x => x.user_id) || []);
+                        subjectUserSets = [subjectRows.map(r => r.user_id)];
                     }
                 }
 
