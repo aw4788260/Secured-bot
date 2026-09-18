@@ -559,12 +559,38 @@ export default function StudentsPage() {
                               <div className="checkbox-row main" style={{borderBottom: 'none', marginBottom: '10px', paddingBottom: '0'}}>
                                   <span>📦 باقات الفريق</span>
                               </div>
-                              {(grantTarget === 'bulk' ? teamPackages : grantOptions.packages).map(pkg => (
-                                  <label key={pkg.id} className="checkbox-row sub" style={{width: '100%', justifyContent: 'flex-start', marginBottom: '10px'}}>
-                                      <input type="checkbox" checked={selectedGrantItems.packages.includes(pkg.id)} onChange={() => toggleGrantItem('packages', pkg.id)} />
-                                      <span>باقة: {pkg.title} — {pkg.courses?.length || 0} كورس (السعر: {pkg.price ?? (pkg.courses || []).reduce((s, c) => s + (Number(c.price) || 0), 0)} | سعر التقرير: {pkg.report_price})</span>
-                                  </label>
-                              ))}
+                              {(grantTarget === 'bulk' ? teamPackages : grantOptions.packages).map(pkg => {
+                                  const pkgCourses = pkg.courses || [];
+                                  const pkgPrice = pkg.price ?? pkgCourses.reduce((sum, c) => sum + (Number(c.price) || 0), 0);
+                                  return (
+                                      <label key={pkg.id} className="checkbox-row sub package-row">
+                                          <input type="checkbox" checked={selectedGrantItems.packages.includes(pkg.id)} onChange={() => toggleGrantItem('packages', pkg.id)} />
+                                          <div className="package-info">
+                                              <div className="package-head">
+                                                  <span className="package-title">📦 باقة: {pkg.title}</span>
+                                                  <span className="package-meta">{pkgCourses.length} كورس • السعر: {pkgPrice}</span>
+                                              </div>
+                                              {/* 📋 محتوى الباقة: الكورسات المتضمنة */}
+                                              <div className="package-content-label">محتوى الباقة:</div>
+                                              {pkgCourses.length > 0 ? (
+                                                  <ul className="package-content-list">
+                                                      {pkgCourses.map(c => {
+                                                          const tName = teamTeachers.find(t => t.id === c.teacher_id)?.name;
+                                                          return (
+                                                              <li key={c.id}>
+                                                                  <span>{c.title}</span>
+                                                                  {tName && <span className="badge-owned">{tName}</span>}
+                                                              </li>
+                                                          );
+                                                      })}
+                                                  </ul>
+                                              ) : (
+                                                  <span className="package-empty">لا توجد كورسات داخل هذه الباقة.</span>
+                                              )}
+                                          </div>
+                                      </label>
+                                  );
+                              })}
                           </div>
                       )}
                   </div>
@@ -685,6 +711,19 @@ export default function StudentsPage() {
         .checkbox-row.sub:hover { border-color: var(--gold); color: var(--text-primary); }
 
         .filter-subs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+
+        /* 📦 Package rows (leader grant modal) */
+        .package-row { width: 100%; justify-content: flex-start; align-items: flex-start; margin-bottom: 10px; }
+        .package-row input[type="checkbox"] { margin-top: 4px; flex-shrink: 0; }
+        .package-info { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+        .package-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+        .package-title { font-weight: 700; color: var(--text-primary); }
+        .package-meta { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .package-content-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 700; }
+        .package-content-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+        .package-content-list li { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--text-secondary); }
+        .package-content-list li::before { content: '•'; color: var(--gold); }
+        .package-empty { font-size: 0.85rem; color: var(--text-muted); }
 
         .badge-owned { font-size: 0.75rem; background: var(--bg-surface); color: var(--text-muted); padding: 2px 8px; border-radius: 12px; margin-right: 6px; border: 1px solid var(--border); font-weight: 600; }
 
