@@ -86,7 +86,36 @@ async function handleGet(req, res) {
         .map(c => ({ ...c, teacher_name: teacherNameById.get(c.teacher_id) || '—' })),
     }));
 
-    return res.status(200).json({ packages: structured });
+    // عند تحديد فريق، نُرجع أيضاً كل كورسات مدرسي هذا الفريق — تُستخدم في
+    // نافذة إنشاء/تعديل الباقة لملء قائمة اختيار الكورسات (وليست مقصورة
+    // على الكورسات الموجودة بالفعل داخل باقة).
+    let availableCourses = [];
+    if (teamId) {
+      const { data: teamTeachers, error: teamTeachersError } = await supabase
+        .from('teachers')
+        .select('id, name')
+        .eq('team_id', teamId);
+      if (teamTeachersError) throw teamTeachersError;
+
+      const teamTeacherIds = (teamTeachers || []).map(t => t.id);
+      const teamTeacherNameById = new Map((teamTeachers || []).map(t => [t.id, t.name]));
+
+      const { data: teamCourses, error: teamCoursesError } = teamTeacherIds.length
+        ? await supabase
+            .from('courses')
+            .select('id, title, teacher_id, price, report_price')
+            .in('teacher_id', teamTeacherIds)
+            .order('title', { ascending: true })
+        : { data: [] };
+      if (teamCoursesError) throw teamCoursesError;
+
+      availableCourses = (teamCourses || []).map(c => ({
+        ...c,
+        teacher_name: teamTeacherNameById.get(c.teacher_id) || '—',
+      }));
+    }
+
+    return res.status(200).json({ packages: structured, availableCourses });
   } catch (error) {
     console.error('❌ [dashboard/super/packages][GET]', error.message);
     return res.status(500).json({ error: error.message });
