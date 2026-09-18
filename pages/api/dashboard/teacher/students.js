@@ -330,13 +330,16 @@ export default async (req, res) => {
               // 2. جلب تفاصيل المحتوى (للسعر والعنوان)
               let courseInfos = [];
               if (safeCourses.length > 0) {
-                  const { data } = await supabase.from('courses').select('id, title, price').in('id', safeCourses);
+                  // ✅ teacher_id هنا هو المالك الفعلي للكورس (قد يختلف عن billingTeacherId
+                  // حين يمنح القائد كورس عضو آخر في الفريق) — يُخزَّن كـ owner_teacher_id
+                  // في requested_data لأغراض التدقيق فقط، ولا يُستخدم في الفوترة.
+                  const { data } = await supabase.from('courses').select('id, title, price, teacher_id').in('id', safeCourses);
                   courseInfos = data || [];
               }
 
               let subjectInfos = [];
               if (safeSubjects.length > 0) {
-                  const { data } = await supabase.from('subjects').select('id, title, price, courses(title)').in('id', safeSubjects);
+                  const { data } = await supabase.from('subjects').select('id, title, price, courses(title, teacher_id)').in('id', safeSubjects);
                   subjectInfos = data || [];
               }
 
@@ -377,7 +380,8 @@ export default async (req, res) => {
                               phone: user.phone,
                               course_title: cInfo.title,
                               requested_data: [{
-                                  id: cid, type: 'course', title: cInfo.title, price: cInfo.price || 0
+                                  id: cid, type: 'course', title: cInfo.title, price: cInfo.price || 0,
+                                  owner_teacher_id: cInfo.teacher_id ?? null
                               }],
                               user_note: 'تم التفعيل يدوياً من قائمة الطلاب'
                           });
@@ -404,7 +408,8 @@ export default async (req, res) => {
                               phone: user.phone,
                               course_title: title,
                               requested_data: [{
-                                  id: sid, type: 'subject', title: title, price: sInfo.price || 0
+                                  id: sid, type: 'subject', title: title, price: sInfo.price || 0,
+                                  owner_teacher_id: sInfo.courses?.teacher_id ?? null
                               }],
                               user_note: 'تم التفعيل يدوياً من قائمة الطلاب'
                           });
