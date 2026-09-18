@@ -337,8 +337,29 @@ export default async (req, res) => {
               const { courses = [], subjects = [], packages = [] } = grantList || {};
               
               // 🔒 فلترة البيانات القادمة من الفرونت إند لضمان أنها تخص هذا المدرس فقط
-              const safeCourses = courses.filter(id => myCourseIds.includes(Number(id)) || myCourseIds.includes(String(id)));
+              let safeCourses = courses.filter(id => myCourseIds.includes(Number(id)) || myCourseIds.includes(String(id)));
               const safeSubjects = subjects.filter(id => mySubjectIds.includes(Number(id)) || mySubjectIds.includes(String(id)));
+
+              // -- تجهيز الباقات المختارة أولاً (قبل معالجة الكورسات المفردة) --
+              // متاحة فقط لقائد الفريق
+              let chosenPackages = [];
+              if (packages.length > 0) {
+                  if (!teamCtx.isLeader) {
+                      return res.status(403).json({ error: 'تفعيل الباقات متاح فقط لقائد الفريق.' });
+                  }
+                  const teamPackages = await getTeamPackages(teamCtx.team.id);
+                  chosenPackages = teamPackages.filter(p => packages.map(String).includes(String(p.id)));
+              }
+
+              // 🛡️ منع ازدواجية طلب الاشتراك: لو اختار القائد باقة وكورساً منفرداً
+              // موجوداً بالفعل داخل تلك الباقة، لا نُنشئ طلب اشتراك/منح صلاحية
+              // مستقل لهذا الكورس — الباقة وحدها هي من تتكفل بمنحه وتسجيل طلبه.
+              if (chosenPackages.length > 0) {
+                  const packageCourseIds = new Set(
+                      chosenPackages.flatMap(p => (p.courses || []).map(c => String(c.id)))
+                  );
+                  safeCourses = safeCourses.filter(id => !packageCourseIds.has(String(id)));
+              }
 
               // 🛑 1. جلب الصلاحيات الموجودة مسبقاً لمنع التكرار
               const existingCourseMap = new Set();
@@ -465,14 +486,9 @@ export default async (req, res) => {
               if (cInserts.length) await supabase.from('user_course_access').upsert(cInserts, { onConflict: 'user_id, course_id' });
               if (sInserts.length) await supabase.from('user_subject_access').upsert(sInserts, { onConflict: 'user_id, subject_id' });
               
-              // -- ج) تفعيل باقات (Packages) — متاح فقط لقائد الفريق --
+              // -- ج) تفعيل باقات (Packages) — متاح فقط لقائد الفريق (تم التحقق والجلب أعلاه) --
               let packageResult = { requestsInserted: 0, coursesGranted: 0, alreadyOwnedCount: 0 };
-              if (packages.length > 0) {
-                  if (!teamCtx.isLeader) {
-                      return res.status(403).json({ error: 'تفعيل الباقات متاح فقط لقائد الفريق.' });
-                  }
-                  const teamPackages = await getTeamPackages(teamCtx.team.id);
-                  const chosenPackages = teamPackages.filter(p => packages.map(String).includes(String(p.id)));
+              if (chosenPackages.length > 0) {
                   packageResult = await grantPackagesToUsers({
                       targetIds,
                       packages: chosenPackages,
