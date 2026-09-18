@@ -235,12 +235,35 @@ export default async (req, res) => {
             device_linked: u.devices && u.devices.length > 0
         }));
 
+        // 👑 للقائد فقط: شجرة كورسات الفريق كاملة (مع موادها ومدرس كل كورس)
+        // ليستخدمها الفرونت إند في بناء نافذة المنح الجماعي + قائمة الباقات،
+        // بدلاً من الاعتماد على /api/dashboard/teacher/content (خاص بكورسات
+        // هذا المدرس فقط ولا يعرف شيئاً عن الفريق).
+        let teamCourses = [];
+        let teamPackages = [];
+        if (teamCtx.isLeader && teamCtx.team) {
+            const teacherNameById = new Map(teamCtx.teamTeachers.map(t => [t.id, t.name]));
+            teamCourses = teamCtx.courses.map(c => ({
+                id: c.id,
+                title: c.title,
+                teacher_id: c.teacher_id,
+                teacher_name: teacherNameById.get(c.teacher_id) || '—',
+                subjects: teamCtx.subjects
+                    .filter(s => s.course_id === c.id)
+                    .map(s => ({ id: s.id, title: s.title })),
+            }));
+            teamPackages = await getTeamPackages(teamCtx.team.id);
+        }
+
         return res.status(200).json({ 
             students: formattedData, 
             total: count || 0,
             isMainAdmin: false,
             isLeader: teamCtx.isLeader,
-            teamTeachers: teamCtx.isLeader ? teamCtx.teamTeachers : []
+            teamName: teamCtx.team?.name || null,
+            teamTeachers: teamCtx.isLeader ? teamCtx.teamTeachers : [],
+            teamCourses,
+            teamPackages
         });
 
     } catch (err) {
