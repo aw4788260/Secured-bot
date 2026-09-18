@@ -4,6 +4,20 @@ import { buildGrantTimestamps, isExemptFromExpiry } from '../../../../lib/access
 import { getTeacherTeamContext, resolveBillingTeacherId, getTeamPackages } from '../../../../lib/teamHelper';
 import { grantPackagesToUsers } from '../../../../lib/grantHelper';
 
+// 🔒 سعر التقرير (report_price) بيانات مالية داخلية — لا تُرسل لمتصفح المدرس/القائد.
+// نحذفه من الباقة ومن كل كورس بداخلها قبل الإرسال. (منطق المنح في السيرفر
+// يجلب الباقات من getTeamPackages مباشرة ولا يتأثر بهذا الحذف.)
+const stripReportPrices = (packages = []) => (packages || []).map(pkg => {
+    const { report_price, ...pkgRest } = pkg;
+    return {
+        ...pkgRest,
+        courses: (pkg.courses || []).map(c => {
+            const { report_price: _rp, ...courseRest } = c;
+            return courseRest;
+        })
+    };
+});
+
 export default async (req, res) => {
   // 1. التحقق من الصلاحية وجلب بيانات المدرس
   const { user, error } = await requireTeacherOrAdmin(req, res);
@@ -132,7 +146,7 @@ export default async (req, res) => {
                 available_subjects: availableSubjects,
                 is_leader: teamCtx.isLeader,
                 team_teachers: teamCtx.isLeader ? teamCtx.teamTeachers : [],
-                available_packages: availablePackages
+                available_packages: stripReportPrices(availablePackages)
             });
         }
 
@@ -263,7 +277,7 @@ export default async (req, res) => {
             teamName: teamCtx.team?.name || null,
             teamTeachers: teamCtx.isLeader ? teamCtx.teamTeachers : [],
             teamCourses,
-            teamPackages
+            teamPackages: stripReportPrices(teamPackages)
         });
 
     } catch (err) {
