@@ -44,54 +44,44 @@ export default async (req, res) => {
 
   try {
     const escaped = q.replace(/[%_]/g, ''); // تبسيط: منع كسر نمط الـ ilike
-
-    // ✅ ilike في Postgres غير حسّاس لحالة الأحرف أصلاً (يدعم البحث بحروف
-    // كبيرة/صغيرة تلقائياً).
-    //
-    // 🐛 عمود code في view_course_details من نوع integer، وilike (~~*)
-    // يعمل فقط على نص — لذا كان كل بحث يفشل بخطأ "operator does not
-    // exist: integer ~~* unknown". محاولة إصلاحه بالتحويل داخل الفلتر
-    // (code::text.ilike...) فشلت أيضاً لأن PostgREST لا يدعم casting
-    // داخل .or()/.filter() أصلاً (يرفض الطلب بخطأ parse مختلف). الحل
-    // العملي: فصل البحث لطلبين — ilike على العنوان، ومطابقة تامة على
-    // الكود (رقمياً) عندما يكون كل ما كتبه المستخدم أرقاماً — ثم دمج
-    // النتيجتين وحذف التكرار.
-    // 🐛 تم حذف .order('sort_order', ...) سابقاً لأن هذا الحقل غير موجود
-    // في view_course_details (كان يُسقط الطلب بالكامل) — الترتيب أبجدياً
-    // باسم الكورس كافٍ هنا.
     const isNumericCode = /^\d+$/.test(escaped);
 
-    const queries = [
-      supabase
-        .from('view_course_details')
-        .select('*')
-        .ilike('course_title', `%${escaped}%`)
-        .order('course_title', { ascending: true })
-        .limit(30),
-    ];
+    // 1) العنوان: مطابقة "يبدأ بـ" وليس "يحتوي على" — كتابة "m" تُظهر
+    // فقط الكورسات التي يبدأ اسمها بـ m، وليس أي كورس فيه حرف m في أي
+    // مكان. ilike غير حسّاس لحالة الأحرف أصلاً (m أو M سيّان).
+    const { data: titleMatches, error: titleErr } = await supabase
+      .from('view_course_details')
+      .select('*')
+      .ilike('course_title', `${escaped}%`)
+      .order('course_title', { ascending: true })
+      .limit(30);
 
-    if (isNumericCode) {
-      queries.push(
-        supabase
-          .from('view_course_details')
-          .select('*')
-          .eq('code', Number(escaped))
-          .limit(30)
-      );
-    }
+    if (titleErr) throw titleErr;
 
-    const results = await Promise.all(queries);
-    for (const r of results) {
-      if (r.error) throw r.error;
-    }
-
-    // دمج النتيجتين وحذف التكرار (بحسب course_id) مع الحفاظ على حد 30.
     const merged = new Map();
-    results.forEach(r => {
-      (r.data || []).forEach(course => {
-        merged.set(course.course_id, course);
-      });
-    });
+    (titleMatches || []).forEach(course => merged.set(course.course_id, course));
+
+    // 2) الكود: نفس فكرة "يبدأ بـ" (كتابة "10" تطابق 10، 100، 1023...).
+    // 🐛 عمود code من نوع integer: ilike لا يعمل عليه إطلاقاً (خطأ
+    // "operator does not exist: integer ~~* unknown")، ومحاولة الـ cast
+    // داخل الفلتر (code::text.ilike...) مرفوضة من PostgREST نفسه (خطأ
+    // parse مختلف) — لا يدعم casting داخل .or()/.filter(). الحل العملي:
+    // نجلب كل الكورسات (عددها صغير في متجر واحد) ونطابق بادئة الكود
+    // كنص يدوياً هنا بدل الاعتماد على SQL لهذا الجزء تحديداً.
+    if (isNumericCode) {
+      const { data: allCourses, error: allErr } = await supabase
+        .from('view_course_details')
+        .select('*');
+
+      if (allErr) throw allErr;
+
+      (allCourses || [])
+        .filter(course => course.code != null && course.code.toString().startsWith(escaped))
+        .forEach(course => merged.set(course.course_id, course));
+    }
+
+    // 🐛 تم حذف .order('sort_order', ...) سابقاً لأن هذا الحقل غير موجود
+    // في view_course_details (كان يُسقط الطلب بالكامل).
     const courses = Array.from(merged.values()).slice(0, 30);
 
     return res.status(200).json({ success: true, courses });
