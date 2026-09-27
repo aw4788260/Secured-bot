@@ -44,21 +44,57 @@ export default async (req, res) => {
 
   try {
     const escaped = q.replace(/[%_]/g, ''); // تبسيط: منع كسر نمط الـ ilike
+
     // ✅ ilike في Postgres غير حسّاس لحالة الأحرف أصلاً (يدعم البحث بحروف
-    // كبيرة/صغيرة تلقائياً)، والبحث يغطي اسم الكورس والكود معاً.
-    // 🐛 تم حذف .order('sort_order', ...) لأن هذا الحقل غير موجود في
-    // view_course_details (وهو سبب فشل الطلب بالكامل وعودة "لا توجد
-    // نتائج" دائماً في التطبيق) — الترتيب أبجدياً باسم الكورس كافٍ هنا.
-    const { data: courses, error } = await supabase
-      .from('view_course_details')
-      .select('*')
-      .or(`course_title.ilike.%${escaped}%,code.ilike.%${escaped}%`)
-      .order('course_title', { ascending: true })
-      .limit(30);
+    // كبيرة/صغيرة تلقائياً).
+    //
+    // 🐛 عمود code في view_course_details من نوع integer، وilike (~~*)
+    // يعمل فقط على نص — لذا كان كل بحث يفشل بخطأ "operator does not
+    // exist: integer ~~* unknown". محاولة إصلاحه بالتحويل داخل الفلتر
+    // (code::text.ilike...) فشلت أيضاً لأن PostgREST لا يدعم casting
+    // داخل .or()/.filter() أصلاً (يرفض الطلب بخطأ parse مختلف). الحل
+    // العملي: فصل البحث لطلبين — ilike على العنوان، ومطابقة تامة على
+    // الكود (رقمياً) عندما يكون كل ما كتبه المستخدم أرقاماً — ثم دمج
+    // النتيجتين وحذف التكرار.
+    // 🐛 تم حذف .order('sort_order', ...) سابقاً لأن هذا الحقل غير موجود
+    // في view_course_details (كان يُسقط الطلب بالكامل) — الترتيب أبجدياً
+    // باسم الكورس كافٍ هنا.
+    const isNumericCode = /^\d+$/.test(escaped);
 
-    if (error) throw error;
+    const queries = [
+      supabase
+        .from('view_course_details')
+        .select('*')
+        .ilike('course_title', `%${escaped}%`)
+        .order('course_title', { ascending: true })
+        .limit(30),
+    ];
 
-    return res.status(200).json({ success: true, courses: courses || [] });
+    if (isNumericCode) {
+      queries.push(
+        supabase
+          .from('view_course_details')
+          .select('*')
+          .eq('code', Number(escaped))
+          .limit(30)
+      );
+    }
+
+    const results = await Promise.all(queries);
+    for (const r of results) {
+      if (r.error) throw r.error;
+    }
+
+    // دمج النتيجتين وحذف التكرار (بحسب course_id) مع الحفاظ على حد 30.
+    const merged = new Map();
+    results.forEach(r => {
+      (r.data || []).forEach(course => {
+        merged.set(course.course_id, course);
+      });
+    });
+    const courses = Array.from(merged.values()).slice(0, 30);
+
+    return res.status(200).json({ success: true, courses });
   } catch (err) {
     console.error('[SearchCourses API Error]:', err.message);
     return res.status(500).json({ success: false, message: 'Server Error' });
