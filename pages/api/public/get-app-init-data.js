@@ -279,13 +279,16 @@ export default async (req, res) => {
           libraryData = Array.from(libraryMap.values());
 
           // ==========================================
-          // 📦 تجميع الكورسات المملوكة التابعة لنفس الباقة في مجلد واحد
+          // 📦 تجميع الكورسات/المواد المملوكة التابعة لنفس الباقة في مجلد واحد
           // ==========================================
-          // ينطبق فقط على عناصر type:'course' (كورس كامل مملوك)، سواء كان
-          // الطالب يملك الباقة بالكامل أو جزءاً منها فقط (partial package) —
-          // فكل ما يهم هنا هو: هل هذا الكورس المملوك تابع لباقة؟ إن كان كذلك
-          // يُنقل لمجلد الباقة بدل ظهوره منفرداً في المكتبة.
-          const ownedCourseEntries = libraryData.filter(item => item.type === 'course');
+          // ينطبق على كل عنصر مكتبة يمثّل "كورساً أباً" تابعاً لباقة، سواء
+          // كان الطالب يملك الكورس بالكامل (type:'course') أو يملك مواد
+          // منفصلة منه فقط (type:'subject_group') — فكلاهما لهما نفس معنى
+          // "هذا الكورس الأب تابع لباقة"، لذا يجب أن يظهر أيهما داخل مجلد
+          // الباقة بدل منفرداً في المكتبة.
+          const ownedCourseEntries = libraryData.filter(
+            item => item.type === 'course' || item.type === 'subject_group'
+          );
 
           if (ownedCourseEntries.length > 0) {
             const ownedCourseIds = ownedCourseEntries.map(c => c.id);
@@ -310,7 +313,8 @@ export default async (req, res) => {
               const restOfLibrary = [];
 
               libraryData.forEach(item => {
-                if (item.type === 'course' && courseIdToPackage.has(item.id)) {
+                const isGroupable = item.type === 'course' || item.type === 'subject_group';
+                if (isGroupable && courseIdToPackage.has(item.id)) {
                   const pkg = courseIdToPackage.get(item.id);
                   if (!packageGroups.has(pkg.id)) {
                     packageGroups.set(pkg.id, {
@@ -327,7 +331,7 @@ export default async (req, res) => {
               });
 
               // مجلدات الباقات أولاً ثم بقية عناصر المكتبة (كورسات منفردة لا
-              // تتبع أي باقة + مجموعات المواد المنفصلة).
+              // تتبع أي باقة + مجموعات المواد المنفصلة التي لا تتبع باقة).
               libraryData = [...Array.from(packageGroups.values()), ...restOfLibrary];
             }
           }
