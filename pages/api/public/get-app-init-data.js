@@ -277,14 +277,76 @@ export default async (req, res) => {
           });
 
           libraryData = Array.from(libraryMap.values());
+
+          // ==========================================
+          // 📦 تجميع الكورسات المملوكة التابعة لنفس الباقة في مجلد واحد
+          // ==========================================
+          // ينطبق فقط على عناصر type:'course' (كورس كامل مملوك)، سواء كان
+          // الطالب يملك الباقة بالكامل أو جزءاً منها فقط (partial package) —
+          // فكل ما يهم هنا هو: هل هذا الكورس المملوك تابع لباقة؟ إن كان كذلك
+          // يُنقل لمجلد الباقة بدل ظهوره منفرداً في المكتبة.
+          const ownedCourseEntries = libraryData.filter(item => item.type === 'course');
+
+          if (ownedCourseEntries.length > 0) {
+            const ownedCourseIds = ownedCourseEntries.map(c => c.id);
+
+            const { data: pkgItems } = await supabase
+              .from('course_package_items')
+              .select('package_id, course_id, course_packages ( id, title, is_active )')
+              .in('course_id', ownedCourseIds);
+
+            const courseIdToPackage = new Map();
+            (pkgItems || []).forEach(pi => {
+              const pkg = pi.course_packages;
+              // نتجاهل الباقات المؤرشفة (is_active = false)؛ الكورس عندها
+              // يبقى يظهر منفرداً كما كان قبل هذه الميزة.
+              if (pkg && pkg.is_active !== false && !courseIdToPackage.has(pi.course_id)) {
+                courseIdToPackage.set(pi.course_id, { id: pkg.id, title: pkg.title });
+              }
+            });
+
+            if (courseIdToPackage.size > 0) {
+              const packageGroups = new Map(); // packageId -> { type:'package', id, title, courses: [] }
+              const restOfLibrary = [];
+
+              libraryData.forEach(item => {
+                if (item.type === 'course' && courseIdToPackage.has(item.id)) {
+                  const pkg = courseIdToPackage.get(item.id);
+                  if (!packageGroups.has(pkg.id)) {
+                    packageGroups.set(pkg.id, {
+                      type: 'package',
+                      id: pkg.id,
+                      title: pkg.title,
+                      courses: [],
+                    });
+                  }
+                  packageGroups.get(pkg.id).courses.push(item);
+                } else {
+                  restOfLibrary.push(item);
+                }
+              });
+
+              // مجلدات الباقات أولاً ثم بقية عناصر المكتبة (كورسات منفردة لا
+              // تتبع أي باقة + مجموعات المواد المنفصلة).
+              libraryData = [...Array.from(packageGroups.values()), ...restOfLibrary];
+            }
+          }
        }
     }
 
     // 3. جلب بيانات المتجر (عام للجميع)
-    const { data: courses } = await supabase
+    // ✅ التعديل: نجلب 5 كورسات عشوائية فقط بدلاً من كل الكورسات — الشاشة
+    // الرئيسية تعرض هذه كـ"مقترح لك"، أما البحث الكامل فيتم عبر
+    // /api/public/search-courses بشكل منفصل عند الطلب.
+    const { data: allCoursesForRandom } = await supabase
       .from('view_course_details')
-      .select('*')
-      .order('sort_order', { ascending: true });
+      .select('*');
+
+    let courses = [];
+    if (allCoursesForRandom && allCoursesForRandom.length > 0) {
+      const shuffled = [...allCoursesForRandom].sort(() => Math.random() - 0.5);
+      courses = shuffled.slice(0, 5);
+    }
 
     // 4. ✅ (تعديل) جلب إعدادات التواصل + إعدادات الوضع المجاني
     const { data: settingsData } = await supabase
@@ -303,7 +365,7 @@ export default async (req, res) => {
       user: userData,          
       myAccess: userAccess, 
       library: libraryData, 
-      courses: courses || [],
+      courses: courses,
       // ✅ إرسال معلومات التواصل
       contactInfo: {
           whatsapp: contactInfo['support_whatsapp'] || '',
