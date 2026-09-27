@@ -44,11 +44,16 @@ export default async (req, res) => {
 
   try {
     const escaped = q.replace(/[%_]/g, ''); // تبسيط: منع كسر نمط الـ ilike
+    // ✅ ilike في Postgres غير حسّاس لحالة الأحرف أصلاً (يدعم البحث بحروف
+    // كبيرة/صغيرة تلقائياً)، والبحث يغطي اسم الكورس والكود معاً.
+    // 🐛 تم حذف .order('sort_order', ...) لأن هذا الحقل غير موجود في
+    // view_course_details (وهو سبب فشل الطلب بالكامل وعودة "لا توجد
+    // نتائج" دائماً في التطبيق) — الترتيب أبجدياً باسم الكورس كافٍ هنا.
     const { data: courses, error } = await supabase
       .from('view_course_details')
       .select('*')
       .or(`course_title.ilike.%${escaped}%,code.ilike.%${escaped}%`)
-      .order('sort_order', { ascending: true })
+      .order('course_title', { ascending: true })
       .limit(30);
 
     if (error) throw error;
