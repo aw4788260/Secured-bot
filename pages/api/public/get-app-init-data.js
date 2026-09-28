@@ -298,33 +298,42 @@ export default async (req, res) => {
               .select('package_id, course_id, course_packages ( id, title, is_active )')
               .in('course_id', ownedCourseIds);
 
-            const courseIdToPackage = new Map();
+            // ✅ الكورس الواحد قد يتبع أكثر من باقة: نخزّن قائمة بكل باقاته
+            // (وليس أول باقة فقط) حتى يظهر الكورس داخل مجلد كل باقة منها.
+            const courseIdToPackages = new Map(); // courseId -> [{ id, title }]
             (pkgItems || []).forEach(pi => {
               const pkg = pi.course_packages;
               // نتجاهل الباقات المؤرشفة (is_active = false)؛ الكورس عندها
               // يبقى يظهر منفرداً كما كان قبل هذه الميزة.
-              if (pkg && pkg.is_active !== false && !courseIdToPackage.has(pi.course_id)) {
-                courseIdToPackage.set(pi.course_id, { id: pkg.id, title: pkg.title });
+              if (!pkg || pkg.is_active === false) return;
+              if (!courseIdToPackages.has(pi.course_id)) {
+                courseIdToPackages.set(pi.course_id, []);
+              }
+              const list = courseIdToPackages.get(pi.course_id);
+              if (!list.some(p => p.id === pkg.id)) {
+                list.push({ id: pkg.id, title: pkg.title });
               }
             });
 
-            if (courseIdToPackage.size > 0) {
+            if (courseIdToPackages.size > 0) {
               const packageGroups = new Map(); // packageId -> { type:'package', id, title, courses: [] }
               const restOfLibrary = [];
 
               libraryData.forEach(item => {
                 const isGroupable = item.type === 'course' || item.type === 'subject_group';
-                if (isGroupable && courseIdToPackage.has(item.id)) {
-                  const pkg = courseIdToPackage.get(item.id);
-                  if (!packageGroups.has(pkg.id)) {
-                    packageGroups.set(pkg.id, {
-                      type: 'package',
-                      id: pkg.id,
-                      title: pkg.title,
-                      courses: [],
-                    });
-                  }
-                  packageGroups.get(pkg.id).courses.push(item);
+                if (isGroupable && courseIdToPackages.has(item.id)) {
+                  // ✅ نضيف الكورس إلى كل باقة يتبعها (مجلد لكل باقة)
+                  courseIdToPackages.get(item.id).forEach(pkg => {
+                    if (!packageGroups.has(pkg.id)) {
+                      packageGroups.set(pkg.id, {
+                        type: 'package',
+                        id: pkg.id,
+                        title: pkg.title,
+                        courses: [],
+                      });
+                    }
+                    packageGroups.get(pkg.id).courses.push(item);
+                  });
                 } else {
                   restOfLibrary.push(item);
                 }
