@@ -315,6 +315,59 @@ export default async (req, res) => {
               }
             });
 
+            // 🎯 [Fix: overlapping packages] الكورس الواحد قد يتبع عدة باقات
+            // متداخلة (مثال: باقة A = تشريح+أنسجة+فسيولوجي، وباقة B = تشريح+أنسجة).
+            // بدون هذا الفلتر كان الطالب يرى كل باقة تحتوي أي كورس يملكه. الآن:
+            //   1) الباقة لا تظهر إلا إذا كان الطالب يملك كل كورساتها كاملة.
+            //   2) إذا كانت باقة ما مجموعةً جزئية (subset) من باقة أخرى يملكها
+            //      الطالب كاملة، تُخفى الأصغر ويظهر المجلد الأكبر فقط.
+            // الكورسات التي لا تنتمي لأي باقة ظاهرة تبقى بطاقات منفردة كما هي.
+            const candidatePkgIds = new Set();
+            courseIdToPackages.forEach(list => list.forEach(p => candidatePkgIds.add(p.id)));
+
+            if (candidatePkgIds.size > 0) {
+              const { data: allPkgItems } = await supabase
+                .from('course_package_items')
+                .select('package_id, course_id')
+                .in('package_id', Array.from(candidatePkgIds));
+
+              const pkgCourseSets = new Map(); // packageId -> Set(courseId كنص)
+              (allPkgItems || []).forEach(r => {
+                if (!pkgCourseSets.has(r.package_id)) pkgCourseSets.set(r.package_id, new Set());
+                pkgCourseSets.get(r.package_id).add(String(r.course_id));
+              });
+
+              // الكورسات التي يملكها الطالب كاملة (type:'course' فقط، وليس مواد منفصلة)
+              const fullyOwnedCourseIds = new Set(
+                libraryData.filter(i => i.type === 'course').map(i => String(i.id))
+              );
+
+              const fullPkgIds = [];
+              pkgCourseSets.forEach((set, pkgId) => {
+                if (set.size > 0 && Array.from(set).every(cid => fullyOwnedCourseIds.has(cid))) {
+                  fullPkgIds.push(pkgId);
+                }
+              });
+
+              const isStrictSubset = (a, b) =>
+                a.size < b.size && Array.from(a).every(x => b.has(x));
+
+              const visiblePkgIds = new Set(
+                fullPkgIds.filter(id =>
+                  !fullPkgIds.some(other =>
+                    other !== id &&
+                    isStrictSubset(pkgCourseSets.get(id), pkgCourseSets.get(other))
+                  )
+                )
+              );
+
+              Array.from(courseIdToPackages.keys()).forEach(cid => {
+                const kept = courseIdToPackages.get(cid).filter(p => visiblePkgIds.has(p.id));
+                if (kept.length > 0) courseIdToPackages.set(cid, kept);
+                else courseIdToPackages.delete(cid);
+              });
+            }
+
             if (courseIdToPackages.size > 0) {
               const packageGroups = new Map(); // packageId -> { type:'package', id, title, courses: [] }
               const restOfLibrary = [];
