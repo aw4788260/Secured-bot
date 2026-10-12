@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import { ComposedChart, Area, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 import SuperLayout from '../../../components/SuperLayout';
 
 // --- مكونات الأيقونات ---
@@ -85,6 +86,13 @@ export default function SuperTeachers() {
   
   const [selectedStats, setSelectedStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [isDark, setIsDark] = useState(true);
+
+  // ألوان الرسم البياني تتبع ثيم اللوحة (نفس مفتاح التخزين المستخدم في super/index.js)
+  useEffect(() => {
+    if (!statsModalOpen) return;
+    setIsDark(localStorage.getItem('medaad_theme') !== 'light');
+  }, [statsModalOpen]);
   
   const [editingId, setEditingId] = useState(null);
   const [teacherToDelete, setTeacherToDelete] = useState(null);
@@ -766,7 +774,57 @@ export default function SuperTeachers() {
                  <div className="stat-box green"><h4>💰 أرباح</h4><span className="val">{(selectedStats.balance || 0).toLocaleString()}</span></div>
                  <div className="stat-box yellow"><h4>⏳ طلبات</h4><span className="val">{selectedStats.pending_requests || 0}</span></div>
                  <div className="stat-box purple"><h4>📚 كورسات</h4><span className="val">{selectedStats.courses_count || 0}</span></div>
+                 <div className="stat-box sky">
+                   <h4>👁️ مشاهدات اليوم</h4>
+                   <span className="val">{selectedStats.today_watches == null ? '—' : selectedStats.today_watches.toLocaleString()}</span>
+                   {selectedStats.last7_watches != null && <small className="sub">{selectedStats.last7_watches.toLocaleString()} خلال آخر 7 أيام</small>}
+                 </div>
+                 <div className="stat-box teal">
+                   <h4>🟢 الطلاب النشطون اليوم</h4>
+                   <span className="val">{selectedStats.active_users_today == null ? '—' : selectedStats.active_users_today.toLocaleString()}</span>
+                   <small className="sub">من إجمالي طلاب المدرس</small>
+                 </div>
                </div>
+
+               {/* مخطط المشاهدات ونشاط الطلاب لآخر 7 أيام (نفس مخطط صفحة المدرس) */}
+               {selectedStats.activity_chart && selectedStats.activity_chart.length > 0 && (
+                 <div className="activity-chart-section">
+                   <h4>👁️ المشاهدات ونشاط الطلاب لآخر 7 أيام</h4>
+                   <div className="activity-chart-body">
+                     <ResponsiveContainer width="100%" height="100%">
+                       <ComposedChart data={selectedStats.activity_chart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                         <defs>
+                           <linearGradient id="tWatchGradient" x1="0" y1="0" x2="0" y2="1">
+                             <stop offset="5%" stopColor={isDark ? '#c9a84c' : '#b8903a'} stopOpacity={0.35} />
+                             <stop offset="95%" stopColor={isDark ? '#c9a84c' : '#b8903a'} stopOpacity={0} />
+                           </linearGradient>
+                           <linearGradient id="tUsersGradient" x1="0" y1="0" x2="0" y2="1">
+                             <stop offset="5%" stopColor={isDark ? '#38bdf8' : '#0ea5e9'} stopOpacity={0.3} />
+                             <stop offset="95%" stopColor={isDark ? '#38bdf8' : '#0ea5e9'} stopOpacity={0} />
+                           </linearGradient>
+                         </defs>
+                         <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#2c2818' : '#ddd4a8'} vertical={false} />
+                         <XAxis dataKey="name" stroke={isDark ? '#a89f7a' : '#9e8850'} tick={{ fontSize: 11 }} />
+                         <YAxis stroke={isDark ? '#a89f7a' : '#9e8850'} tick={{ fontSize: 11 }} allowDecimals={false} />
+                         <Tooltip
+                           contentStyle={{ backgroundColor: isDark ? '#1a1710' : '#ffffff', border: `1px solid ${isDark ? '#3a3420' : '#ddd4a8'}`, borderRadius: '10px', color: isDark ? '#f5f0e0' : '#1a1508' }}
+                           cursor={{ stroke: isDark ? '#c9a84c' : '#b8903a', strokeWidth: 1, strokeDasharray: '4 4' }}
+                           formatter={(value, name) => [
+                             name === 'watches' ? `${value.toLocaleString()} مشاهدة` : `${value.toLocaleString()} طالب`,
+                             name === 'watches' ? 'المشاهدات' : 'الطلاب النشطون'
+                           ]}
+                         />
+                         <Legend
+                           formatter={(value) => value === 'watches' ? 'المشاهدات' : 'الطلاب النشطون'}
+                           wrapperStyle={{ fontSize: '12px', color: isDark ? '#a89f7a' : '#9e8850' }}
+                         />
+                         <Area type="monotone" dataKey="watches" name="watches" stroke={isDark ? '#c9a84c' : '#b8903a'} strokeWidth={2.5} fill="url(#tWatchGradient)" />
+                         <Area type="monotone" dataKey="users" name="users" stroke={isDark ? '#38bdf8' : '#0ea5e9'} strokeWidth={2.5} fill="url(#tUsersGradient)" />
+                       </ComposedChart>
+                     </ResponsiveContainer>
+                   </div>
+                 </div>
+               )}
 
                {/* المشرفون المساعدون */}
                <div className="moderators-section">
@@ -1131,6 +1189,12 @@ export default function SuperTeachers() {
         .stat-box .val { font-size: 1.5rem; font-weight: bold; display: block; color: var(--text-primary); }
         .blue .val { color: var(--gold); } .green .val { color: #4ade80; }
         .yellow .val { color: #facc15; } .purple .val { color: #c084fc; }
+        .sky .val { color: #38bdf8; } .teal .val { color: #2dd4bf; }
+        .stat-box .sub { display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.75rem; }
+        .stats-modal { max-width: 560px; max-height: 90vh; overflow-y: auto; }
+        .activity-chart-section { margin-top: 5px; border-top: 1px solid var(--border); padding-top: 15px; }
+        .activity-chart-section h4 { color: var(--text-primary); font-size: 0.95rem; margin: 0 0 10px 0; }
+        .activity-chart-body { width: 100%; height: 220px; direction: ltr; }
         .full { width: 100%; }
 
         .moderators-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
