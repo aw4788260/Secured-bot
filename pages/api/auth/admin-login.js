@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { getClientIp } from '../../../lib/clientIp';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { serialize } from 'cookie';
@@ -14,7 +15,7 @@ export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   // 1. استخراج عنوان الـ IP
-  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
+  const ip = getClientIp(req);
   
   // 2. جلب سجل الـ IP من الذاكرة (أو إنشاء سجل جديد إذا لم يوجد)
   let record = rateLimit.get(ip) || { attempts: 0, blockUntil: 0 };
