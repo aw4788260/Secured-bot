@@ -1,10 +1,11 @@
 import { supabase } from '../../../lib/supabaseClient';
 
+import { getClientIp } from '../../../lib/clientIp';
 export default async function handler(req, res) {
     const { fingerprint } = req.query;
     
     // التقاط الـ IP الخاص بالطالب بمجرد فتح الصفحة
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+    const clientIp = getClientIp(req);
 
     if (!fingerprint) return res.status(400).json({ hasPlayed: false });
 

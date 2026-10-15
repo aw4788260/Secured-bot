@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 
+import { getClientIp } from '../../../lib/clientIp';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
@@ -18,7 +19,7 @@ export default async function handler(req, res) {
   }
 
   // 🛡️ جدار الحماية الثاني: التقاط رقم شبكة الإنترنت (IP) للطالب
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+  const clientIp = getClientIp(req);
 
   try {
       // التحقق من تفعيل العجلة عالمياً
