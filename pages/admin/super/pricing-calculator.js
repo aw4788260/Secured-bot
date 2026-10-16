@@ -35,14 +35,16 @@ function Row({ label, value, strong }) {
 }
 
 export default function PricingCalculator() {
-  const [inputs, setInputs] = useState({ ...DEFAULT_INPUTS });
+  const [inputs, setInputsRaw] = useState({ ...DEFAULT_INPUTS });
+  const [touched, setTouched] = useState(false); // hide validation noise until the admin starts typing
+  const setInputs = (updater) => { setTouched(true); setInputsRaw(updater); };
   const set = (key) => (e) => setInputs((p) => ({ ...p, [key]: e.target.value }));
-  const reset = () => setInputs({ ...DEFAULT_INPUTS });
+  const reset = () => { setTouched(false); setInputsRaw({ ...DEFAULT_INPUTS }); };
 
   // Automatic recalculation on every input change.
   const calc = useMemo(() => calculatePricing(inputs), [inputs]);
   const r = calc.results;
-  const errors = calc.errors;
+  const errors = touched ? calc.errors : {};
   const hasErrors = !calc.ok;
 
   const S = PRICING_CONFIG.SAFETY_MARGIN;
@@ -70,7 +72,7 @@ export default function PricingCalculator() {
         <section className="pc-panel">
           <div className="pc-panel-head">
             <h3>بيانات المدرس</h3>
-            <button type="button" className="pc-btn-reset" onClick={reset}>↺ استعادة المثال الافتراضي</button>
+            <button type="button" className="pc-btn-reset" onClick={reset}>↺ إعادة التعيين</button>
           </div>
 
           <div className="pc-grid">
@@ -112,8 +114,10 @@ export default function PricingCalculator() {
         </section>
 
         {hasErrors && (
-          <div className="pc-alert">
-            ⚠️ يرجى تصحيح المدخلات المظللة أعلاه لعرض النتائج.
+          <div className={touched ? 'pc-alert' : 'pc-alert pc-alert-info'}>
+            {touched
+              ? '⚠️ يرجى تصحيح المدخلات المظللة أعلاه لعرض النتائج.'
+              : 'أدخل بيانات المدرس (عدد الطلاب والكورسات والفيديوهات ومدتها) لعرض النتائج.'}
           </div>
         )}
 
@@ -209,6 +213,8 @@ export default function PricingCalculator() {
         .pc-slider input[type=range] { width: 100%; accent-color: var(--gold); cursor: pointer; }
 
         .pc-alert { background: rgba(229,72,77,0.1); border: 1px solid rgba(229,72,77,0.5); color: #e5484d; padding: 12px 16px; border-radius: 12px; font-weight: 600; margin-bottom: 22px; }
+
+        .pc-alert-info { background: var(--gold-dimmer); border-color: var(--border-accent); color: var(--text-secondary); }
 
         .pc-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-bottom: 22px; }
         .pc-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 4px; }
