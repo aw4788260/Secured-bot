@@ -34,12 +34,13 @@ function Row({ label, value, strong }) {
   );
 }
 
-function PriceBox({ title, value, note, main }) {
+function PriceBox({ num, title, value, unit, lines, notes, main }) {
   return (
     <div className={`pc-box ${main ? 'main' : ''}`}>
-      <span className="pc-box-title">{title}</span>
-      <div className="pc-box-val">{nf(value, 0)}<small>ج.م</small></div>
-      <span className="pc-box-note">{note}</span>
+      <span className="pc-box-title">{num}. {title}</span>
+      <div className="pc-box-val">{value}<small>{unit}</small></div>
+      {lines && lines.map(([k, v]) => <div key={k} className="pc-box-line"><span>{k}</span><b>{v}</b></div>)}
+      {notes && notes.map((n) => <span key={n} className="pc-box-note">{n}</span>)}
     </div>
   );
 }
@@ -59,9 +60,10 @@ export default function PricingCalculator() {
     <input className={`pc-input ${errors[key] ? 'bad' : ''}`} inputMode={mode} value={inputs[key]} onChange={set(key)} placeholder={placeholder} aria-invalid={!!errors[key]} />
   );
 
-  const recNote = !r ? '' : r.recommendedBy === 'minimum'
-    ? 'الحد الأدنى أعلى من السعر التنافسي، لذلك تم اعتماده'
-    : r.recommendedBy === 'competitive' ? 'السعر التنافسي أعلى من الحد الأدنى، لذلك تم اعتماده' : 'السعران متساويان';
+  const decision = !r ? '' : r.recommendedBy === 'minimum'
+    ? 'الحد الأدنى الآمن أعلى من السعر التجاري المرجعي، لذلك تم اعتماده.'
+    : r.recommendedBy === 'competitive' ? 'السعر التجاري المرجعي أعلى من الحد الأدنى الآمن.' : 'السعر التجاري المرجعي يساوي الحد الأدنى الآمن.';
+  const n0 = (x) => nf(x, 0);
 
   return (
     <SuperLayout title="حاسبة التسعير">
@@ -83,7 +85,7 @@ export default function PricingCalculator() {
           </div>
           <div className="pc-margins">
             <Field label="هامش الأمان %" error={errors.safetyMargin}>{input('safetyMargin', '20')}</Field>
-            <Field label="هامش الربح المستهدف %" error={errors.profitMargin}>{input('profitMargin', '30')}</Field>
+            <Field label="هامش الربح المستهدف %" error={errors.profitMargin}>{input('profitMargin', '35')}</Field>
           </div>
         </section>
 
@@ -95,26 +97,32 @@ export default function PricingCalculator() {
 
         {r && (
           <>
-            {/* ── Three price boxes ── */}
             <div className="pc-boxes">
-              <PriceBox title="الحد الأدنى" value={r.minimumPrice} note="يغطي تكلفة السيرفر + هامش الأمان + الربح المستهدف" />
-              <PriceBox title="السعر التنافسي" value={r.competitivePrice} note={`الأساسي ${nf(r.basePrice, 2)} × ${r.studentMultiplier.toFixed(2)}`} />
-              <PriceBox title="السعر المقترح للمدرس" value={r.recommendedPrice} note={recNote} main />
+              <PriceBox
+                num={1} title="تكلفة السيرفرات فقط"
+                value={n0(r.totalServerCost)} unit="جنيه"
+                lines={[
+                  ['التخزين طوال المدة', `${n0(r.totalStorageCost)} جنيه`],
+                  ['استهلاك المشاهدة', `${n0(r.bandwidthCost)} جنيه`],
+                  ['تكلفة السيرفر لكل طالب', `${nf(r.serverCostPerStudent, 2)} جنيه`],
+                ]}
+              />
+              <PriceBox
+                num={2} title="الحد الأدنى الآمن للبيع"
+                value={n0(r.minimumPrice)} unit="جنيه / طالب"
+                notes={[`التكلفة لكل طالب + احتياطي الأمان (${nf(r.inputs.safetyMargin, 0)}%)، ثم تسعير يحقق هامش الربح المستهدف (${nf(r.inputs.profitMargin, 0)}%).`]}
+              />
+              <PriceBox
+                num={3} title="السعر التنافسي المقترح"
+                value={n0(r.recommendedPrice)} unit="جنيه / طالب" main
+                notes={[`السعر التجاري المرجعي قبل التقريب: ${nf(r.adjustedPrice, 2)} جنيه.`, decision]}
+              />
             </div>
-            <p className="pc-note">السعر لكل طالب عن الكورس بالكامل (وليس شهرياً).</p>
+            <p className="pc-note">السعر لكل طالب عن الكورس بالكامل (وليس شهرياً). السعر المقترح هو الأعلى بين الحد الأدنى والسعر التجاري المرجعي.</p>
 
-            {/* ── Compact breakdown ── */}
             <section className="pc-panel">
-              <Row label="إجمالي ساعات الفيديو" value={`${nf(r.hours, 2)} ساعة`} />
-              <Row label="إجمالي التخزين المطلوب" value={`${nf(r.storageGB, 2)} GB`} />
-              <Row label="تكلفة التخزين الشهرية" value={egp(r.monthlyStorageCost)} />
-              <Row label={`تكلفة التخزين طوال ${nf(r.inputs.months, 2).replace(/\.00$/, '')} شهر`} value={egp(r.totalStorageCost)} />
-              <Row label="إجمالي استهلاك المشاهدة" value={`${nf(r.bandwidthGB, 2)} GB`} />
-              <Row label="تكلفة نقل البيانات (مرة واحدة)" value={egp(r.bandwidthCost)} />
-              <Row label="إجمالي تكلفة السيرفر للكورس" value={egp(r.totalServerCost)} strong />
-              <Row label="تكلفة السيرفر لكل طالب" value={egp(r.serverCostPerStudent, 3)} strong />
-              <Row label="إجمالي الإيراد بالسعر المقترح" value={egp(r.totalRevenue)} />
-              <Row label="الإيراد المتبقي بعد تكلفة السيرفر" value={egp(r.remaining)} strong />
+              <Row label="إجمالي الإيراد بالسعر المقترح" value={`${n0(r.totalRevenue)} جنيه`} />
+              <Row label="المتبقي بعد تكلفة السيرفرات" value={`${n0(r.remaining)} جنيه`} strong />
               <p className="pc-note">المتبقي ليس صافي ربح؛ فهو قبل أي مصروفات أخرى.</p>
             </section>
           </>
@@ -200,6 +208,8 @@ export default function PricingCalculator() {
         .pc-box-val { font-size: 1.9rem; font-weight: 900; color: var(--text-primary); display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
         .pc-box.main .pc-box-val { font-size: 2.6rem; color: var(--gold); }
         .pc-box-val small { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .pc-box-line { display: flex; justify-content: space-between; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); padding: 4px 0; border-top: 1px solid var(--border); }
+        .pc-box-line b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
         .pc-box-note { color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
         .pc-container .pc-note { margin: 10px 0 18px; }
         .pc-panel .pc-note { margin: 12px 0 0; }
