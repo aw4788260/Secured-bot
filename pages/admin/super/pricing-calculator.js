@@ -100,11 +100,11 @@ export default function PricingCalculator() {
             <div className="pc-boxes">
               <PriceBox
                 num={1} title="تكلفة السيرفرات فقط"
-                value={n0(r.totalServerCost)} unit="جنيه"
+                value={nf(r.serverCostPerStudent, 2)} unit="جنيه / طالب"
                 lines={[
-                  ['التخزين طوال المدة', `${n0(r.totalStorageCost)} جنيه`],
+                  ['تكلفة التخزين طوال المدة', `${n0(r.totalStorageCost)} جنيه`],
                   ['استهلاك المشاهدة', `${n0(r.bandwidthCost)} جنيه`],
-                  ['تكلفة السيرفر لكل طالب', `${nf(r.serverCostPerStudent, 2)} جنيه`],
+                  ['إجمالي تكلفة السيرفرات', `${n0(r.totalServerCost)} جنيه`],
                 ]}
               />
               <PriceBox
