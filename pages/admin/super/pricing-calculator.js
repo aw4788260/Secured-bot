@@ -3,8 +3,6 @@ import SuperLayout from '../../../components/SuperLayout';
 import {
   PRICING_CONFIG,
   DEFAULT_INPUTS,
-  SCENARIOS,
-  STRATEGY_LABELS,
   calculatePricing,
 } from '../../../lib/pricingCalculator';
 
@@ -27,256 +25,98 @@ function Field({ label, hint, error, children }) {
   );
 }
 
-function Row({ label, value, strong, sub }) {
+function Row({ label, value, strong }) {
   return (
-    <div className={`pc-row ${strong ? 'strong' : ''} ${sub ? 'sub' : ''}`}>
+    <div className={`pc-row ${strong ? 'strong' : ''}`}>
       <span>{label}</span>
       <b>{value}</b>
     </div>
   );
 }
 
-// Slider + number box bound to the same string state (typed values are never altered).
-function PercentField({ label, hint, error, value, onChange, min, max, step }) {
-  const n = Number(value);
+function PriceBox({ title, value, note, main }) {
   return (
-    <div className="pc-field">
-      <span className="pc-label">{label}</span>
-      <div className="pc-pct">
-        <input type="range" aria-label={label} min={min} max={max} step={step} value={Number.isFinite(n) && value !== '' ? Math.min(Math.max(n, min), max) : min} onChange={(e) => onChange(e.target.value)} />
-        <input className={`pc-input pc-pct-box ${error ? 'bad' : ''}`} inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} aria-label={`${label} (رقم)`} />
-        <span className="pc-pct-sign">%</span>
-      </div>
-      {hint && !error && <span className="pc-hint">{hint}</span>}
-      {error && <span className="pc-error" role="alert">{error}</span>}
-    </div>
-  );
-}
-
-function PriceCard({ title, value, lines, active, badge }) {
-  return (
-    <div className={`pc-price ${active ? 'on' : ''}`}>
-      <div className="pc-price-top"><span>{title}</span>{badge && <em>{badge}</em>}</div>
-      <div className="pc-price-val">{nf(value, 0)}<small>ج.م / طالب</small></div>
-      {lines.map((l) => <div key={l} className="pc-price-line">{l}</div>)}
+    <div className={`pc-box ${main ? 'main' : ''}`}>
+      <span className="pc-box-title">{title}</span>
+      <div className="pc-box-val">{nf(value, 0)}<small>ج.م</small></div>
+      <span className="pc-box-note">{note}</span>
     </div>
   );
 }
 
 export default function PricingCalculator() {
-  const [inputs, setInputsRaw] = useState({ ...DEFAULT_INPUTS });
+  const [inputs, setInputs] = useState({ ...DEFAULT_INPUTS });
   const [touched, setTouched] = useState(false); // hide validation noise until the admin starts typing
-  const [activeScenario, setActiveScenario] = useState(null);
-  const setInputs = (updater) => { setTouched(true); setActiveScenario(null); setInputsRaw(updater); };
-  const set = (key) => (e) => setInputs((p) => ({ ...p, [key]: e.target.value }));
-  const setVal = (key) => (val) => setInputs((p) => ({ ...p, [key]: val }));
-  const reset = () => { setTouched(false); setActiveScenario(null); setInputsRaw({ ...DEFAULT_INPUTS }); };
-  const loadScenario = (key) => {
-    const sc = SCENARIOS[key];
-    setTouched(true);
-    setActiveScenario(key);
-    setInputsRaw((p) => ({ ...p, students: sc.students, courses: sc.courses, hoursPerCourse: sc.hoursPerCourse, viewingPercent: sc.viewingPercent }));
-  };
+  const set = (key) => (e) => { setTouched(true); setInputs((p) => ({ ...p, [key]: e.target.value })); };
+  const reset = () => { setTouched(false); setInputs({ ...DEFAULT_INPUTS }); };
 
-  // Automatic recalculation on every input change.
+  // Instant recalculation on every change.
   const calc = useMemo(() => calculatePricing(inputs), [inputs]);
   const r = calc.results;
   const errors = touched ? calc.errors : {};
-  const hasErrors = !calc.ok;
-  const errorList = touched ? Object.values(calc.errors) : [];
-  const P = PRICING_CONFIG.PRICE;
 
-  const numInput = (key, placeholder, mode = 'decimal') => (
+  const input = (key, placeholder, mode = 'decimal') => (
     <input className={`pc-input ${errors[key] ? 'bad' : ''}`} inputMode={mode} value={inputs[key]} onChange={set(key)} placeholder={placeholder} aria-invalid={!!errors[key]} />
   );
 
-  const opIncluded = r && r.monthlyOperatingCost > 0;
-  const sel = r && r.selectedPrice;
+  const recNote = !r ? '' : r.recommendedBy === 'minimum'
+    ? 'الحد الأدنى أعلى من السعر التنافسي، لذلك تم اعتماده'
+    : r.recommendedBy === 'competitive' ? 'السعر التنافسي أعلى من الحد الأدنى، لذلك تم اعتماده' : 'السعران متساويان';
 
   return (
     <SuperLayout title="حاسبة التسعير">
       <div className="pc-container">
-        {/* ── Header ── */}
         <div className="pc-header">
           <div className="pc-header-icon"><CalcIcon /></div>
-          <div>
-            <h1>حاسبة تسعير منصة مدد</h1>
-            <p>أدخل عدد الطلاب والكورسات والساعات لمقارنة السعر الأصلي بالحد الأدنى الآمن وسعر الربح المستهدف، مع تكلفة السيرفرات الشهرية.</p>
-          </div>
+          <h1>حاسبة التسعير</h1>
+          <button type="button" className="pc-btn-reset" onClick={reset}>↺ إعادة التعيين</button>
         </div>
 
-        {/* ── Main inputs (always visible) ── */}
+        {/* ── Inputs ── */}
         <section className="pc-panel">
-          <div className="pc-panel-head">
-            <h3>بيانات المدرس</h3>
-            <button type="button" className="pc-btn-reset" onClick={reset}>↺ إعادة التعيين</button>
-          </div>
-
-          <div className="pc-scenarios">
-            {Object.entries(SCENARIOS).map(([key, sc]) => (
-              <button key={key} type="button" className={`pc-btn-scn ${activeScenario === key ? 'on' : ''}`} onClick={() => loadScenario(key)}>
-                {sc.label}
-              </button>
-            ))}
-          </div>
-
           <div className="pc-grid">
-            <Field label="عدد الطلاب (S)" hint="عدد صحيح أكبر من صفر" error={errors.students}>{numInput('students', 'مثال: 170', 'numeric')}</Field>
-            <Field label="عدد الكورسات (C)" hint="عدد صحيح أكبر من صفر" error={errors.courses}>{numInput('courses', 'مثال: 13', 'numeric')}</Field>
-            <Field label="متوسط ساعات الفيديو لكل كورس (h)" hint="يمكن إدخال كسور، مثل 7.5" error={errors.hoursPerCourse}>{numInput('hoursPerCourse', 'مثال: 15')}</Field>
-            <Field label="نسبة المشاهدة الشهرية المتوقعة (V) %" hint="100% = كل طالب يشاهد كل الساعات مرة في الشهر. لا تؤثر على التخزين." error={errors.viewingPercent}>
-              {numInput('viewingPercent', '100')}
-            </Field>
+            <Field label="عدد الطلاب" error={errors.students}>{input('students', 'مثال: 170', 'numeric')}</Field>
+            <Field label="عدد الكورسات" error={errors.courses}>{input('courses', 'مثال: 13', 'numeric')}</Field>
+            <Field label="عدد الفيديوهات لكل كورس" error={errors.videosPerCourse}>{input('videosPerCourse', 'مثال: 15', 'numeric')}</Field>
+            <Field label="مدة الفيديو (ساعات)" hint="يمكن استخدام كسور، مثل 0.5" error={errors.hoursPerVideo}>{input('hoursPerVideo', 'مثال: 1')}</Field>
+            <Field label="مدة الكورس (شهور)" error={errors.months}>{input('months', 'مثال: 6')}</Field>
           </div>
-
-          {/* ── Collapsible settings ── */}
-          <details className="pc-settings">
-            <summary>⚙️ Pricing &amp; Cost Settings — إعدادات التسعير والتكلفة</summary>
-
-            <h4>إعدادات العمل (ليست رسوم مزوّد الخدمة)</h4>
-            <div className="pc-grid">
-              <PercentField label="هامش أمان تكلفة السيرفر" hint="زيادة احتياطية فوق تكلفة السيرفر الشهرية." min={0} max={100} step={5} value={inputs.safetyMargin} onChange={setVal('safetyMargin')} error={errors.safetyMargin} />
-              <PercentField label="هامش الربح المستهدف (من الإيراد)" hint="نسبة من سعر البيع وليست زيادة على التكلفة. يجب أن تكون أقل من 100%." min={0} max={95} step={5} value={inputs.profitMargin} onChange={setVal('profitMargin')} error={errors.profitMargin} />
-              <Field label="تكلفة تشغيل شهرية إضافية لكل طالب (ج.م)" hint="اختياري، الافتراضي 0" error={errors.opCostPerStudent}>{numInput('opCostPerStudent', '0')}</Field>
-              <Field label="مصروفات تشغيل شهرية ثابتة (ج.م)" hint="اختياري، الافتراضي 0" error={errors.fixedOpCost}>{numInput('fixedOpCost', '0')}</Field>
-              <Field label="استراتيجية السعر المعتمد" error={errors.strategy}>
-                <select className="pc-input" value={inputs.strategy} onChange={set('strategy')}>
-                  {PRICING_CONFIG.STRATEGIES.map((k) => <option key={k} value={k}>{STRATEGY_LABELS[k]}</option>)}
-                </select>
-              </Field>
-            </div>
-
-            <h4>أسعار مزوّد السيرفر (قابلة للتعديل)</h4>
-            <div className="pc-grid">
-              <Field label="سعر التخزين ($ لكل GB شهرياً)" error={errors.storageUsdPerGbMonth}>{numInput('storageUsdPerGbMonth', '0.01')}</Field>
-              <Field label="سعر نقل البيانات ($ لكل GB)" error={errors.bandwidthUsdPerGb}>{numInput('bandwidthUsdPerGb', '0.005')}</Field>
-              <Field label="سعر الدولار (ج.م)" error={errors.usdToEgp}>{numInput('usdToEgp', '58')}</Field>
-              <Field label="GB تخزين لكل ساعة فيديو" error={errors.storageGbPerHour}>{numInput('storageGbPerHour', '2')}</Field>
-              <Field label="GB مشاهدة لكل ساعة لكل طالب" error={errors.viewingGbPerHour}>{numInput('viewingGbPerHour', '1')}</Field>
-            </div>
-
-            <h4>معاملات المعادلة الأصلية (تُعدَّل من الكود: <code>PRICING_CONFIG</code>)</h4>
-            <div className="pc-assump">
-              <div>السعر الأساسي = {nf(P.BASE_EGP, 2)} + {P.PER_HOUR_EGP} × H + {P.PER_COURSE_EGP} × C &nbsp;—&nbsp; H = C × h</div>
-              <div>التقريب لأعلى لأقرب {P.ROUNDING_STEP_EGP} ج.م لكل الأسعار</div>
-            </div>
-            <div className="pc-tiers">
-              {PRICING_CONFIG.STUDENT_MULTIPLIERS.map((t, i, arr) => {
-                const next = arr[i + 1];
-                const range = !next ? `${t.minStudents} فأكثر` : i === 0 ? `أقل من ${next.minStudents}` : `${t.minStudents}–${next.minStudents - 1}`;
-                return <div key={t.minStudents} className="pc-tier"><span>{range} طالب</span><b>× {t.multiplier.toFixed(2)}</b></div>;
-              })}
-            </div>
-          </details>
+          <div className="pc-margins">
+            <Field label="هامش الأمان %" error={errors.safetyMargin}>{input('safetyMargin', '20')}</Field>
+            <Field label="هامش الربح المستهدف %" error={errors.profitMargin}>{input('profitMargin', '30')}</Field>
+          </div>
         </section>
 
-        {hasErrors && (
+        {!calc.ok && (
           <div className={touched ? 'pc-alert' : 'pc-alert pc-alert-info'} role="status">
-            {touched ? (
-              <>
-                ⚠️ يرجى تصحيح المدخلات التالية لعرض النتائج:
-                <ul>{errorList.map((m) => <li key={m}>{m}</li>)}</ul>
-              </>
-            ) : 'أدخل عدد الطلاب والكورسات ومتوسط الساعات (أو اختر سيناريو اختبار سريع) لعرض النتائج.'}
+            {touched ? '⚠️ يرجى تصحيح الحقول المظللة لعرض النتائج.' : 'أدخل البيانات الخمسة لعرض الأسعار.'}
           </div>
         )}
 
         {r && (
           <>
-            {/* ═════════ Group A — Pricing ═════════ */}
-            <h2 className="pc-group">أ) التسعير</h2>
-
-            <section className="pc-hero">
-              <div>
-                <span className="pc-hero-label">السعر المعتمد للطالب — {STRATEGY_LABELS[r.inputs.strategy]}</span>
-                <div className="pc-hero-val">{nf(sel, 0)}<small>ج.م / طالب</small></div>
-              </div>
-              <div className="pc-hero-side">
-                <div>إيراد الباقة بالسعر المعتمد</div>
-                <b>{egp(r.atSelected.revenue)}</b>
-                {r.inputs.strategy !== 'highest' && <div className="pc-hint">السعر الأعلى المقترح: {egp(r.recommendedFinalPrice, 0)}</div>}
-              </div>
-            </section>
-
-            <div className="pc-prices">
-              <PriceCard
-                title="السعر 1 — السعر الأصلي (المعادلة)"
-                value={r.originalPrice}
-                active={r.inputs.strategy === 'original'}
-                badge={r.highestIs.includes('original') ? 'الأعلى' : null}
-                lines={[`السعر الأساسي ${egp(r.basePrice, 3)}`, `× معامل الطلاب ${r.studentMultiplier.toFixed(2)}`, `قبل التقريب ${egp(r.adjustedPrice, 3)}`]}
-              />
-              <PriceCard
-                title="السعر 2 — الحد الأدنى الآمن (شامل التشغيل)"
-                value={r.minimumSafeInclOp}
-                active={r.inputs.strategy === 'minimum'}
-                badge={r.highestIs.includes('minimum') ? 'الأعلى' : null}
-                lines={[
-                  `السيرفر فقط: ${egp(r.minimumSafeServerOnly, 0)} (قبل التقريب ${nf(r.minimumSafeServerOnlyRaw, 3)})`,
-                  `شامل التشغيل: قبل التقريب ${nf(r.minimumSafeInclOpRaw, 3)}`,
-                  `يشمل: تكلفة السيرفر + هامش أمان ${nf(r.inputs.safetyMargin, 0)}%${opIncluded ? ' + مصروفات التشغيل المُدخلة' : ' (لا مصروفات تشغيل مُدخلة)'}`,
-                ]}
-              />
-              <PriceCard
-                title="السعر 3 — سعر الربح المستهدف"
-                value={r.targetProfitPrice}
-                active={r.inputs.strategy === 'target'}
-                badge={r.highestIs.includes('target') ? 'الأعلى' : null}
-                lines={[`هامش ${nf(r.inputs.profitMargin, 0)}% من الإيراد`, `قبل التقريب ${egp(r.targetProfitRaw, 3)}`, 'يشمل: تكلفة السيرفر + مصروفات التشغيل المُدخلة']}
-              />
+            {/* ── Three price boxes ── */}
+            <div className="pc-boxes">
+              <PriceBox title="الحد الأدنى" value={r.minimumPrice} note="يغطي تكلفة السيرفر + هامش الأمان + الربح المستهدف" />
+              <PriceBox title="السعر التنافسي" value={r.competitivePrice} note={`الأساسي ${nf(r.basePrice, 2)} × ${r.studentMultiplier.toFixed(2)}`} />
+              <PriceBox title="السعر المقترح للمدرس" value={r.recommendedPrice} note={recNote} main />
             </div>
+            <p className="pc-note">السعر لكل طالب عن الكورس بالكامل (وليس شهرياً).</p>
 
-            <section className="pc-card">
-              <div className="pc-card-title"><span className="pc-num">أ</span> ملخص التسعير</div>
-              <Row label="إجمالي ساعات الفيديو (H)" value={`${nf(r.hours, 2)} ساعة`} />
-              <Row label="السعر الأصلي للطالب" value={egp(r.originalPrice, 0)} />
-              <Row label="الحد الأدنى الآمن — السيرفر فقط" value={egp(r.minimumSafeServerOnly, 0)} />
-              <Row label="الحد الأدنى الآمن — شامل مصروفات التشغيل" value={egp(r.minimumSafeInclOp, 0)} />
-              <Row label="سعر الربح المستهدف" value={egp(r.targetProfitPrice, 0)} />
-              <Row label="السعر المعتمد للطالب" value={egp(sel, 0)} strong />
-              <Row label="إجمالي إيراد الباقة بالسعر المعتمد" value={egp(r.atSelected.revenue)} strong />
-              <Row label="الإيراد بالسعر الأصلي" value={egp(r.atOriginal.revenue)} />
-              <p className="pc-note">الأسعار الثلاثة محسوبة بشكل مستقل ولا تتغير باختيار الاستراتيجية. مصروفات التشغيل مضافة فقط إلى السعرين 2 و3، وليست جزءاً من المعادلة الأصلية.</p>
+            {/* ── Compact breakdown ── */}
+            <section className="pc-panel">
+              <Row label="إجمالي ساعات الفيديو" value={`${nf(r.hours, 2)} ساعة`} />
+              <Row label="إجمالي التخزين المطلوب" value={`${nf(r.storageGB, 2)} GB`} />
+              <Row label="تكلفة التخزين الشهرية" value={egp(r.monthlyStorageCost)} />
+              <Row label={`تكلفة التخزين طوال ${nf(r.inputs.months, 2).replace(/\.00$/, '')} شهر`} value={egp(r.totalStorageCost)} />
+              <Row label="إجمالي استهلاك المشاهدة" value={`${nf(r.bandwidthGB, 2)} GB`} />
+              <Row label="تكلفة نقل البيانات (مرة واحدة)" value={egp(r.bandwidthCost)} />
+              <Row label="إجمالي تكلفة السيرفر للكورس" value={egp(r.totalServerCost)} strong />
+              <Row label="تكلفة السيرفر لكل طالب" value={egp(r.serverCostPerStudent, 3)} strong />
+              <Row label="إجمالي الإيراد بالسعر المقترح" value={egp(r.totalRevenue)} />
+              <Row label="الإيراد المتبقي بعد تكلفة السيرفر" value={egp(r.remaining)} strong />
+              <p className="pc-note">المتبقي ليس صافي ربح؛ فهو قبل أي مصروفات أخرى.</p>
             </section>
-
-            {/* ═════════ Group B — Monthly server economics ═════════ */}
-            <h2 className="pc-group">ب) اقتصاديات السيرفر الشهرية</h2>
-
-            <div className="pc-cards">
-              <article className="pc-card">
-                <div className="pc-card-title"><span className="pc-num">ب</span> تكلفة السيرفر الشهرية</div>
-                <div className="pc-sub">🗄️ التخزين — فاتورة شهرية متكررة (تُحسب مرة واحدة للمحتوى)</div>
-                <Row label="إجمالي ساعات الفيديو المرفوعة" value={`${nf(r.hours, 2)} ساعة`} />
-                <Row label="سعة التخزين" value={`${nf(r.storageGB, 2)} GB`} />
-                <Row label="تكلفة التخزين الشهرية" value={egp(r.storageCost)} />
-                <Row label="حصة الطالب من التخزين (توزيع فقط)" value={egp(r.storageCostPerStudent, 4)} />
-                <div className="pc-sub">📡 نقل البيانات — حسب المشاهدة المفترضة خلال الشهر</div>
-                <Row label="استهلاك المشاهدة الشهري" value={`${nf(r.viewingGB, 2)} GB`} />
-                <Row label="تكلفة نقل البيانات للشهر" value={egp(r.bandwidthCost)} />
-                <Row label="تكلفة نقل البيانات لكل طالب" value={egp(r.bandwidthCostPerStudent, 4)} />
-                <Row label="إجمالي تكلفة السيرفر الشهرية" value={egp(r.totalServerCost)} strong />
-                <Row label="إجمالي التكلفة الشهرية لكل طالب" value={egp(r.serverCostPerStudent, 4)} strong />
-                <p className="pc-note">حصة الطالب من التخزين مجرد توزيع لفاتورة تخزين مشتركة؛ المزوّد لا يحاسب كل طالب على حدة. مصروفات التشغيل المُدخلة: {egp(r.monthlyOperatingCost)} شهرياً (غير مضمّنة أعلاه).</p>
-              </article>
-
-              <article className="pc-card pc-card-main">
-                <div className="pc-card-title"><span className="pc-num">ب</span> المتبقي بعد تكلفة السيرفر الشهرية — قبل أي مصروفات أخرى</div>
-                <table className="pc-table">
-                  <thead><tr><th></th><th>السعر المعتمد ({nf(sel, 0)})</th><th>السعر الأصلي ({nf(r.originalPrice, 0)})</th></tr></thead>
-                  <tbody>
-                    <tr><td>الإيراد</td><td>{egp(r.atSelected.revenue)}</td><td>{egp(r.atOriginal.revenue)}</td></tr>
-                    <tr><td>الإيراد المتبقي بعد تكاليف السيرفر الشهرية — قبل المصروفات الأخرى</td><td>{egp(r.atSelected.remaining)}</td><td>{egp(r.atOriginal.remaining)}</td></tr>
-                    <tr><td>المتبقي لكل طالب بعد تكاليف السيرفر الشهرية — قبل المصروفات الأخرى</td><td>{egp(r.atSelected.remainingPerStudent)}</td><td>{egp(r.atOriginal.remainingPerStudent)}</td></tr>
-                    <tr><td>نسبة تكلفة السيرفر من الإيراد</td><td>{r.atSelected.serverCostPercent === null ? '—' : `${nf(r.atSelected.serverCostPercent, 2)}%`}</td><td>{r.atOriginal.serverCostPercent === null ? '—' : `${nf(r.atOriginal.serverCostPercent, 2)}%`}</td></tr>
-                    <tr><td>نسبة المتبقي بعد السيرفر</td><td>{r.atSelected.remainingPercent === null ? '—' : `${nf(r.atSelected.remainingPercent, 2)}%`}</td><td>{r.atOriginal.remainingPercent === null ? '—' : `${nf(r.atOriginal.remainingPercent, 2)}%`}</td></tr>
-                  </tbody>
-                </table>
-                <p className="pc-decision">
-                  هذه المبالغ ليست صافي ربح. فهي لا تشمل أي تكاليف غير مُدخلة صراحةً، مثل الضرائب ورسوم بوابات الدفع والتسويق والموظفين والدعم والتطوير والمرتجعات.
-                  التخزين يمثل فاتورة شهر واحد، ونقل البيانات هو التقدير الناتج عن المشاهدة المفترضة في ذلك الشهر؛ والمقارنة بالإيراد تقدير تخطيطي شهري فقط، وليست ادعاءً بأن كل الإيراد يتحقق كل شهر أو أن دورات فوترة التخزين ونقل البيانات متطابقة عند كل مزوّد.
-                </p>
-              </article>
-            </div>
           </>
         )}
       </div>
@@ -348,6 +188,25 @@ export default function PricingCalculator() {
         .pc-table th { color: var(--gold); font-weight: 800; font-size: 0.8rem; }
         .pc-table td:not(:first-child) { color: var(--text-primary); font-weight: 700; font-variant-numeric: tabular-nums; direction: ltr; text-align: left; white-space: nowrap; }
         .pc-alert ul { margin: 8px 0 0; padding-inline-start: 20px; font-weight: 500; }
+
+
+        .pc-header { flex-wrap: wrap; }
+        .pc-header h1 { flex: 1; margin: 0; }
+        .pc-margins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); max-width: 420px; }
+        .pc-boxes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+        .pc-box { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+        .pc-box.main { border: 2px solid var(--gold); box-shadow: 0 4px 22px var(--gold-dim); }
+        .pc-box-title { color: var(--text-secondary); font-weight: 700; font-size: 0.9rem; }
+        .pc-box-val { font-size: 1.9rem; font-weight: 900; color: var(--text-primary); display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+        .pc-box.main .pc-box-val { font-size: 2.6rem; color: var(--gold); }
+        .pc-box-val small { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .pc-box-note { color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
+        .pc-container .pc-note { margin: 10px 0 18px; }
+        .pc-panel .pc-note { margin: 12px 0 0; }
+        @media (max-width: 760px) {
+          .pc-boxes { grid-template-columns: 1fr; }
+          .pc-box.main { order: -1; }
+        }
 
         .pc-alert { background: rgba(229,72,77,0.1); border: 1px solid rgba(229,72,77,0.5); color: #e5484d; padding: 12px 16px; border-radius: 12px; font-weight: 600; margin-bottom: 22px; }
 
