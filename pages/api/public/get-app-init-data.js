@@ -4,6 +4,7 @@ import { BASE_URL } from '../../../lib/config'; // ✅ 1. استيراد ملف 
 import admin from '../../../lib/firebaseAdmin'; // ✅ إضافة استيراد فايربيز آدمن للتحقق
 import { verifyAppCheckWithWhitelist } from '../../../lib/appCheckWhitelist'; // 🆕 القائمة البيضاء
 import { isAccessRowActive } from '../../../lib/accessExpiryHelper'; // ⏳ فحص انتهاء صلاحية الوصول (Feature B)
+import { buildPushTokenUpdate } from '../../../lib/pushRegistration'; // 🔔 توكن الإشعارات (FCM / HMS)
 
 export default async (req, res) => {
   
@@ -14,7 +15,9 @@ export default async (req, res) => {
   // 1. محاولة التعرف على المستخدم من التوكن (Soft Check)
   const authHeader = req.headers['authorization'];
   const deviceIdHeader = req.headers['x-device-id'];
-  const fcmTokenHeader = req.headers['x-fcm-token']; // ✅ استلام توكن فايربيز من التطبيق
+  // ✅ استلام توكن الإشعارات من التطبيق: x-push-provider + x-push-token (التطبيقات الجديدة)
+  //    أو x-fcm-token (التطبيقات القديمة) — تحليلها داخل buildPushTokenUpdate
+  const pushTokenUpdate = buildPushTokenUpdate(req.headers);
 
   // 🆕 فحص ناعم مبكر لاستخراج user_id فقط لغرض مطابقة القائمة البيضاء
   // (بدون شرط تطابق الجهاز، فقط لمعرفة هوية صاحب التوكن قبل بوابة App Check)
@@ -75,13 +78,13 @@ export default async (req, res) => {
        
        if (user && !user.is_blocked && user.jwt_token === incomingToken) {
            
-          // ✅ تحديث آخر ظهور وتوكن فايربيز (FCM Token) في عملية واحدة
+          // ✅ تحديث آخر ظهور وتوكن الإشعارات (FCM أو HMS) في عملية واحدة
           let updatePayload = {
               last_active_at: new Date().toISOString()
           };
 
-          if (fcmTokenHeader) {
-              updatePayload.fcm_token = fcmTokenHeader;
+          if (pushTokenUpdate) {
+              Object.assign(updatePayload, pushTokenUpdate);
           }
 
           await supabase
