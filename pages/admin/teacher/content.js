@@ -135,6 +135,7 @@ export default function ContentManager() {
     can_upload_pdf: 'تم إيقاف صلاحية رفع ملفات PDF لحسابك من قبل الإدارة.',
     can_upload_video: 'تم إيقاف صلاحية رفع الفيديوهات لحسابك من قبل الإدارة.',
     can_create_exam: 'تم إيقاف صلاحية إنشاء/تعديل الامتحانات لحسابك من قبل الإدارة.',
+    can_manage_flashcards: 'تم إيقاف صلاحية إنشاء/تعديل الفلاش كاردس لحسابك من قبل الإدارة.',
   };
 
   const fetchPermissions = async () => {
