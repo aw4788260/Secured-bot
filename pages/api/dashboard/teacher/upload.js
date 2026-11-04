@@ -112,13 +112,16 @@ export default async (req, res) => {
     // ============================================================
     // 🛡️ [صلاحيات المعلم] التحقق بناءً على نوع الملف المرفوع
     // ملفات PDF ⇐ صلاحية "رفع PDF" — صور أسئلة الامتحان ⇐ صلاحية "إنشاء امتحانات"
+    // صور كروت الفلاش كاردس (type=flashcard_image) ⇐ صلاحية "إدارة الفلاش كاردس"
     // (السوبر أدمن يتخطى هذا التحقق دائماً)
     // ============================================================
     if (user.role !== 'super_admin') {
         const uploadedExt = path.extname(req.file.originalname).toLowerCase();
         let requiredPermission = null;
         if (uploadedExt === '.pdf') requiredPermission = 'can_upload_pdf';
-        else if (['.png', '.jpg', '.jpeg'].includes(uploadedExt)) requiredPermission = 'can_create_exam';
+        else if (['.png', '.jpg', '.jpeg'].includes(uploadedExt)) {
+            requiredPermission = req.body.type === 'flashcard_image' ? 'can_manage_flashcards' : 'can_create_exam';
+        }
 
         if (requiredPermission) {
             const perm = await checkTeacherPermission(user.teacherId, requiredPermission);
