@@ -104,6 +104,13 @@ export default async (req, res) => {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // 🖼️ حد أقصى لحجم الصور (الحد العام 500MB مخصص للـ PDF) — يحمي القرص وبيانات الطلاب
+    const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    if (['.png', '.jpg', '.jpeg'].includes(path.extname(req.file.originalname).toLowerCase()) && req.file.size > MAX_IMAGE_BYTES) {
+        try { fs.unlinkSync(req.file.path); } catch (e) {}
+        return res.status(413).json({ error: 'حجم الصورة أكبر من 10 ميجا. صغّر الصورة ثم أعد المحاولة.' });
+    }
+
     console.log(`[Upload Step 6] File Saved Successfully on Disk!`);
     console.log(`   -> Original Name: ${req.file.originalname}`);
     console.log(`   -> Saved Name:    ${req.file.filename}`);
