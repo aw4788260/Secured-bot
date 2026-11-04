@@ -42,6 +42,7 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [notifyStudents, setNotifyStudents] = useState(false); // 🔔 للإنشاء فقط (يختفي بعد أول حفظ)
   const [cards, setCards] = useState(() => (deckId ? [] : [emptyCard()]));
 
   const [mode, setMode] = useState('edit'); // 'edit' | 'preview'
@@ -196,6 +197,8 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
             title: title.trim(),
             description: description.trim(),
             is_active: isActive,
+            // 🔔 يُرسل فقط لمجموعة جديدة ظاهرة؛ السيرفر يتجاهله عند التعديل أو إن كانت المجموعة مخفية/فارغة
+            notifyStudents: !id && isActive && notifyStudents,
             cards: cards.map(c => ({
               id: c.id,
               front_text: c.front_text,
@@ -208,8 +211,12 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
       });
       const data = await res.json();
       if (res.ok && data.deck) {
+        const askedToNotify = !id && isActive && notifyStudents;
         applyDeck(data.deck); // نعتمد ما رجع من السيرفر (معرّفات البطاقات الجديدة)
-        alertMsg('success', 'تم حفظ المجموعة');
+        setNotifyStudents(false); // الإشعار مرة واحدة فقط عند الإنشاء
+        if (askedToNotify && data.notified) alertMsg('success', 'تم حفظ المجموعة وإرسال الإشعار للطلاب');
+        else if (askedToNotify) alertMsg('error', 'تم حفظ المجموعة لكن لم يُرسل الإشعار (تأكد أن المجموعة ظاهرة وفيها بطاقات)');
+        else alertMsg('success', 'تم حفظ المجموعة');
         onSaved && onSaved(data.deck);
       } else {
         alertMsg('error', data.error || 'فشل الحفظ');
@@ -336,6 +343,17 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
                 <span className="slider round"></span>
               </label>
             </div>
+            {!id && isActive && canManage && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: 'var(--text-secondary)', marginTop: '12px' }}>
+                <input
+                  type="checkbox"
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--gold)' }}
+                  checked={notifyStudents}
+                  onChange={e => setNotifyStudents(e.target.checked)}
+                />
+                <span>إرسال إشعار للطلاب المشتركين في المادة عند الحفظ</span>
+              </label>
+            )}
           </div>
 
           <div className="cards-head">
