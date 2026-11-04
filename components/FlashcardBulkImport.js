@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import useImageResizeUpload, { isAllowedImage, MAX_INPUT_BYTES } from '../hooks/useImageResizeUpload'; // 🖼️ Step 10
 
 // ============================================================
 // 📋 استيراد البطاقات من نص مُلصق (Step 9)
@@ -7,6 +8,7 @@ import { useState } from 'react';
 // - الأسطر الفارغة تُتجاهل، والمسافات تُقص، والأسطر الناقصة (بدون ظهر/وجه) تُعلَّم بالأحمر
 // - جدول معاينة قابل للتعديل/الحذف قبل التأكيد، مع اختيار: إضافة للموجود أو استبداله
 // - لا يحفظ شيئاً في السيرفر: البطاقات تُضاف للمحرر وما زالت تحتاج «حفظ»
+// - Step 10: يحتوي أيضاً على FlashcardBulkImageImport (بطاقة لكل صورة، مع تصغير وطابور رفع)
 // ============================================================
 
 const ACCENT = '#8B5CF6';
@@ -199,6 +201,172 @@ export default function FlashcardBulkImport({ existingCount = 0, maxCards = 500,
         .mode { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); }
         .mode label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
         .warn { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; }
+      `}</style>
+    </div>
+  );
+}
+
+// ============================================================
+// 🖼️ استيراد صور بالجملة (Step 10)
+// ------------------------------------------------------------
+// - المعلم يختار صوراً كثيرة دفعة واحدة ⇒ تُصغَّر وتُرفع (3 في آن واحد) ⇒ بطاقة واحدة لكل صورة.
+// - الصورة تذهب للوجه أو الظهر حسب اختيار المعلم، والجهة الأخرى تبقى فارغة ليكتب نصها بعد ذلك.
+// - الملفات تُرتَّب بالاسم (ترتيب طبيعي: 2 قبل 10) ليكون ترتيب البطاقات متوقعاً.
+// - فشل الرفع لا يُلغي الباقي: تظهر «إعادة المحاولة» لكل ملف فاشل أو للكل.
+// - البطاقات تُضاف للمحرر فقط — ما زالت تحتاج «حفظ» (ويجب ملء الجهة الأخرى قبل الحفظ).
+// ============================================================
+const STATUS_LABEL = { queued: 'في الانتظار', resizing: 'جاري التصغير...', uploading: 'جاري الرفع...', done: 'تم ✔', error: 'فشل' };
+
+export function FlashcardBulkImageImport({ existingCount = 0, maxCards = 500, canManage = true, deniedMessage = '', onImport, onClose }) {
+  const [side, setSide] = useState('front'); // 'front' | 'back'
+  const [dragOver, setDragOver] = useState(false);
+  const [notice, setNotice] = useState('');
+  const { items, stats, enqueue, retry, retryFailed, remove, clear } = useImageResizeUpload({ concurrency: 3 });
+
+  const room = Math.max(0, maxCards - existingCount - items.length);
+  const busy = stats.active > 0;
+
+  const addFiles = (fileList) => {
+    if (!canManage) { setNotice(deniedMessage || 'ليست لديك صلاحية'); return; }
+    const all = Array.from(fileList || []);
+    const valid = all.filter(f => isAllowedImage(f) && f.size <= MAX_INPUT_BYTES);
+    const skippedType = all.length - valid.length;
+    valid.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    const accepted = valid.slice(0, room);
+    const skippedLimit = valid.length - accepted.length;
+    enqueue(accepted);
+    const msgs = [];
+    if (skippedType) msgs.push(`${skippedType} ملف تجاهلناه (الصيغ المسموحة PNG/JPG وحتى 30 ميجا)`);
+    if (skippedLimit) msgs.push(`${skippedLimit} صورة تجاوزت الحد الأقصى (${maxCards} بطاقة)`);
+    setNotice(msgs.join(' — '));
+  };
+
+  const doneItems = items.filter(it => it.status === 'done');
+
+  const confirm = () => {
+    if (busy || doneItems.length === 0) return;
+    onImport(doneItems.map(it => ({ fileName: it.fileName })), side);
+    clear();
+  };
+
+  const requestClose = () => {
+    if (busy && !window.confirm('هناك صور قيد الرفع. هل تريد الإغلاق وإلغاء المتابعة؟')) return;
+    if (!busy && doneItems.length > 0 && !window.confirm(`رُفعت ${doneItems.length} صورة ولم تُضف كبطاقات بعد. هل تريد الإغلاق دون إضافتها؟`)) return;
+    onClose();
+  };
+
+  return (
+    <div className="bi-overlay" onClick={requestClose}>
+      <div className="bi-box" onClick={e => e.stopPropagation()}>
+        <div className="bi-head">
+          <h3>🖼️ استيراد صور (بطاقة لكل صورة)</h3>
+          <button type="button" className="bi-x" onClick={requestClose}>✕</button>
+        </div>
+
+        {!canManage && <div className="warn">{deniedMessage}</div>}
+
+        <div className="mode">
+          <span className="lbl">مكان الصورة في البطاقة:</span>
+          <label><input type="radio" name="bimg-side" checked={side === 'front'} onChange={() => setSide('front')} disabled={items.length > 0} /> الوجه (السؤال)</label>
+          <label><input type="radio" name="bimg-side" checked={side === 'back'} onChange={() => setSide('back')} disabled={items.length > 0} /> الظهر (الإجابة)</label>
+        </div>
+
+        <label
+          className={`drop${dragOver ? ' over' : ''}`}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+        >
+          <input type="file" accept="image/png,image/jpeg" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+          <div>اسحب الصور هنا أو اضغط للاختيار</div>
+          <small>PNG / JPG — تُصغَّر تلقائياً (حتى 1200px) قبل الرفع • المتبقي {room} بطاقة</small>
+        </label>
+
+        {notice && <div className="warn">{notice}</div>}
+
+        {items.length > 0 && (
+          <>
+            <div className="summary">
+              <span className="ok">✔ {stats.done} / {stats.total}</span>
+              {busy && <span className="info">⏳ {stats.active} قيد المعالجة</span>}
+              {stats.failed > 0 && (
+                <span className="bad">
+                  ✖ {stats.failed} فشلت
+                  <button type="button" className="link" onClick={retryFailed}>إعادة محاولة الكل</button>
+                </span>
+              )}
+            </div>
+            <div className="list">
+              {items.map(it => (
+                <div key={it.id} className={`row ${it.status}`}>
+                  <img src={it.preview} alt="" />
+                  <div className="meta">
+                    <div className="name" title={it.name}>{it.name}</div>
+                    <div className="bar"><div className="fill" style={{ width: `${it.status === 'done' ? 100 : it.progress}%` }} /></div>
+                    <div className="st">{STATUS_LABEL[it.status]}{it.status === 'uploading' ? ` ${it.progress}%` : ''}{it.error ? ` — ${it.error}` : ''}</div>
+                  </div>
+                  {it.status === 'error' && <button type="button" className="mini" onClick={() => retry(it.id)}>↻ إعادة</button>}
+                  {(it.status === 'done' || it.status === 'error' || it.status === 'queued') && (
+                    <button type="button" className="del" title="إزالة" onClick={() => remove(it.id)}>🗑</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="bi-actions">
+          <button type="button" className="bi-btn" onClick={requestClose}>إلغاء</button>
+          <button type="button" className="bi-btn primary" onClick={confirm} disabled={busy || doneItems.length === 0}>
+            إضافة {doneItems.length} بطاقة للمحرر
+          </button>
+        </div>
+        {stats.failed > 0 && !busy && doneItems.length > 0 && (
+          <p className="hint small">ستُضاف الصور الناجحة فقط. يمكنك إعادة محاولة الفاشلة أولاً.</p>
+        )}
+        <p className="hint small">البطاقات تُضاف للمحرر فقط — أضف النص للجهة الأخرى ثم اضغط «حفظ».</p>
+      </div>
+
+      <style jsx>{`
+        .bi-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10001; background: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .bi-box { background: var(--bg-surface); width: 95%; max-width: 760px; max-height: 92vh; overflow-y: auto; border-radius: 16px; border: 1px solid var(--border-accent); padding: 20px 24px; box-sizing: border-box; }
+        .bi-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px; }
+        .bi-head h3 { margin: 0; color: ${ACCENT}; font-size: 1.1rem; }
+        .bi-x { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; }
+        .mode { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; color: var(--text-secondary); margin-bottom: 12px; }
+        .mode label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+        .lbl { font-weight: bold; }
+        .drop { display: block; text-align: center; padding: 26px 14px; border: 2px dashed var(--border-accent); border-radius: 12px; color: var(--text-secondary); cursor: pointer; transition: 0.2s; }
+        .drop small { color: var(--text-muted); }
+        .drop:hover, .drop.over { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(139, 92, 246, 0.08); }
+        .warn { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; margin: 10px 0; }
+        .summary { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 14px 0 8px; font-weight: bold; }
+        .summary .ok { color: #22c55e; }
+        .summary .info { color: ${ACCENT}; }
+        .summary .bad { color: #ef4444; display: flex; gap: 10px; align-items: center; }
+        .link { background: none; border: none; color: #ef4444; text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
+        .list { max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+        .row { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-top: 1px solid var(--border); }
+        .row:first-child { border-top: none; }
+        .row.error { background: rgba(239, 68, 68, 0.08); }
+        .row img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
+        .meta { flex: 1; min-width: 0; }
+        .name { color: var(--text-primary); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bar { height: 5px; background: var(--border); border-radius: 4px; margin: 5px 0; overflow: hidden; }
+        .fill { height: 100%; background: ${ACCENT}; transition: width 0.2s; }
+        .row.done .fill { background: #22c55e; }
+        .row.error .fill { background: #ef4444; }
+        .st { color: var(--text-muted); font-size: 0.75rem; }
+        .row.error .st { color: #ef4444; }
+        .mini { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 6px; padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
+        .mini:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+        .del { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 6px; border-radius: 6px; }
+        .del:hover { color: #ef4444; background: rgba(239, 68, 68, 0.12); }
+        .bi-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
+        .bi-btn { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: inherit; font-weight: bold; }
+        .bi-btn.primary { background: ${ACCENT}; border-color: ${ACCENT}; color: #fff; }
+        .bi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .hint.small { font-size: 0.8rem; margin: 10px 0 0; color: var(--text-muted); }
       `}</style>
     </div>
   );

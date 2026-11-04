@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import FlashcardBulkImport from './FlashcardBulkImport'; // 📋 استيراد من نص (Step 9)
+import FlashcardBulkImport, { FlashcardBulkImageImport } from './FlashcardBulkImport'; // 📋 استيراد من نص (Step 9) + 🖼️ صور بالجملة (Step 10)
+import useImageResizeUpload, { isAllowedImage, MAX_INPUT_BYTES } from '../hooks/useImageResizeUpload'; // 🖼️ تصغير + رفع (Step 10)
 
 // ============================================================
 // 🗂️ محرر مجموعة الفلاش كاردس (Deck Editor) — لوحة المعلم
@@ -14,7 +15,6 @@ const MAX_CARDS = 500;
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 1000;
 const MAX_CARD_TEXT = 5000;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // نفس حد الباك إند
 const ACCENT = '#8B5CF6';
 
 let keySeq = 0;
@@ -46,6 +46,8 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
 
   const [mode, setMode] = useState('edit'); // 'edit' | 'preview'
   const [showImport, setShowImport] = useState(false);
+  const [showImageImport, setShowImageImport] = useState(false);
+  const { uploadOne } = useImageResizeUpload(); // رفع صورة واحدة مع التصغير
   const [uploading, setUploading] = useState({}); // { 'cardKey:front': true }
   const [pIndex, setPIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -124,25 +126,32 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
     alertMsg('success', `تمت إضافة ${imported.length} بطاقة — اضغط «حفظ» لتثبيتها`);
   };
 
+  // ---------- استيراد صور بالجملة (Step 10) ----------
+  // بطاقة لكل صورة (الوجه أو الظهر حسب الاختيار)، تُضاف في النهاية. الجهة الأخرى فارغة ليكتب المعلم نصها.
+  const handleImageImport = (images, side) => {
+    const imported = images.map(img => ({ ...emptyCard(), [`${side}_image_file_id`]: img.fileName }));
+    const isBlank = (c) => !c.id && !c.front_text.trim() && !c.back_text.trim() && !c.front_image_file_id && !c.back_image_file_id;
+    setCards(cs => [...cs.filter(c => !isBlank(c)), ...imported]);
+    touch();
+    setShowImageImport(false);
+    alertMsg('success', `تمت إضافة ${imported.length} بطاقة بصور — أضف نص الجهة الأخرى ثم اضغط «حفظ»`);
+  };
+
   // ---------- رفع الصور ----------
   const uploadImage = async (card, side, file) => {
     if (!file) return;
-    if (!/\.(png|jpe?g)$/i.test(file.name)) return alertMsg('error', 'الصيغ المسموحة: PNG أو JPG');
-    if (file.size > MAX_IMAGE_BYTES) return alertMsg('error', 'حجم الصورة أكبر من 10 ميجا. صغّرها ثم أعد المحاولة.');
+    if (!isAllowedImage(file)) return alertMsg('error', 'الصيغ المسموحة: PNG أو JPG');
+    if (file.size > MAX_INPUT_BYTES) return alertMsg('error', 'حجم الصورة أكبر من 30 ميجا.');
     if (!canManage) return alertMsg('error', deniedMessage);
 
     const k = `${card._key}:${side}`;
     setUploading(u => ({ ...u, [k]: true }));
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('type', 'flashcard_image');
-      const res = await fetch('/api/dashboard/teacher/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (res.ok && data.fileName) updateCard(card._key, { [`${side}_image_file_id`]: data.fileName });
-      else alertMsg('error', data.error || 'فشل رفع الصورة');
+      // تصغير في المتصفح (≤1200px, JPEG) ثم رفع؛ يُرجع اسم الملف المحفوظ فقط
+      const fileName = await uploadOne(file);
+      updateCard(card._key, { [`${side}_image_file_id`]: fileName });
     } catch (e) {
-      alertMsg('error', 'خطأ في الاتصال أثناء رفع الصورة');
+      alertMsg('error', e.message || 'فشل رفع الصورة');
     }
     setUploading(u => { const n = { ...u }; delete n[k]; return n; });
   };
@@ -333,6 +342,7 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
             <h4>البطاقات ({cards.length}/{MAX_CARDS})</h4>
             <div className="cards-head-actions">
               <button type="button" className="fc-btn" onClick={() => setShowImport(true)}>📋 استيراد من نص</button>
+              <button type="button" className="fc-btn" onClick={() => (canManage ? setShowImageImport(true) : alertMsg('error', deniedMessage))}>🖼️ استيراد صور</button>
               <button type="button" className="fc-btn primary" onClick={addCard}>+ بطاقة</button>
             </div>
           </div>
@@ -361,6 +371,17 @@ export default function FlashcardDeckEditor({ deckId = null, subjectId, canManag
             <button type="button" className="fc-btn add-bottom" onClick={addCard}>+ إضافة بطاقة</button>
           )}
         </div>
+      )}
+
+      {showImageImport && (
+        <FlashcardBulkImageImport
+          existingCount={cards.filter(c => c.id || c.front_text.trim() || c.back_text.trim() || c.front_image_file_id || c.back_image_file_id).length}
+          maxCards={MAX_CARDS}
+          canManage={canManage}
+          deniedMessage={deniedMessage}
+          onImport={handleImageImport}
+          onClose={() => setShowImageImport(false)}
+        />
       )}
 
       {showImport && (
