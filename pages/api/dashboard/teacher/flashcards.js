@@ -1,6 +1,7 @@
 import { supabase } from '../../../../lib/supabaseClient';
 import { requireTeacherOrAdmin } from '../../../../lib/dashboardHelper';
 import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // ✅ التحقق من صلاحيات المعلم
+import { sendToTopicOrThrow } from '../../../../lib/pushService'; // ✅ إرسال الإشعارات (FCM + HMS)
 
 // ============================================================
 // 🗂️ [Teacher Dashboard] إدارة مجموعات الفلاش كاردس (Decks) وبطاقاتها
@@ -9,6 +10,7 @@ import { checkTeacherPermission } from '../../../../lib/teacherPermissions'; // 
 // GET  ?mode=deck&id=ID         ⇐ مجموعة واحدة مع بطاقاتها مرتبة
 // POST { action, payload }:
 //   save_deck     ⇐ إنشاء (بدون id) أو تعديل (مع id) مجموعة مع بطاقاتها
+//                   + notifyStudents (عند الإنشاء فقط): إشعار فوري لطلاب المادة بعد حفظ البطاقات
 //   delete_deck   ⇐ حذف مجموعة (البطاقات تُحذف تلقائياً بالـ cascade)
 //   toggle_active ⇐ إظهار/إخفاء مجموعة عن الطلاب
 // ترتيب المجموعات (drag & drop) يتم عبر reorder.js (type = flashcard_decks).
@@ -104,11 +106,42 @@ async function getDeckWithOwner(deckId) {
 async function getSubjectOwner(subjectId) {
   const { data } = await supabase
     .from('subjects')
-    .select('id, courses!inner(teacher_id)')
+    .select('id, courses!inner(teacher_id, title)')
     .eq('id', subjectId)
     .maybeSingle();
   if (!data) return null;
-  return { ownerTeacherId: data.courses?.teacher_id ?? null };
+  return {
+    ownerTeacherId: data.courses?.teacher_id ?? null,
+    courseTitle: data.courses?.title ?? null,
+  };
+}
+
+// 🔔 إشعار فوري لطلاب المادة بمجموعة جديدة (نفس مسار إشعار الامتحان الفوري، بلا cron).
+// نستخدم النوع 'subject' (كما في رفع الملفات) فيظهر الإشعار في قائمة إشعارات الطالب
+// المفلترة بـ target_type = subject، ويصل لمن لديه وصول للمادة فقط.
+// لا يرمي أبداً: فشل الإشعار لا يجب أن يُفشل حفظ المجموعة. يرجع true عند النجاح.
+async function notifySubjectAboutDeck({ subjectId, courseTitle, deckId, deckTitle, senderRole }) {
+  try {
+    const title = courseTitle || 'تحديث جديد';
+    const body = `🗂️ مجموعة فلاش كاردس جديدة: ${deckTitle}`;
+    await sendToTopicOrThrow(`subject_${subjectId}`, {
+      title,
+      body,
+      type: 'subject',
+      data: { id: String(subjectId), kind: 'flashcards', deck_id: String(deckId) },
+    });
+    await supabase.from('notifications').insert({
+      title,
+      body,
+      target_type: 'subject',
+      target_id: String(subjectId),
+      sender_role: senderRole,
+    });
+    return true;
+  } catch (notifyErr) {
+    console.error('⚠️ [Flashcards] Push notify error:', notifyErr.message);
+    return false;
+  }
 }
 
 // السوبر أدمن يتخطى فحص الملكية (كما يتخطى فحص الصلاحيات)
@@ -254,6 +287,11 @@ export default async function handler(req, res) {
 
       const cards = normalizeCards(payload.cards); // قد تُرمى ValidationError
 
+      // 🔔 الإشعار للإنشاء فقط (لا يُعاد إرساله عند التعديل)
+      const wantsNotify = payload.notifyStudents === true || payload.notifyStudents === 'true';
+      let createdSubject = null;
+      let createdTitle = null;
+
       const nowIso = new Date().toISOString();
       let deckId;
       let existingRows = []; // بطاقات المجموعة الحالية (تُجلب وتُفحص قبل أي كتابة)
@@ -288,6 +326,8 @@ export default async function handler(req, res) {
           .single();
         if (createErr) throw createErr;
         deckId = created.id;
+        createdSubject = subject;
+        createdTitle = title;
       } else {
         // ✅ تعديل: تحقق من الملكية
         const found = await getDeckWithOwner(id);
@@ -367,7 +407,20 @@ export default async function handler(req, res) {
       }
 
       const deck = await loadDeckWithCards(deckId);
-      return res.status(200).json({ success: true, deck });
+
+      // 🔔 بعد حفظ البطاقات (ليفتح الطالب مجموعة مكتملة): فقط لمجموعة جديدة ظاهرة وفيها بطاقات
+      let notified = false;
+      if (wantsNotify && createdSubject && deck.is_active && deck.cards.length > 0) {
+        notified = await notifySubjectAboutDeck({
+          subjectId,
+          courseTitle: createdSubject.courseTitle,
+          deckId,
+          deckTitle: createdTitle,
+          senderRole: user.role === 'super_admin' ? 'super_admin' : 'teacher',
+        });
+      }
+
+      return res.status(200).json({ success: true, deck, notified });
     }
 
     // ------------------------------------------------------------
