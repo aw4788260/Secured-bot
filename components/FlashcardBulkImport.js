@@ -11,7 +11,6 @@ import useImageResizeUpload, { isAllowedImage, MAX_INPUT_BYTES } from '../hooks/
 // - Step 10: يحتوي أيضاً على FlashcardBulkImageImport (بطاقة لكل صورة، مع تصغير وطابور رفع)
 // ============================================================
 
-const ACCENT = '#8B5CF6';
 const MAX_CARD_TEXT = 5000;
 
 /**
@@ -170,16 +169,16 @@ export default function FlashcardBulkImport({ existingCount = 0, maxCards = 500,
         .bi-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10001; background: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
         .bi-box { background: var(--bg-surface); width: 95%; max-width: 760px; max-height: 92vh; overflow-y: auto; border-radius: 16px; border: 1px solid var(--border-accent); padding: 20px 24px; box-sizing: border-box; }
         .bi-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px; }
-        .bi-head h3 { margin: 0; color: ${ACCENT}; font-size: 1.1rem; }
+        .bi-head h3 { margin: 0; color: var(--gold); font-size: 1.1rem; }
         .bi-x { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; }
         .hint { color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 10px; line-height: 1.7; }
         .hint.small { font-size: 0.8rem; margin: 10px 0 0; color: var(--text-muted); }
         .example { background: var(--bg-base); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 0 0 12px; color: var(--text-secondary); font-family: inherit; font-size: 0.85rem; white-space: pre-wrap; }
-        .bi-text { width: 100%; box-sizing: border-box; background: var(--bg-base); border: 1px solid var(--border); color: var(--text-primary); padding: 12px; border-radius: 10px; font-family: inherit; resize: vertical; }
-        .bi-text:focus { border-color: ${ACCENT}; outline: none; }
+        .bi-text { width: 100%; box-sizing: border-box; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); padding: 12px; border-radius: 10px; font-family: inherit; resize: vertical; }
+        .bi-text:focus { border-color: var(--gold); outline: none; }
         .bi-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
         .bi-btn { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: inherit; font-weight: bold; }
-        .bi-btn.primary { background: ${ACCENT}; border-color: ${ACCENT}; color: #fff; }
+        .bi-btn.primary { background: var(--gold); border-color: var(--gold); color: #1a1a1a; }
         .bi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .summary { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; font-weight: bold; }
         .summary .ok { color: #22c55e; }
@@ -191,8 +190,8 @@ export default function FlashcardBulkImport({ existingCount = 0, maxCards = 500,
         td { padding: 5px 6px; border-top: 1px solid var(--border); vertical-align: top; }
         td.num { color: var(--text-muted); font-size: 0.8rem; width: 34px; text-align: center; }
         td.empty { text-align: center; color: var(--text-muted); padding: 20px; }
-        td input { width: 100%; box-sizing: border-box; background: var(--bg-base); border: 1px solid var(--border); color: var(--text-primary); padding: 7px 9px; border-radius: 6px; font-family: inherit; }
-        td input:focus { border-color: ${ACCENT}; outline: none; }
+        td input { width: 100%; box-sizing: border-box; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); padding: 7px 9px; border-radius: 6px; font-family: inherit; }
+        td input:focus { border-color: var(--gold); outline: none; }
         tr.invalid td { background: rgba(239, 68, 68, 0.08); }
         tr.invalid td input { border-color: rgba(239, 68, 68, 0.5); }
         .problem { color: #ef4444; font-size: 0.75rem; margin-top: 3px; }
@@ -331,18 +330,18 @@ export function FlashcardBulkImageImport({ existingCount = 0, maxCards = 500, ca
         .bi-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10001; background: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
         .bi-box { background: var(--bg-surface); width: 95%; max-width: 760px; max-height: 92vh; overflow-y: auto; border-radius: 16px; border: 1px solid var(--border-accent); padding: 20px 24px; box-sizing: border-box; }
         .bi-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px; }
-        .bi-head h3 { margin: 0; color: ${ACCENT}; font-size: 1.1rem; }
+        .bi-head h3 { margin: 0; color: var(--gold); font-size: 1.1rem; }
         .bi-x { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; }
         .mode { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; color: var(--text-secondary); margin-bottom: 12px; }
         .mode label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
         .lbl { font-weight: bold; }
         .drop { display: block; text-align: center; padding: 26px 14px; border: 2px dashed var(--border-accent); border-radius: 12px; color: var(--text-secondary); cursor: pointer; transition: 0.2s; }
         .drop small { color: var(--text-muted); }
-        .drop:hover, .drop.over { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(139, 92, 246, 0.08); }
+        .drop:hover, .drop.over { border-color: var(--gold); color: var(--gold); background: var(--gold-dimmer); }
         .warn { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; margin: 10px 0; }
         .summary { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 14px 0 8px; font-weight: bold; }
         .summary .ok { color: #22c55e; }
-        .summary .info { color: ${ACCENT}; }
+        .summary .info { color: var(--gold); }
         .summary .bad { color: #ef4444; display: flex; gap: 10px; align-items: center; }
         .link { background: none; border: none; color: #ef4444; text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
         .list { max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
@@ -353,18 +352,18 @@ export function FlashcardBulkImageImport({ existingCount = 0, maxCards = 500, ca
         .meta { flex: 1; min-width: 0; }
         .name { color: var(--text-primary); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .bar { height: 5px; background: var(--border); border-radius: 4px; margin: 5px 0; overflow: hidden; }
-        .fill { height: 100%; background: ${ACCENT}; transition: width 0.2s; }
+        .fill { height: 100%; background: var(--gold); transition: width 0.2s; }
         .row.done .fill { background: #22c55e; }
         .row.error .fill { background: #ef4444; }
         .st { color: var(--text-muted); font-size: 0.75rem; }
         .row.error .st { color: #ef4444; }
         .mini { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 6px; padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
-        .mini:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+        .mini:hover { border-color: var(--gold); color: var(--gold); }
         .del { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 6px; border-radius: 6px; }
         .del:hover { color: #ef4444; background: rgba(239, 68, 68, 0.12); }
         .bi-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
         .bi-btn { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: inherit; font-weight: bold; }
-        .bi-btn.primary { background: ${ACCENT}; border-color: ${ACCENT}; color: #fff; }
+        .bi-btn.primary { background: var(--gold); border-color: var(--gold); color: #1a1a1a; }
         .bi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .hint.small { font-size: 0.8rem; margin: 10px 0 0; color: var(--text-muted); }
       `}</style>
